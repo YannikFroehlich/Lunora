@@ -9,6 +9,7 @@
     <title>{% block title %}Lunora{% endblock %}</title>
 
     <link rel="stylesheet" href="{% static 'css/base.css' %}">
+    {% block page_css %}{% endblock %}
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -25,36 +26,22 @@
             document.documentElement.dataset.theme = theme;
         })();
     </script>
-
 </head>
 <body>
-
-<header class="site-header">
-    <nav class="navbar">
-        <a href="#" class="logo">Lunora</a>
-
-        <div class="nav-links">
-            <a href="{% url 'home' %}">
-                <i class="fa-solid fa-house"></i>
-            </a>
-            <a href="{% url 'settings' %}">
-                <i class="fa-solid fa-gear"></i>
-            </a>
-            <a class="theme-toggle" type="button" aria-label="Switch to dark mode">
-                <i class="fa-solid fa-moon" aria-hidden="true"></i>
-            </a>
-        </div>
-    </nav>
-</header>
+<nav class="floating-nav" aria-label="Hauptnavigation">
+    <a class="nav-orb {% if active_page == 'home' %}is-active{% endif %}" href="{% url 'home' %}" aria-label="Dashboard">
+        <i class="fa-solid fa-house" aria-hidden="true"></i>
+    </a>
+    <a class="nav-orb {% if active_page == 'settings' %}is-active{% endif %}" href="{% url 'settings' %}" aria-label="Einstellungen">
+        <i class="fa-solid fa-gear" aria-hidden="true"></i>
+    </a>
+</nav>
 
 <main class="site-main">
-    {% block content %}
-    {% endblock %}
+    {% block content %}{% endblock %}
 </main>
 
-<footer class="site-footer">
-</footer>
-
 <script src="{% static 'js/base.js' %}"></script>
+{% block page_js %}{% endblock %}
 </body>
 </html>

@@ -1,0 +1,129 @@
+{% extends 'app/base.html' %}
+{% load static %}
+
+{% block title %}Nachrichten | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% static 'css/messages.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell messages-shell">
+    <header class="page-hero">
+        <div>
+            <h1>Nachrichten</h1>
+            <p>Behalte Unterhaltungen, Gruppen und wichtige Antworten im Blick.</p>
+        </div>
+        <i class="hero-branch fa-solid fa-seedling" aria-hidden="true"></i>
+    </header>
+
+    <div class="messages-layout">
+        <aside class="glass-panel inbox-panel">
+            <div class="message-search">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="search" placeholder="Unterhaltungen suchen">
+                <button type="button" aria-label="Neue Nachricht"><i class="fa-solid fa-pen-to-square"></i></button>
+            </div>
+            <div class="filter-row">
+                <button class="is-active" type="button">Alle</button>
+                <button type="button">Ungelesen</button>
+                <button type="button">Gruppen</button>
+            </div>
+            <div class="contact-list">
+                {% for contact in contacts %}
+                <article class="contact-card {% if contact.active %}is-active{% endif %}">
+                    <span class="avatar">{{ contact.avatar }}</span>
+                    <div>
+                        <strong>{{ contact.name }}</strong>
+                        <p>{{ contact.preview }}</p>
+                    </div>
+                    <time>{{ contact.time }}</time>
+                    {% if contact.unread %}
+                    <span class="unread-badge">{{ contact.unread }}</span>
+                    {% endif %}
+                </article>
+                {% endfor %}
+            </div>
+            <a class="archive-link" href="#"><i class="fa-solid fa-box-archive"></i> Archivierte Unterhaltungen <i class="fa-solid fa-chevron-right"></i></a>
+        </aside>
+
+        <section class="glass-panel chat-panel">
+            <header class="chat-header">
+                <span class="avatar">MB</span>
+                <div>
+                    <h2>Mia Berger</h2>
+                    <p><span class="status-dot"></span> Online</p>
+                </div>
+                <div class="chat-actions">
+                    <button class="icon-button" type="button" aria-label="Audioanruf"><i class="fa-solid fa-phone"></i></button>
+                    <button class="icon-button" type="button" aria-label="Videoanruf"><i class="fa-solid fa-video"></i></button>
+                    <button class="icon-button" type="button" aria-label="Informationen"><i class="fa-solid fa-circle-info"></i></button>
+                </div>
+            </header>
+            <div class="chat-date">Heute</div>
+            <div class="message-stream">
+                {% for item in messages %}
+                <article class="bubble is-{{ item.side }}">
+                    {% if item.side == "in" %}<span class="avatar small">MB</span>{% endif %}
+                    <div>
+                        <p>{{ item.text }}</p>
+                        {% if item.attachment %}
+                        <small class="attachment"><i class="fa-solid fa-file-powerpoint"></i> {{ item.attachment }}</small>
+                        {% endif %}
+                        <time>{{ item.time }}</time>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+            <form class="compose-bar">
+                <button type="button" aria-label="Datei anhängen"><i class="fa-solid fa-paperclip"></i></button>
+                <input type="text" placeholder="Nachricht schreiben ...">
+                <button type="button" aria-label="Emoji"><i class="fa-regular fa-face-smile"></i></button>
+                <button class="send-button" type="submit" aria-label="Senden"><i class="fa-solid fa-paper-plane"></i></button>
+            </form>
+        </section>
+
+        <aside class="glass-panel details-panel">
+            <div class="details-head">
+                <h2>Details</h2>
+                <span><i class="fa-regular fa-star"></i><i class="fa-solid fa-ellipsis-vertical"></i></span>
+            </div>
+            <div class="profile-mini">
+                <span class="avatar">MB</span>
+                <div>
+                    <h3>Mia Berger</h3>
+                    <p><span class="status-dot"></span> Online</p>
+                </div>
+            </div>
+            <div class="quick-contact">
+                <button type="button"><i class="fa-solid fa-phone"></i><span>Audioanruf</span></button>
+                <button type="button"><i class="fa-solid fa-video"></i><span>Videoanruf</span></button>
+                <button type="button"><i class="fa-solid fa-magnifying-glass"></i><span>Suchen</span></button>
+            </div>
+            <section class="detail-section">
+                <h3>Über</h3>
+                <p>UX Designerin bei CalmSpace<br>Letzte Aktivität: gerade eben</p>
+            </section>
+            <section class="detail-section">
+                <h3>Geteilte Dateien</h3>
+                {% for file in shared_files %}
+                <div class="file-row">
+                    <i class="fa-solid {{ file.icon }}"></i>
+                    <span><strong>{{ file.name }}</strong><small>{{ file.meta }}</small></span>
+                    <i class="fa-solid fa-ellipsis"></i>
+                </div>
+                {% endfor %}
+            </section>
+            <section class="detail-section">
+                <h3>Mitglieder (3)</h3>
+                {% for member in members %}
+                <div class="member-row">
+                    <span class="avatar small">{{ member.avatar }}</span>
+                    <span><strong>{{ member.name }}</strong><small>{{ member.status }}</small></span>
+                </div>
+                {% endfor %}
+            </section>
+        </aside>
+    </div>
+</section>
+{% endblock %}

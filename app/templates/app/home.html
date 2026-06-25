@@ -1,8 +1,91 @@
 {% extends 'app/base.html' %}
+{% load static %}
 
-{% block title %}Home | Lunora{% endblock %}
+{% block title %}Dashboard | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% static 'css/home.css' %}">
+{% endblock %}
 
 {% block content %}
-<section>
+<section class="page-shell dashboard-shell">
+    <div class="dashboard-grid">
+        <section class="glass-panel welcome-panel">
+            <div class="eyebrow"><i class="fa-solid fa-wand-magic-sparkles"></i> Guten Morgen</div>
+            <h1>Willkommen zurück</h1>
+            <p>Ein ruhiger Ort für Fokus, Klarheit und Fortschritt.</p>
+            <div class="soft-pill">
+                <i class="fa-solid fa-leaf"></i>
+                Kleine Schritte heute, große Wirkung morgen.
+            </div>
+            <i class="hero-branch fa-solid fa-seedling" aria-hidden="true"></i>
+        </section>
+
+        <aside class="glass-panel quote-panel">
+            <span class="quote-mark">"</span>
+            <p>Simplicity<br>is the ultimate<br>sophistication.</p>
+            <small>- Leonardo da Vinci</small>
+        </aside>
+
+        <section class="glass-panel quick-actions" aria-label="Schnellzugriff">
+            {% for tile in nav_tiles %}
+            <a class="action-tile" href="{% url tile.url_name %}">
+                <i class="fa-solid {{ tile.icon }}" aria-hidden="true"></i>
+                <span>{{ tile.label }}</span>
+            </a>
+            {% endfor %}
+        </section>
+
+        <section class="glass-panel recent-panel">
+            <div class="panel-title">
+                <i class="fa-regular fa-clock"></i>
+                <h2>Letzte Tools</h2>
+            </div>
+            <div class="tool-grid">
+                {% for tool in recent_tools %}
+                <article class="tool-tile">
+                    <i class="fa-solid {{ tool.icon }}" aria-hidden="true"></i>
+                    <strong>{{ tool.title }}</strong>
+                    <span>{{ tool.subtitle }}</span>
+                </article>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="glass-panel notes-panel">
+            <div class="panel-title panel-title-between">
+                <span><i class="fa-regular fa-note-sticky"></i> Meine Notizen</span>
+                <button class="icon-button" type="button" aria-label="Neue Notiz">
+                    <i class="fa-solid fa-plus"></i>
+                </button>
+            </div>
+            <ul class="note-list">
+                {% for note in notes %}
+                <li>
+                    <span class="check-dot {% if note.done %}is-done{% endif %}">
+                        {% if note.done %}<i class="fa-solid fa-check"></i>{% endif %}
+                    </span>
+                    {{ note.text }}
+                </li>
+                {% endfor %}
+            </ul>
+            <a class="panel-link" href="#">Alle Notizen ansehen <i class="fa-solid fa-chevron-right"></i></a>
+        </section>
+
+        <section class="glass-panel today-panel">
+            <div>
+                <span class="panel-kicker"><i class="fa-regular fa-sun"></i> Heute</span>
+                <div class="weather-row">
+                    <i class="fa-solid fa-cloud-sun weather-icon"></i>
+                    <strong>24°</strong>
+                    <span>Teilweise bewölkt<br><small>Gefühlt 25°</small></span>
+                </div>
+            </div>
+            <div class="time-block">
+                <span>{{ today_label }}</span>
+                <strong>{{ time_label }}</strong>
+            </div>
+        </section>
+    </div>
 </section>
 {% endblock %}

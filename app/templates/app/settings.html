@@ -1,8 +1,108 @@
 {% extends 'app/base.html' %}
+{% load static %}
 
-{% block title %}Settings | Lunora{% endblock %}
+{% block title %}Einstellungen | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% static 'css/settings.css' %}">
+{% endblock %}
 
 {% block content %}
-<section>
+<section class="page-shell settings-shell">
+    <header class="page-hero">
+        <div>
+            <h1>Einstellungen</h1>
+            <p>Personalisiere deinen ruhigen Workspace.</p>
+        </div>
+        <i class="hero-branch fa-solid fa-seedling" aria-hidden="true"></i>
+    </header>
+
+    <div class="settings-grid">
+        <section class="glass-panel appearance-panel">
+            <div class="panel-title"><i class="fa-solid fa-wand-magic-sparkles"></i><h2>Darstellung</h2></div>
+            <label class="field-label">Theme</label>
+            <div class="theme-options">
+                <button class="choice-card" type="button" data-theme-choice="light">
+                    <i class="fa-regular fa-sun"></i>
+                    Heller Modus
+                </button>
+                <button class="choice-card" type="button" data-theme-choice="dark">
+                    <i class="fa-regular fa-moon"></i>
+                    Dunkler Modus
+                </button>
+            </div>
+
+            <label class="field-label">Akzentfarbe</label>
+            <div class="color-row">
+                {% for color in accent_colors %}
+                <button class="color-dot" type="button" style="--dot-color: {{ color }}" aria-label="Akzentfarbe {{ forloop.counter }}"></button>
+                {% endfor %}
+            </div>
+
+            <label class="field-label">Hintergrund-Weichheit</label>
+            <input class="softness-slider" type="range" min="0" max="100" value="55">
+            <div class="slider-labels"><span>Subtil</span><span>Ausgeglichen</span><span>Reich</span></div>
+
+            <label class="field-label">Kompaktheit</label>
+            <div class="segmented-control">
+                <button type="button" class="is-active">Komfortabel</button>
+                <button type="button">Ausgeglichen</button>
+                <button type="button">Kompakt</button>
+            </div>
+        </section>
+
+        <section class="glass-panel profile-panel">
+            <div class="panel-title"><i class="fa-regular fa-user"></i><h2>Profil</h2></div>
+            <div class="profile-row">
+                <div class="profile-avatar"><i class="fa-solid fa-seedling"></i></div>
+                <div>
+                    <h3>Dein Name</h3>
+                    <p>youremail@example.com</p>
+                </div>
+            </div>
+            <div class="button-row">
+                <button class="ghost-button" type="button"><i class="fa-regular fa-user"></i> Profil bearbeiten</button>
+                <button class="ghost-button" type="button"><i class="fa-solid fa-lock"></i> Passwort ändern</button>
+            </div>
+        </section>
+
+        <section class="glass-panel notifications-panel">
+            <div class="panel-title"><i class="fa-regular fa-bell"></i><h2>Benachrichtigungen</h2></div>
+            {% for row in notification_rows %}
+            <div class="setting-line">
+                <span><strong>{{ row.label }}</strong><small>{{ row.hint }}</small></span>
+                <button class="switch is-on" type="button" aria-label="{{ row.label }}"></button>
+            </div>
+            {% endfor %}
+        </section>
+
+        <section class="glass-panel region-panel">
+            <div class="panel-title"><i class="fa-solid fa-globe"></i><h2>Sprache & Region</h2></div>
+            {% for row in region_rows %}
+            <button class="setting-line linked-line" type="button">
+                <span>{{ row.label }}</span>
+                <strong>{{ row.value }}</strong>
+                <i class="fa-solid fa-chevron-right"></i>
+            </button>
+            {% endfor %}
+        </section>
+
+        <section class="glass-panel privacy-panel">
+            <div class="panel-title"><i class="fa-solid fa-shield-halved"></i><h2>Privatsphäre</h2></div>
+            <div class="setting-line">
+                <span><strong>Analysen</strong><small>Hilft, Lunora besser zu machen</small></span>
+                <button class="switch is-on" type="button" aria-label="Analysen"></button>
+            </div>
+            <div class="setting-line">
+                <span><strong>Nutzungsdaten</strong><small>Anonyme Nutzung erfassen</small></span>
+                <button class="switch is-on" type="button" aria-label="Nutzungsdaten"></button>
+            </div>
+        </section>
+    </div>
+
+    <footer class="settings-footer glass-panel">
+        <button class="ghost-button" type="button">Abbrechen</button>
+        <button class="primary-button" type="button">Änderungen speichern</button>
+    </footer>
 </section>
 {% endblock %}

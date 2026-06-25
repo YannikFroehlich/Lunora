@@ -1,0 +1,98 @@
+{% extends 'app/base.html' %}
+{% load static %}
+
+{% block title %}Kalender | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% static 'css/calendar.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell calendar-shell">
+    <header class="page-hero">
+        <div>
+            <h1>Kalender</h1>
+            <p>Behalte Termine, Aufgaben und wichtige Tage im Blick.</p>
+        </div>
+        <i class="hero-branch fa-solid fa-seedling" aria-hidden="true"></i>
+    </header>
+
+    <div class="calendar-layout">
+        <section class="glass-panel month-panel">
+            <div class="month-toolbar">
+                <button class="icon-button" type="button" aria-label="Vorheriger Monat"><i class="fa-solid fa-chevron-left"></i></button>
+                <h2>Mai 2024</h2>
+                <button class="icon-button" type="button" aria-label="Nächster Monat"><i class="fa-solid fa-chevron-right"></i></button>
+                <span class="toolbar-spacer"></span>
+                <button class="ghost-button" type="button"><i class="fa-regular fa-calendar"></i> Heute</button>
+                <button class="primary-button" type="button"><i class="fa-solid fa-plus"></i> Neuer Termin</button>
+            </div>
+            <div class="weekday-row">
+                <span>Mo</span><span>Di</span><span>Mi</span><span>Do</span><span>Fr</span><span>Sa</span><span>So</span>
+            </div>
+            <div class="calendar-matrix">
+                {% for week in calendar_rows %}
+                    {% for day in week %}
+                    <article class="calendar-day {% if day.muted %}is-muted{% endif %} {% if day.today %}is-today{% endif %}">
+                        <strong>{{ day.number }}</strong>
+                        {% for event in day.events %}
+                        <span class="event-chip tone-{{ event.tone }}">{{ event.label }}</span>
+                        {% endfor %}
+                    </article>
+                    {% endfor %}
+                {% endfor %}
+            </div>
+        </section>
+
+        <aside class="side-stack">
+            <section class="glass-panel today-events">
+                <div class="panel-title panel-title-between">
+                    <div><h2>Heute</h2><p>Dienstag, 21. Mai</p></div>
+                    <i class="fa-regular fa-calendar"></i>
+                </div>
+                {% for event in today_events %}
+                <div class="timeline-row">
+                    <time>{{ event.time }}</time>
+                    <span class="timeline-dot tone-{{ event.tone }}"></span>
+                    <strong>{{ event.title }}</strong>
+                    <i class="fa-solid {{ event.icon }}"></i>
+                </div>
+                {% endfor %}
+            </section>
+
+            <section class="glass-panel upcoming-panel">
+                <h2>Nächste Termine</h2>
+                {% for event in upcoming_events %}
+                <div class="upcoming-row">
+                    <span>{{ event.date }}</span>
+                    <strong>{{ event.title }}</strong>
+                    <small>{{ event.category }}</small>
+                    <i class="fa-solid {{ event.icon }}"></i>
+                </div>
+                {% endfor %}
+                <a class="panel-link" href="#">Alle anzeigen <i class="fa-solid fa-chevron-right"></i></a>
+            </section>
+
+            <section class="glass-panel reminder-panel">
+                <div class="panel-title panel-title-between">
+                    <h2>Erinnerungen</h2>
+                    <button class="icon-button" type="button" aria-label="Erinnerung hinzufügen"><i class="fa-solid fa-plus"></i></button>
+                </div>
+                {% for reminder in reminders %}
+                <label class="reminder-row">
+                    <input type="checkbox">
+                    <span>{{ reminder }}<small>Fällig in Kürze</small></span>
+                </label>
+                {% endfor %}
+            </section>
+        </aside>
+
+        <section class="glass-panel month-stats">
+            <article><i class="fa-regular fa-calendar"></i><strong>18</strong><span>Termine</span><small>+12 % vs. April</small></article>
+            <article><i class="fa-regular fa-sun"></i><strong>9</strong><span>Freie Tage</span><small>+1 Tag vs. April</small></article>
+            <article><i class="fa-regular fa-circle-check"></i><strong>14</strong><span>Erledigte Aufgaben</span><small>+8 % vs. April</small></article>
+            <article class="mini-chart"><span></span><span></span><span></span><span></span><span></span></article>
+        </section>
+    </div>
+</section>
+{% endblock %}
