@@ -14,6 +14,18 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.2.0/css/all.min.css">
+
+    <script>
+        // Apply the saved theme early to avoid a visible theme flash while loading.
+        (function () {
+            const savedTheme = localStorage.getItem("lunora-theme");
+            const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+            const theme = savedTheme || (prefersDark ? "dark" : "light");
+
+            document.documentElement.dataset.theme = theme;
+        })();
+    </script>
+
 </head>
 <body>
 
@@ -27,6 +39,9 @@
             </a>
             <a href="#">
                 <i class="fa-solid fa-gear"></i>
+            </a>
+            <a class="theme-toggle" type="button" aria-label="Switch to dark mode">
+                <i class="fa-solid fa-moon" aria-hidden="true"></i>
             </a>
         </div>
     </nav>

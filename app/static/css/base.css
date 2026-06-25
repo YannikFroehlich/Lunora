@@ -1,45 +1,45 @@
 :root {
-  /* Allgemein */
-  --font-main: -apple-system, BlinkMacSystemFont, avenir next, avenir, segoe ui,
-    helvetica neue, helvetica, Cantarell, Ubuntu, roboto, noto, arial, sans-serif;
+/* Global settings */
+--font-main: -apple-system, BlinkMacSystemFont, avenir next, avenir, segoe ui,
+helvetica neue, helvetica, Cantarell, Ubuntu, roboto, noto, arial, sans-serif;
 
-  --background-image: url("../img/lunora_background.webp");
+--background-image: url("../img/lunora_background.webp");
 
-  /* Lightmode Farben */
-  --color-bg: #f4f1e8;
-  --color-text: #1f1f1f;
+/* Light mode colors */
+--color-bg: #f4f1e8;
+--color-text: #1f1f1f;
 
-  --glass-bg: rgba(255, 255, 255, 0.35);
-  --glass-bg-strong: rgba(225, 225, 225, 0.35);
-  --glass-bg-hover: rgba(175, 175, 175, 0.35);
+--glass-bg: rgba(255, 255, 255, 0.35);
+--glass-bg-strong: rgba(225, 225, 225, 0.35);
+--glass-bg-hover: rgba(175, 175, 175, 0.35);
 
-  --glass-border: rgba(255, 255, 255, 0.45);
-  --glass-border-soft: rgba(200, 200, 200, 0.35);
+--glass-border: rgba(255, 255, 255, 0.45);
+--glass-border-soft: rgba(200, 200, 200, 0.35);
 
-  --logo-text: #222;
-  --nav-text: #2c2c2c;
+--logo-text: #222;
+--nav-text: #2c2c2c;
 
-  --shadow-logo: 0 20px 60px rgba(0, 0, 0, 0.15);
-  --shadow-nav: 0 8px 24px rgba(0, 0, 0, 0.10);
+--shadow-logo: 0 20px 60px rgba(0, 0, 0, 0.15);
+--shadow-nav: 0 8px 24px rgba(0, 0, 0, 0.10);
 }
 
-/* Darkmode */
+/* Dark mode colors */
 [data-theme="dark"] {
-  --color-bg: #121212;
-  --color-text: #f5f5f5;
+--color-bg: #121212;
+--color-text: #f5f5f5;
 
-  --glass-bg: rgba(30, 30, 30, 0.45);
-  --glass-bg-strong: rgba(45, 45, 45, 0.45);
-  --glass-bg-hover: rgba(70, 70, 70, 0.5);
+--glass-bg: rgba(30, 30, 30, 0.45);
+--glass-bg-strong: rgba(45, 45, 45, 0.45);
+--glass-bg-hover: rgba(70, 70, 70, 0.5);
 
-  --glass-border: rgba(255, 255, 255, 0.14);
-  --glass-border-soft: rgba(255, 255, 255, 0.12);
+--glass-border: rgba(255, 255, 255, 0.14);
+--glass-border-soft: rgba(255, 255, 255, 0.12);
 
-  --logo-text: #f5f5f5;
-  --nav-text: #f0f0f0;
+--logo-text: #f5f5f5;
+--nav-text: #f0f0f0;
 
-  --shadow-logo: 0 20px 60px rgba(0, 0, 0, 0.35);
-  --shadow-nav: 0 8px 24px rgba(0, 0, 0, 0.28);
+--shadow-logo: 0 20px 60px rgba(0, 0, 0, 0.35);
+--shadow-nav: 0 8px 24px rgba(0, 0, 0, 0.28);
 }
 
 body {
