@@ -1,0 +1,93 @@
+:root {
+  background-image: url("../img/lunora_background.webp");
+  font-family: -apple-system, BlinkMacSystemFont, avenir next, avenir, segoe ui, helvetica neue, helvetica, Cantarell, Ubuntu, roboto, noto, arial, sans-serif
+
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+  }
+}
+
+/* Header Styles */
+
+.site-header {
+  width: 100%;
+  margin-top: 25px;
+}
+
+.navbar {
+  position: relative;
+  height: 70px;
+  padding: 0 32px;
+
+  display: flex;
+  align-items: center;
+}
+
+.logo {
+  position: relative;
+  z-index: 2;
+
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 24px;
+  color: #222;
+  padding: 15px 25px 15px 25px;
+
+  background: rgba(255, 255, 255, 0.35);
+
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 25px;
+
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+}
+
+.nav-links {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px 5px 10px;
+
+  background: rgba(255, 255, 255, 0.35);
+
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 50px;
+
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.10);
+}
+
+.nav-links a {
+  text-decoration: none;
+  color: #2c2c2c;
+  font-size: 18px;
+  padding: 10px;
+  width: 25px;
+  height: 25px;
+  text-align: center;
+
+  background: rgba(225, 225, 225, 0.35);
+
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+
+  border: 1px solid rgba(200, 200, 200, 0.35);
+  border-radius: 25px;
+
+  transition: all 0.3s ease;
+}
+
+.nav-links a:hover {
+  background: rgba(175, 175, 175, 0.35);
+  transform: scale(1.05);
+}
