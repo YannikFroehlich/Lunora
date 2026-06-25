@@ -13,18 +13,34 @@
         <section class="glass-panel welcome-panel">
             <div class="eyebrow"><i class="fa-solid fa-wand-magic-sparkles"></i> Guten Morgen</div>
             <h1>Willkommen zurück</h1>
-            <p>Ein ruhiger Ort für Fokus, Klarheit und Fortschritt.</p>
+            <p class="brand-line">Lunora</p>
             <div class="soft-pill">
-                <i class="fa-solid fa-leaf"></i>
-                Kleine Schritte heute, große Wirkung morgen.
+                <i class="fa-solid fa-sparkles"></i>
+                Dein persönlicher Workspace für heute.
             </div>
             <i class="hero-branch fa-solid fa-seedling" aria-hidden="true"></i>
         </section>
 
-        <aside class="glass-panel quote-panel">
-            <span class="quote-mark">"</span>
-            <p>Simplicity<br>is the ultimate<br>sophistication.</p>
-            <small>- Leonardo da Vinci</small>
+        <aside class="glass-panel clock-panel">
+            <div class="panel-title panel-title-between">
+                <span><i class="fa-regular fa-clock"></i> Jetzt</span>
+                <span class="clock-zone">{{ clock.timezone }}</span>
+            </div>
+            <div class="clock-face">
+                <strong>{{ clock.time }}</strong>
+                <span>{{ clock.weekday }}</span>
+            </div>
+            <div class="date-strip">
+                <span class="date-number">{{ clock.day }}</span>
+                <div>
+                    <strong>{{ clock.month }}</strong>
+                    <span>{{ clock.year }}</span>
+                </div>
+            </div>
+            <div class="clock-details">
+                <span><i class="fa-regular fa-calendar"></i> {{ today_label }}</span>
+                <span><i class="fa-regular fa-sun"></i> Ruhiger Start</span>
+            </div>
         </aside>
 
         <section class="glass-panel quick-actions" aria-label="Schnellzugriff">

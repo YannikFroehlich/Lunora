@@ -51,12 +51,14 @@ html {
 }
 
 body {
+  position: relative;
   min-height: 100vh;
   margin: 0;
   color: var(--color-text);
   font-family: var(--font-main);
   background-color: var(--color-bg);
   background-image: var(--background-image);
+  background-attachment: fixed;
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
@@ -65,12 +67,18 @@ body {
 body::before {
   position: fixed;
   inset: 0;
-  z-index: -1;
+  z-index: 0;
   content: "";
   background:
     radial-gradient(circle at 72% 12%, rgba(255, 255, 255, 0.42), transparent 34%),
     linear-gradient(120deg, rgba(255, 255, 255, 0.28), rgba(217, 200, 172, 0.16));
   pointer-events: none;
+}
+
+[data-theme="dark"] body::before {
+  background:
+    radial-gradient(circle at 72% 12%, rgba(84, 68, 48, 0.28), transparent 34%),
+    linear-gradient(120deg, rgba(18, 15, 12, 0.62), rgba(18, 15, 12, 0.78));
 }
 
 button,
@@ -125,6 +133,8 @@ a {
 }
 
 .site-main {
+  position: relative;
+  z-index: 1;
   min-height: 100vh;
   padding: 72px 32px 48px;
 }
@@ -336,6 +346,10 @@ a {
 }
 
 @media (max-width: 900px) {
+  body {
+    background-attachment: scroll;
+  }
+
   .floating-nav {
     top: 18px;
     left: 18px;

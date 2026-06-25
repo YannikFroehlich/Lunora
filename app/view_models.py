@@ -3,10 +3,41 @@ from django.utils import timezone
 
 def get_dashboard_context():
     now = timezone.localtime()
+    weekday_names = [
+        "Montag",
+        "Dienstag",
+        "Mittwoch",
+        "Donnerstag",
+        "Freitag",
+        "Samstag",
+        "Sonntag",
+    ]
+    month_names = [
+        "Januar",
+        "Februar",
+        "März",
+        "April",
+        "Mai",
+        "Juni",
+        "Juli",
+        "August",
+        "September",
+        "Oktober",
+        "November",
+        "Dezember",
+    ]
     return {
         "active_page": "home",
         "today_label": now.strftime("%d.%m.%Y"),
         "time_label": now.strftime("%H:%M"),
+        "clock": {
+            "time": now.strftime("%H:%M"),
+            "weekday": weekday_names[now.weekday()],
+            "day": now.strftime("%d"),
+            "month": month_names[now.month - 1],
+            "year": now.strftime("%Y"),
+            "timezone": timezone.get_current_timezone_name(),
+        },
         "nav_tiles": [
             {"label": "Dashboard", "icon": "fa-table-cells-large", "url_name": "home"},
             {"label": "Wetter", "icon": "fa-cloud-sun", "url_name": "weather"},

@@ -1,6 +1,28 @@
+const THEME_STORAGE_KEY = "lunora-theme";
 const themeToggleButton = document.querySelector(".theme-toggle");
 const themeToggleIcon = themeToggleButton?.querySelector("i");
 const themeChoiceButtons = document.querySelectorAll("[data-theme-choice]");
+
+function readStoredTheme() {
+  try {
+    const theme = localStorage.getItem(THEME_STORAGE_KEY);
+    return ["light", "dark"].includes(theme) ? theme : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function saveStoredTheme(theme) {
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
+  } catch (error) {
+    // Theme still changes for this page even if storage is unavailable.
+  }
+}
+
+function getSystemTheme() {
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
 
 function getCurrentTheme() {
   return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
@@ -21,25 +43,43 @@ function updateThemeButton(theme) {
 function updateThemeChoices(theme) {
   themeChoiceButtons.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.themeChoice === theme);
+    button.setAttribute("aria-pressed", String(button.dataset.themeChoice === theme));
   });
 }
 
-function setTheme(theme) {
+function applyTheme(theme, { persist = false } = {}) {
   document.documentElement.dataset.theme = theme;
-  localStorage.setItem("lunora-theme", theme);
+  document.documentElement.style.colorScheme = theme;
+
+  if (persist) {
+    saveStoredTheme(theme);
+  }
+
   updateThemeButton(theme);
   updateThemeChoices(theme);
 }
 
-setTheme(getCurrentTheme());
+applyTheme(readStoredTheme() || getCurrentTheme() || getSystemTheme());
 
 themeToggleButton?.addEventListener("click", () => {
   const nextTheme = getCurrentTheme() === "dark" ? "light" : "dark";
-  setTheme(nextTheme);
+  applyTheme(nextTheme, { persist: true });
 });
 
 themeChoiceButtons.forEach((button) => {
-  button.addEventListener("click", () => setTheme(button.dataset.themeChoice));
+  button.addEventListener("click", () => {
+    applyTheme(button.dataset.themeChoice, { persist: true });
+  });
+});
+
+window.addEventListener("pageshow", () => {
+  applyTheme(readStoredTheme() || getSystemTheme());
+});
+
+window.addEventListener("storage", (event) => {
+  if (event.key === THEME_STORAGE_KEY) {
+    applyTheme(readStoredTheme() || getSystemTheme());
+  }
 });
 
 document.querySelectorAll(".switch").forEach((button) => {

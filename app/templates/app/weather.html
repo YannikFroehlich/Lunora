@@ -21,19 +21,30 @@
     <p class="api-notice">{{ api_notice }}</p>
     {% endif %}
 
-    <div class="weather-toolbar glass-panel">
-        <label class="search-field">
-            <i class="fa-solid fa-magnifying-glass"></i>
-            <input type="search" placeholder="Ort suchen">
-        </label>
-        <button class="ghost-button" type="button"><i class="fa-solid fa-location-dot"></i> Mein Standort</button>
-    </div>
+    <form class="weather-toolbar glass-panel" method="get" action="{% url 'weather' %}" data-weather-search data-suggest-url="{% url 'weather_suggestions' %}">
+        <div class="weather-search-wrap">
+            <label class="search-field">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="search" name="q" value="{{ search_query }}" placeholder="Ort suchen" autocomplete="off" aria-label="Ort suchen" aria-expanded="false" aria-controls="weather-suggestions">
+            </label>
+            <input type="hidden" name="lat" data-weather-lat>
+            <input type="hidden" name="lon" data-weather-lon>
+            <input type="hidden" name="name" data-weather-name>
+            <input type="hidden" name="details" data-weather-details>
+            <input type="hidden" name="label" data-weather-label>
+            <div class="suggestion-list" id="weather-suggestions" role="listbox" hidden></div>
+        </div>
+        <button class="ghost-button" type="button" data-current-location><i class="fa-solid fa-location-dot"></i> Mein Standort</button>
+    </form>
 
     <div class="weather-grid">
         <section class="glass-panel current-weather">
-            <div>
+            <div class="current-place">
                 <span class="panel-kicker">Aktueller Standort</span>
-                <h2>{{ current.city }}</h2>
+                <h2 title="{{ current.city }}">{{ current.city }}</h2>
+                {% if current.detail %}
+                <span class="location-detail" title="{{ current.detail }}">{{ current.detail }}</span>
+                {% endif %}
                 <span class="soft-pill"><i class="fa-solid fa-location-arrow"></i> {{ current.label }}</span>
             </div>
             <i class="fa-solid {{ current.icon }} main-weather-icon"></i>
@@ -42,11 +53,11 @@
                 <span>{{ current.description }}</span>
             </div>
             <div class="weather-meta">
-                <span>Gefühlt {{ current.feels_like }}°</span>
-                <span>Höchstwert {{ current.high }}°</span>
-                <span>Tiefstwert {{ current.low }}°</span>
+                <span class="meta-item"><small>Gefühlt</small><strong>{{ current.feels_like }}°</strong></span>
+                <span class="meta-item"><small>Höchstwert</small><strong>{{ current.high }}°</strong></span>
+                <span class="meta-item"><small>Tiefstwert</small><strong>{{ current.low }}°</strong></span>
+                <span class="meta-item updated-line"><small><i class="fa-regular fa-clock"></i> Aktualisiert</small><strong>{{ current.updated }}</strong></span>
             </div>
-            <small class="updated-line"><i class="fa-regular fa-clock"></i> Zuletzt aktualisiert: {{ current.updated }}</small>
         </section>
 
         <section class="glass-panel day-summary">
@@ -79,40 +90,82 @@
 
         <section class="glass-panel days-panel">
             <h2>Nächste Tage</h2>
-            {% for day in daily_forecast %}
-            <div class="forecast-row">
-                <strong>{{ day.day }}</strong>
-                <i class="fa-solid {{ day.icon }}"></i>
-                <span>{{ day.description }}</span>
-                <span>{{ day.high }}° / {{ day.low }}°</span>
-                <small><i class="fa-solid fa-droplet"></i> {{ day.rain }} %</small>
+            <div class="forecast-list">
+                {% for day in daily_forecast %}
+                <div class="forecast-row">
+                    <strong>{{ day.day }}</strong>
+                    <i class="fa-solid {{ day.icon }}"></i>
+                    <span>{{ day.description }}</span>
+                    <span>{{ day.high }}° / {{ day.low }}°</span>
+                    <small><i class="fa-solid fa-droplet"></i> {{ day.rain }} %</small>
+                </div>
+                {% endfor %}
             </div>
-            {% endfor %}
+            <div class="forecast-summary">
+                <article>
+                    <span>Ø Hoch</span>
+                    <strong>31°</strong>
+                </article>
+                <article>
+                    <span>Regentage</span>
+                    <strong>2</strong>
+                </article>
+                <article>
+                    <span>Trend</span>
+                    <strong>Warm</strong>
+                </article>
+            </div>
         </section>
 
         <section class="glass-panel air-panel">
-            <h2>Luftqualität</h2>
+            <div class="panel-title panel-title-between">
+                <span><i class="fa-solid fa-wind"></i> Luftqualität</span>
+                <span class="quality-badge">{{ air_quality.label }}</span>
+            </div>
             <div class="air-content">
                 <div class="air-score"><strong>{{ air_quality.score }}</strong><span>{{ air_quality.label }}</span></div>
-                <p>Die Luftqualität ist gut und stellt kein Risiko dar.</p>
+                <div class="air-copy">
+                    <p>Die Luftqualität ist gut und stellt kein Risiko dar.</p>
+                    <div class="quality-scale" aria-label="Luftqualität Skala">
+                        <span></span><span></span><span></span>
+                    </div>
+                    <small>Ideal für einen Spaziergang oder kurzes Lüften.</small>
+                </div>
             </div>
         </section>
 
         <section class="glass-panel radar-panel">
-            <h2><i class="fa-solid fa-cloud-rain"></i> Regenradar</h2>
+            <div class="panel-title panel-title-between">
+                <span><i class="fa-solid fa-cloud-rain"></i> Regenradar</span>
+                <small>Live-Vorschau</small>
+            </div>
             <div class="map-preview">
-                <span>Bünde</span>
-                <button type="button">Vollbild anzeigen <i class="fa-solid fa-up-right-and-down-left-from-center"></i></button>
+                <span class="map-location"><i class="fa-solid fa-location-dot"></i> Bünde</span>
+                <span class="rain-band rain-band-one"></span>
+                <span class="rain-band rain-band-two"></span>
+                <button type="button">Vollbild <i class="fa-solid fa-up-right-and-down-left-from-center"></i></button>
             </div>
         </section>
 
         <section class="glass-panel hint-panel">
-            <i class="fa-solid fa-leaf"></i>
-            <div>
-                <h2>Wetterhinweis</h2>
-                <p>{{ weather_hint }}</p>
+            <div class="hint-icon">
+                <i class="fa-solid {{ weather_tip.icon }}"></i>
+            </div>
+            <div class="hint-content">
+                <span>{{ weather_tip.kicker }}</span>
+                <h2>{{ weather_tip.title }}</h2>
+                <p>{{ weather_tip.text }}</p>
+                <div class="hint-chips">
+                    {% for chip in weather_tip.chips %}
+                    <small><i class="fa-solid {{ chip.icon }}"></i> {{ chip.label }}</small>
+                    {% endfor %}
+                </div>
             </div>
         </section>
     </div>
 </section>
+{% endblock %}
+
+{% block page_js %}
+<script src="{% static 'js/weather.js' %}"></script>
 {% endblock %}

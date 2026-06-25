@@ -121,4 +121,8 @@ WEATHER_API_BASE_URL = os.getenv(
     "OPENWEATHER_API_BASE_URL",
     "https://api.openweathermap.org/data/2.5",
 )
+WEATHER_GEO_API_BASE_URL = os.getenv(
+    "OPENWEATHER_GEO_API_BASE_URL",
+    "https://api.openweathermap.org/geo/1.0",
+)
 WEATHER_DEFAULT_CITY = os.getenv("WEATHER_DEFAULT_CITY", "Buende,de")

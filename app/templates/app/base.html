@@ -19,11 +19,22 @@
     <script>
         // Apply the saved theme early to avoid a visible theme flash while loading.
         (function () {
-            const savedTheme = localStorage.getItem("lunora-theme");
+            const storageKey = "lunora-theme";
+            let savedTheme = null;
+
+            try {
+                savedTheme = localStorage.getItem(storageKey);
+            } catch (error) {
+                savedTheme = null;
+            }
+
             const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-            const theme = savedTheme || (prefersDark ? "dark" : "light");
+            const theme = ["light", "dark"].includes(savedTheme)
+                ? savedTheme
+                : (prefersDark ? "dark" : "light");
 
             document.documentElement.dataset.theme = theme;
+            document.documentElement.style.colorScheme = theme;
         })();
     </script>
 </head>

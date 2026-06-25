@@ -1,6 +1,7 @@
+from django.http import JsonResponse
 from django.shortcuts import render
 
-from app.services.weather_service import get_weather_context
+from app.services.weather_service import get_location_suggestions, get_weather_context
 from app.view_models import (
     get_calendar_context,
     get_dashboard_context,
@@ -18,7 +19,12 @@ def settings(request):
 
 
 def weather(request):
-    return render(request, "app/weather.html", get_weather_context())
+    return render(request, "app/weather.html", get_weather_context(request.GET))
+
+
+def weather_suggestions(request):
+    query = request.GET.get("q", "")
+    return JsonResponse({"results": get_location_suggestions(query)})
 
 
 def calendar(request):

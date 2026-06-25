@@ -1,46 +1,114 @@
 import json
+from copy import deepcopy
 from datetime import datetime
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from django.conf import settings
+from django.utils import timezone
 
 
-def get_weather_context():
-    """Return weather data from OpenWeather, or calm demo data without a key."""
+def get_weather_context(params=None):
+    """Return weather data for the requested place without exposing API keys."""
+    params = params or {}
     fallback = _fallback_weather_context()
-    api_key = settings.WEATHER_API_KEY
+    location = _location_from_request(params)
+    search_query = params.get("q", "").strip()
 
-    if not api_key:
-        return fallback
+    fallback["search_query"] = search_query
+
+    if not settings.WEATHER_API_KEY:
+        return _fallback_for_location(fallback, location, search_query)
+
+    if location.get("query") and not location.get("lat"):
+        location = _geocode_first(location["query"])
+        if not location:
+            fallback["api_notice"] = "Ort nicht gefunden. Demo-Daten werden angezeigt."
+            return fallback
 
     try:
-        current = _fetch_json(
-            f"{settings.WEATHER_API_BASE_URL}/weather",
-            {
-                "q": settings.WEATHER_DEFAULT_CITY,
-                "appid": api_key,
-                "units": "metric",
-                "lang": "de",
-            },
-        )
-        forecast = _fetch_json(
-            f"{settings.WEATHER_API_BASE_URL}/forecast",
-            {
-                "q": settings.WEATHER_DEFAULT_CITY,
-                "appid": api_key,
-                "units": "metric",
-                "lang": "de",
-            },
-        )
+        weather_params = _weather_api_params(location)
+        current = _fetch_json(f"{settings.WEATHER_API_BASE_URL}/weather", weather_params)
+        forecast = _fetch_json(f"{settings.WEATHER_API_BASE_URL}/forecast", weather_params)
     except Exception as exc:
-        fallback["api_notice"] = (
+        context = _fallback_for_location(fallback, location, search_query)
+        context["api_notice"] = (
             "Wetter-API ist gerade nicht erreichbar. Demo-Daten werden angezeigt."
         )
-        fallback["api_error"] = exc.__class__.__name__
-        return fallback
+        context["api_error"] = exc.__class__.__name__
+        return context
 
-    return _build_context_from_api(current, forecast, fallback)
+    return _build_context_from_api(current, forecast, fallback, location)
+
+
+def get_location_suggestions(query, limit=5):
+    """Return city suggestions from OpenWeather Geocoding or local demo data."""
+    clean_query = query.strip()
+    if len(clean_query) < 2:
+        return []
+
+    if not settings.WEATHER_API_KEY:
+        return _fallback_location_suggestions(clean_query, limit)
+
+    try:
+        locations = _fetch_json(
+            f"{settings.WEATHER_GEO_API_BASE_URL}/direct",
+            {
+                "q": clean_query,
+                "limit": min(limit, 5),
+                "appid": settings.WEATHER_API_KEY,
+            },
+        )
+    except Exception:
+        return _fallback_location_suggestions(clean_query, limit)
+
+    return [_normalize_location(item) for item in locations[:limit]]
+
+
+def _location_from_request(params):
+    lat = params.get("lat", "").strip()
+    lon = params.get("lon", "").strip()
+    label = params.get("label", "").strip()
+    name = params.get("name", "").strip()
+    details = params.get("details", "").strip()
+    query = params.get("q", "").strip()
+
+    if lat and lon:
+        return {
+            "lat": lat,
+            "lon": lon,
+            "name": name or _short_location_name(label or query),
+            "details": details or _location_details_from_label(label),
+            "label": label or query or "Ausgewählter Ort",
+        }
+
+    if query:
+        return {"query": query, "label": query}
+
+    return {"query": settings.WEATHER_DEFAULT_CITY, "label": "Mein Standort"}
+
+
+def _geocode_first(query):
+    suggestions = get_location_suggestions(query, limit=1)
+    if not suggestions:
+        return {}
+    return suggestions[0]
+
+
+def _weather_api_params(location):
+    params = {
+        "appid": settings.WEATHER_API_KEY,
+        "units": "metric",
+        "lang": "de",
+    }
+
+    if location.get("lat") and location.get("lon"):
+        params["lat"] = location["lat"]
+        params["lon"] = location["lon"]
+    else:
+        params["q"] = location.get("query", settings.WEATHER_DEFAULT_CITY)
+
+    return params
 
 
 def _fetch_json(endpoint, params):
@@ -51,13 +119,39 @@ def _fetch_json(endpoint, params):
         return json.loads(response.read().decode("utf-8"))
 
 
-def _build_context_from_api(current, forecast, fallback):
+def _normalize_location(item):
+    local_names = item.get("local_names") or {}
+    name = local_names.get("de") or item.get("name", "")
+    state = item.get("state", "")
+    country = item.get("country", "")
+    details = [part for part in [state, country] if part]
+    detail_label = ", ".join(details)
+
+    return {
+        "name": name,
+        "state": state,
+        "country": country,
+        "lat": item.get("lat"),
+        "lon": item.get("lon"),
+        "details": detail_label,
+        "label": ", ".join([name, *details]),
+    }
+
+
+def _build_context_from_api(current, forecast, fallback, location):
     weather = current.get("weather", [{}])[0]
     main = current.get("main", {})
     wind = current.get("wind", {})
     sys = current.get("sys", {})
 
-    city_name = current.get("name") or "Bünde"
+    location_label = location.get("label", "")
+    city_name = (
+        location.get("name")
+        or current.get("name")
+        or _short_location_name(location_label)
+        or "Bünde"
+    )
+    location_detail = location.get("details") or _location_details_from_label(location_label)
     temperature = round(main.get("temp", 24))
     feels_like = round(main.get("feels_like", temperature))
     description = weather.get("description", "Teilweise bewölkt").capitalize()
@@ -66,10 +160,12 @@ def _build_context_from_api(current, forecast, fallback):
     sunrise = _format_time(sys.get("sunrise"))
     sunset = _format_time(sys.get("sunset"))
 
-    context = fallback.copy()
+    context = deepcopy(fallback)
+    context["search_query"] = location.get("label", "")
     context["current"] = {
         "city": city_name,
-        "label": "Mein Standort",
+        "detail": location_detail,
+        "label": "Ausgewählter Ort" if location.get("lat") else "Mein Standort",
         "temperature": temperature,
         "feels_like": feels_like,
         "description": description,
@@ -118,6 +214,8 @@ def _build_context_from_api(current, forecast, fallback):
     ]
     context["hourly_forecast"] = _hourly_from_api(forecast) or fallback["hourly_forecast"]
     context["daily_forecast"] = _daily_from_api(forecast) or fallback["daily_forecast"]
+    context["weather_tip"] = _build_weather_tip(current, forecast, weather)
+    context["weather_hint"] = context["weather_tip"]["text"]
     return context
 
 
@@ -147,7 +245,7 @@ def _daily_from_api(forecast):
         day = days.setdefault(
             key,
             {
-                "day": when.strftime("%A"),
+                "day": _weekday_name(when),
                 "icon": _icon_for_weather(weather.get("main", "")),
                 "description": weather.get("description", "Bewölkt").capitalize(),
                 "high": round(main.get("temp_max", 24)),
@@ -162,15 +260,200 @@ def _daily_from_api(forecast):
     return list(days.values())[1:7]
 
 
+def _fallback_for_location(fallback, location, search_query):
+    context = deepcopy(fallback)
+    selected_label = location.get("label") or search_query
+    context["search_query"] = "" if selected_label == "Mein Standort" else selected_label
+
+    if selected_label and selected_label != "Mein Standort":
+        context["current"]["city"] = location.get("name") or _short_location_name(selected_label)
+        context["current"]["detail"] = location.get("details") or _location_details_from_label(selected_label)
+        context["current"]["label"] = "Demo-Ort"
+        context["api_notice"] = (
+            "Trage OPENWEATHER_API_KEY in deiner .env ein, um echte Wetterdaten zu laden."
+        )
+
+    return context
+
+
+def _fallback_location_suggestions(query, limit):
+    places = [
+        {"name": "Bünde", "state": "Nordrhein-Westfalen", "country": "DE", "lat": 52.1984, "lon": 8.5864},
+        {"name": "Berlin", "state": "Berlin", "country": "DE", "lat": 52.52, "lon": 13.405},
+        {"name": "Hamburg", "state": "Hamburg", "country": "DE", "lat": 53.5511, "lon": 9.9937},
+        {"name": "München", "state": "Bayern", "country": "DE", "lat": 48.1372, "lon": 11.5755},
+        {"name": "Köln", "state": "Nordrhein-Westfalen", "country": "DE", "lat": 50.9375, "lon": 6.9603},
+        {"name": "Frankfurt am Main", "state": "Hessen", "country": "DE", "lat": 50.1109, "lon": 8.6821},
+        {"name": "London", "state": "England", "country": "GB", "lat": 51.5072, "lon": -0.1276},
+        {"name": "Paris", "state": "Île-de-France", "country": "FR", "lat": 48.8566, "lon": 2.3522},
+    ]
+    needle = query.casefold()
+    matches = [
+        {
+            **place,
+            "details": ", ".join([place["state"], place["country"]]),
+            "label": ", ".join([place["name"], place["state"], place["country"]]),
+        }
+        for place in places
+        if needle in place["name"].casefold()
+    ]
+    return matches[:limit]
+
+
+def _short_location_name(label):
+    if not label:
+        return ""
+    return label.split(",", 1)[0].strip()
+
+
+def _location_details_from_label(label):
+    if "," not in label:
+        return ""
+    return label.split(",", 1)[1].strip()
+
+
 def _precipitation_percent(forecast):
     first_item = next(iter(forecast.get("list", [])), {})
     return round(first_item.get("pop", 0.1) * 100)
+
+
+def _build_weather_tip(current, forecast, weather):
+    hour = timezone.localtime().hour
+    period = _day_period(hour)
+    condition = weather.get("main", "")
+    description = weather.get("description", "").lower()
+    rain_chance = _precipitation_percent(forecast)
+    temperature = round(current.get("main", {}).get("temp", 24))
+    wind_speed = round(current.get("wind", {}).get("speed", 0) * 3.6)
+
+    if condition in {"Rain", "Drizzle", "Thunderstorm"} or rain_chance >= 60:
+        return {
+            "icon": "fa-umbrella",
+            "kicker": f"Tipp für den {period}",
+            "title": "Regen im Blick behalten",
+            "text": f"Für den {period.lower()} liegt das Regenrisiko bei {rain_chance} %. Nimm lieber etwas Regenschutz mit.",
+            "chips": [
+                {"icon": "fa-cloud-rain", "label": "Regenschutz"},
+                {"icon": "fa-shoe-prints", "label": "Trockene Wege"},
+                {"icon": "fa-clock", "label": "Pufferzeit"},
+            ],
+        }
+
+    if rain_chance >= 30:
+        return {
+            "icon": "fa-cloud-sun-rain",
+            "kicker": f"Tipp für den {period}",
+            "title": "Wetter bleibt wechselhaft",
+            "text": f"Es bleibt meist ruhig, aber mit {rain_chance} % Regenchance lohnt sich ein kurzer Blick nach draußen.",
+            "chips": [
+                {"icon": "fa-cloud", "label": "Wolkencheck"},
+                {"icon": "fa-bag-shopping", "label": "Leicht packen"},
+                {"icon": "fa-route", "label": "Flexibel bleiben"},
+            ],
+        }
+
+    if temperature >= 30:
+        return {
+            "icon": "fa-temperature-high",
+            "kicker": f"Tipp für den {period}",
+            "title": f"Warmer {period}",
+            "text": f"Es bleibt trocken und warm bei etwa {temperature}°. Trinken und kurze Pausen tun heute gut.",
+            "chips": [
+                {"icon": "fa-bottle-water", "label": "Wasser"},
+                {"icon": "fa-sun", "label": "Schatten"},
+                {"icon": "fa-fan", "label": "Lüften"},
+            ],
+        }
+
+    if wind_speed >= 28:
+        return {
+            "icon": "fa-wind",
+            "kicker": f"Tipp für den {period}",
+            "title": "Etwas windig draußen",
+            "text": f"Der {period.lower()} bleibt trocken, aber mit rund {wind_speed} km/h spürbar windig.",
+            "chips": [
+                {"icon": "fa-wind", "label": "Wind beachten"},
+                {"icon": "fa-shirt", "label": "Leichte Jacke"},
+                {"icon": "fa-leaf", "label": "Ruhige Route"},
+            ],
+        }
+
+    if condition == "Clear" or "klar" in description:
+        return {
+            "icon": "fa-moon" if period in {"Abend", "Nacht"} else "fa-sun",
+            "kicker": f"Tipp für den {period}",
+            "title": f"Klarer {period}",
+            "text": "Es bleibt trocken und klar. Gute Zeit für frische Luft oder einen entspannten Abschluss.",
+            "chips": [
+                {"icon": "fa-person-walking", "label": "Spaziergang"},
+                {"icon": "fa-house", "label": "Lüften"},
+                {"icon": "fa-mug-hot", "label": "Ruhig ausklingen"},
+            ],
+        }
+
+    return {
+        "icon": "fa-cloud-sun",
+        "kicker": f"Tipp für den {period}",
+        "title": f"Ruhiger {period}",
+        "text": "Es sieht stabil aus. Plane normal weiter und behalte nur die Wolkenentwicklung im Blick.",
+        "chips": [
+            {"icon": "fa-cloud", "label": "Stabil"},
+            {"icon": "fa-calendar-check", "label": "Planbar"},
+            {"icon": "fa-leaf", "label": "Ruhig"},
+        ],
+    }
+
+
+def _fallback_weather_tip():
+    period = _day_period(timezone.localtime().hour)
+
+    if period in {"Abend", "Nacht"}:
+        return {
+            "icon": "fa-moon",
+            "kicker": f"Tipp für den {period}",
+            "title": f"Ruhiger {period}",
+            "text": "Es bleibt in den Demo-Daten trocken und ruhig. Gut für einen entspannten Abschluss.",
+            "chips": [
+                {"icon": "fa-house", "label": "Lüften"},
+                {"icon": "fa-mug-hot", "label": "Runterkommen"},
+                {"icon": "fa-cloud", "label": "Trocken"},
+            ],
+        }
+
+    return {
+        "icon": "fa-cloud-sun",
+        "kicker": f"Tipp für den {period}",
+        "title": f"Ruhiger {period}",
+        "text": "Es bleibt in den Demo-Daten überwiegend trocken. Plane normal weiter.",
+        "chips": [
+            {"icon": "fa-person-walking", "label": "Spaziergang"},
+            {"icon": "fa-house", "label": "Lüften"},
+            {"icon": "fa-cloud", "label": "Trocken"},
+        ],
+    }
+
+
+def _day_period(hour):
+    if 5 <= hour < 11:
+        return "Morgen"
+    if 11 <= hour < 14:
+        return "Mittag"
+    if 14 <= hour < 18:
+        return "Nachmittag"
+    if 18 <= hour < 23:
+        return "Abend"
+    return "Nacht"
 
 
 def _format_time(timestamp):
     if not timestamp:
         return "05:23"
     return datetime.fromtimestamp(timestamp).strftime("%H:%M")
+
+
+def _weekday_name(value):
+    names = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+    return names[value.weekday()]
 
 
 def _icon_for_weather(condition):
@@ -188,10 +471,14 @@ def _icon_for_weather(condition):
 
 
 def _fallback_weather_context():
+    weather_tip = _fallback_weather_tip()
+
     return {
         "active_page": "weather",
+        "search_query": "",
         "current": {
             "city": "Bünde",
+            "detail": "Nordrhein-Westfalen, DE",
             "label": "Mein Standort",
             "temperature": 24,
             "feels_like": 25,
@@ -230,6 +517,7 @@ def _fallback_weather_context():
             {"day": "Freitag", "icon": "fa-cloud-sun", "description": "Teilweise bewölkt", "high": 25, "low": 15, "rain": 20},
         ],
         "air_quality": {"score": 28, "label": "Gut"},
-        "weather_hint": "Am Nachmittag leichter Regen möglich. Vergiss nicht, einen Regenschirm mitzunehmen.",
+        "weather_tip": weather_tip,
+        "weather_hint": weather_tip["text"],
         "api_notice": "",
     }
