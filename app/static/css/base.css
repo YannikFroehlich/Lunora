@@ -1,12 +1,58 @@
 :root {
-  background-image: url("../img/lunora_background.webp");
-  font-family: -apple-system, BlinkMacSystemFont, avenir next, avenir, segoe ui, helvetica neue, helvetica, Cantarell, Ubuntu, roboto, noto, arial, sans-serif
+  /* Allgemein */
+  --font-main: -apple-system, BlinkMacSystemFont, avenir next, avenir, segoe ui,
+    helvetica neue, helvetica, Cantarell, Ubuntu, roboto, noto, arial, sans-serif;
 
+  --background-image: url("../img/lunora_background.webp");
+
+  /* Lightmode Farben */
+  --color-bg: #f4f1e8;
+  --color-text: #1f1f1f;
+
+  --glass-bg: rgba(255, 255, 255, 0.35);
+  --glass-bg-strong: rgba(225, 225, 225, 0.35);
+  --glass-bg-hover: rgba(175, 175, 175, 0.35);
+
+  --glass-border: rgba(255, 255, 255, 0.45);
+  --glass-border-soft: rgba(200, 200, 200, 0.35);
+
+  --logo-text: #222;
+  --nav-text: #2c2c2c;
+
+  --shadow-logo: 0 20px 60px rgba(0, 0, 0, 0.15);
+  --shadow-nav: 0 8px 24px rgba(0, 0, 0, 0.10);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-  }
+/* Darkmode */
+[data-theme="dark"] {
+  --color-bg: #121212;
+  --color-text: #f5f5f5;
+
+  --glass-bg: rgba(30, 30, 30, 0.45);
+  --glass-bg-strong: rgba(45, 45, 45, 0.45);
+  --glass-bg-hover: rgba(70, 70, 70, 0.5);
+
+  --glass-border: rgba(255, 255, 255, 0.14);
+  --glass-border-soft: rgba(255, 255, 255, 0.12);
+
+  --logo-text: #f5f5f5;
+  --nav-text: #f0f0f0;
+
+  --shadow-logo: 0 20px 60px rgba(0, 0, 0, 0.35);
+  --shadow-nav: 0 8px 24px rgba(0, 0, 0, 0.28);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+
+  font-family: var(--font-main);
+  color: var(--color-text);
+  background-color: var(--color-bg);
+  background-image: var(--background-image);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 
 /* Header Styles */
@@ -32,18 +78,20 @@
   text-decoration: none;
   font-weight: 700;
   font-size: 24px;
-  color: #222;
-  padding: 15px 25px 15px 25px;
+  color: var(--logo-text);
+  padding: 15px 25px;
 
-  background: rgba(255, 255, 255, 0.35);
+  background: var(--glass-bg);
 
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
 
-  border: 1px solid rgba(255, 255, 255, 0.45);
+  border: 1px solid var(--glass-border);
   border-radius: 25px;
 
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-logo);
+
+  transition: all 0.3s ease;
 }
 
 .nav-links {
@@ -54,40 +102,44 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 10px 5px 10px;
+  padding: 5px 10px;
 
-  background: rgba(255, 255, 255, 0.35);
+  background: var(--glass-bg);
 
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
 
-  border: 1px solid rgba(255, 255, 255, 0.45);
+  border: 1px solid var(--glass-border);
   border-radius: 50px;
 
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.10);
+  box-shadow: var(--shadow-nav);
 }
 
 .nav-links a {
   text-decoration: none;
-  color: #2c2c2c;
+  color: var(--nav-text);
   font-size: 18px;
   padding: 10px;
   width: 25px;
   height: 25px;
   text-align: center;
 
-  background: rgba(225, 225, 225, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: var(--glass-bg-strong);
 
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
 
-  border: 1px solid rgba(200, 200, 200, 0.35);
+  border: 1px solid var(--glass-border-soft);
   border-radius: 25px;
 
   transition: all 0.3s ease;
 }
 
 .nav-links a:hover {
-  background: rgba(175, 175, 175, 0.35);
+  background: var(--glass-bg-hover);
   transform: scale(1.05);
 }
