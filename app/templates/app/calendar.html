@@ -54,47 +54,6 @@
         </section>
 
         <aside class="side-stack">
-            <section class="glass-panel calendar-source-panel">
-                <div class="panel-title panel-title-between">
-                    <h2>Google Kalender</h2>
-                    <i class="fa-brands fa-google"></i>
-                </div>
-                {% if not calendar_source %}
-                <div class="empty-state-card is-compact calendar-connect-state">
-                    <i class="fa-solid fa-link" aria-hidden="true"></i>
-                    <div>
-                        <strong>Noch kein Kalender verbunden</strong>
-                        <p>Füge deinen privaten iCal-Link ein, damit Termine, freie Tage und Erinnerungen gemeinsam sichtbar werden.</p>
-                    </div>
-                </div>
-                {% endif %}
-                <form class="calendar-source-form" method="post">
-                    {% csrf_token %}
-                    <input type="hidden" name="form_name" value="calendar_source">
-                    <label class="field-label" for="{{ calendar_source_form.ical_url.id_for_label }}">{{ calendar_source_form.ical_url.label }}</label>
-                    {{ calendar_source_form.ical_url }}
-                    <small class="field-hint">{{ calendar_source_form.ical_url.help_text }}</small>
-                    {{ calendar_source_form.ical_url.errors }}
-
-                    <label class="source-toggle">
-                        {{ calendar_source_form.enabled }}
-                        <span>{{ calendar_source_form.enabled.label }}</span>
-                    </label>
-                    <button class="primary-button source-submit" type="submit">
-                        <i class="fa-solid fa-link"></i>
-                        Kalender speichern
-                    </button>
-                </form>
-                {% if calendar_last_synced_label %}
-                <p class="sync-meta">Zuletzt synchronisiert: {{ calendar_last_synced_label }}</p>
-                {% endif %}
-                {% if calendar_source.last_error %}
-                <p class="sync-error">{{ calendar_source.last_error }}</p>
-                {% elif sync_result.message %}
-                <p class="sync-meta">{{ sync_result.message }}</p>
-                {% endif %}
-            </section>
-
             <section class="glass-panel today-events">
                 <div class="panel-title panel-title-between">
                     <div><h2>Heute</h2><p>{{ today_label }}</p></div>
@@ -136,7 +95,7 @@
                     <i class="fa-regular fa-calendar-plus" aria-hidden="true"></i>
                     <div>
                         <strong>Keine kommenden Termine</strong>
-                        <p>Verbinde oder synchronisiere einen Kalender, um die nächsten Termine hier zu sehen.</p>
+                        <p>Hinterlege deinen Kalender-Link in den Einstellungen, um die nächsten Termine hier zu sehen.</p>
                     </div>
                 </div>
                 {% endif %}

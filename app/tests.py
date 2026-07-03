@@ -132,6 +132,68 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(source.ical_url, "https://calendar.google.com/calendar/ical/example/private/basic.ics")
         self.assertTrue(source.enabled)
 
+    def test_calendar_source_can_be_saved_from_settings(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.post(
+            "/settings/",
+            {
+                "form_name": "calendar_source",
+                "ical_url": "https://calendar.google.com/calendar/ical/settings/private/basic.ics",
+                "enabled": "on",
+            },
+        )
+
+        self.assertRedirects(response, "/home/")
+        source = CalendarSource.objects.get(user=user)
+        self.assertEqual(source.ical_url, "https://calendar.google.com/calendar/ical/settings/private/basic.ics")
+        self.assertTrue(source.enabled)
+
+    def test_settings_calendar_source_is_scoped_to_logged_in_user(self):
+        mira = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        lukas = User.objects.create_user(username="lukas@example.com", email="lukas@example.com", password="secret-12345")
+        Profile.objects.create(user=mira, display_name="Mira")
+        Profile.objects.create(user=lukas, display_name="Lukas")
+        private_url = "https://calendar.google.com/calendar/ical/mira/private/basic.ics"
+        CalendarSource.objects.create(user=mira, ical_url=private_url)
+        self.client.login(username="lukas@example.com", password="secret-12345")
+
+        response = self.client.get("/settings/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="form_name" value="calendar_source"')
+        self.assertNotContains(response, private_url)
+
+        response = self.client.post(
+            "/settings/",
+            {
+                "form_name": "calendar_source",
+                "ical_url": "https://calendar.google.com/calendar/ical/lukas/private/basic.ics",
+                "enabled": "on",
+            },
+        )
+
+        self.assertRedirects(response, "/home/")
+        self.assertEqual(CalendarSource.objects.get(user=mira).ical_url, private_url)
+        self.assertEqual(
+            CalendarSource.objects.get(user=lukas).ical_url,
+            "https://calendar.google.com/calendar/ical/lukas/private/basic.ics",
+        )
+
+    def test_calendar_page_does_not_render_calendar_source_form(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get("/calendar/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'name="form_name" value="calendar_source"')
+        self.assertNotContains(response, "Google Kalender-Link")
+        self.assertNotContains(response, "Kalender speichern")
+
     def test_calendar_page_displays_saved_events(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
         Profile.objects.create(user=user, display_name="Mira")

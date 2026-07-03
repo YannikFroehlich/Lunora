@@ -150,6 +150,34 @@
             {% endfor %}
         </section>
 
+        <section class="glass-panel calendar-settings-panel">
+            <div class="panel-title"><i class="fa-brands fa-google"></i><h2>Google Kalender</h2></div>
+            <p class="panel-description">Privaten iCal-Link für deinen Account speichern.</p>
+            <form class="calendar-source-form settings-calendar-form" method="post">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="calendar_source">
+                <input type="hidden" name="return_to" value="{{ return_to }}">
+
+                {% if calendar_source_form.non_field_errors %}
+                <div class="form-errors">{{ calendar_source_form.non_field_errors }}</div>
+                {% endif %}
+
+                <label class="field-label" for="{{ calendar_source_form.ical_url.id_for_label }}">{{ calendar_source_form.ical_url.label }}</label>
+                {{ calendar_source_form.ical_url }}
+                <small class="field-hint">{{ calendar_source_form.ical_url.help_text }}</small>
+                {{ calendar_source_form.ical_url.errors }}
+
+                <label class="source-toggle">
+                    {{ calendar_source_form.enabled }}
+                    <span>{{ calendar_source_form.enabled.label }}</span>
+                </label>
+                <button class="primary-button source-submit" type="submit">
+                    <i class="fa-solid fa-floppy-disk"></i>
+                    Kalender speichern
+                </button>
+            </form>
+        </section>
+
         <section class="glass-panel region-panel">
             <div class="panel-title"><i class="fa-solid fa-globe"></i><h2>Sprache & Region</h2></div>
             <div class="region-form-fields">
