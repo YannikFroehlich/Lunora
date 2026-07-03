@@ -2,7 +2,7 @@ from django import forms
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm, UsernameField
 from django.contrib.auth.models import User
 
-from app.models import CalendarReminder, CalendarSource, Profile
+from app.models import CalendarReminder, CalendarSource, ChatMessage, Profile
 
 
 class EmailLoginForm(AuthenticationForm):
@@ -119,6 +119,55 @@ class AppearanceForm(forms.ModelForm):
 
     def clean_timezone_name(self):
         return self._clean_optional_region_field("timezone_name")
+
+
+class MessageForm(forms.ModelForm):
+    class Meta:
+        model = ChatMessage
+        fields = ["body"]
+        labels = {"body": "Nachricht"}
+        widgets = {
+            "body": forms.Textarea(
+                attrs={
+                    "placeholder": "Nachricht schreiben ...",
+                    "autocomplete": "off",
+                    "rows": 1,
+                }
+            )
+        }
+
+    def clean_body(self):
+        body = self.cleaned_data["body"].strip()
+        if not body:
+            raise forms.ValidationError("Bitte gib eine Nachricht ein.")
+        return body
+
+
+class ConversationStartForm(forms.Form):
+    recipient = forms.ModelChoiceField(
+        label="Kontakt",
+        queryset=User.objects.none(),
+        empty_label="Kontakt auswählen",
+    )
+    body = forms.CharField(
+        label="Erste Nachricht",
+        max_length=4000,
+        required=False,
+        widget=forms.Textarea(
+            attrs={
+                "placeholder": "Optionale erste Nachricht ...",
+                "rows": 3,
+            }
+        ),
+    )
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        users = User.objects.exclude(pk=getattr(user, "pk", None)).order_by("first_name", "email", "username")
+        self.fields["recipient"].queryset = users
+
+    def clean_body(self):
+        return self.cleaned_data.get("body", "").strip()
 
 
 class CalendarSourceForm(forms.ModelForm):

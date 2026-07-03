@@ -21,6 +21,11 @@ urlpatterns = [
     path("settings/", view.settings, name="settings"),
     path("weather/", view.weather, name="weather"),
     path("weather/suggest/", view.weather_suggestions, name="weather_suggestions"),
+    path("weather/radar/<int:z>/<int:x>/<int:y>.png", view.weather_radar_tile, name="weather_radar_tile"),
+    path("weather/radar/<str:layer>/<int:z>/<int:x>/<int:y>.png", view.weather_radar_tile, name="weather_radar_layer_tile"),
     path("calendar/", view.calendar, name="calendar"),
     path("messages/", view.messages, name="messages"),
+    path("messages/live/", view.messages_live_updates, name="messages_live_updates"),
+    path("messages/<int:conversation_id>/live/", view.messages_live_updates, name="messages_live_detail_updates"),
+    path("messages/<int:conversation_id>/", view.messages, name="messages_detail"),
 ]

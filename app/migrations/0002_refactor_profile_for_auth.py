@@ -28,6 +28,20 @@ def link_existing_profiles(apps, schema_editor):
         profile.save(update_fields=["user"])
 
 
+def ensure_profile_table_exists(apps, schema_editor):
+    """
+    Defensive fix for local databases where app.0001 is marked as applied,
+    but the old app_profile table is missing. In a clean database this is a no-op.
+    """
+    profile_model = apps.get_model("app", "Profile")
+    table_name = profile_model._meta.db_table
+    with schema_editor.connection.cursor() as cursor:
+        existing_tables = schema_editor.connection.introspection.table_names(cursor)
+
+    if table_name not in existing_tables:
+        schema_editor.create_model(profile_model)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -36,6 +50,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunPython(ensure_profile_table_exists, migrations.RunPython.noop),
         migrations.AddField(
             model_name="profile",
             name="user",

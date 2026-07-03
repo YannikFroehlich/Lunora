@@ -1,0 +1,47 @@
+<div class="contact-list" id="messages-contact-list">
+    {% for item in conversations %}
+    <a class="contact-card {% if selected_conversation and item.conversation.id == selected_conversation.id %}is-active{% endif %}" href="{% url 'messages_detail' item.conversation.id %}">
+        <span class="avatar">
+            {% if item.avatar_url %}
+            <img src="{{ item.avatar_url }}" alt="Profilbild von {{ item.title }}">
+            {% else %}
+            {{ item.avatar }}
+            {% endif %}
+        </span>
+        <span class="contact-copy">
+            <span class="contact-title-row">
+                <strong>{{ item.title }}</strong>
+                {% if item.is_muted or item.is_blocked %}
+                <span class="contact-state-row" aria-label="Chatstatus">
+                    {% if item.is_muted %}
+                    <span class="contact-state-badge" title="Stummgeschaltet"><i class="fa-solid fa-bell-slash"></i></span>
+                    {% endif %}
+                    {% if item.is_blocked %}
+                    <span class="contact-state-badge is-blocked" title="Blockiert"><i class="fa-solid fa-ban"></i></span>
+                    {% endif %}
+                </span>
+                {% endif %}
+            </span>
+            <small>
+                {% if item.is_blocked %}
+                    Blockiert · {{ item.preview }}
+                {% elif item.is_muted %}
+                    Stummgeschaltet · {{ item.preview }}
+                {% else %}
+                    {{ item.preview }}
+                {% endif %}
+            </small>
+        </span>
+        <time>{{ item.time }}</time>
+        {% if item.unread %}
+        <span class="unread-badge">{{ item.unread }}</span>
+        {% endif %}
+    </a>
+    {% empty %}
+    <div class="empty-card">
+        <i class="fa-regular fa-message"></i>
+        <strong>Keine Unterhaltung gefunden</strong>
+        <p>Starte oben einen neuen Chat mit einem vorhandenen Account.</p>
+    </div>
+    {% endfor %}
+</div>

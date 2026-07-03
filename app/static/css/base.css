@@ -25,6 +25,19 @@
   --radius-lg: 22px;
   --radius-md: 16px;
   --radius-sm: 12px;
+
+  --surface-panel: var(--glass-bg);
+  --surface-panel-soft: var(--glass-bg-soft);
+  --surface-control: rgba(255, 255, 255, 0.30);
+  --surface-control-hover: rgba(255, 255, 255, 0.42);
+  --surface-selected: color-mix(in srgb, var(--color-accent) 20%, transparent);
+  --focus-ring-color: color-mix(in srgb, var(--color-accent-strong) 42%, transparent);
+  --focus-ring: 0 0 0 3px var(--focus-ring-color);
+  --scrollbar-track: rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb: color-mix(in srgb, var(--color-accent-strong) 55%, transparent);
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--color-accent-strong) 78%, transparent);
+  --empty-surface: rgba(255, 255, 255, 0.24);
+  --empty-border: color-mix(in srgb, var(--color-accent-strong) 24%, transparent);
 }
 
 [data-theme="dark"] {
@@ -43,6 +56,16 @@
   --glass-border-soft: rgba(255, 255, 255, 0.09);
   --shadow-panel: 0 24px 70px rgba(0, 0, 0, 0.30);
   --shadow-soft: 0 12px 32px rgba(0, 0, 0, 0.24);
+
+  --surface-control: rgba(255, 248, 237, 0.08);
+  --surface-control-hover: rgba(255, 248, 237, 0.12);
+  --surface-selected: color-mix(in srgb, var(--color-accent) 20%, transparent);
+  --focus-ring-color: color-mix(in srgb, var(--color-accent-strong) 48%, transparent);
+  --scrollbar-track: rgba(255, 255, 255, 0.06);
+  --scrollbar-thumb: rgba(213, 187, 139, 0.54);
+  --scrollbar-thumb-hover: rgba(213, 187, 139, 0.78);
+  --empty-surface: rgba(255, 255, 255, 0.06);
+  --empty-border: rgba(255, 255, 255, 0.12);
 }
 
 * {
@@ -85,7 +108,10 @@ body::before {
 }
 
 button,
-input {
+input,
+textarea,
+select,
+summary {
   font: inherit;
 }
 
@@ -96,6 +122,37 @@ button {
 
 a {
   color: inherit;
+}
+
+:focus {
+  outline: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent-strong);
+  outline-offset: 3px;
+}
+
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: 0;
+  box-shadow: var(--focus-ring);
+}
+
+button:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.54;
+}
+
+::selection {
+  color: #fffaf3;
+  background: var(--color-accent-strong);
 }
 
 .floating-nav {
@@ -155,7 +212,7 @@ a {
 .page-hero {
   position: relative;
   overflow: hidden;
-  background: var(--glass-bg);
+  background: var(--surface-panel);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-panel);
@@ -305,7 +362,7 @@ a {
 }
 
 .ghost-button {
-  background: rgba(255, 255, 255, 0.24);
+  background: var(--surface-control);
   border: 1px solid var(--glass-border-soft);
 }
 
@@ -345,6 +402,109 @@ a {
   box-shadow: inset 0 0 18px rgba(255, 255, 255, 0.55);
 }
 
+.soft-scrollbar,
+.message-stream,
+.contact-list,
+.hourly-scroll,
+.month-panel,
+.suggestion-list {
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  scrollbar-width: thin;
+}
+
+.soft-scrollbar::-webkit-scrollbar,
+.message-stream::-webkit-scrollbar,
+.contact-list::-webkit-scrollbar,
+.hourly-scroll::-webkit-scrollbar,
+.month-panel::-webkit-scrollbar,
+.suggestion-list::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.soft-scrollbar::-webkit-scrollbar-track,
+.message-stream::-webkit-scrollbar-track,
+.contact-list::-webkit-scrollbar-track,
+.hourly-scroll::-webkit-scrollbar-track,
+.month-panel::-webkit-scrollbar-track,
+.suggestion-list::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 999px;
+}
+
+.soft-scrollbar::-webkit-scrollbar-thumb,
+.message-stream::-webkit-scrollbar-thumb,
+.contact-list::-webkit-scrollbar-thumb,
+.hourly-scroll::-webkit-scrollbar-thumb,
+.month-panel::-webkit-scrollbar-thumb,
+.suggestion-list::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  background-clip: content-box;
+  border: 2px solid transparent;
+  border-radius: 999px;
+}
+
+.soft-scrollbar::-webkit-scrollbar-thumb:hover,
+.message-stream::-webkit-scrollbar-thumb:hover,
+.contact-list::-webkit-scrollbar-thumb:hover,
+.hourly-scroll::-webkit-scrollbar-thumb:hover,
+.month-panel::-webkit-scrollbar-thumb:hover,
+.suggestion-list::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: content-box;
+}
+
+.empty-state-card,
+.empty-card,
+.empty-chat-state {
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  padding: 26px 18px;
+  text-align: center;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 62%),
+    var(--empty-surface);
+  border: 1px dashed var(--empty-border);
+  border-radius: var(--radius-md);
+}
+
+.empty-state-card.is-compact {
+  place-items: start;
+  padding: 18px;
+  text-align: left;
+}
+
+.empty-state-card i,
+.empty-card i,
+.empty-chat-state i {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  color: var(--color-accent-strong);
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-accent-strong) 18%, transparent);
+  border-radius: 14px;
+  font-size: 1.1rem;
+}
+
+.empty-state-card strong,
+.empty-card strong,
+.empty-chat-state h2 {
+  margin: 0;
+  color: var(--color-heading);
+}
+
+.empty-state-card p,
+.empty-card p,
+.empty-chat-state p {
+  max-width: 34rem;
+  margin: 0;
+  color: var(--color-muted);
+  line-height: 1.45;
+}
+
 .avatar.small {
   width: 30px;
   height: 30px;
@@ -367,6 +527,11 @@ a {
   background: rgba(255, 252, 246, 0.62);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-sm);
+}
+
+[data-theme="dark"] .api-notice {
+  background: rgba(255, 248, 237, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 [data-density="balanced"] .site-main {

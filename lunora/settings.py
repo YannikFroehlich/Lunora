@@ -63,6 +63,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "app.middleware.UserTimezoneMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -115,7 +116,7 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
-MEDIA_URL = "media/"
+MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LOGIN_URL = "/login/"
@@ -131,5 +132,9 @@ WEATHER_API_BASE_URL = os.getenv(
 WEATHER_GEO_API_BASE_URL = os.getenv(
     "OPENWEATHER_GEO_API_BASE_URL",
     "https://api.openweathermap.org/geo/1.0",
+)
+WEATHER_TILE_BASE_URL = os.getenv(
+    "OPENWEATHER_TILE_BASE_URL",
+    "https://tile.openweathermap.org/map",
 )
 WEATHER_DEFAULT_CITY = os.getenv("WEATHER_DEFAULT_CITY", "Buende,de")

@@ -1,0 +1,51 @@
+<div class="messages-overview" id="messages-overview">
+    <div class="overview-hero">
+        <span class="overview-icon"><i class="fa-regular fa-comments"></i></span>
+        <div>
+            <p>Nachrichtenübersicht</p>
+            <h2>Willkommen zurück</h2>
+            <span>Wähle links einen Chat aus, um den Verlauf zu öffnen.</span>
+        </div>
+    </div>
+
+    <div class="overview-stats">
+        <article>
+            <strong>{{ unread_total }}</strong>
+            <span>Neue Nachricht{% if unread_total != 1 %}en{% endif %}</span>
+        </article>
+        <article>
+            <strong>{{ conversation_total }}</strong>
+            <span>Unterhaltung{% if conversation_total != 1 %}en{% endif %}</span>
+        </article>
+    </div>
+
+    {% if overview_items %}
+    <section class="overview-section">
+        <h3>{% if unread_total %}Neue Nachrichten{% else %}Letzte Unterhaltungen{% endif %}</h3>
+        <div class="overview-message-list">
+            {% for item in overview_items %}
+            <a href="{% url 'messages_detail' item.conversation.id %}" class="overview-message-card">
+                <span class="avatar small">
+                    {% if item.avatar_url %}
+                    <img src="{{ item.avatar_url }}" alt="Profilbild von {{ item.title }}">
+                    {% else %}
+                    {{ item.avatar }}
+                    {% endif %}
+                </span>
+                <span>
+                    <strong>{{ item.title }}</strong>
+                    <small>{{ item.preview }}</small>
+                </span>
+                <em>{% if item.unread %}{{ item.unread }} neu{% else %}{{ item.time }}{% endif %}</em>
+            </a>
+            {% endfor %}
+        </div>
+    </section>
+    {% else %}
+    <div class="empty-card overview-empty">
+        <i class="fa-regular fa-message"></i>
+        <strong>Noch keine Nachrichten</strong>
+        <p>Starte links eine neue Unterhaltung mit einem vorhandenen Account.</p>
+    </div>
+    {% endif %}
+</div>

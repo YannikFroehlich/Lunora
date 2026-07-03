@@ -119,6 +119,36 @@ def _fetch_json(endpoint, params):
         return json.loads(response.read().decode("utf-8"))
 
 
+WEATHER_RADAR_TILE_LAYERS = {
+    "clouds": "clouds_new",
+    "precipitation": "precipitation_new",
+}
+
+
+def fetch_weather_radar_tile(z, x, y, layer="precipitation"):
+    if not settings.WEATHER_API_KEY:
+        raise ValueError("Wetter-Radar ist ohne API-Key nicht verfuegbar.")
+
+    tile_layer = WEATHER_RADAR_TILE_LAYERS.get(layer)
+    if not tile_layer:
+        raise ValueError("Ungueltige Radar-Ebene.")
+
+    if z < 1 or z > 10:
+        raise ValueError("Ungueltige Radar-Kachel.")
+
+    max_tile = 2 ** z
+    if x < 0 or y < 0 or x >= max_tile or y >= max_tile:
+        raise ValueError("Ungueltige Radar-Kachel.")
+
+    query = urlencode({"appid": settings.WEATHER_API_KEY})
+    tile_base_url = settings.WEATHER_TILE_BASE_URL.rstrip("/")
+    endpoint = f"{tile_base_url}/{tile_layer}/{z}/{x}/{y}.png?{query}"
+    request = Request(endpoint, headers={"User-Agent": "Lunora Radar/1.0"})
+
+    with urlopen(request, timeout=6) as response:
+        return response.read(1_500_000)
+
+
 def _normalize_location(item):
     local_names = item.get("local_names") or {}
     name = local_names.get("de") or item.get("name", "")
@@ -214,8 +244,10 @@ def _build_context_from_api(current, forecast, fallback, location):
     ]
     context["hourly_forecast"] = _hourly_from_api(forecast) or fallback["hourly_forecast"]
     context["daily_forecast"] = _daily_from_api(forecast) or fallback["daily_forecast"]
+    context["forecast_summary"] = _forecast_summary(context["daily_forecast"])
     context["weather_tip"] = _build_weather_tip(current, forecast, weather)
     context["weather_hint"] = context["weather_tip"]["text"]
+    context["radar"] = _radar_context_for_location(location, current, city_name)
     return context
 
 
@@ -260,6 +292,49 @@ def _daily_from_api(forecast):
     return list(days.values())[1:7]
 
 
+def _forecast_summary(daily_forecast):
+    days = daily_forecast or []
+    if not days:
+        return {
+            "average_high": "-",
+            "rain_days": "0",
+            "trend": "Ruhig",
+        }
+
+    highs = [day["high"] for day in days if isinstance(day.get("high"), (int, float))]
+    lows = [day["low"] for day in days if isinstance(day.get("low"), (int, float))]
+    rain_days = sum(1 for day in days if day.get("rain", 0) >= 40)
+    average_high = round(sum(highs) / len(highs)) if highs else "-"
+
+    first_high = highs[0] if highs else None
+    last_high = highs[-1] if highs else None
+    average_rain = sum(day.get("rain", 0) for day in days) / len(days)
+    rainy_descriptions = ("regen", "schauer", "gewitter", "drizzle", "rain")
+    has_rain_text = any(
+        any(word in day.get("description", "").casefold() for word in rainy_descriptions)
+        for day in days
+    )
+
+    if average_rain >= 55 or rain_days >= max(2, len(days) // 2) or has_rain_text:
+        trend = "Nass"
+    elif first_high is not None and last_high is not None and last_high - first_high >= 3:
+        trend = "Wärmer"
+    elif first_high is not None and last_high is not None and first_high - last_high >= 3:
+        trend = "Kühler"
+    elif lows and max(highs or [0]) >= 27:
+        trend = "Warm"
+    elif highs and max(highs) <= 5:
+        trend = "Kalt"
+    else:
+        trend = "Stabil"
+
+    return {
+        "average_high": f"{average_high}°" if isinstance(average_high, int) else average_high,
+        "rain_days": str(rain_days),
+        "trend": trend,
+    }
+
+
 def _fallback_for_location(fallback, location, search_query):
     context = deepcopy(fallback)
     selected_label = location.get("label") or search_query
@@ -273,7 +348,51 @@ def _fallback_for_location(fallback, location, search_query):
             "Trage OPENWEATHER_API_KEY in deiner .env ein, um echte Wetterdaten zu laden."
         )
 
+    context["radar"] = _radar_context_for_location(location, city_name=context["current"]["city"])
     return context
+
+
+def _radar_context_for_location(location=None, current=None, city_name=""):
+    location = location or {}
+    current = current or {}
+    coord = current.get("coord", {}) if isinstance(current, dict) else {}
+
+    lat = _coerce_float(location.get("lat"))
+    lon = _coerce_float(location.get("lon"))
+    if lat is None:
+        lat = _coerce_float(coord.get("lat"))
+    if lon is None:
+        lon = _coerce_float(coord.get("lon"))
+    label = location.get("name") or _short_location_name(location.get("label", "")) or city_name
+
+    if lat is None or lon is None:
+        fallback_place = _fallback_place_for_label(label or settings.WEATHER_DEFAULT_CITY)
+        lat = fallback_place.get("lat", 52.1984)
+        lon = fallback_place.get("lon", 8.5864)
+        label = fallback_place.get("name", label or "Buende")
+
+    return {
+        "center_lat": f"{lat:.4f}",
+        "center_lon": f"{lon:.4f}",
+        "zoom": 7,
+        "location": label or "Buende",
+        "status": "Live-Radar" if settings.WEATHER_API_KEY else "Demo-Vorschau",
+        "has_live": bool(settings.WEATHER_API_KEY),
+    }
+
+
+def _coerce_float(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _fallback_place_for_label(label):
+    matches = _fallback_location_suggestions(label or "", 1)
+    if matches:
+        return matches[0]
+    return {"name": "Buende", "lat": 52.1984, "lon": 8.5864}
 
 
 def _fallback_location_suggestions(query, limit):
@@ -472,6 +591,15 @@ def _icon_for_weather(condition):
 
 def _fallback_weather_context():
     weather_tip = _fallback_weather_tip()
+    daily_forecast = [
+        {"day": "Samstag", "icon": "fa-cloud-sun", "description": "Teilweise bewölkt", "high": 27, "low": 16, "rain": 10},
+        {"day": "Sonntag", "icon": "fa-cloud-rain", "description": "Leichter Regen", "high": 22, "low": 14, "rain": 60},
+        {"day": "Montag", "icon": "fa-cloud", "description": "Bewölkt", "high": 21, "low": 13, "rain": 20},
+        {"day": "Dienstag", "icon": "fa-cloud-sun", "description": "Wolkig", "high": 23, "low": 14, "rain": 20},
+        {"day": "Mittwoch", "icon": "fa-sun", "description": "Sonnig", "high": 26, "low": 15, "rain": 10},
+        {"day": "Donnerstag", "icon": "fa-sun", "description": "Sonnig", "high": 27, "low": 16, "rain": 10},
+        {"day": "Freitag", "icon": "fa-cloud-sun", "description": "Teilweise bewölkt", "high": 25, "low": 15, "rain": 20},
+    ]
 
     return {
         "active_page": "weather",
@@ -507,16 +635,10 @@ def _fallback_weather_context():
             {"time": "17:00", "icon": "fa-cloud-sun", "temperature": 22, "rain": 20},
             {"time": "18:00", "icon": "fa-sun", "temperature": 21, "rain": 10},
         ],
-        "daily_forecast": [
-            {"day": "Samstag", "icon": "fa-cloud-sun", "description": "Teilweise bewölkt", "high": 27, "low": 16, "rain": 10},
-            {"day": "Sonntag", "icon": "fa-cloud-rain", "description": "Leichter Regen", "high": 22, "low": 14, "rain": 60},
-            {"day": "Montag", "icon": "fa-cloud", "description": "Bewölkt", "high": 21, "low": 13, "rain": 20},
-            {"day": "Dienstag", "icon": "fa-cloud-sun", "description": "Wolkig", "high": 23, "low": 14, "rain": 20},
-            {"day": "Mittwoch", "icon": "fa-sun", "description": "Sonnig", "high": 26, "low": 15, "rain": 10},
-            {"day": "Donnerstag", "icon": "fa-sun", "description": "Sonnig", "high": 27, "low": 16, "rain": 10},
-            {"day": "Freitag", "icon": "fa-cloud-sun", "description": "Teilweise bewölkt", "high": 25, "low": 15, "rain": 20},
-        ],
+        "daily_forecast": daily_forecast,
+        "forecast_summary": _forecast_summary(daily_forecast),
         "air_quality": {"score": 28, "label": "Gut"},
+        "radar": _radar_context_for_location(city_name="Bünde"),
         "weather_tip": weather_tip,
         "weather_hint": weather_tip["text"],
         "api_notice": "",

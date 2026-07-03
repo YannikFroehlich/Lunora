@@ -1,0 +1,13 @@
+{% if pinned_message_items %}
+<section class="pinned-messages" aria-label="Angepinnte Nachrichten">
+    <strong><i class="fa-solid fa-thumbtack"></i> Angepinnt</strong>
+    <div>
+        {% for item in pinned_message_items %}
+        <a href="#message-{{ item.message.id }}">
+            <span>{{ item.sender_name }}</span>
+            <small>{{ item.preview }}</small>
+        </a>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}

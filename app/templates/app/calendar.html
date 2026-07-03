@@ -18,10 +18,10 @@
     </header>
 
     <div class="calendar-layout">
-        <section class="glass-panel month-panel">
+        <section class="glass-panel month-panel" aria-labelledby="calendar-month-title">
             <div class="month-toolbar">
                 <a class="icon-button" href="{% url 'calendar' %}?year={{ prev_month.year }}&month={{ prev_month.month }}" aria-label="Vorheriger Monat"><i class="fa-solid fa-chevron-left"></i></a>
-                <h2>{{ month_label }}</h2>
+                <h2 id="calendar-month-title">{{ month_label }}</h2>
                 <a class="icon-button" href="{% url 'calendar' %}?year={{ next_month.year }}&month={{ next_month.month }}" aria-label="Nächster Monat"><i class="fa-solid fa-chevron-right"></i></a>
                 <span class="toolbar-spacer"></span>
                 <a class="ghost-button" href="{% url 'calendar' %}"><i class="fa-regular fa-calendar"></i> Heute</a>
@@ -59,6 +59,15 @@
                     <h2>Google Kalender</h2>
                     <i class="fa-brands fa-google"></i>
                 </div>
+                {% if not calendar_source %}
+                <div class="empty-state-card is-compact calendar-connect-state">
+                    <i class="fa-solid fa-link" aria-hidden="true"></i>
+                    <div>
+                        <strong>Noch kein Kalender verbunden</strong>
+                        <p>Füge deinen privaten iCal-Link ein, damit Termine, freie Tage und Erinnerungen gemeinsam sichtbar werden.</p>
+                    </div>
+                </div>
+                {% endif %}
                 <form class="calendar-source-form" method="post">
                     {% csrf_token %}
                     <input type="hidden" name="form_name" value="calendar_source">
@@ -101,7 +110,13 @@
                 </div>
                 {% endfor %}
                 {% else %}
-                <p class="empty-state">Heute stehen keine Termine an.</p>
+                <div class="empty-state-card is-compact">
+                    <i class="fa-regular fa-calendar-check" aria-hidden="true"></i>
+                    <div>
+                        <strong>Heute ist frei</strong>
+                        <p>Für heute stehen keine Termine an.</p>
+                    </div>
+                </div>
                 {% endif %}
             </section>
 
@@ -117,7 +132,13 @@
                 </div>
                 {% endfor %}
                 {% else %}
-                <p class="empty-state">Noch keine kommenden Termine synchronisiert.</p>
+                <div class="empty-state-card is-compact">
+                    <i class="fa-regular fa-calendar-plus" aria-hidden="true"></i>
+                    <div>
+                        <strong>Keine kommenden Termine</strong>
+                        <p>Verbinde oder synchronisiere einen Kalender, um die nächsten Termine hier zu sehen.</p>
+                    </div>
+                </div>
                 {% endif %}
             </section>
 
@@ -143,7 +164,13 @@
                 </form>
                 {% endfor %}
                 {% else %}
-                <p class="empty-state">Noch keine Erinnerungen angelegt.</p>
+                <div class="empty-state-card is-compact">
+                    <i class="fa-regular fa-bell" aria-hidden="true"></i>
+                    <div>
+                        <strong>Keine Erinnerungen</strong>
+                        <p>Neue Erinnerungen erscheinen hier und lassen sich direkt abhaken.</p>
+                    </div>
+                </div>
                 {% endif %}
             </section>
         </aside>

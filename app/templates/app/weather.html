@@ -18,21 +18,31 @@
     </header>
 
     {% if api_notice %}
-    <p class="api-notice">{{ api_notice }}</p>
+    <p class="api-notice" role="status">{{ api_notice }}</p>
+    {% endif %}
+
+    {% if not radar.has_live %}
+    <section class="empty-state-card weather-key-state" aria-labelledby="weather-key-title">
+        <i class="fa-solid fa-key" aria-hidden="true"></i>
+        <div>
+            <strong id="weather-key-title">Live-Wetter ist noch nicht verbunden</strong>
+            <p>Aktuell zeigt Lunora Demo-Werte und eine Vorschaukarte. Sobald die Wetterverbindung aktiv ist, erscheinen echte Messwerte und Radar-Layer.</p>
+        </div>
+    </section>
     {% endif %}
 
     <form class="weather-toolbar glass-panel" method="get" action="{% url 'weather' %}" data-weather-search data-suggest-url="{% url 'weather_suggestions' %}">
         <div class="weather-search-wrap">
             <label class="search-field">
                 <i class="fa-solid fa-magnifying-glass"></i>
-                <input type="search" name="q" value="{{ search_query }}" placeholder="Ort suchen" autocomplete="off" aria-label="Ort suchen" aria-expanded="false" aria-controls="weather-suggestions">
+                <input type="search" name="q" value="{{ search_query }}" placeholder="Ort suchen" autocomplete="off" aria-label="Ort suchen" aria-autocomplete="list" aria-expanded="false" aria-controls="weather-suggestions">
             </label>
             <input type="hidden" name="lat" data-weather-lat>
             <input type="hidden" name="lon" data-weather-lon>
             <input type="hidden" name="name" data-weather-name>
             <input type="hidden" name="details" data-weather-details>
             <input type="hidden" name="label" data-weather-label>
-            <div class="suggestion-list" id="weather-suggestions" role="listbox" hidden></div>
+            <div class="suggestion-list" id="weather-suggestions" role="listbox" aria-label="Ortsvorschläge" aria-live="polite" hidden></div>
         </div>
         <button class="ghost-button" type="button" data-current-location><i class="fa-solid fa-location-dot"></i> Mein Standort</button>
     </form>
@@ -104,15 +114,15 @@
             <div class="forecast-summary">
                 <article>
                     <span>Ø Hoch</span>
-                    <strong>31°</strong>
+                    <strong>{{ forecast_summary.average_high }}</strong>
                 </article>
                 <article>
                     <span>Regentage</span>
-                    <strong>2</strong>
+                    <strong>{{ forecast_summary.rain_days }}</strong>
                 </article>
                 <article>
                     <span>Trend</span>
-                    <strong>Warm</strong>
+                    <strong>{{ forecast_summary.trend }}</strong>
                 </article>
             </div>
         </section>
@@ -137,13 +147,48 @@
         <section class="glass-panel radar-panel">
             <div class="panel-title panel-title-between">
                 <span><i class="fa-solid fa-cloud-rain"></i> Regenradar</span>
-                <small>Live-Vorschau</small>
+                <small>{{ radar.status }}</small>
             </div>
-            <div class="map-preview">
-                <span class="map-location"><i class="fa-solid fa-location-dot"></i> Bünde</span>
-                <span class="rain-band rain-band-one"></span>
-                <span class="rain-band rain-band-two"></span>
-                <button type="button">Vollbild <i class="fa-solid fa-up-right-and-down-left-from-center"></i></button>
+            <div class="map-preview {% if not radar.has_live %}is-demo{% endif %}"
+                 role="region"
+                 tabindex="0"
+                 aria-label="Regenradar für {{ radar.location }}"
+                 data-radar-map
+                 data-radar-lat="{{ radar.center_lat }}"
+                 data-radar-lon="{{ radar.center_lon }}"
+                 data-radar-zoom="{{ radar.zoom }}"
+                 data-radar-location="{{ radar.location }}"
+                 data-radar-has-live="{{ radar.has_live|yesno:'true,false' }}"
+                 data-radar-cloud-tile-url="{% url 'weather_radar_layer_tile' 'clouds' 0 0 0 %}"
+                 data-radar-rain-tile-url="{% url 'weather_radar_layer_tile' 'precipitation' 0 0 0 %}">
+                <div class="radar-map-canvas" data-radar-canvas>
+                    <div class="radar-tile-layer" data-radar-tile-layer aria-hidden="true"></div>
+                    <div class="radar-tile-layer radar-cloud-layer" data-radar-cloud-layer aria-hidden="true"></div>
+                    <div class="radar-tile-layer radar-rain-layer" data-radar-rain-layer aria-hidden="true"></div>
+                    <span class="map-location"><i class="fa-solid fa-location-dot"></i> {{ radar.location }}</span>
+                    {% if not radar.has_live %}
+                    <span class="radar-demo-note">Demo-Karte ohne Live-Wolken</span>
+                    {% endif %}
+                </div>
+                <div class="radar-controls" aria-label="Radarsteuerung">
+                    <button type="button" data-radar-zoom-out aria-label="Radar herauszoomen"><i class="fa-solid fa-minus"></i></button>
+                    <button type="button" data-radar-zoom-in aria-label="Radar hineinzoomen"><i class="fa-solid fa-plus"></i></button>
+                    <button type="button" data-radar-fullscreen aria-label="Radar im Vollbild anzeigen"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button>
+                </div>
+                <div class="radar-legend" aria-label="Niederschlagsintensität">
+                    <span>Leicht</span>
+                    <span class="legend-bar"></span>
+                    <span>Stark</span>
+                </div>
+                <div class="radar-layer-chips" aria-label="Aktive Radar-Ebenen">
+                    {% if radar.has_live %}
+                    <span><i class="fa-solid fa-cloud"></i> Wolken</span>
+                    <span><i class="fa-solid fa-droplet"></i> Regen</span>
+                    {% else %}
+                    <span><i class="fa-solid fa-circle-info"></i> Live-Layer aus</span>
+                    {% endif %}
+                </div>
+                <span class="radar-attribution">© OpenStreetMap</span>
             </div>
         </section>
 
