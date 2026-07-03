@@ -18,52 +18,92 @@
     </header>
 
     <div class="settings-grid">
-        <section class="glass-panel appearance-panel">
+        <form id="appearance-form" class="glass-panel appearance-panel" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="appearance">
             <div class="panel-title"><i class="fa-solid fa-wand-magic-sparkles"></i><h2>Darstellung</h2></div>
+            {% if appearance_form.non_field_errors %}
+            <div class="form-errors">{{ appearance_form.non_field_errors }}</div>
+            {% endif %}
+
             <label class="field-label">Theme</label>
             <div class="theme-options">
-                <button class="choice-card" type="button" data-theme-choice="light">
+                <label class="choice-card {% if appearance_form.theme.value == 'light' %}is-active{% endif %}" data-theme-choice="light">
+                    <input type="radio" name="{{ appearance_form.theme.html_name }}" value="light" {% if appearance_form.theme.value == 'light' %}checked{% endif %}>
                     <i class="fa-regular fa-sun"></i>
                     Heller Modus
-                </button>
-                <button class="choice-card" type="button" data-theme-choice="dark">
+                </label>
+                <label class="choice-card {% if appearance_form.theme.value == 'dark' %}is-active{% endif %}" data-theme-choice="dark">
+                    <input type="radio" name="{{ appearance_form.theme.html_name }}" value="dark" {% if appearance_form.theme.value == 'dark' %}checked{% endif %}>
                     <i class="fa-regular fa-moon"></i>
                     Dunkler Modus
-                </button>
+                </label>
             </div>
+            {{ appearance_form.theme.errors }}
 
             <label class="field-label">Akzentfarbe</label>
             <div class="color-row">
-                {% for color in accent_colors %}
-                <button class="color-dot" type="button" style="--dot-color: {{ color }}" aria-label="Akzentfarbe {{ forloop.counter }}"></button>
+                {% for color, label in appearance_form.accent_color.field.choices %}
+                <label class="color-dot {% if appearance_form.accent_color.value == color %}is-active{% endif %}" style="--dot-color: {{ color }}" aria-label="Akzentfarbe {{ label }}" title="{{ label }}">
+                    <input type="radio" name="{{ appearance_form.accent_color.html_name }}" value="{{ color }}" {% if appearance_form.accent_color.value == color %}checked{% endif %}>
+                </label>
                 {% endfor %}
             </div>
+            {{ appearance_form.accent_color.errors }}
 
             <label class="field-label">Hintergrund-Weichheit</label>
-            <input class="softness-slider" type="range" min="0" max="100" value="55">
+            {{ appearance_form.background_softness }}
             <div class="slider-labels"><span>Subtil</span><span>Ausgeglichen</span><span>Reich</span></div>
+            {{ appearance_form.background_softness.errors }}
 
             <label class="field-label">Kompaktheit</label>
             <div class="segmented-control">
-                <button type="button" class="is-active">Komfortabel</button>
-                <button type="button">Ausgeglichen</button>
-                <button type="button">Kompakt</button>
+                {% for value, label in appearance_form.density.field.choices %}
+                <label class="{% if appearance_form.density.value == value %}is-active{% endif %}">
+                    <input type="radio" name="{{ appearance_form.density.html_name }}" value="{{ value }}" {% if appearance_form.density.value == value %}checked{% endif %}>
+                    <span>{{ label }}</span>
+                </label>
+                {% endfor %}
             </div>
-        </section>
+            {{ appearance_form.density.errors }}
+        </form>
 
         <section class="glass-panel profile-panel">
             <div class="panel-title"><i class="fa-regular fa-user"></i><h2>Profil</h2></div>
             <div class="profile-row">
-                <div class="profile-avatar"><i class="fa-solid fa-seedling"></i></div>
+                <div class="profile-avatar">
+                    {% if profile.profile_image %}
+                    <img src="{{ profile.profile_image.url }}" alt="Profilbild von {{ profile.name }}">
+                    {% else %}
+                    <i class="fa-solid fa-seedling"></i>
+                    {% endif %}
+                </div>
                 <div>
-                    <h3>Dein Name</h3>
-                    <p>youremail@example.com</p>
+                    <h3>{{ profile.name }}</h3>
+                    <p>{{ request.user.email }}</p>
                 </div>
             </div>
-            <div class="button-row">
-                <button class="ghost-button" type="button"><i class="fa-regular fa-user"></i> Profil bearbeiten</button>
-                <button class="ghost-button" type="button"><i class="fa-solid fa-lock"></i> Passwort ändern</button>
-            </div>
+            <form class="profile-form" method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="profile">
+
+                {% if profile_form.non_field_errors %}
+                <div class="form-errors">{{ profile_form.non_field_errors }}</div>
+                {% endif %}
+
+                <label class="field-label" for="{{ profile_form.display_name.id_for_label }}">{{ profile_form.display_name.label }}</label>
+                {{ profile_form.display_name }}
+                {{ profile_form.display_name.errors }}
+
+                <label class="field-label" for="{{ profile_form.profile_image.id_for_label }}">{{ profile_form.profile_image.label }}</label>
+                {{ profile_form.profile_image }}
+                {{ profile_form.profile_image.errors }}
+
+                <button class="primary-button profile-submit" type="submit">
+                    <i class="fa-solid fa-floppy-disk"></i>
+                    Profil speichern
+                </button>
+            </form>
         </section>
 
         <section class="glass-panel notifications-panel">
@@ -101,8 +141,8 @@
     </div>
 
     <footer class="settings-footer glass-panel">
-        <button class="ghost-button" type="button">Abbrechen</button>
-        <button class="primary-button" type="button">Änderungen speichern</button>
+        <button class="ghost-button" type="reset" form="appearance-form">Abbrechen</button>
+        <button class="primary-button" type="submit" form="appearance-form">Änderungen speichern</button>
     </footer>
 </section>
 {% endblock %}

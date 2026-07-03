@@ -1,0 +1,36 @@
+{% extends 'app/base.html' %}
+{% load static %}
+
+{% block title %}Anmelden | Lunora{% endblock %}
+
+{% block content %}
+<section class="auth-shell">
+    <div class="glass-panel auth-panel">
+        <div class="auth-brand">
+            <i class="fa-solid fa-seedling"></i>
+            <span>Lunora</span>
+        </div>
+        <h1>Anmelden</h1>
+        <p>Willkommen zurück in deinem Workspace.</p>
+
+        <form class="auth-form" method="post">
+            {% csrf_token %}
+            {% if form.non_field_errors %}
+            <div class="form-errors">{{ form.non_field_errors }}</div>
+            {% endif %}
+
+            <label class="field-label" for="{{ form.username.id_for_label }}">{{ form.username.label }}</label>
+            {{ form.username }}
+            {{ form.username.errors }}
+
+            <label class="field-label" for="{{ form.password.id_for_label }}">{{ form.password.label }}</label>
+            {{ form.password }}
+            {{ form.password.errors }}
+
+            <button class="primary-button auth-submit" type="submit">Anmelden</button>
+        </form>
+
+        <p class="auth-switch">Noch kein Konto? <a href="{% url 'register' %}">Jetzt registrieren</a></p>
+    </div>
+</section>
+{% endblock %}

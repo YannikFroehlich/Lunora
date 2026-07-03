@@ -31,6 +31,7 @@
 }
 
 .choice-card {
+  position: relative;
   min-height: 56px;
   display: flex;
   align-items: center;
@@ -39,6 +40,7 @@
   background: rgba(255, 255, 255, 0.28);
   border: 1px solid var(--glass-border-soft);
   border-radius: var(--radius-sm);
+  cursor: pointer;
 }
 
 .choice-card.is-active,
@@ -58,12 +60,29 @@
 }
 
 .color-dot {
+  position: relative;
+  display: inline-grid;
   width: 34px;
   height: 34px;
+  place-items: center;
   background: var(--dot-color);
   border: 4px solid rgba(255, 255, 255, 0.62);
   border-radius: 50%;
   box-shadow: 0 4px 12px rgba(75, 56, 31, 0.18);
+  cursor: pointer;
+}
+
+.choice-card input,
+.color-dot input,
+.segmented-control input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.color-dot.is-active {
+  outline: 3px solid color-mix(in srgb, var(--dot-color) 70%, #ffffff);
+  outline-offset: 3px;
 }
 
 .softness-slider {
@@ -86,14 +105,18 @@
   border-radius: var(--radius-sm);
 }
 
-.segmented-control button {
+.segmented-control label {
+  position: relative;
   min-height: 48px;
+  display: grid;
+  place-items: center;
   background: rgba(255, 255, 255, 0.20);
   border: 0;
   border-right: 1px solid var(--glass-border-soft);
+  cursor: pointer;
 }
 
-.segmented-control button:last-child {
+.segmented-control label:last-child {
   border-right: 0;
 }
 
@@ -113,9 +136,16 @@
   width: 78px;
   height: 78px;
   place-items: center;
+  overflow: hidden;
   color: var(--color-accent-strong);
   background: linear-gradient(145deg, #ead8bd, #fff8ed);
   border-radius: 50%;
+}
+
+.profile-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .profile-avatar i {
@@ -138,6 +168,65 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
   margin-top: 24px;
+}
+
+.profile-form {
+  margin-top: 24px;
+}
+
+.profile-form .field-label {
+  margin-top: 16px;
+}
+
+.profile-form input[type="text"],
+.profile-form input[type="email"],
+.profile-form input[type="password"] {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 14px;
+  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.30);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-sm);
+  outline: 0;
+}
+
+.profile-form input[type="file"] {
+  width: 100%;
+  color: var(--color-muted);
+}
+
+.profile-form input:focus {
+  border-color: rgba(181, 150, 104, 0.62);
+  box-shadow: 0 0 0 3px rgba(181, 150, 104, 0.14);
+}
+
+.field-hint {
+  display: block;
+  margin-top: 7px;
+  color: var(--color-muted);
+  font-size: 0.82rem;
+}
+
+.errorlist,
+.form-errors {
+  margin: 8px 0 0;
+  padding: 0;
+  color: #a64d3d;
+  font-size: 0.86rem;
+  list-style: none;
+}
+
+.profile-submit {
+  width: 100%;
+  margin-top: 20px;
+}
+
+[data-theme="dark"] .profile-form input[type="text"],
+[data-theme="dark"] .profile-form input[type="email"],
+[data-theme="dark"] .profile-form input[type="password"] {
+  background: rgba(255, 248, 237, 0.10);
+  border-color: rgba(255, 248, 237, 0.12);
 }
 
 .setting-line {
@@ -216,6 +305,28 @@
   gap: 14px;
   margin-top: 20px;
   padding: 16px 18px;
+}
+
+[data-density="balanced"] .settings-grid {
+  gap: 15px;
+  margin-top: 18px;
+}
+
+[data-density="balanced"] .settings-grid > .glass-panel {
+  padding: 24px 26px;
+}
+
+[data-density="compact"] .settings-grid {
+  gap: 12px;
+  margin-top: 14px;
+}
+
+[data-density="compact"] .settings-grid > .glass-panel {
+  padding: 20px 22px;
+}
+
+[data-density="compact"] .field-label {
+  margin-top: 18px;
 }
 
 @media (max-width: 1080px) {

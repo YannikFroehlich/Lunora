@@ -11,6 +11,9 @@
   --color-line: rgba(153, 130, 101, 0.18);
   --color-accent: #b59668;
   --color-accent-strong: #9e8055;
+  --background-overlay-alpha: 0.33;
+  --background-highlight-alpha: 0.35;
+  --glass-blur: 28px;
 
   --glass-bg: rgba(255, 252, 246, 0.68);
   --glass-bg-soft: rgba(255, 252, 246, 0.46);
@@ -70,15 +73,15 @@ body::before {
   z-index: 0;
   content: "";
   background:
-    radial-gradient(circle at 72% 12%, rgba(255, 255, 255, 0.42), transparent 34%),
-    linear-gradient(120deg, rgba(255, 255, 255, 0.28), rgba(217, 200, 172, 0.16));
+    radial-gradient(circle at 72% 12%, rgba(255, 255, 255, var(--background-highlight-alpha)), transparent 34%),
+    linear-gradient(120deg, rgba(255, 255, 255, var(--background-overlay-alpha)), rgba(217, 200, 172, 0.16));
   pointer-events: none;
 }
 
 [data-theme="dark"] body::before {
   background:
-    radial-gradient(circle at 72% 12%, rgba(84, 68, 48, 0.28), transparent 34%),
-    linear-gradient(120deg, rgba(18, 15, 12, 0.62), rgba(18, 15, 12, 0.78));
+    radial-gradient(circle at 72% 12%, rgba(84, 68, 48, var(--background-highlight-alpha)), transparent 34%),
+    linear-gradient(120deg, rgba(18, 15, 12, var(--background-overlay-alpha)), rgba(18, 15, 12, 0.78));
 }
 
 button,
@@ -116,8 +119,8 @@ a {
   border: 1px solid var(--glass-border);
   border-radius: 50%;
   box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   transition: transform 180ms ease, background 180ms ease, border-color 180ms ease;
 }
 
@@ -125,6 +128,10 @@ a {
 .icon-button:hover {
   transform: translateY(-1px);
   background: rgba(255, 255, 255, 0.82);
+}
+
+.nav-form {
+  margin: 0;
 }
 
 .nav-orb.is-active {
@@ -152,8 +159,8 @@ a {
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-panel);
-  backdrop-filter: blur(28px);
-  -webkit-backdrop-filter: blur(28px);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 
 .page-hero {
@@ -268,6 +275,22 @@ a {
   color: var(--color-accent-strong);
 }
 
+.field-label {
+  display: block;
+  margin: 18px 0 8px;
+  color: var(--color-heading);
+  font-weight: 600;
+}
+
+.form-errors,
+.errorlist {
+  margin: 8px 0 0;
+  padding: 0;
+  color: #a64d3d;
+  font-size: 0.86rem;
+  list-style: none;
+}
+
 .ghost-button,
 .primary-button {
   min-height: 42px;
@@ -343,6 +366,109 @@ a {
   background: rgba(255, 252, 246, 0.62);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-sm);
+}
+
+[data-density="balanced"] .site-main {
+  padding: 64px 28px 42px;
+}
+
+[data-density="compact"] .site-main {
+  padding: 56px 24px 36px;
+}
+
+[data-density="balanced"] .page-hero {
+  min-height: 112px;
+  padding: 28px 36px;
+}
+
+[data-density="compact"] .page-hero {
+  min-height: 100px;
+  padding: 24px 30px;
+}
+
+[data-density="compact"] .panel-title {
+  margin-bottom: 14px;
+}
+
+.auth-shell {
+  min-height: calc(100vh - 120px);
+  display: grid;
+  place-items: center;
+}
+
+.auth-panel {
+  width: min(100%, 430px);
+  padding: 36px;
+}
+
+.auth-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-accent-strong);
+  font-weight: 800;
+}
+
+.auth-brand i {
+  font-size: 1.4rem;
+}
+
+.auth-panel h1 {
+  margin: 22px 0 8px;
+  color: var(--color-heading);
+  font-family: var(--font-display);
+  font-size: 2.4rem;
+  font-weight: 600;
+}
+
+.auth-panel p {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.auth-form {
+  margin-top: 24px;
+}
+
+.auth-form input[type="text"],
+.auth-form input[type="email"],
+.auth-form input[type="password"] {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 14px;
+  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.32);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-sm);
+  outline: 0;
+}
+
+.auth-form input:focus {
+  border-color: rgba(181, 150, 104, 0.62);
+  box-shadow: 0 0 0 3px rgba(181, 150, 104, 0.14);
+}
+
+.auth-submit {
+  width: 100%;
+  margin-top: 24px;
+}
+
+.auth-switch {
+  margin-top: 20px !important;
+  text-align: center;
+}
+
+.auth-switch a {
+  color: var(--color-accent-strong);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+[data-theme="dark"] .auth-form input[type="text"],
+[data-theme="dark"] .auth-form input[type="email"],
+[data-theme="dark"] .auth-form input[type="password"] {
+  background: rgba(255, 248, 237, 0.10);
+  border-color: rgba(255, 248, 237, 0.12);
 }
 
 @media (max-width: 900px) {

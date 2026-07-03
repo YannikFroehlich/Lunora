@@ -36,10 +36,6 @@
   border-radius: 999px;
 }
 
-.welcome-panel .soft-pill {
-  margin-top: 22px;
-}
-
 .clock-panel {
   grid-area: quote;
   min-height: 430px;
@@ -197,9 +193,11 @@
 
 .action-tile {
   min-height: 112px;
-  display: grid;
-  place-items: center;
-  gap: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 9px;
   color: var(--color-text);
   text-decoration: none;
   background: rgba(255, 255, 255, 0.36);
@@ -217,6 +215,11 @@
 .action-tile i {
   color: var(--color-accent-strong);
   font-size: 1.6rem;
+  line-height: 1;
+}
+
+.action-tile span {
+  line-height: 1.2;
 }
 
 .recent-panel {
@@ -260,6 +263,26 @@
   font-size: 0.88rem;
 }
 
+[data-theme="dark"] .action-tile,
+[data-theme="dark"] .tool-tile {
+  background: rgba(255, 248, 237, 0.12);
+  border-color: rgba(255, 248, 237, 0.10);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 14px 28px rgba(0, 0, 0, 0.18);
+}
+
+[data-theme="dark"] .action-tile:hover {
+  background: rgba(255, 248, 237, 0.18);
+}
+
+[data-theme="dark"] .action-tile span,
+[data-theme="dark"] .tool-tile strong {
+  color: rgba(255, 248, 237, 0.86);
+}
+
+[data-theme="dark"] .tool-tile span {
+  color: rgba(255, 248, 237, 0.58);
+}
+
 .notes-panel {
   grid-area: notes;
   padding: 26px 32px;
@@ -269,6 +292,57 @@
   margin: 16px -8px 0;
   padding: 0;
   list-style: none;
+}
+
+.event-list {
+  margin: 14px -8px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.event-list li {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  padding: 15px 8px;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.event-list li:last-child {
+  border-bottom: 0;
+}
+
+.event-list strong,
+.event-list small {
+  display: block;
+}
+
+.event-list strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-heading);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-list small {
+  margin-top: 5px;
+  color: var(--color-muted);
+  font-size: 0.85rem;
+}
+
+.event-dot {
+  width: 9px;
+  height: 9px;
+  background: var(--tone);
+  border-radius: 50%;
+}
+
+.event-list .empty-events {
+  display: block;
+  color: var(--color-muted);
+  line-height: 1.45;
 }
 
 .note-list li {

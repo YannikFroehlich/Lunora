@@ -1,7 +1,16 @@
 const THEME_STORAGE_KEY = "lunora-theme";
+const isAuthenticated = document.documentElement.dataset.authenticated === "true";
 const themeToggleButton = document.querySelector(".theme-toggle");
 const themeToggleIcon = themeToggleButton?.querySelector("i");
 const themeChoiceButtons = document.querySelectorAll("[data-theme-choice]");
+
+function getInitialTheme() {
+  const serverTheme = document.documentElement.dataset.theme;
+  if (isAuthenticated && ["light", "dark"].includes(serverTheme)) {
+    return serverTheme;
+  }
+  return readStoredTheme() || serverTheme || getSystemTheme();
+}
 
 function readStoredTheme() {
   try {
@@ -44,6 +53,10 @@ function updateThemeChoices(theme) {
   themeChoiceButtons.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.themeChoice === theme);
     button.setAttribute("aria-pressed", String(button.dataset.themeChoice === theme));
+    const input = button.querySelector("input[type='radio']");
+    if (input) {
+      input.checked = button.dataset.themeChoice === theme;
+    }
   });
 }
 
@@ -51,7 +64,7 @@ function applyTheme(theme, { persist = false } = {}) {
   document.documentElement.dataset.theme = theme;
   document.documentElement.style.colorScheme = theme;
 
-  if (persist) {
+  if (persist && !isAuthenticated) {
     saveStoredTheme(theme);
   }
 
@@ -59,7 +72,20 @@ function applyTheme(theme, { persist = false } = {}) {
   updateThemeChoices(theme);
 }
 
-applyTheme(readStoredTheme() || getCurrentTheme() || getSystemTheme());
+function setAccentPreview(color) {
+  if (!color) return;
+  document.documentElement.style.setProperty("--color-accent", color);
+  document.documentElement.style.setProperty("--color-accent-strong", color);
+}
+
+function applySoftnessPreview(value) {
+  const normalized = Math.max(0, Math.min(100, Number(value))) / 100;
+  document.documentElement.style.setProperty("--background-overlay-alpha", (0.14 + normalized * 0.34).toFixed(2));
+  document.documentElement.style.setProperty("--background-highlight-alpha", (0.20 + normalized * 0.28).toFixed(2));
+  document.documentElement.style.setProperty("--glass-blur", `${18 + normalized * 18}px`);
+}
+
+applyTheme(getInitialTheme());
 
 themeToggleButton?.addEventListener("click", () => {
   const nextTheme = getCurrentTheme() === "dark" ? "light" : "dark";
@@ -68,16 +94,20 @@ themeToggleButton?.addEventListener("click", () => {
 
 themeChoiceButtons.forEach((button) => {
   button.addEventListener("click", () => {
+    const input = button.querySelector("input[type='radio']");
+    if (input) {
+      input.checked = true;
+    }
     applyTheme(button.dataset.themeChoice, { persist: true });
   });
 });
 
 window.addEventListener("pageshow", () => {
-  applyTheme(readStoredTheme() || getSystemTheme());
+  applyTheme(getInitialTheme());
 });
 
 window.addEventListener("storage", (event) => {
-  if (event.key === THEME_STORAGE_KEY) {
+  if (!isAuthenticated && event.key === THEME_STORAGE_KEY) {
     applyTheme(readStoredTheme() || getSystemTheme());
   }
 });
@@ -88,17 +118,37 @@ document.querySelectorAll(".switch").forEach((button) => {
 
 document.querySelectorAll(".segmented-control").forEach((control) => {
   control.addEventListener("click", (event) => {
-    const button = event.target.closest("button");
-    if (!button) return;
+    const item = event.target.closest("label, button");
+    if (!item) return;
 
-    control.querySelectorAll("button").forEach((item) => item.classList.remove("is-active"));
-    button.classList.add("is-active");
+    const input = item.querySelector("input[type='radio']");
+    if (input) {
+      input.checked = true;
+      document.documentElement.dataset.density = input.value;
+    }
+
+    control.querySelectorAll("label, button").forEach((option) => option.classList.remove("is-active"));
+    item.classList.add("is-active");
   });
 });
 
-document.querySelectorAll(".color-dot").forEach((button) => {
-  button.addEventListener("click", () => {
-    const nextColor = getComputedStyle(button).getPropertyValue("--dot-color").trim();
-    document.documentElement.style.setProperty("--color-accent", nextColor);
+document.querySelectorAll(".color-dot").forEach((control) => {
+  control.addEventListener("click", () => {
+    const input = control.querySelector("input[type='radio']");
+    if (input) {
+      input.checked = true;
+    }
+    document.querySelectorAll(".color-dot").forEach((dot) => dot.classList.remove("is-active"));
+    control.classList.add("is-active");
+    const nextColor = getComputedStyle(control).getPropertyValue("--dot-color").trim();
+    setAccentPreview(nextColor);
   });
+});
+
+document.querySelectorAll(".softness-slider").forEach((slider) => {
+  slider.addEventListener("input", () => applySoftnessPreview(slider.value));
+});
+
+document.querySelector("#appearance-form")?.addEventListener("reset", () => {
+  window.setTimeout(() => window.location.reload(), 0);
 });

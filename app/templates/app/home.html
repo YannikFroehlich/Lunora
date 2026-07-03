@@ -14,10 +14,6 @@
             <div class="eyebrow"><i class="fa-solid fa-wand-magic-sparkles"></i> Guten Morgen</div>
             <h1>Willkommen zurück</h1>
             <p class="brand-line">Lunora</p>
-            <div class="soft-pill">
-                <i class="fa-solid fa-sparkles"></i>
-                Dein persönlicher Workspace für heute.
-            </div>
             <i class="hero-branch fa-solid fa-seedling" aria-hidden="true"></i>
         </section>
 
@@ -70,22 +66,27 @@
 
         <section class="glass-panel notes-panel">
             <div class="panel-title panel-title-between">
-                <span><i class="fa-regular fa-note-sticky"></i> Meine Notizen</span>
-                <button class="icon-button" type="button" aria-label="Neue Notiz">
-                    <i class="fa-solid fa-plus"></i>
-                </button>
+                <span><i class="fa-regular fa-calendar"></i> Nächste Termine</span>
+                <a class="icon-button" href="{% url 'calendar' %}" aria-label="Kalender öffnen">
+                    <i class="fa-solid fa-arrow-right"></i>
+                </a>
             </div>
-            <ul class="note-list">
-                {% for note in notes %}
+            <ul class="event-list">
+                {% if upcoming_dashboard_events %}
+                {% for event in upcoming_dashboard_events %}
                 <li>
-                    <span class="check-dot {% if note.done %}is-done{% endif %}">
-                        {% if note.done %}<i class="fa-solid fa-check"></i>{% endif %}
+                    <span class="event-dot tone-{{ event.tone }}"></span>
+                    <span>
+                        <strong>{{ event.title }}</strong>
+                        <small>{{ event.date }} · {{ event.time }}</small>
                     </span>
-                    {{ note.text }}
                 </li>
                 {% endfor %}
+                {% else %}
+                <li class="empty-events">Keine kommenden Termine synchronisiert.</li>
+                {% endif %}
             </ul>
-            <a class="panel-link" href="#">Alle Notizen ansehen <i class="fa-solid fa-chevron-right"></i></a>
+            <a class="panel-link" href="{% url 'calendar' %}">Kalender ansehen <i class="fa-solid fa-chevron-right"></i></a>
         </section>
 
         <section class="glass-panel today-panel">

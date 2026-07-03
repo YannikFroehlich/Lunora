@@ -20,12 +20,18 @@
     <div class="calendar-layout">
         <section class="glass-panel month-panel">
             <div class="month-toolbar">
-                <button class="icon-button" type="button" aria-label="Vorheriger Monat"><i class="fa-solid fa-chevron-left"></i></button>
-                <h2>Mai 2024</h2>
-                <button class="icon-button" type="button" aria-label="Nächster Monat"><i class="fa-solid fa-chevron-right"></i></button>
+                <a class="icon-button" href="{% url 'calendar' %}?year={{ prev_month.year }}&month={{ prev_month.month }}" aria-label="Vorheriger Monat"><i class="fa-solid fa-chevron-left"></i></a>
+                <h2>{{ month_label }}</h2>
+                <a class="icon-button" href="{% url 'calendar' %}?year={{ next_month.year }}&month={{ next_month.month }}" aria-label="Nächster Monat"><i class="fa-solid fa-chevron-right"></i></a>
                 <span class="toolbar-spacer"></span>
-                <button class="ghost-button" type="button"><i class="fa-regular fa-calendar"></i> Heute</button>
-                <button class="primary-button" type="button"><i class="fa-solid fa-plus"></i> Neuer Termin</button>
+                <a class="ghost-button" href="{% url 'calendar' %}"><i class="fa-regular fa-calendar"></i> Heute</a>
+                {% if calendar_source %}
+                <form method="post" class="inline-form">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="calendar_sync">
+                    <button class="primary-button" type="submit"><i class="fa-solid fa-rotate"></i> Synchronisieren</button>
+                </form>
+                {% endif %}
             </div>
             <div class="weekday-row">
                 <span>Mo</span><span>Di</span><span>Mi</span><span>Do</span><span>Fr</span><span>Sa</span><span>So</span>
@@ -36,8 +42,11 @@
                     <article class="calendar-day {% if day.muted %}is-muted{% endif %} {% if day.today %}is-today{% endif %}">
                         <strong>{{ day.number }}</strong>
                         {% for event in day.events %}
-                        <span class="event-chip tone-{{ event.tone }}">{{ event.label }}</span>
+                        <span class="event-chip tone-{{ event.tone }}" title="{{ event.time }} · {{ event.label }}">{{ event.label }}</span>
                         {% endfor %}
+                        {% if day.overflow %}
+                        <span class="event-more">+{{ day.overflow }} weitere</span>
+                        {% endif %}
                     </article>
                     {% endfor %}
                 {% endfor %}
@@ -45,11 +54,44 @@
         </section>
 
         <aside class="side-stack">
+            <section class="glass-panel calendar-source-panel">
+                <div class="panel-title panel-title-between">
+                    <h2>Google Kalender</h2>
+                    <i class="fa-brands fa-google"></i>
+                </div>
+                <form class="calendar-source-form" method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="calendar_source">
+                    <label class="field-label" for="{{ calendar_source_form.ical_url.id_for_label }}">{{ calendar_source_form.ical_url.label }}</label>
+                    {{ calendar_source_form.ical_url }}
+                    <small class="field-hint">{{ calendar_source_form.ical_url.help_text }}</small>
+                    {{ calendar_source_form.ical_url.errors }}
+
+                    <label class="source-toggle">
+                        {{ calendar_source_form.enabled }}
+                        <span>{{ calendar_source_form.enabled.label }}</span>
+                    </label>
+                    <button class="primary-button source-submit" type="submit">
+                        <i class="fa-solid fa-link"></i>
+                        Kalender speichern
+                    </button>
+                </form>
+                {% if calendar_source.last_synced_at %}
+                <p class="sync-meta">Zuletzt synchronisiert: {{ calendar_source.last_synced_at|date:"d.m.Y H:i" }}</p>
+                {% endif %}
+                {% if calendar_source.last_error %}
+                <p class="sync-error">{{ calendar_source.last_error }}</p>
+                {% elif sync_result.message %}
+                <p class="sync-meta">{{ sync_result.message }}</p>
+                {% endif %}
+            </section>
+
             <section class="glass-panel today-events">
                 <div class="panel-title panel-title-between">
-                    <div><h2>Heute</h2><p>Dienstag, 21. Mai</p></div>
+                    <div><h2>Heute</h2><p>{{ today_label }}</p></div>
                     <i class="fa-regular fa-calendar"></i>
                 </div>
+                {% if today_events %}
                 {% for event in today_events %}
                 <div class="timeline-row">
                     <time>{{ event.time }}</time>
@@ -58,10 +100,14 @@
                     <i class="fa-solid {{ event.icon }}"></i>
                 </div>
                 {% endfor %}
+                {% else %}
+                <p class="empty-state">Heute stehen keine Termine an.</p>
+                {% endif %}
             </section>
 
             <section class="glass-panel upcoming-panel">
                 <h2>Nächste Termine</h2>
+                {% if upcoming_events %}
                 {% for event in upcoming_events %}
                 <div class="upcoming-row">
                     <span>{{ event.date }}</span>
@@ -70,28 +116,47 @@
                     <i class="fa-solid {{ event.icon }}"></i>
                 </div>
                 {% endfor %}
-                <a class="panel-link" href="#">Alle anzeigen <i class="fa-solid fa-chevron-right"></i></a>
+                {% else %}
+                <p class="empty-state">Noch keine kommenden Termine synchronisiert.</p>
+                {% endif %}
             </section>
 
             <section class="glass-panel reminder-panel">
                 <div class="panel-title panel-title-between">
                     <h2>Erinnerungen</h2>
-                    <button class="icon-button" type="button" aria-label="Erinnerung hinzufügen"><i class="fa-solid fa-plus"></i></button>
+                    <button class="icon-button" type="submit" form="reminder-add-form" aria-label="Erinnerung hinzufügen"><i class="fa-solid fa-plus"></i></button>
                 </div>
+                <form id="reminder-add-form" class="reminder-add-form" method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="reminder_add">
+                    {{ reminder_form.title }}
+                    {{ reminder_form.title.errors }}
+                </form>
+                {% if reminders %}
                 {% for reminder in reminders %}
-                <label class="reminder-row">
-                    <input type="checkbox">
-                    <span>{{ reminder }}<small>Fällig in Kürze</small></span>
-                </label>
+                <form class="reminder-row {% if reminder.is_done %}is-done{% endif %}" method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="reminder_toggle">
+                    <input type="hidden" name="reminder_id" value="{{ reminder.id }}">
+                    <input type="checkbox" name="is_done" {% if reminder.is_done %}checked{% endif %} onchange="this.form.submit()">
+                    <span>{{ reminder.title }}<small>{% if reminder.is_done %}Erledigt{% else %}Fällig in Kürze{% endif %}</small></span>
+                </form>
                 {% endfor %}
+                {% else %}
+                <p class="empty-state">Noch keine Erinnerungen angelegt.</p>
+                {% endif %}
             </section>
         </aside>
 
         <section class="glass-panel month-stats">
-            <article><i class="fa-regular fa-calendar"></i><strong>18</strong><span>Termine</span><small>+12 % vs. April</small></article>
-            <article><i class="fa-regular fa-sun"></i><strong>9</strong><span>Freie Tage</span><small>+1 Tag vs. April</small></article>
-            <article><i class="fa-regular fa-circle-check"></i><strong>14</strong><span>Erledigte Aufgaben</span><small>+8 % vs. April</small></article>
-            <article class="mini-chart"><span></span><span></span><span></span><span></span><span></span></article>
+            <article><i class="fa-regular fa-calendar"></i><strong>{{ month_stats.events }}</strong><span>Termine</span><small>in {{ month_label }}</small></article>
+            <article><i class="fa-regular fa-sun"></i><strong>{{ month_stats.free_days }}</strong><span>Freie Tage</span><small>ohne Termine</small></article>
+            <article><i class="fa-regular fa-circle-check"></i><strong>{{ month_stats.synced_days }}</strong><span>Aktive Tage</span><small>mit Terminen</small></article>
+            <article class="mini-chart">
+                {% for bar in month_stats.chart_bars %}
+                <span style="--bar-height: {{ bar.height }}px" title="{{ bar.count }} Termine"></span>
+                {% endfor %}
+            </article>
         </section>
     </div>
 </section>
