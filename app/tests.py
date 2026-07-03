@@ -84,6 +84,31 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(user.profile.background_softness, 82)
         self.assertEqual(user.profile.density, "compact")
 
+    def test_logged_in_user_can_save_region_settings(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.post(
+            "/settings/",
+            {
+                "form_name": "appearance",
+                "theme": "light",
+                "accent_color": "#c2a276",
+                "background_softness": "55",
+                "density": "comfortable",
+                "date_format": "iso",
+                "time_format": "12h",
+                "timezone_name": "UTC",
+            },
+        )
+
+        self.assertRedirects(response, "/settings/")
+        user.profile.refresh_from_db()
+        self.assertEqual(user.profile.date_format, "iso")
+        self.assertEqual(user.profile.time_format, "12h")
+        self.assertEqual(user.profile.timezone_name, "UTC")
+
     def test_calendar_source_can_be_saved(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
         Profile.objects.create(user=user, display_name="Mira")

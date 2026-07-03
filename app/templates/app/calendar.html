@@ -76,8 +76,8 @@
                         Kalender speichern
                     </button>
                 </form>
-                {% if calendar_source.last_synced_at %}
-                <p class="sync-meta">Zuletzt synchronisiert: {{ calendar_source.last_synced_at|date:"d.m.Y H:i" }}</p>
+                {% if calendar_last_synced_label %}
+                <p class="sync-meta">Zuletzt synchronisiert: {{ calendar_last_synced_label }}</p>
                 {% endif %}
                 {% if calendar_source.last_error %}
                 <p class="sync-error">{{ calendar_source.last_error }}</p>

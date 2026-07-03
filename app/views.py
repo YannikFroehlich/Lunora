@@ -11,6 +11,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from app.forms import AppearanceForm, CalendarReminderForm, CalendarSourceForm, ProfileForm, RegistrationForm
 from app.models import CalendarReminder, CalendarSource, Profile
 from app.services.calendar_service import sync_calendar_source
+from app.services.user_preferences import format_user_datetime
 from app.services.weather_service import get_location_suggestions, get_weather_context
 from app.view_models import (
     get_calendar_context,
@@ -180,6 +181,7 @@ def calendar(request):
             "calendar_source_form": source_form,
             "reminder_form": reminder_form,
             "sync_result": sync_result,
+            "calendar_last_synced_label": format_user_datetime(source.last_synced_at, request.user) if source and source.last_synced_at else "",
         }
     )
     return render(request, "app/calendar.html", context)

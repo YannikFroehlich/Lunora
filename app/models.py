@@ -20,6 +20,28 @@ class Profile(models.Model):
         ("#aaa2be", "Lavendel"),
         ("#c1a09a", "Rose"),
     ]
+    DATE_FORMAT_CHOICES = [
+        ("de_numeric", "31.12.2026"),
+        ("de_long", "31. Dezember 2026"),
+        ("iso", "2026-12-31"),
+        ("us_numeric", "12/31/2026"),
+    ]
+    TIME_FORMAT_CHOICES = [
+        ("24h", "24-Stunden"),
+        ("12h", "12-Stunden"),
+    ]
+    TIMEZONE_CHOICES = [
+        ("Europe/Berlin", "Europe/Berlin"),
+        ("Europe/Amsterdam", "Europe/Amsterdam"),
+        ("Europe/London", "Europe/London"),
+        ("Europe/Paris", "Europe/Paris"),
+        ("Europe/Rome", "Europe/Rome"),
+        ("Europe/Madrid", "Europe/Madrid"),
+        ("UTC", "UTC"),
+        ("America/New_York", "America/New_York"),
+        ("America/Los_Angeles", "America/Los_Angeles"),
+        ("Asia/Tokyo", "Asia/Tokyo"),
+    ]
 
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile")
     display_name = models.CharField(max_length=120)
@@ -28,6 +50,9 @@ class Profile(models.Model):
     accent_color = models.CharField(max_length=7, choices=ACCENT_COLOR_CHOICES, default="#c2a276")
     background_softness = models.PositiveSmallIntegerField(default=55)
     density = models.CharField(max_length=12, choices=DENSITY_CHOICES, default="comfortable")
+    date_format = models.CharField(max_length=24, choices=DATE_FORMAT_CHOICES, default="de_numeric")
+    time_format = models.CharField(max_length=12, choices=TIME_FORMAT_CHOICES, default="24h")
+    timezone_name = models.CharField(max_length=64, choices=TIMEZONE_CHOICES, default="Europe/Berlin")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

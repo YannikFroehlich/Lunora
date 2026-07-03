@@ -4,48 +4,34 @@ from datetime import datetime, time, timedelta
 from django.utils import timezone
 
 from app.models import CalendarEvent, CalendarReminder
+from app.services.user_preferences import (
+    format_user_date,
+    format_user_time,
+    get_user_month_name,
+    get_user_weekday_name,
+    get_user_zoneinfo,
+    get_user_timezone_name,
+    localtime_for_user,
+)
 from app.services.weather_service import get_weather_context
 
 
 def get_dashboard_context(user=None):
-    now = timezone.localtime()
-    weekday_names = [
-        "Montag",
-        "Dienstag",
-        "Mittwoch",
-        "Donnerstag",
-        "Freitag",
-        "Samstag",
-        "Sonntag",
-    ]
-    month_names = [
-        "Januar",
-        "Februar",
-        "März",
-        "April",
-        "Mai",
-        "Juni",
-        "Juli",
-        "August",
-        "September",
-        "Oktober",
-        "November",
-        "Dezember",
-    ]
+    now = localtime_for_user(profile_or_user=user)
     dashboard_weather = _dashboard_weather_context()
 
     return {
         "active_page": "home",
-        "today_label": now.strftime("%d.%m.%Y"),
-        "time_label": now.strftime("%H:%M"),
+        "today_label": format_user_date(now, user),
+        "time_label": format_user_time(now, user),
         "dashboard_weather": dashboard_weather,
         "clock": {
-            "time": now.strftime("%H:%M"),
-            "weekday": weekday_names[now.weekday()],
+            "time": format_user_time(now, user),
+            "weekday": get_user_weekday_name(now, user),
             "day": now.strftime("%d"),
-            "month": month_names[now.month - 1],
+            "month": get_user_month_name(now, user),
             "year": now.strftime("%Y"),
-            "timezone": timezone.get_current_timezone_name(),
+            "timezone": get_user_timezone_name(user),
         },
         "nav_tiles": [
             {"label": "Dashboard", "icon": "fa-table-cells-large", "url_name": "home"},
@@ -67,7 +53,6 @@ def get_dashboard_context(user=None):
             {"text": "Präsentation vorbereiten", "done": False},
         ],
     }
-
 
 def _dashboard_weather_context():
     weather_context = get_weather_context({})
@@ -224,8 +209,8 @@ def _dashboard_upcoming_events(user, now):
     return [
         {
             "title": event.title,
-            "date": timezone.localtime(event.start_at).strftime("%d.%m.%Y"),
-            "time": "Ganztagig" if event.is_all_day else timezone.localtime(event.start_at).strftime("%H:%M"),
+            "date": format_user_date(event.start_at, user),
+            "time": "Ganztägig" if event.is_all_day else format_user_time(event.start_at, user),
             "tone": event.tone,
         }
         for event in events
@@ -233,7 +218,8 @@ def _dashboard_upcoming_events(user, now):
 
 
 def get_calendar_context(user, *, year=None, month=None):
-    now = timezone.localtime()
+    user_timezone = get_user_zoneinfo(user)
+    now = localtime_for_user(profile_or_user=user)
     try:
         year = int(year or now.year)
         month = int(month or now.month)
@@ -242,33 +228,19 @@ def get_calendar_context(user, *, year=None, month=None):
     except (TypeError, ValueError):
         year = now.year
         month = now.month
+
     month_date = now.date().replace(year=year, month=month, day=1)
-    month_names = [
-        "Januar",
-        "Februar",
-        "Maerz",
-        "April",
-        "Mai",
-        "Juni",
-        "Juli",
-        "August",
-        "September",
-        "Oktober",
-        "November",
-        "Dezember",
-    ]
-    weekday_names = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
     weeks = calendar.Calendar(firstweekday=0).monthdatescalendar(year, month)
     visible_start = weeks[0][0]
     visible_end = weeks[-1][-1] + timedelta(days=1)
-    range_start = timezone.make_aware(datetime.combine(visible_start, time.min))
-    range_end = timezone.make_aware(datetime.combine(visible_end, time.min))
+    range_start = timezone.make_aware(datetime.combine(visible_start, time.min), user_timezone)
+    range_end = timezone.make_aware(datetime.combine(visible_end, time.min), user_timezone)
     events = list(
         CalendarEvent.objects.filter(user=user, start_at__lt=range_end, end_at__gt=range_start)
         .select_related("source")
         .order_by("start_at", "title")
     )
-    events_by_date = _group_calendar_events_by_date(events, visible_start, visible_end)
+    events_by_date = _group_calendar_events_by_date(events, visible_start, visible_end, user)
 
     rows = []
     for week in weeks:
@@ -284,7 +256,7 @@ def get_calendar_context(user, *, year=None, month=None):
                         {
                             "label": event.title,
                             "tone": event.tone,
-                            "time": _calendar_event_time_label(event),
+                            "time": _calendar_event_time_label(event, user),
                         }
                         for event in day_events[:3]
                     ],
@@ -295,7 +267,7 @@ def get_calendar_context(user, *, year=None, month=None):
 
     today_events = [
         {
-            "time": _calendar_event_time_label(event),
+            "time": _calendar_event_time_label(event, user),
             "title": event.title,
             "icon": "fa-calendar-day",
             "tone": event.tone,
@@ -306,21 +278,21 @@ def get_calendar_context(user, *, year=None, month=None):
     month_events = [
         event
         for event in events
-        if timezone.localtime(event.start_at).date().year == year
-        and timezone.localtime(event.start_at).date().month == month
+        if localtime_for_user(event.start_at, user).date().year == year
+        and localtime_for_user(event.start_at, user).date().month == month
     ]
     days_in_month = [month_date.replace(day=day) for day in range(1, calendar.monthrange(year, month)[1] + 1)]
-    busy_days = {timezone.localtime(event.start_at).date() for event in month_events}
+    busy_days = {localtime_for_user(event.start_at, user).date() for event in month_events}
     reminder_items = CalendarReminder.objects.filter(user=user)[:8]
-    chart_bars = _calendar_chart_bars(month_events, year, month)
+    chart_bars = _calendar_chart_bars(month_events, year, month, user)
     prev_month = _shift_month(year, month, -1)
     next_month = _shift_month(year, month, 1)
 
     return {
         "active_page": "calendar",
         "calendar_rows": rows,
-        "month_label": f"{month_names[month - 1]} {year}",
-        "today_label": f"{weekday_names[now.weekday()]}, {now.strftime('%d.%m.%Y')}",
+        "month_label": f"{get_user_month_name(month_date, user)} {year}",
+        "today_label": f"{get_user_weekday_name(now, user)}, {format_user_date(now, user)}",
         "today_events": today_events,
         "upcoming_events": upcoming_events,
         "prev_month": {"year": prev_month[0], "month": prev_month[1]},
@@ -335,11 +307,11 @@ def get_calendar_context(user, *, year=None, month=None):
     }
 
 
-def _group_calendar_events_by_date(events, visible_start, visible_end):
+def _group_calendar_events_by_date(events, visible_start, visible_end, user):
     grouped = {}
     for event in events:
-        start_date = max(timezone.localtime(event.start_at).date(), visible_start)
-        event_end = timezone.localtime(event.end_at)
+        start_date = max(localtime_for_user(event.start_at, user).date(), visible_start)
+        event_end = localtime_for_user(event.end_at, user)
         end_date = event_end.date()
         if event.is_all_day:
             end_date = (event_end - timedelta(seconds=1)).date()
@@ -352,17 +324,17 @@ def _group_calendar_events_by_date(events, visible_start, visible_end):
     return grouped
 
 
-def _calendar_event_time_label(event):
+def _calendar_event_time_label(event, user):
     if event.is_all_day:
-        return "Ganztagig"
-    return timezone.localtime(event.start_at).strftime("%H:%M")
+        return "Ganztägig"
+    return format_user_time(event.start_at, user)
 
 
 def _upcoming_calendar_events(user, now):
     events = CalendarEvent.objects.filter(user=user, end_at__gte=now).select_related("source").order_by("start_at")[:6]
     return [
         {
-            "date": timezone.localtime(event.start_at).strftime("%d.%m."),
+            "date": format_user_date(event.start_at, user),
             "title": event.title,
             "category": event.source.name,
             "icon": "fa-calendar-day",
@@ -380,12 +352,12 @@ def _shift_month(year, month, direction):
     return year, shifted_month
 
 
-def _calendar_chart_bars(events, year, month):
+def _calendar_chart_bars(events, year, month, user):
     weeks = calendar.Calendar(firstweekday=0).monthdatescalendar(year, month)
     counts = []
     for week in weeks:
         week_dates = {day for day in week if day.month == month}
-        count = sum(1 for event in events if timezone.localtime(event.start_at).date() in week_dates)
+        count = sum(1 for event in events if localtime_for_user(event.start_at, user).date() in week_dates)
         counts.append(count)
 
     max_count = max(counts, default=0)

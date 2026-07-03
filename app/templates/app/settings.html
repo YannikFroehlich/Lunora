@@ -98,7 +98,39 @@
                 {{ profile_form.display_name.errors }}
 
                 <label class="field-label" for="{{ profile_form.profile_image.id_for_label }}">{{ profile_form.profile_image.label }}</label>
-                {{ profile_form.profile_image }}
+                <div class="profile-image-control">
+                    <div class="profile-image-summary">
+                        {% if profile.profile_image %}
+                        <span class="profile-image-eyebrow">Aktuelles Bild</span>
+                        <a class="profile-image-name" href="{{ profile.profile_image.url }}" target="_blank" rel="noopener">
+                            <i class="fa-regular fa-image" aria-hidden="true"></i>
+                            {{ profile.profile_image.name|cut:"profiles/" }}
+                        </a>
+                        {% else %}
+                        <span class="profile-image-eyebrow">Noch kein Bild</span>
+                        <strong class="profile-image-name">
+                            <i class="fa-regular fa-image" aria-hidden="true"></i>
+                            Profilbild hinzufügen
+                        </strong>
+                        {% endif %}
+                    </div>
+
+                    <div class="profile-image-actions">
+                        <label class="upload-button" for="{{ profile_form.profile_image.id_for_label }}">
+                            <i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i>
+                            <span>Bild auswählen</span>
+                            <input class="profile-image-upload-input" type="file" name="{{ profile_form.profile_image.html_name }}" accept="image/*" id="{{ profile_form.profile_image.id_for_label }}" data-file-input>
+                        </label>
+                        <span class="selected-file-name" data-file-name-for="{{ profile_form.profile_image.id_for_label }}">Keine neue Datei ausgewählt</span>
+                    </div>
+
+                    {% if profile.profile_image %}
+                    <label class="clear-image-toggle" for="profile_image-clear_id">
+                        <input type="checkbox" name="profile_image-clear" id="profile_image-clear_id">
+                        <span>Profilbild zurücksetzen</span>
+                    </label>
+                    {% endif %}
+                </div>
                 {{ profile_form.profile_image.errors }}
 
                 <button class="primary-button profile-submit" type="submit">
@@ -120,13 +152,43 @@
 
         <section class="glass-panel region-panel">
             <div class="panel-title"><i class="fa-solid fa-globe"></i><h2>Sprache & Region</h2></div>
-            {% for row in region_rows %}
-            <button class="setting-line linked-line" type="button">
-                <span>{{ row.label }}</span>
-                <strong>{{ row.value }}</strong>
-                <i class="fa-solid fa-chevron-right"></i>
-            </button>
-            {% endfor %}
+            <div class="region-form-fields">
+                <label class="region-field" for="{{ appearance_form.date_format.id_for_label }}">
+                    <span>
+                        <strong>{{ appearance_form.date_format.label }}</strong>
+                    </span>
+                    <select class="region-select" name="{{ appearance_form.date_format.html_name }}" id="{{ appearance_form.date_format.id_for_label }}" form="appearance-form">
+                        {% for value, label in appearance_form.date_format.field.choices %}
+                        <option value="{{ value }}" {% if appearance_form.date_format.value == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                {{ appearance_form.date_format.errors }}
+
+                <label class="region-field" for="{{ appearance_form.time_format.id_for_label }}">
+                    <span>
+                        <strong>{{ appearance_form.time_format.label }}</strong>
+                    </span>
+                    <select class="region-select" name="{{ appearance_form.time_format.html_name }}" id="{{ appearance_form.time_format.id_for_label }}" form="appearance-form">
+                        {% for value, label in appearance_form.time_format.field.choices %}
+                        <option value="{{ value }}" {% if appearance_form.time_format.value == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                {{ appearance_form.time_format.errors }}
+
+                <label class="region-field" for="{{ appearance_form.timezone_name.id_for_label }}">
+                    <span>
+                        <strong>{{ appearance_form.timezone_name.label }}</strong>
+                    </span>
+                    <select class="region-select" name="{{ appearance_form.timezone_name.html_name }}" id="{{ appearance_form.timezone_name.id_for_label }}" form="appearance-form">
+                        {% for value, label in appearance_form.timezone_name.field.choices %}
+                        <option value="{{ value }}" {% if appearance_form.timezone_name.value == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                {{ appearance_form.timezone_name.errors }}
+            </div>
         </section>
 
         <section class="glass-panel privacy-panel">
@@ -147,4 +209,9 @@
         <button class="primary-button" type="submit" form="appearance-form">Änderungen speichern</button>
     </footer>
 </section>
+{% endblock %}
+
+
+{% block page_js %}
+<script src="{% static 'js/settings.js' %}"></script>
 {% endblock %}

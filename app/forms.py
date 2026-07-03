@@ -60,9 +60,28 @@ class ProfileForm(forms.ModelForm):
 
 
 class AppearanceForm(forms.ModelForm):
+    REGION_FIELD_FALLBACKS = {
+        "date_format": "de_numeric",
+        "time_format": "24h",
+        "timezone_name": "Europe/Berlin",
+    }
+
     class Meta:
         model = Profile
-        fields = ["theme", "accent_color", "background_softness", "density"]
+        fields = [
+            "theme",
+            "accent_color",
+            "background_softness",
+            "density",
+            "date_format",
+            "time_format",
+            "timezone_name",
+        ]
+        labels = {
+            "date_format": "Datumsformat",
+            "time_format": "Zeitformat",
+            "timezone_name": "Zeitzone",
+        }
         widgets = {
             "theme": forms.RadioSelect(),
             "accent_color": forms.RadioSelect(),
@@ -70,13 +89,36 @@ class AppearanceForm(forms.ModelForm):
                 attrs={"class": "softness-slider", "type": "range", "min": "0", "max": "100"}
             ),
             "density": forms.RadioSelect(),
+            "date_format": forms.Select(attrs={"class": "region-select"}),
+            "time_format": forms.Select(attrs={"class": "region-select"}),
+            "timezone_name": forms.Select(attrs={"class": "region-select"}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field_name in self.REGION_FIELD_FALLBACKS:
+            self.fields[field_name].required = False
 
     def clean_background_softness(self):
         value = self.cleaned_data["background_softness"]
         if value < 0 or value > 100:
             raise forms.ValidationError("Bitte waehle einen Wert zwischen 0 und 100.")
         return value
+
+    def _clean_optional_region_field(self, field_name):
+        value = self.cleaned_data.get(field_name)
+        if value:
+            return value
+        return getattr(self.instance, field_name, "") or self.REGION_FIELD_FALLBACKS[field_name]
+
+    def clean_date_format(self):
+        return self._clean_optional_region_field("date_format")
+
+    def clean_time_format(self):
+        return self._clean_optional_region_field("time_format")
+
+    def clean_timezone_name(self):
+        return self._clean_optional_region_field("timezone_name")
 
 
 class CalendarSourceForm(forms.ModelForm):

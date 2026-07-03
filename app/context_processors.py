@@ -26,6 +26,9 @@ def _appearance_from_profile(profile):
         "background_highlight_alpha": f"{0.20 + normalized * 0.28:.2f}",
         "glass_blur": f"{18 + normalized * 18:.0f}px",
         "density": profile.density,
+        "date_format": profile.date_format,
+        "time_format": profile.time_format,
+        "timezone_name": profile.timezone_name,
     }
 
 
@@ -36,6 +39,9 @@ def appearance_settings(request):
         accent_color="#c2a276",
         background_softness=55,
         density="comfortable",
+        date_format="de_numeric",
+        time_format="24h",
+        timezone_name="Europe/Berlin",
     )
 
     profile = default_profile
