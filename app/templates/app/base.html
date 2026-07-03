@@ -48,7 +48,8 @@
     <a class="nav-orb {% if active_page == 'home' %}is-active{% endif %}" href="{% url 'home' %}" aria-label="Dashboard">
         <i class="fa-solid fa-house" aria-hidden="true"></i>
     </a>
-    <a class="nav-orb {% if active_page == 'settings' %}is-active{% endif %}" href="{% url 'settings' %}" aria-label="Einstellungen">
+    {% url 'settings' as settings_url %}
+    <a class="nav-orb {% if active_page == 'settings' %}is-active{% endif %}" href="{% if active_page == 'settings' %}{{ settings_url }}{% else %}{{ settings_url }}?next={{ request.get_full_path|urlencode }}{% endif %}" aria-label="Einstellungen">
         <i class="fa-solid fa-gear" aria-hidden="true"></i>
     </a>
     <form class="nav-form" method="post" action="{% url 'logout' %}">

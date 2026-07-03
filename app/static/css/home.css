@@ -7,9 +7,9 @@
   grid-template-columns: minmax(0, 1.85fr) minmax(320px, 0.98fr);
   grid-template-areas:
     "welcome quote"
-    "actions quote"
-    "recent notes"
-    "today notes";
+    "today quote"
+    "actions notes"
+    "recent notes";
   gap: 22px;
 }
 
@@ -370,10 +370,21 @@
 
 .today-panel {
   grid-area: today;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 26px 34px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 0.86fr);
+  align-items: stretch;
+  gap: 24px;
+  padding: 24px 32px;
+}
+
+.weather-overview-card,
+.weather-forecast-block {
+  min-width: 0;
+}
+
+.weather-forecast-block {
+  padding-left: 30px;
+  border-left: 1px solid var(--color-line);
 }
 
 .weather-row {
@@ -383,36 +394,36 @@
   margin-top: 18px;
 }
 
+.weather-row-compact {
+  gap: 15px;
+}
+
 .weather-icon {
+  flex: 0 0 auto;
   color: var(--color-accent);
   font-size: 2.8rem;
 }
 
-.weather-row strong,
-.time-block strong {
+.weather-row-compact .weather-icon {
+  font-size: 2.35rem;
+}
+
+.weather-row strong {
+  flex: 0 0 auto;
   color: var(--color-heading);
   font-family: var(--font-display);
   font-size: 2.9rem;
   font-weight: 500;
+  line-height: 1;
 }
 
 .weather-row span {
+  min-width: 0;
   color: var(--color-muted);
   line-height: 1.35;
 }
 
-.time-block {
-  min-width: 220px;
-  padding-left: 36px;
-  border-left: 1px solid var(--color-line);
-}
-
-.time-block span,
-.time-block strong {
-  display: block;
-}
-
-.time-block span {
+.weather-row small {
   color: var(--color-muted);
 }
 
@@ -421,11 +432,11 @@
     grid-template-columns: 1fr;
     grid-template-areas:
       "welcome"
+      "today"
       "actions"
       "quote"
       "recent"
-      "notes"
-      "today";
+      "notes";
   }
 
   .clock-panel {
@@ -439,15 +450,19 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .today-panel,
+  .today-panel {
+    grid-template-columns: 1fr;
+  }
+
   .weather-row {
     align-items: flex-start;
     flex-direction: column;
   }
 
-  .time-block {
-    min-width: 0;
+  .weather-forecast-block {
+    padding-top: 22px;
     padding-left: 0;
+    border-top: 1px solid var(--color-line);
     border-left: 0;
   }
 

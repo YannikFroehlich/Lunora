@@ -4,6 +4,7 @@ from datetime import datetime, time, timedelta
 from django.utils import timezone
 
 from app.models import CalendarEvent, CalendarReminder
+from app.services.weather_service import get_weather_context
 
 
 def get_dashboard_context(user=None):
@@ -31,10 +32,13 @@ def get_dashboard_context(user=None):
         "November",
         "Dezember",
     ]
+    dashboard_weather = _dashboard_weather_context()
+
     return {
         "active_page": "home",
         "today_label": now.strftime("%d.%m.%Y"),
         "time_label": now.strftime("%H:%M"),
+        "dashboard_weather": dashboard_weather,
         "clock": {
             "time": now.strftime("%H:%M"),
             "weekday": weekday_names[now.weekday()],
@@ -62,6 +66,30 @@ def get_dashboard_context(user=None):
             {"text": "Landingpage designen", "done": False},
             {"text": "Präsentation vorbereiten", "done": False},
         ],
+    }
+
+
+def _dashboard_weather_context():
+    weather_context = get_weather_context({})
+    current = weather_context.get("current", {})
+    daily_forecast = weather_context.get("daily_forecast") or []
+    tomorrow = daily_forecast[0] if daily_forecast else {}
+
+    return {
+        "today": {
+            "temperature": current.get("temperature", 24),
+            "feels_like": current.get("feels_like", current.get("temperature", 24)),
+            "description": current.get("description", "Teilweise bewölkt"),
+            "icon": current.get("icon", "fa-cloud-sun"),
+        },
+        "tomorrow": {
+            "day": tomorrow.get("day", "Morgen"),
+            "high": tomorrow.get("high", current.get("high", current.get("temperature", 24))),
+            "low": tomorrow.get("low", current.get("low", current.get("temperature", 18))),
+            "rain": tomorrow.get("rain", 10),
+            "description": tomorrow.get("description", "Teilweise bewölkt"),
+            "icon": tomorrow.get("icon", "fa-cloud-sun"),
+        },
     }
 
 

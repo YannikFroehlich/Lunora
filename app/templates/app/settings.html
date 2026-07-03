@@ -21,6 +21,7 @@
         <form id="appearance-form" class="glass-panel appearance-panel" method="post">
             {% csrf_token %}
             <input type="hidden" name="form_name" value="appearance">
+            <input type="hidden" name="return_to" value="{{ return_to }}">
             <div class="panel-title"><i class="fa-solid fa-wand-magic-sparkles"></i><h2>Darstellung</h2></div>
             {% if appearance_form.non_field_errors %}
             <div class="form-errors">{{ appearance_form.non_field_errors }}</div>
@@ -86,6 +87,7 @@
             <form class="profile-form" method="post" enctype="multipart/form-data">
                 {% csrf_token %}
                 <input type="hidden" name="form_name" value="profile">
+                <input type="hidden" name="return_to" value="{{ return_to }}">
 
                 {% if profile_form.non_field_errors %}
                 <div class="form-errors">{{ profile_form.non_field_errors }}</div>
@@ -141,7 +143,7 @@
     </div>
 
     <footer class="settings-footer glass-panel">
-        <button class="ghost-button" type="reset" form="appearance-form">Abbrechen</button>
+        <a class="ghost-button" href="{{ return_to }}">Abbrechen</a>
         <button class="primary-button" type="submit" form="appearance-form">Änderungen speichern</button>
     </footer>
 </section>

@@ -89,19 +89,23 @@
             <a class="panel-link" href="{% url 'calendar' %}">Kalender ansehen <i class="fa-solid fa-chevron-right"></i></a>
         </section>
 
-        <section class="glass-panel today-panel">
-            <div>
+        <section class="glass-panel today-panel weather-overview-panel">
+            <article class="weather-overview-card">
                 <span class="panel-kicker"><i class="fa-regular fa-sun"></i> Heute</span>
                 <div class="weather-row">
-                    <i class="fa-solid fa-cloud-sun weather-icon"></i>
-                    <strong>24°</strong>
-                    <span>Teilweise bewölkt<br><small>Gefühlt 25°</small></span>
+                    <i class="fa-solid {{ dashboard_weather.today.icon }} weather-icon"></i>
+                    <strong>{{ dashboard_weather.today.temperature }}°</strong>
+                    <span>{{ dashboard_weather.today.description }}<br><small>Gefühlt {{ dashboard_weather.today.feels_like }}°</small></span>
                 </div>
-            </div>
-            <div class="time-block">
-                <span>{{ today_label }}</span>
-                <strong>{{ time_label }}</strong>
-            </div>
+            </article>
+            <article class="weather-forecast-block">
+                <span class="panel-kicker"><i class="fa-solid fa-seedling"></i> Morgen</span>
+                <div class="weather-row weather-row-compact">
+                    <i class="fa-solid {{ dashboard_weather.tomorrow.icon }} weather-icon"></i>
+                    <strong>{{ dashboard_weather.tomorrow.high }}°</strong>
+                    <span>{{ dashboard_weather.tomorrow.description }}<br><small>{{ dashboard_weather.tomorrow.low }}° nachts · {{ dashboard_weather.tomorrow.rain }} % Regen</small></span>
+                </div>
+            </article>
         </section>
     </div>
 </section>
