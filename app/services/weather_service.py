@@ -372,8 +372,13 @@ def _fallback_for_location(fallback, location, search_query):
     context["search_query"] = search_query
 
     if display_label:
-        context["current"]["city"] = location.get("name") or _short_location_name(display_label)
-        context["current"]["detail"] = location.get("details") or _location_details_from_label(display_label)
+        fallback_place = _fallback_place_for_label(display_label)
+        context["current"]["city"] = location.get("name") or fallback_place.get("name") or _short_location_name(display_label)
+        context["current"]["detail"] = (
+            location.get("details")
+            or fallback_place.get("details")
+            or _location_details_from_label(display_label)
+        )
         context["current"]["label"] = "Standardort" if location.get("is_default") else "Demo-Ort"
         context["api_notice"] = (
             "Trage OPENWEATHER_API_KEY in deiner .env ein, um echte Wetterdaten zu laden."
@@ -405,13 +410,13 @@ def _radar_context_for_location(location=None, current=None, city_name=""):
         fallback_place = _fallback_place_for_label(label or settings.WEATHER_DEFAULT_CITY)
         lat = fallback_place.get("lat", 52.1984)
         lon = fallback_place.get("lon", 8.5864)
-        label = fallback_place.get("name", label or "Buende")
+        label = fallback_place.get("name", label or "Bünde")
 
     return {
         "center_lat": f"{lat:.4f}",
         "center_lon": f"{lon:.4f}",
         "zoom": 7,
-        "location": label or "Buende",
+        "location": label or "Bünde",
         "status": "Live-Radar" if settings.WEATHER_API_KEY else "Demo-Vorschau",
         "has_live": bool(settings.WEATHER_API_KEY),
     }
@@ -428,7 +433,18 @@ def _fallback_place_for_label(label):
     matches = _fallback_location_suggestions(label or "", 1)
     if matches:
         return matches[0]
-    return {"name": "Buende", "lat": 52.1984, "lon": 8.5864}
+    return {"name": "Bünde", "lat": 52.1984, "lon": 8.5864}
+
+
+def _normalize_location_search_text(value):
+    return (
+        (value or "")
+        .casefold()
+        .replace("ä", "ae")
+        .replace("ö", "oe")
+        .replace("ü", "ue")
+        .replace("ß", "ss")
+    )
 
 
 def _fallback_location_suggestions(query, limit):
@@ -442,7 +458,7 @@ def _fallback_location_suggestions(query, limit):
         {"name": "London", "state": "England", "country": "GB", "lat": 51.5072, "lon": -0.1276},
         {"name": "Paris", "state": "Île-de-France", "country": "FR", "lat": 48.8566, "lon": 2.3522},
     ]
-    needle = query.casefold()
+    needle = _normalize_location_search_text(query)
     matches = [
         {
             **place,
@@ -450,7 +466,8 @@ def _fallback_location_suggestions(query, limit):
             "label": ", ".join([place["name"], place["state"], place["country"]]),
         }
         for place in places
-        if needle in place["name"].casefold()
+        if needle in _normalize_location_search_text(place["name"])
+        or _normalize_location_search_text(place["name"]) in needle
     ]
     return matches[:limit]
 

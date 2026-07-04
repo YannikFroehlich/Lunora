@@ -15,3 +15,19 @@ document.querySelectorAll("[data-file-input]").forEach((input) => {
     fileNameLabel.classList.toggle("has-file", Boolean(input.files && input.files.length));
   });
 });
+
+// Keep custom switches visually in sync before the preferences form is saved.
+document.querySelectorAll(".switch input[type='checkbox']").forEach((input) => {
+  const switchLabel = input.closest(".switch");
+
+  if (!switchLabel) {
+    return;
+  }
+
+  const syncSwitchState = () => {
+    switchLabel.classList.toggle("is-on", input.checked);
+  };
+
+  syncSwitchState();
+  input.addEventListener("change", syncSwitchState);
+});

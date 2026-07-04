@@ -56,6 +56,15 @@
                 <span class="location-detail" title="{{ current.detail }}">{{ current.detail }}</span>
                 {% endif %}
                 <span class="soft-pill"><i class="fa-solid fa-location-arrow"></i> {{ current.label }}</span>
+                <form class="weather-default-form" method="post" action="{% url 'weather' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="weather_default">
+                    <input type="hidden" name="weather_default_city" value="{{ current.city }}">
+                    <button class="ghost-button" type="submit">
+                        <i class="fa-solid fa-house-signal" aria-hidden="true"></i>
+                        Als Standard
+                    </button>
+                </form>
             </div>
             <i class="fa-solid {{ current.icon }} main-weather-icon"></i>
             <div class="temperature-block">

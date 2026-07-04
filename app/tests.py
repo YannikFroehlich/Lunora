@@ -244,6 +244,26 @@ class SettingsProfileTests(TestCase):
         self.assertTrue(user.profile.usage_data_enabled)
         self.assertEqual(user.profile.weather_default_city, "Berlin,de")
 
+    def test_settings_save_shows_feedback_message(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.post(
+            "/settings/",
+            {
+                "form_name": "preferences",
+                "notify_email": "on",
+                "notify_reminders": "on",
+                "notify_desktop": "on",
+                "analytics_enabled": "on",
+                "weather_default_city": "Bünde,de",
+            },
+            follow=True,
+        )
+
+        self.assertContains(response, "Präferenzen gespeichert.")
+
     def test_calendar_source_can_be_saved(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
         Profile.objects.create(user=user, display_name="Mira")
@@ -395,6 +415,24 @@ class SettingsProfileTests(TestCase):
         self.assertContains(response, "Juli 2026")
         self.assertContains(response, "Design Review")
 
+    def test_calendar_sync_result_is_visible(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        CalendarSource.objects.create(
+            user=user,
+            ical_url="https://calendar.google.com/calendar/ical/example/private/basic.ics",
+        )
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        with patch("app.views.calendar_views.sync_calendar_source", return_value={"synced": True, "message": "2 Termine synchronisiert."}):
+            response = self.client.post(
+                "/calendar/",
+                {"form_name": "calendar_sync"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "2 Termine synchronisiert.")
+
     def test_home_page_shows_upcoming_calendar_events(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
         Profile.objects.create(user=user, display_name="Mira")
@@ -453,6 +491,17 @@ class SettingsProfileTests(TestCase):
         self.assertRedirects(response, "/calendar/")
         reminder.refresh_from_db()
         self.assertTrue(reminder.is_done)
+
+        response = self.client.post(
+            "/calendar/",
+            {
+                "form_name": "reminder_delete",
+                "reminder_id": str(reminder.id),
+            },
+        )
+
+        self.assertRedirects(response, "/calendar/")
+        self.assertFalse(CalendarReminder.objects.filter(pk=reminder.id).exists())
 
     def test_calendar_reminders_can_store_due_dates(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
@@ -633,6 +682,22 @@ class WeatherRadarTests(TestCase):
         self.assertEqual(context["current"]["label"], "Standardort")
         self.assertEqual(context["search_query"], "")
 
+    @override_settings(WEATHER_API_KEY="")
+    def test_weather_page_can_save_current_place_as_default(self):
+        self.client.login(username="radar@example.com", password="secret-12345")
+
+        response = self.client.post(
+            "/weather/",
+            {
+                "form_name": "weather_default",
+                "weather_default_city": "Berlin",
+            },
+        )
+
+        self.assertRedirects(response, "/weather/")
+        self.user.profile.refresh_from_db()
+        self.assertEqual(self.user.profile.weather_default_city, "Berlin")
+
     @override_settings(WEATHER_API_KEY="test-key", WEATHER_CACHE_SECONDS=600)
     def test_location_suggestions_cache_api_responses(self):
         cache.clear()
@@ -768,6 +833,19 @@ class MessagesPageTests(TestCase):
         self.assertContains(response, "Lukas: Neue Antwort")
         self.assertNotContains(response, 'name="form_name" value="message"')
         self.assertTrue(ConversationMember.objects.get(conversation=conversation, user=self.mira).unread_count())
+
+    def test_message_search_matches_older_message_bodies(self):
+        conversation = Conversation.objects.create(created_by=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.lukas)
+        ChatMessage.objects.create(conversation=conversation, sender=self.lukas, body="Projekt Alpha")
+        ChatMessage.objects.create(conversation=conversation, sender=self.lukas, body="Normale letzte Nachricht")
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get("/messages/?q=Alpha")
+
+        self.assertContains(response, "Lukas")
+        self.assertContains(response, "Normale letzte Nachricht")
 
     def test_inbox_items_use_bounded_queries_for_message_counts(self):
         conversation = Conversation.objects.create(created_by=self.mira)

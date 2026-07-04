@@ -322,9 +322,10 @@
 [data-theme="dark"] .profile-form input[type="text"],
 [data-theme="dark"] .profile-form input[type="email"],
 [data-theme="dark"] .profile-form input[type="password"],
-[data-theme="dark"] .settings-calendar-form input[type="url"] {
+[data-theme="dark"] .settings-calendar-form input[type="url"],
+[data-theme="dark"] .preference-field input[type="text"] {
   background: rgba(255, 248, 237, 0.10);
-  border-color: rgba(255, 248, 237, 0.12);
+  border-color: rgba(255, 248, 237, 0.14);
 }
 
 .setting-line {
@@ -368,21 +369,31 @@
 
 .switch {
   position: relative;
-  display: inline-block;
-  width: 44px;
-  height: 24px;
+  display: inline-flex;
+  width: 46px;
+  height: 26px;
   flex: 0 0 auto;
-  background: rgba(140, 125, 107, 0.28);
-  border: 0;
+  align-items: center;
+  overflow: hidden;
+  background: rgba(140, 125, 107, 0.30);
+  border: 1px solid rgba(255, 248, 237, 0.14);
   border-radius: 999px;
   cursor: pointer;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12);
+  transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
 }
 
 .switch input {
   position: absolute;
-  inset: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
   opacity: 0;
-  cursor: pointer;
+  pointer-events: none;
+  appearance: none;
+  -webkit-appearance: none;
+  clip-path: inset(50%);
 }
 
 .switch::after {
@@ -392,22 +403,29 @@
   width: 18px;
   height: 18px;
   content: "";
-  background: #fff;
+  background: #fffaf3;
   border-radius: 50%;
   box-shadow: 0 2px 8px rgba(77, 57, 31, 0.24);
-  transition: transform 160ms ease;
+  transition: transform 160ms ease, background 160ms ease;
 }
 
-.switch.is-on {
+.switch.is-on,
+.switch:has(input:checked) {
   background: var(--color-accent);
+  border-color: color-mix(in srgb, var(--color-accent) 72%, #ffffff);
 }
 
-.switch.is-on::after {
+.switch.is-on::after,
+.switch:has(input:checked)::after {
   transform: translateX(20px);
 }
 
+.switch:focus-within {
+  box-shadow: var(--focus-ring);
+}
+
 .preference-field {
-  padding-top: 16px;
+  padding-top: 18px;
 }
 
 .preference-field .field-label {
@@ -416,13 +434,14 @@
 
 .preference-field input[type="text"] {
   width: 100%;
-  min-height: 44px;
+  min-height: 46px;
   padding: 0 14px;
   color: var(--color-text);
-  background: var(--surface-control);
+  background: rgba(255, 255, 255, 0.30);
   border: 1px solid var(--glass-border-soft);
-  border-radius: var(--radius-sm);
+  border-radius: 14px;
   outline: 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.20);
 }
 
 .preference-field input[type="text"]:focus {
@@ -438,8 +457,13 @@
 }
 
 .preference-submit {
-  width: 100%;
+  width: fit-content;
+  min-width: 252px;
   margin-top: 16px;
+}
+
+.notifications-panel .preference-submit {
+  min-width: 304px;
 }
 
 .settings-footer {
@@ -448,6 +472,16 @@
   gap: 14px;
   margin-top: 20px;
   padding: 16px 18px;
+}
+
+[data-theme="dark"] .switch {
+  background: rgba(255, 248, 237, 0.14);
+  border-color: rgba(255, 248, 237, 0.12);
+}
+
+[data-theme="dark"] .switch.is-on,
+[data-theme="dark"] .switch:has(input:checked) {
+  background: var(--color-accent);
 }
 
 [data-density="balanced"] .settings-grid {

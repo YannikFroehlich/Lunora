@@ -51,26 +51,12 @@ def get_dashboard_context(user=None):
             },
             {"label": "Einstellungen", "icon": "fa-gear", "url_name": "settings"},
         ],
-        "recent_tools": [
-            {"title": "Kalender", "subtitle": f"{len(upcoming_dashboard_events)} kommende Termine" if upcoming_dashboard_events else "Kalender oeffnen", "icon": "fa-calendar-check", "url_name": "calendar"},
-            {"title": "Wetter", "subtitle": dashboard_weather.get("today", {}).get("city", "Standardort"), "icon": "fa-cloud-sun", "url_name": "weather"},
-            {"title": "Nachrichten", "subtitle": f"{unread_messages_total} ungelesen" if unread_messages_total else "Inbox oeffnen", "icon": "fa-message", "url_name": "messages"},
-            {"title": "Einstellungen", "subtitle": "Profil & Praeferenzen", "icon": "fa-gear", "url_name": "settings"},
-            {"title": "Dateien", "subtitle": "Zuletzt geöffnet", "icon": "fa-folder-open"},
-            {"title": "Analysen", "subtitle": "Einblicke ansehen", "icon": "fa-chart-simple"},
-        ],
-        "upcoming_dashboard_events": upcoming_dashboard_events,
-        "legacy_notes": [
-            {"text": "Projektbrief prüfen", "done": True},
-            {"text": "Landingpage designen", "done": False},
-            {"text": "Präsentation vorbereiten", "done": False},
-        ],
         "recent_tools": _dashboard_tool_shortcuts(
             upcoming_dashboard_events,
             unread_messages_total,
             dashboard_weather,
         ),
-        "legacy_notes": [],
+        "upcoming_dashboard_events": upcoming_dashboard_events,
     }
 
 
@@ -96,7 +82,7 @@ def _dashboard_tool_shortcuts(upcoming_events, unread_messages_total, dashboard_
         {"title": "Kalender", "subtitle": event_subtitle, "icon": "fa-calendar-check", "url_name": "calendar"},
         {"title": "Wetter", "subtitle": weather_city, "icon": "fa-cloud-sun", "url_name": "weather"},
         {"title": "Nachrichten", "subtitle": unread_subtitle, "icon": "fa-message", "url_name": "messages"},
-        {"title": "Einstellungen", "subtitle": "Profil & Praeferenzen", "icon": "fa-gear", "url_name": "settings"},
+        {"title": "Einstellungen", "subtitle": "Profil & Präferenzen", "icon": "fa-gear", "url_name": "settings"},
     ]
 
 
@@ -108,7 +94,7 @@ def _dashboard_weather_context(user=None):
 
     return {
         "today": {
-            "city": current.get("city", "Buende"),
+            "city": current.get("city", "Bünde"),
             "temperature": current.get("temperature", 24),
             "feels_like": current.get("feels_like", current.get("temperature", 24)),
             "description": current.get("description", "Teilweise bewölkt"),
@@ -145,8 +131,8 @@ def get_settings_context(preferences_form=None):
     context["notification_rows"] = [
         _preference_row(preferences_form, "notify_email", "E-Mail Benachrichtigungen", "Wichtige Updates erhalten"),
         _preference_row(preferences_form, "notify_reminders", "Erinnerungen", "Aufgaben und Termine im Blick behalten"),
-        _preference_row(preferences_form, "notify_desktop", "Desktop Hinweise", "Benachrichtigungen auf diesem Geraet"),
-        _preference_row(preferences_form, "weekly_summary", "Woechentliche Zusammenfassung", "Kurzer Rueckblick per E-Mail"),
+        _preference_row(preferences_form, "notify_desktop", "Desktop Hinweise", "Benachrichtigungen auf diesem Gerät"),
+        _preference_row(preferences_form, "weekly_summary", "Wöchentliche Zusammenfassung", "Kurzer Rückblick per E-Mail"),
     ]
     context["privacy_rows"] = [
         _preference_row(preferences_form, "analytics_enabled", "Analysen", "Hilft, Lunora besser zu machen"),

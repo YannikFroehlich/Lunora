@@ -163,3 +163,51 @@ document.querySelectorAll(".softness-slider").forEach((slider) => {
 document.querySelector("#appearance-form")?.addEventListener("reset", () => {
   window.setTimeout(() => window.location.reload(), 0);
 });
+
+function initFlashMessages() {
+  const stack = document.querySelector("[data-flash-stack]");
+  if (!stack) return;
+
+  const removeMessage = (message) => {
+    if (!message || message.dataset.flashClosing === "true") return;
+
+    message.dataset.flashClosing = "true";
+    message.classList.add("is-leaving");
+
+    window.setTimeout(() => {
+      const currentStack = message.closest("[data-flash-stack]");
+      message.remove();
+
+      if (currentStack && !currentStack.querySelector("[data-flash-message]")) {
+        currentStack.remove();
+      }
+    }, 220);
+  };
+
+  if (stack.dataset.flashReady !== "true") {
+    stack.dataset.flashReady = "true";
+    stack.addEventListener("click", (event) => {
+      const dismissButton = event.target.closest("[data-flash-dismiss]");
+      if (!dismissButton) return;
+
+      event.preventDefault();
+      removeMessage(dismissButton.closest("[data-flash-message]"));
+    });
+  }
+
+  stack.querySelectorAll("[data-flash-message]").forEach((message) => {
+    if (message.dataset.flashTimerReady === "true") return;
+
+    message.dataset.flashTimerReady = "true";
+    const timeout = message.classList.contains("is-error") ? 7000 : 4200;
+    window.setTimeout(() => removeMessage(message), timeout);
+  });
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initFlashMessages);
+} else {
+  initFlashMessages();
+}
+
+window.addEventListener("pageshow", initFlashMessages);

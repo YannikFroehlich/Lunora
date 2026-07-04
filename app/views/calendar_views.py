@@ -1,3 +1,4 @@
+from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
 
@@ -20,10 +21,15 @@ def calendar(request):
             source.user = request.user
             source.name = "Google Kalender"
             source.save()
-            sync_calendar_source(source, force=True)
+            sync_result = sync_calendar_source(source, force=True)
+            django_messages.success(request, sync_result.get("message", "Kalender gespeichert."))
             return redirect("calendar")
     elif request.method == "POST" and request.POST.get("form_name") == "calendar_sync" and source:
         sync_result = sync_calendar_source(source, force=True)
+        if sync_result.get("synced"):
+            django_messages.success(request, sync_result.get("message", "Kalender synchronisiert."))
+        else:
+            django_messages.info(request, sync_result.get("message", "Kalender ist aktuell."))
         source_form = CalendarSourceForm(instance=source)
     elif request.method == "POST" and request.POST.get("form_name") == "reminder_add":
         reminder_form = CalendarReminderForm(request.POST)
@@ -31,6 +37,7 @@ def calendar(request):
             reminder = reminder_form.save(commit=False)
             reminder.user = request.user
             reminder.save()
+            django_messages.success(request, "Erinnerung erstellt.")
             return redirect(request.get_full_path())
         source_form = CalendarSourceForm(instance=source)
     elif request.method == "POST" and request.POST.get("form_name") == "reminder_toggle":
@@ -38,6 +45,14 @@ def calendar(request):
         if reminder:
             reminder.is_done = request.POST.get("is_done") == "on"
             reminder.save(update_fields=["is_done", "updated_at"])
+        return redirect(request.get_full_path())
+    elif request.method == "POST" and request.POST.get("form_name") == "reminder_delete":
+        deleted_count, _details = CalendarReminder.objects.filter(
+            user=request.user,
+            pk=request.POST.get("reminder_id"),
+        ).delete()
+        if deleted_count:
+            django_messages.success(request, "Erinnerung gelöscht.")
         return redirect(request.get_full_path())
     else:
         source_form = CalendarSourceForm(instance=source)

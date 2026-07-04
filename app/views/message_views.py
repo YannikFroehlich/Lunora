@@ -154,7 +154,8 @@ def messages(request, conversation_id=None):
     current_filter = request.GET.get("filter", "all")
     message_before_id = request.GET.get("before", "").strip()
     all_inbox_items = _build_inbox_items(all_conversations, request.user)
-    inbox_items = _filter_inbox_items(all_inbox_items, query, current_filter)
+    message_match_ids = _conversation_ids_matching_message_query(all_conversations, query)
+    inbox_items = _filter_inbox_items(all_inbox_items, query, current_filter, message_match_ids)
     overview_items = _build_messages_overview_items(all_inbox_items)
 
     message_window = _build_message_window(selected_conversation, request.user, before_id=message_before_id)
@@ -209,7 +210,8 @@ def messages_live_updates(request, conversation_id=None):
     current_filter = request.GET.get("filter", "all")
     message_before_id = request.GET.get("before", "").strip()
     all_inbox_items = _build_inbox_items(all_conversations, request.user)
-    inbox_items = _filter_inbox_items(all_inbox_items, query, current_filter)
+    message_match_ids = _conversation_ids_matching_message_query(all_conversations, query)
+    inbox_items = _filter_inbox_items(all_inbox_items, query, current_filter, message_match_ids)
     unread_total = sum(item["unread"] for item in all_inbox_items)
 
     context = {
@@ -349,7 +351,7 @@ def _build_inbox_items(conversations, user):
     return items
 
 
-def _filter_inbox_items(items, query, current_filter):
+def _filter_inbox_items(items, query, current_filter, message_match_ids=None):
     if current_filter == "unread":
         items = [item for item in items if item["unread"] > 0]
     elif current_filter == "groups":
@@ -357,6 +359,7 @@ def _filter_inbox_items(items, query, current_filter):
 
     if query:
         normalized_query = query.casefold()
+        message_match_ids = message_match_ids or set()
         items = [
             item
             for item in items
@@ -364,9 +367,28 @@ def _filter_inbox_items(items, query, current_filter):
             or normalized_query in item["preview"].casefold()
             or normalized_query in item["participant_text"].casefold()
             or normalized_query in item["last_message_body"].casefold()
+            or item["conversation"].id in message_match_ids
         ]
 
     return items
+
+
+def _conversation_ids_matching_message_query(conversations, query):
+    query = query.strip()
+    if not query:
+        return set()
+
+    conversation_ids = [conversation.id for conversation in conversations]
+    if not conversation_ids:
+        return set()
+
+    return set(
+        ChatMessage.objects.filter(
+            conversation_id__in=conversation_ids,
+            is_deleted=False,
+            body__icontains=query,
+        ).values_list("conversation_id", flat=True)
+    )
 
 
 def _build_messages_overview_items(items):

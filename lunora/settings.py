@@ -174,5 +174,5 @@ WEATHER_TILE_BASE_URL = os.getenv(
     "OPENWEATHER_TILE_BASE_URL",
     "https://tile.openweathermap.org/map",
 )
-WEATHER_DEFAULT_CITY = os.getenv("WEATHER_DEFAULT_CITY", "Buende,de")
+WEATHER_DEFAULT_CITY = os.getenv("WEATHER_DEFAULT_CITY", "Bünde,de")
 WEATHER_CACHE_SECONDS = env_int("WEATHER_CACHE_SECONDS", 600)

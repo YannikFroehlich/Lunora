@@ -257,19 +257,19 @@
                        placeholder="{{ preferences_form.weather_default_city.field.widget.attrs.placeholder }}"
                        autocomplete="{{ preferences_form.weather_default_city.field.widget.attrs.autocomplete }}"
                        form="preferences-form">
-                <small class="field-hint">Wird fuer Dashboard und Wetterseite genutzt, wenn keine Suche aktiv ist.</small>
+                <small class="field-hint">Wird für Dashboard und Wetterseite genutzt, wenn keine Suche aktiv ist.</small>
                 {{ preferences_form.weather_default_city.errors }}
             </div>
             <button class="primary-button preference-submit" type="submit" form="preferences-form">
                 <i class="fa-solid fa-floppy-disk"></i>
-                Praeferenzen speichern
+                Präferenzen speichern
             </button>
         </section>
     </div>
 
     <footer class="settings-footer glass-panel">
         <a class="ghost-button" href="{{ return_to }}">Abbrechen</a>
-        <button class="primary-button" type="submit" form="appearance-form">Änderungen speichern</button>
+        <button class="primary-button" type="submit" form="appearance-form">Darstellung speichern</button>
     </footer>
 </section>
 {% endblock %}

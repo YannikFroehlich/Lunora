@@ -63,7 +63,7 @@ class Profile(models.Model):
     weekly_summary = models.BooleanField(default=False)
     analytics_enabled = models.BooleanField(default=True)
     usage_data_enabled = models.BooleanField(default=False)
-    weather_default_city = models.CharField(max_length=120, blank=True, default="Buende,de")
+    weather_default_city = models.CharField(max_length=120, blank=True, default="Bünde,de")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

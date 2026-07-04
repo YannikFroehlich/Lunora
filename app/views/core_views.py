@@ -1,5 +1,6 @@
 from urllib.parse import urlparse, urlunparse
 
+from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -71,6 +72,7 @@ def settings(request):
             profile = form.save()
             request.user.first_name = profile.display_name
             request.user.save(update_fields=["first_name"])
+            django_messages.success(request, "Profil gespeichert.")
             return redirect(return_to)
         appearance_form = AppearanceForm(instance=profile)
         calendar_source_form = CalendarSourceForm(instance=calendar_source)
@@ -82,6 +84,7 @@ def settings(request):
         preferences_form = ProfilePreferencesForm(instance=profile)
         if appearance_form.is_valid():
             appearance_form.save()
+            django_messages.success(request, "Darstellung und Region gespeichert.")
             return redirect(return_to)
     elif request.method == "POST" and request.POST.get("form_name") == "calendar_source":
         calendar_source_form = CalendarSourceForm(request.POST, instance=calendar_source)
@@ -93,6 +96,7 @@ def settings(request):
             calendar_source.user = request.user
             calendar_source.name = "Google Kalender"
             calendar_source.save()
+            django_messages.success(request, "Kalenderverbindung gespeichert.")
             return redirect(return_to)
     elif request.method == "POST" and request.POST.get("form_name") == "preferences":
         preferences_form = ProfilePreferencesForm(request.POST, instance=profile)
@@ -101,6 +105,7 @@ def settings(request):
         calendar_source_form = CalendarSourceForm(instance=calendar_source)
         if preferences_form.is_valid():
             preferences_form.save()
+            django_messages.success(request, "Präferenzen gespeichert.")
             return redirect(return_to)
     else:
         form = ProfileForm(instance=profile)

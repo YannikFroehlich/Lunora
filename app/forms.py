@@ -163,7 +163,7 @@ class ProfilePreferencesForm(forms.ModelForm):
             "notify_email": "E-Mail Benachrichtigungen",
             "notify_reminders": "Erinnerungen",
             "notify_desktop": "Desktop Hinweise",
-            "weekly_summary": "Woechentliche Zusammenfassung",
+            "weekly_summary": "Wöchentliche Zusammenfassung",
             "analytics_enabled": "Analysen",
             "usage_data_enabled": "Nutzungsdaten",
             "weather_default_city": "Standard-Wetterort",
@@ -177,7 +177,7 @@ class ProfilePreferencesForm(forms.ModelForm):
             "usage_data_enabled": forms.CheckboxInput(),
             "weather_default_city": forms.TextInput(
                 attrs={
-                    "placeholder": "z. B. Buende,de",
+                    "placeholder": "z. B. Bünde,de",
                     "autocomplete": "address-level2",
                 }
             ),

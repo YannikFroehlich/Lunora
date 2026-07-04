@@ -8,7 +8,7 @@
 
     <title>{% block title %}Lunora{% endblock %}</title>
 
-    <link rel="stylesheet" href="{% static 'css/base.css' %}">
+    <link rel="stylesheet" href="{% static 'css/base.css' %}?v=toast-2">
     {% block page_css %}{% endblock %}
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -62,10 +62,23 @@
 {% endif %}
 
 <main class="site-main">
+    {% if messages %}
+    <div class="flash-stack" aria-live="polite" aria-atomic="true" aria-label="Statusmeldungen" data-flash-stack>
+        {% for message in messages %}
+        <div class="flash-message is-{{ message.tags|default:'info' }}" role="{% if 'error' in message.tags %}alert{% else %}status{% endif %}" data-flash-message>
+            <i class="fa-solid {% if 'error' in message.tags %}fa-circle-exclamation{% elif 'success' in message.tags %}fa-circle-check{% else %}fa-circle-info{% endif %}" aria-hidden="true"></i>
+            <span>{{ message }}</span>
+            <button class="flash-close" type="button" aria-label="Meldung schließen" data-flash-dismiss>
+                <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+            </button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
     {% block content %}{% endblock %}
 </main>
 
-<script src="{% static 'js/base.js' %}"></script>
+<script src="{% static 'js/base.js' %}?v=toast-2"></script>
 {% block page_js %}{% endblock %}
 </body>
 </html>

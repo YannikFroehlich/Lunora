@@ -232,7 +232,8 @@
 }
 
 .reminder-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 34px;
   align-items: flex-start;
   gap: 12px;
   width: 100%;
@@ -250,16 +251,13 @@
 .reminder-row input {
   width: 18px;
   height: 18px;
+  margin-top: 2px;
   accent-color: var(--color-accent);
 }
 
 .reminder-row span,
 .reminder-row small {
   display: block;
-}
-
-.reminder-row span + span {
-  display: none;
 }
 
 .reminder-row small {
@@ -280,12 +278,29 @@
   text-decoration: line-through;
 }
 
+.reminder-delete-button {
+  width: 32px;
+  height: 32px;
+  display: inline-grid;
+  place-items: center;
+  color: var(--color-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 9px;
+}
+
+.reminder-delete-button:hover,
+.reminder-delete-button:focus-visible {
+  color: #a64d3d;
+  background: rgba(166, 77, 61, 0.08);
+  border-color: rgba(166, 77, 61, 0.18);
+}
+
 .reminder-add-form {
   margin: 0 0 8px;
 }
 
-.reminder-add-form input[type="text"],
-.reminder-add-form input[type="datetime-local"] {
+.reminder-add-form input[type="text"] {
   width: 100%;
   min-height: 42px;
   margin-top: 8px;
@@ -301,13 +316,58 @@
   margin-top: 0;
 }
 
+.reminder-date-field {
+  display: grid;
+  grid-template-columns: 22px auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin-top: 10px;
+  padding: 0 12px;
+  color: var(--color-muted);
+  background: var(--surface-control);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-sm);
+}
+
+.reminder-date-field i {
+  color: var(--color-accent-strong);
+}
+
+.reminder-date-field span {
+  color: var(--color-heading);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.reminder-date-field input[type="datetime-local"] {
+  width: 100%;
+  min-width: 0;
+  height: 42px;
+  padding: 0;
+  color: var(--color-text);
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font: inherit;
+}
+
+.reminder-date-field input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  width: 18px;
+  height: 18px;
+  margin-left: 8px;
+  opacity: 0.72;
+  cursor: pointer;
+}
+
 .reminder-add-form input[type="text"]:focus,
-.reminder-add-form input[type="datetime-local"]:focus {
+.reminder-date-field:focus-within {
   border-color: rgba(181, 150, 104, 0.62);
   box-shadow: 0 0 0 3px rgba(181, 150, 104, 0.14);
 }
 
-[data-theme="dark"] .reminder-add-form input[type="text"] {
+[data-theme="dark"] .reminder-add-form input[type="text"],
+[data-theme="dark"] .reminder-date-field {
   background: var(--surface-control);
   border-color: rgba(255, 248, 237, 0.12);
 }

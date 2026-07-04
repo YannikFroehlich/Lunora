@@ -1,7 +1,9 @@
+from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, JsonResponse
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 
+from app.models import Profile
 from app.services.weather_service import (
     fetch_weather_radar_tile,
     get_location_suggestions,
@@ -11,6 +13,18 @@ from app.services.weather_service import (
 
 @login_required
 def weather(request):
+    if request.method == "POST" and request.POST.get("form_name") == "weather_default":
+        default_city = request.POST.get("weather_default_city", "").strip()
+        if default_city:
+            profile, _created = Profile.objects.get_or_create(
+                user=request.user,
+                defaults={"display_name": request.user.first_name or request.user.get_username()},
+            )
+            profile.weather_default_city = default_city
+            profile.save(update_fields=["weather_default_city", "updated_at"])
+            django_messages.success(request, f"{default_city} als Standard-Wetterort gespeichert.")
+        return redirect("weather")
+
     return render(request, "app/weather.html", get_weather_context(request.GET, user=request.user))
 
 
