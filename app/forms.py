@@ -1,8 +1,11 @@
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm, UsernameField
 from django.contrib.auth.models import User
+from django.core.files.storage import default_storage
 
 from app.models import CalendarReminder, CalendarSource, ChatMessage, Profile
+from app.services.image_uploads import PROFILE_IMAGE_ACCEPT, validate_profile_image_file
+from app.services.url_safety import validate_calendar_url
 
 
 class EmailLoginForm(AuthenticationForm):
@@ -49,14 +52,37 @@ class ProfileForm(forms.ModelForm):
         }
         widgets = {
             "display_name": forms.TextInput(attrs={"placeholder": "Dein Name"}),
-            "profile_image": forms.ClearableFileInput(attrs={"accept": "image/*"}),
+            "profile_image": forms.ClearableFileInput(attrs={"accept": PROFILE_IMAGE_ACCEPT}),
         }
 
     def clean_profile_image(self):
         image = self.cleaned_data.get("profile_image")
-        if image and hasattr(image, "content_type") and not image.content_type.startswith("image/"):
-            raise forms.ValidationError("Bitte lade eine Bilddatei hoch.")
+        if image and hasattr(image, "content_type"):
+            try:
+                validate_profile_image_file(image)
+            except forms.ValidationError:
+                raise
+            except Exception as error:
+                raise forms.ValidationError("Das Profilbild konnte nicht geprueft werden.") from error
         return image
+
+    def save(self, commit=True):
+        old_image_name = ""
+        if self.instance.pk:
+            old_image_name = (
+                Profile.objects.filter(pk=self.instance.pk)
+                .values_list("profile_image", flat=True)
+                .first()
+                or ""
+            )
+
+        profile = super().save(commit=commit)
+        new_image_name = getattr(profile.profile_image, "name", "") or ""
+
+        if commit and old_image_name and old_image_name != new_image_name:
+            default_storage.delete(old_image_name)
+
+        return profile
 
 
 class AppearanceForm(forms.ModelForm):
@@ -121,6 +147,58 @@ class AppearanceForm(forms.ModelForm):
         return self._clean_optional_region_field("timezone_name")
 
 
+class ProfilePreferencesForm(forms.ModelForm):
+    class Meta:
+        model = Profile
+        fields = [
+            "notify_email",
+            "notify_reminders",
+            "notify_desktop",
+            "weekly_summary",
+            "analytics_enabled",
+            "usage_data_enabled",
+            "weather_default_city",
+        ]
+        labels = {
+            "notify_email": "E-Mail Benachrichtigungen",
+            "notify_reminders": "Erinnerungen",
+            "notify_desktop": "Desktop Hinweise",
+            "weekly_summary": "Woechentliche Zusammenfassung",
+            "analytics_enabled": "Analysen",
+            "usage_data_enabled": "Nutzungsdaten",
+            "weather_default_city": "Standard-Wetterort",
+        }
+        widgets = {
+            "notify_email": forms.CheckboxInput(),
+            "notify_reminders": forms.CheckboxInput(),
+            "notify_desktop": forms.CheckboxInput(),
+            "weekly_summary": forms.CheckboxInput(),
+            "analytics_enabled": forms.CheckboxInput(),
+            "usage_data_enabled": forms.CheckboxInput(),
+            "weather_default_city": forms.TextInput(
+                attrs={
+                    "placeholder": "z. B. Buende,de",
+                    "autocomplete": "address-level2",
+                }
+            ),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field_name in [
+            "notify_email",
+            "notify_reminders",
+            "notify_desktop",
+            "weekly_summary",
+            "analytics_enabled",
+            "usage_data_enabled",
+        ]:
+            self.fields[field_name].required = False
+
+    def clean_weather_default_city(self):
+        return self.cleaned_data.get("weather_default_city", "").strip()
+
+
 class MessageForm(forms.ModelForm):
     class Meta:
         model = ChatMessage
@@ -171,34 +249,30 @@ class ConversationStartForm(forms.Form):
 
 
 class CalendarSourceForm(forms.ModelForm):
+    ical_url = forms.CharField(
+        label="Google Kalender-Link",
+        widget=forms.URLInput(
+            attrs={
+                "placeholder": "https://calendar.google.com/calendar/ical/...",
+                "autocomplete": "off",
+            }
+        ),
+        help_text="Nutze den privaten iCal-Link aus den Google-Kalendereinstellungen.",
+    )
+
     class Meta:
         model = CalendarSource
         fields = ["ical_url", "enabled"]
         labels = {
-            "ical_url": "Google Kalender-Link",
             "enabled": "Automatisch synchronisieren",
-        }
-        widgets = {
-            "ical_url": forms.URLInput(
-                attrs={
-                    "placeholder": "https://calendar.google.com/calendar/ical/...",
-                    "autocomplete": "off",
-                }
-            ),
-        }
-        help_texts = {
-            "ical_url": "Nutze den privaten iCal-Link aus den Google-Kalendereinstellungen.",
         }
 
     def clean_ical_url(self):
         url = self.cleaned_data["ical_url"].strip()
-        if url.startswith("webcal://"):
-            url = "https://" + url.removeprefix("webcal://")
-        if not url.startswith(("https://", "http://")):
-            raise forms.ValidationError("Bitte fuege einen gueltigen Kalenderlink ein.")
-        if "calendar.google.com" not in url and not url.lower().endswith(".ics"):
-            raise forms.ValidationError("Bitte nutze einen Google-iCal-Link oder eine direkte .ics-URL.")
-        return url
+        try:
+            return validate_calendar_url(url)
+        except ValueError as error:
+            raise forms.ValidationError(str(error)) from error
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -207,9 +281,22 @@ class CalendarSourceForm(forms.ModelForm):
 
 
 class CalendarReminderForm(forms.ModelForm):
+    due_at = forms.DateTimeField(
+        label="Faellig am",
+        required=False,
+        input_formats=["%Y-%m-%dT%H:%M"],
+        widget=forms.DateTimeInput(
+            attrs={
+                "type": "datetime-local",
+                "autocomplete": "off",
+            },
+            format="%Y-%m-%dT%H:%M",
+        ),
+    )
+
     class Meta:
         model = CalendarReminder
-        fields = ["title"]
+        fields = ["title", "due_at"]
         labels = {"title": "Neue Erinnerung"}
         widgets = {
             "title": forms.TextInput(

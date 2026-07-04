@@ -1,13 +1,34 @@
+import json
 from datetime import datetime, timedelta
+from email.message import Message
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
+from urllib.error import HTTPError
 
 from django.contrib.auth.models import User
+from django.core.cache import cache
+from django.core.files.storage import default_storage
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
+from app.forms import CalendarSourceForm, ProfileForm
 from app.models import CalendarEvent, CalendarReminder, CalendarSource, ChatMessage, ChatMessageReaction, Conversation, ConversationMember, Profile
-from app.services.calendar_service import parse_ical_events
-from app.services.weather_service import get_weather_context
+from app.services.calendar_service import fetch_ical, parse_ical_events
+from app.services.image_uploads import PROFILE_IMAGE_MAX_BYTES
+from app.services.weather_service import get_location_suggestions, get_weather_context
+from app.views.message_views import _build_inbox_items
+
+
+PNG_1X1_BYTES = (
+    b"\x89PNG\r\n\x1a\n"
+    b"\x00\x00\x00\rIHDR"
+    b"\x00\x00\x00\x01\x00\x00\x00\x01"
+    b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+    b"\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01"
+    b"\r\n-\xb4"
+    b"\x00\x00\x00\x00IEND\xaeB`\x82"
+)
 
 
 
@@ -64,6 +85,91 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(user.profile.display_name, "Mira Neu")
         self.assertEqual(user.first_name, "Mira Neu")
 
+    def test_profile_form_accepts_valid_profile_image(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        profile = Profile.objects.create(user=user, display_name="Mira")
+        upload = SimpleUploadedFile("avatar.png", PNG_1X1_BYTES, content_type="image/png")
+
+        form = ProfileForm(data={"display_name": "Mira"}, files={"profile_image": upload}, instance=profile)
+
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_profile_form_rejects_spoofed_profile_image(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        profile = Profile.objects.create(user=user, display_name="Mira")
+        upload = SimpleUploadedFile("avatar.png", b"not really an image", content_type="image/png")
+
+        form = ProfileForm(data={"display_name": "Mira"}, files={"profile_image": upload}, instance=profile)
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("profile_image", form.errors)
+
+    def test_profile_form_rejects_oversized_profile_image(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        profile = Profile.objects.create(user=user, display_name="Mira")
+        upload = SimpleUploadedFile(
+            "avatar.png",
+            PNG_1X1_BYTES + (b"x" * PROFILE_IMAGE_MAX_BYTES),
+            content_type="image/png",
+        )
+
+        form = ProfileForm(data={"display_name": "Mira"}, files={"profile_image": upload}, instance=profile)
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("profile_image", form.errors)
+
+    def test_profile_form_deletes_replaced_profile_image(self):
+        with TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            user = User.objects.create_user(
+                username="mira@example.com",
+                email="mira@example.com",
+                password="secret-12345",
+            )
+            profile = Profile.objects.create(user=user, display_name="Mira")
+            first_upload = SimpleUploadedFile("avatar.png", PNG_1X1_BYTES, content_type="image/png")
+            form = ProfileForm(data={"display_name": "Mira"}, files={"profile_image": first_upload}, instance=profile)
+            self.assertTrue(form.is_valid(), form.errors)
+            profile = form.save()
+            old_image_name = profile.profile_image.name
+            self.assertTrue(default_storage.exists(old_image_name))
+
+            second_upload = SimpleUploadedFile("avatar-new.png", PNG_1X1_BYTES, content_type="image/png")
+            form = ProfileForm(
+                data={"display_name": "Mira Neu"},
+                files={"profile_image": second_upload},
+                instance=profile,
+            )
+            self.assertTrue(form.is_valid(), form.errors)
+            profile = form.save()
+
+            self.assertFalse(default_storage.exists(old_image_name))
+            self.assertTrue(default_storage.exists(profile.profile_image.name))
+
+    def test_profile_form_deletes_cleared_profile_image(self):
+        with TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            user = User.objects.create_user(
+                username="mira@example.com",
+                email="mira@example.com",
+                password="secret-12345",
+            )
+            profile = Profile.objects.create(user=user, display_name="Mira")
+            upload = SimpleUploadedFile("avatar.png", PNG_1X1_BYTES, content_type="image/png")
+            form = ProfileForm(data={"display_name": "Mira"}, files={"profile_image": upload}, instance=profile)
+            self.assertTrue(form.is_valid(), form.errors)
+            profile = form.save()
+            old_image_name = profile.profile_image.name
+            self.assertTrue(default_storage.exists(old_image_name))
+
+            form = ProfileForm(
+                data={"display_name": "Mira", "profile_image-clear": "on"},
+                instance=profile,
+            )
+            self.assertTrue(form.is_valid(), form.errors)
+            profile = form.save()
+
+            self.assertFalse(profile.profile_image)
+            self.assertFalse(default_storage.exists(old_image_name))
+
     def test_logged_in_user_can_save_appearance_settings(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
         Profile.objects.create(user=user, display_name="Mira")
@@ -112,6 +218,32 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(user.profile.time_format, "12h")
         self.assertEqual(user.profile.timezone_name, "UTC")
 
+    def test_logged_in_user_can_save_preferences(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.post(
+            "/settings/",
+            {
+                "form_name": "preferences",
+                "notify_reminders": "on",
+                "weekly_summary": "on",
+                "usage_data_enabled": "on",
+                "weather_default_city": "Berlin,de",
+            },
+        )
+
+        self.assertRedirects(response, "/home/")
+        user.profile.refresh_from_db()
+        self.assertFalse(user.profile.notify_email)
+        self.assertTrue(user.profile.notify_reminders)
+        self.assertFalse(user.profile.notify_desktop)
+        self.assertTrue(user.profile.weekly_summary)
+        self.assertFalse(user.profile.analytics_enabled)
+        self.assertTrue(user.profile.usage_data_enabled)
+        self.assertEqual(user.profile.weather_default_city, "Berlin,de")
+
     def test_calendar_source_can_be_saved(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
         Profile.objects.create(user=user, display_name="Mira")
@@ -150,6 +282,35 @@ class SettingsProfileTests(TestCase):
         source = CalendarSource.objects.get(user=user)
         self.assertEqual(source.ical_url, "https://calendar.google.com/calendar/ical/settings/private/basic.ics")
         self.assertTrue(source.enabled)
+
+    def test_calendar_source_form_normalizes_webcal_urls(self):
+        form = CalendarSourceForm(
+            data={
+                "ical_url": "webcal://calendar.google.com/calendar/ical/example/private/basic.ics",
+                "enabled": "on",
+            }
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(
+            form.cleaned_data["ical_url"],
+            "https://calendar.google.com/calendar/ical/example/private/basic.ics",
+        )
+
+    def test_calendar_source_form_rejects_unsafe_targets(self):
+        unsafe_urls = [
+            "http://example.com/calendar.ics",
+            "https://127.0.0.1/private.ics",
+            "https://localhost/private.ics",
+            "https://metadata.google.internal/private.ics",
+        ]
+
+        for url in unsafe_urls:
+            with self.subTest(url=url):
+                form = CalendarSourceForm(data={"ical_url": url, "enabled": "on"})
+
+                self.assertFalse(form.is_valid())
+                self.assertIn("ical_url", form.errors)
 
     def test_settings_calendar_source_is_scoped_to_logged_in_user(self):
         mira = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
@@ -193,6 +354,21 @@ class SettingsProfileTests(TestCase):
         self.assertNotContains(response, 'name="form_name" value="calendar_source"')
         self.assertNotContains(response, "Google Kalender-Link")
         self.assertNotContains(response, "Kalender speichern")
+
+    def test_calendar_page_get_does_not_sync_calendar_source(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        CalendarSource.objects.create(
+            user=user,
+            ical_url="https://calendar.google.com/calendar/ical/example/private/basic.ics",
+        )
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        with patch("app.views.calendar_views.sync_calendar_source") as sync_calendar:
+            response = self.client.get("/calendar/")
+
+        self.assertEqual(response.status_code, 200)
+        sync_calendar.assert_not_called()
 
     def test_calendar_page_displays_saved_events(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
@@ -243,6 +419,9 @@ class SettingsProfileTests(TestCase):
         self.assertContains(response, "Nächste Termine")
         self.assertContains(response, "Sprint Planning")
         self.assertNotContains(response, "Meine Notizen")
+        self.assertNotContains(response, "Projekte")
+        self.assertNotContains(response, "Dateien")
+        self.assertNotContains(response, "Analysen")
 
     def test_calendar_reminders_can_be_added_and_completed(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
@@ -275,6 +454,33 @@ class SettingsProfileTests(TestCase):
         reminder.refresh_from_db()
         self.assertTrue(reminder.is_done)
 
+    def test_calendar_reminders_can_store_due_dates(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        self.client.login(username="mira@example.com", password="secret-12345")
+        due_at = timezone.localtime(timezone.now() + timedelta(days=1)).replace(second=0, microsecond=0)
+
+        response = self.client.post(
+            "/calendar/",
+            {
+                "form_name": "reminder_add",
+                "title": "Rechnung bezahlen",
+                "due_at": due_at.strftime("%Y-%m-%dT%H:%M"),
+            },
+        )
+
+        self.assertRedirects(response, "/calendar/")
+        reminder = CalendarReminder.objects.get(user=user)
+        self.assertEqual(
+            timezone.localtime(reminder.due_at).strftime("%Y-%m-%dT%H:%M"),
+            due_at.strftime("%Y-%m-%dT%H:%M"),
+        )
+
+        response = self.client.get("/calendar/")
+
+        self.assertContains(response, "Rechnung bezahlen")
+        self.assertContains(response, "Morgen")
+
     def test_ical_parser_reads_google_events_and_weekly_recurrence(self):
         ical = """BEGIN:VCALENDAR
 BEGIN:VEVENT
@@ -295,6 +501,69 @@ END:VCALENDAR
         self.assertEqual(len(events), 2)
         self.assertEqual(events[0].title, "Team Sync")
         self.assertEqual(events[1].start_at.day, 13)
+
+
+class FakeIcalResponse:
+    headers = {"content-type": "text/calendar"}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return False
+
+    def read(self, _size=-1):
+        return b"BEGIN:VCALENDAR\nEND:VCALENDAR\n"
+
+
+class FakeWeatherResponse:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return False
+
+    def read(self, _size=-1):
+        return json.dumps(self.payload).encode("utf-8")
+
+
+class CalendarFetchSafetyTests(TestCase):
+    def public_dns_result(self):
+        return [(None, None, None, "", ("93.184.216.34", 443))]
+
+    def private_dns_result(self):
+        return [(None, None, None, "", ("10.0.0.8", 443))]
+
+    def test_fetch_ical_rejects_private_dns_targets_before_request(self):
+        with patch("app.services.url_safety.socket.getaddrinfo", return_value=self.private_dns_result()):
+            with patch("app.services.calendar_service._ICAL_OPENER.open") as opener:
+                with self.assertRaisesMessage(ValueError, "interne Netzwerkadressen"):
+                    fetch_ical("https://example.com/calendar.ics")
+
+        opener.assert_not_called()
+
+    def test_fetch_ical_rejects_private_redirect_targets(self):
+        headers = Message()
+        headers["Location"] = "https://127.0.0.1/private.ics"
+        redirect = HTTPError("https://example.com/calendar.ics", 302, "Found", headers, None)
+
+        with patch("app.services.url_safety.socket.getaddrinfo", return_value=self.public_dns_result()):
+            with patch("app.services.calendar_service._ICAL_OPENER.open", side_effect=redirect) as opener:
+                with self.assertRaisesMessage(ValueError, "interne Netzwerkadressen"):
+                    fetch_ical("https://example.com/calendar.ics")
+
+        self.assertEqual(opener.call_count, 1)
+
+    def test_fetch_ical_reads_public_calendar_response(self):
+        with patch("app.services.url_safety.socket.getaddrinfo", return_value=self.public_dns_result()):
+            with patch("app.services.calendar_service._ICAL_OPENER.open", return_value=FakeIcalResponse()) as opener:
+                text = fetch_ical("https://example.com/calendar.ics")
+
+        self.assertIn("BEGIN:VCALENDAR", text)
+        opener.assert_called_once()
 
 
 
@@ -352,6 +621,30 @@ class WeatherRadarTests(TestCase):
         self.assertEqual(context["forecast_summary"]["average_high"], "24°")
         self.assertEqual(context["forecast_summary"]["rain_days"], "1")
         self.assertEqual(context["forecast_summary"]["trend"], "Nass")
+
+    @override_settings(WEATHER_API_KEY="")
+    def test_weather_context_uses_profile_default_city(self):
+        self.user.profile.weather_default_city = "Berlin,de"
+        self.user.profile.save(update_fields=["weather_default_city"])
+
+        context = get_weather_context({}, user=self.user)
+
+        self.assertEqual(context["current"]["city"], "Berlin")
+        self.assertEqual(context["current"]["label"], "Standardort")
+        self.assertEqual(context["search_query"], "")
+
+    @override_settings(WEATHER_API_KEY="test-key", WEATHER_CACHE_SECONDS=600)
+    def test_location_suggestions_cache_api_responses(self):
+        cache.clear()
+        payload = [{"name": "Berlin", "state": "Berlin", "country": "DE", "lat": 52.52, "lon": 13.405}]
+
+        with patch("app.services.weather_service.urlopen", return_value=FakeWeatherResponse(payload)) as mocked_urlopen:
+            first = get_location_suggestions("Berlin")
+            second = get_location_suggestions("Berlin")
+
+        self.assertEqual(first, second)
+        self.assertEqual(first[0]["name"], "Berlin")
+        self.assertEqual(mocked_urlopen.call_count, 1)
 
     @override_settings(WEATHER_API_KEY="")
     def test_weather_page_renders_calculated_forecast_summary(self):
@@ -475,6 +768,51 @@ class MessagesPageTests(TestCase):
         self.assertContains(response, "Lukas: Neue Antwort")
         self.assertNotContains(response, 'name="form_name" value="message"')
         self.assertTrue(ConversationMember.objects.get(conversation=conversation, user=self.mira).unread_count())
+
+    def test_inbox_items_use_bounded_queries_for_message_counts(self):
+        conversation = Conversation.objects.create(created_by=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.lukas)
+        for index in range(60):
+            ChatMessage.objects.create(
+                conversation=conversation,
+                sender=self.lukas,
+                body=f"Nachricht {index}",
+            )
+        conversations = list(Conversation.visible_for(self.mira))
+
+        with self.assertNumQueries(3):
+            items = _build_inbox_items(conversations, self.mira)
+
+        self.assertEqual(items[0]["unread"], 60)
+        self.assertIn("Nachricht 59", items[0]["preview"])
+
+    def test_message_detail_uses_paginated_history_window(self):
+        conversation = Conversation.objects.create(created_by=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.lukas)
+        for index in range(60):
+            ChatMessage.objects.create(
+                conversation=conversation,
+                sender=self.lukas,
+                body=f"Nachricht {index}",
+            )
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get(f"/messages/{conversation.id}/")
+
+        message_bodies = [item["message"].body for item in response.context["message_items"]]
+        self.assertEqual(len(message_bodies), 50)
+        self.assertEqual(message_bodies[0], "Nachricht 10")
+        self.assertEqual(message_bodies[-1], "Nachricht 59")
+        self.assertTrue(response.context["has_older_messages"])
+
+        oldest_message_id = response.context["oldest_message_id"]
+        response = self.client.get(f"/messages/{conversation.id}/?before={oldest_message_id}")
+        older_message_bodies = [item["message"].body for item in response.context["message_items"]]
+
+        self.assertEqual(older_message_bodies, [f"Nachricht {index}" for index in range(10)])
+        self.assertFalse(response.context["has_older_messages"])
 
     def test_user_can_react_to_message(self):
         conversation = Conversation.objects.create(created_by=self.mira)

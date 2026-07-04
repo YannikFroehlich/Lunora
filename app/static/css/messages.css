@@ -350,6 +350,26 @@
   border-radius: 999px;
 }
 
+.older-messages-link {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px auto 8px;
+  padding: 8px 14px;
+  color: var(--color-accent-strong);
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-accent-strong) 18%, transparent);
+  border-radius: 999px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.older-messages-link:hover {
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
 .message-stream {
   min-height: 0;
   max-height: 100%;

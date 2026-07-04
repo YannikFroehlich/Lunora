@@ -5,6 +5,8 @@ Django settings for the Lunora project.
 import os
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -36,16 +38,32 @@ def env_list(name, default=""):
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
-load_env_file(BASE_DIR / ".env")
+def env_int(name, default=0):
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except ValueError as error:
+        raise ImproperlyConfigured(f"{name} muss eine ganze Zahl sein.") from error
 
-SECRET_KEY = os.getenv(
-    "DJANGO_SECRET_KEY",
-    "django-insecure-pm9wwt63efi#c3%4kzc8wnxqnl@x=#u0tbc-7@ngwbu%tc^1f^",
-)
+
+load_env_file(BASE_DIR / ".env")
 
 DEBUG = env_bool("DJANGO_DEBUG", True)
 
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "")
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = "django-insecure-lunora-local-dev-key-change-me"
+    else:
+        raise ImproperlyConfigured("DJANGO_SECRET_KEY muss gesetzt sein, wenn DJANGO_DEBUG=false ist.")
+
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS")
+if not DEBUG and not ALLOWED_HOSTS:
+    raise ImproperlyConfigured("DJANGO_ALLOWED_HOSTS muss gesetzt sein, wenn DJANGO_DEBUG=false ist.")
+
+CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -116,12 +134,31 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / os.getenv("DJANGO_STATIC_ROOT", "staticfiles")
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+PROFILE_IMAGE_MAX_BYTES = env_int("PROFILE_IMAGE_MAX_BYTES", 2 * 1024 * 1024)
+PROFILE_IMAGE_MAX_WIDTH = env_int("PROFILE_IMAGE_MAX_WIDTH", 4096)
+PROFILE_IMAGE_MAX_HEIGHT = env_int("PROFILE_IMAGE_MAX_HEIGHT", 4096)
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LOGIN_URL = "/login/"
 LOGIN_REDIRECT_URL = "/home/"
 LOGOUT_REDIRECT_URL = "/login/"
+
+SECURE_SSL_REDIRECT = env_bool("DJANGO_SECURE_SSL_REDIRECT", not DEBUG)
+SESSION_COOKIE_SECURE = env_bool("DJANGO_SESSION_COOKIE_SECURE", not DEBUG)
+CSRF_COOKIE_SECURE = env_bool("DJANGO_CSRF_COOKIE_SECURE", not DEBUG)
+SECURE_HSTS_SECONDS = env_int("DJANGO_SECURE_HSTS_SECONDS", 31536000 if not DEBUG else 0)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool("DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS", False)
+SECURE_HSTS_PRELOAD = env_bool("DJANGO_SECURE_HSTS_PRELOAD", False)
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = os.getenv("DJANGO_SECURE_REFERRER_POLICY", "same-origin")
+SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = env_bool("DJANGO_CSRF_COOKIE_HTTPONLY", False)
+
+if env_bool("DJANGO_USE_X_FORWARDED_PROTO", False):
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = env_bool("DJANGO_USE_X_FORWARDED_HOST", False)
 
 # Weather API settings are kept server-side so browser code never exposes keys.
 WEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY") or os.getenv("WEATHER_API_KEY", "")
@@ -138,3 +175,4 @@ WEATHER_TILE_BASE_URL = os.getenv(
     "https://tile.openweathermap.org/map",
 )
 WEATHER_DEFAULT_CITY = os.getenv("WEATHER_DEFAULT_CITY", "Buende,de")
+WEATHER_CACHE_SECONDS = env_int("WEATHER_CACHE_SECONDS", 600)

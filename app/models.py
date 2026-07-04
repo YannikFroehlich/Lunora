@@ -1,7 +1,9 @@
 from django.conf import settings
 from django.db import models
-from django.db.models import Count
+from django.db.models import Count, Prefetch
 from django.utils import timezone
+
+from app.services.image_uploads import validate_profile_image_file
 
 
 class Profile(models.Model):
@@ -47,7 +49,7 @@ class Profile(models.Model):
 
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile")
     display_name = models.CharField(max_length=120)
-    profile_image = models.FileField(upload_to="profiles/", blank=True)
+    profile_image = models.FileField(upload_to="profiles/", blank=True, validators=[validate_profile_image_file])
     theme = models.CharField(max_length=12, choices=THEME_CHOICES, default="light")
     accent_color = models.CharField(max_length=7, choices=ACCENT_COLOR_CHOICES, default="#c2a276")
     background_softness = models.PositiveSmallIntegerField(default=55)
@@ -55,6 +57,13 @@ class Profile(models.Model):
     date_format = models.CharField(max_length=24, choices=DATE_FORMAT_CHOICES, default="de_numeric")
     time_format = models.CharField(max_length=12, choices=TIME_FORMAT_CHOICES, default="24h")
     timezone_name = models.CharField(max_length=64, choices=TIMEZONE_CHOICES, default="Europe/Berlin")
+    notify_email = models.BooleanField(default=True)
+    notify_reminders = models.BooleanField(default=True)
+    notify_desktop = models.BooleanField(default=True)
+    weekly_summary = models.BooleanField(default=False)
+    analytics_enabled = models.BooleanField(default=True)
+    usage_data_enabled = models.BooleanField(default=False)
+    weather_default_city = models.CharField(max_length=120, blank=True, default="Buende,de")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -123,7 +132,12 @@ class Conversation(models.Model):
     def visible_for(cls, user):
         return (
             cls.objects.filter(member_rows__user=user, member_rows__is_archived=False)
-            .prefetch_related("member_rows__user", "messages__sender", "messages__reactions__user")
+            .prefetch_related(
+                Prefetch(
+                    "member_rows",
+                    queryset=ConversationMember.objects.select_related("user", "user__profile"),
+                )
+            )
             .distinct()
         )
 
@@ -281,6 +295,7 @@ class CalendarEvent(models.Model):
 class CalendarReminder(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="calendar_reminders")
     title = models.CharField(max_length=180)
+    due_at = models.DateTimeField(blank=True, null=True)
     is_done = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

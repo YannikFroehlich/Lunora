@@ -11,7 +11,7 @@ from app.services.weather_service import (
 
 @login_required
 def weather(request):
-    return render(request, "app/weather.html", get_weather_context(request.GET))
+    return render(request, "app/weather.html", get_weather_context(request.GET, user=request.user))
 
 
 @login_required

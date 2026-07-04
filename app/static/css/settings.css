@@ -42,6 +42,10 @@
   grid-area: privacy;
 }
 
+.settings-hidden-form {
+  display: none;
+}
+
 .field-label {
   display: block;
   margin: 24px 0 10px;
@@ -364,12 +368,21 @@
 
 .switch {
   position: relative;
+  display: inline-block;
   width: 44px;
   height: 24px;
   flex: 0 0 auto;
   background: rgba(140, 125, 107, 0.28);
   border: 0;
   border-radius: 999px;
+  cursor: pointer;
+}
+
+.switch input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
 }
 
 .switch::after {
@@ -391,6 +404,42 @@
 
 .switch.is-on::after {
   transform: translateX(20px);
+}
+
+.preference-field {
+  padding-top: 16px;
+}
+
+.preference-field .field-label {
+  margin-top: 0;
+}
+
+.preference-field input[type="text"] {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  color: var(--color-text);
+  background: var(--surface-control);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-sm);
+  outline: 0;
+}
+
+.preference-field input[type="text"]:focus {
+  border-color: rgba(181, 150, 104, 0.62);
+  box-shadow: 0 0 0 3px rgba(181, 150, 104, 0.14);
+}
+
+.field-hint {
+  display: block;
+  margin-top: 8px;
+  color: var(--color-muted);
+  font-size: 0.84rem;
+}
+
+.preference-submit {
+  width: 100%;
+  margin-top: 16px;
 }
 
 .settings-footer {

@@ -258,9 +258,21 @@
   display: block;
 }
 
+.reminder-row span + span {
+  display: none;
+}
+
 .reminder-row small {
   margin-top: 4px;
   color: var(--color-muted);
+}
+
+.reminder-row.is-overdue small {
+  color: #a64d3d;
+}
+
+.reminder-row.is-due-today small {
+  color: var(--color-accent-strong);
 }
 
 .reminder-row.is-done span {
@@ -272,9 +284,11 @@
   margin: 0 0 8px;
 }
 
-.reminder-add-form input[type="text"] {
+.reminder-add-form input[type="text"],
+.reminder-add-form input[type="datetime-local"] {
   width: 100%;
   min-height: 42px;
+  margin-top: 8px;
   padding: 0 12px;
   color: var(--color-text);
   background: var(--surface-control);
@@ -283,7 +297,12 @@
   outline: 0;
 }
 
-.reminder-add-form input[type="text"]:focus {
+.reminder-add-form input:first-of-type {
+  margin-top: 0;
+}
+
+.reminder-add-form input[type="text"]:focus,
+.reminder-add-form input[type="datetime-local"]:focus {
   border-color: rgba(181, 150, 104, 0.62);
   box-shadow: 0 0 0 3px rgba(181, 150, 104, 0.14);
 }

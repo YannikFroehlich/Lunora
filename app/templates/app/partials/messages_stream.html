@@ -1,3 +1,10 @@
+{% if has_older_messages and oldest_message_id %}
+<a class="older-messages-link" href="{% url 'messages_detail' selected_conversation.id %}?before={{ oldest_message_id }}{% if query %}&q={{ query|urlencode }}{% endif %}{% if current_filter != 'all' %}&filter={{ current_filter }}{% endif %}">
+    <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
+    <span>&Auml;ltere Nachrichten laden</span>
+</a>
+{% endif %}
+
 {% for item in message_items %}
     {% if item.date_label %}<div class="chat-date">{{ item.date_label }}</div>{% endif %}
     <article id="message-{{ item.message.id }}" class="bubble is-{{ item.side }}{% if item.is_deleted %} is-deleted{% endif %}{% if item.is_pinned %} is-pinned{% endif %}"

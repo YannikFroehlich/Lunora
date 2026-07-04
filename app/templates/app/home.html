@@ -60,11 +60,13 @@
             </div>
             <div class="tool-grid">
                 {% for tool in recent_tools %}
-                <article class="tool-tile">
+                {% if tool.url_name %}
+                <a class="tool-tile" href="{% url tool.url_name %}">
                     <i class="fa-solid {{ tool.icon }}" aria-hidden="true"></i>
                     <strong>{{ tool.title }}</strong>
                     <span>{{ tool.subtitle }}</span>
-                </article>
+                </a>
+                {% endif %}
                 {% endfor %}
             </div>
         </section>

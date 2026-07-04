@@ -1,18 +1,20 @@
 import json
 from copy import deepcopy
 from datetime import datetime
+from hashlib import sha256
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from django.conf import settings
+from django.core.cache import cache
 from django.utils import timezone
 
 
-def get_weather_context(params=None):
+def get_weather_context(params=None, user=None):
     """Return weather data for the requested place without exposing API keys."""
     params = params or {}
     fallback = _fallback_weather_context()
-    location = _location_from_request(params)
+    location = _location_from_request(params, user=user)
     search_query = params.get("q", "").strip()
 
     fallback["search_query"] = search_query
@@ -65,7 +67,7 @@ def get_location_suggestions(query, limit=5):
     return [_normalize_location(item) for item in locations[:limit]]
 
 
-def _location_from_request(params):
+def _location_from_request(params, user=None):
     lat = params.get("lat", "").strip()
     lon = params.get("lon", "").strip()
     label = params.get("label", "").strip()
@@ -85,7 +87,22 @@ def _location_from_request(params):
     if query:
         return {"query": query, "label": query}
 
-    return {"query": settings.WEATHER_DEFAULT_CITY, "label": "Mein Standort"}
+    return {
+        "query": _weather_default_city_for(user),
+        "label": "Standardort",
+        "is_default": True,
+    }
+
+
+def _weather_default_city_for(user=None):
+    if user and getattr(user, "is_authenticated", False):
+        try:
+            default_city = user.profile.weather_default_city.strip()
+        except Exception:
+            default_city = ""
+        if default_city:
+            return default_city
+    return settings.WEATHER_DEFAULT_CITY
 
 
 def _geocode_first(query):
@@ -112,11 +129,24 @@ def _weather_api_params(location):
 
 
 def _fetch_json(endpoint, params):
-    query = urlencode(params)
-    request = Request(f"{endpoint}?{query}", headers={"User-Agent": "Lunora/1.0"})
+    query = urlencode(sorted(params.items()))
+    request_url = f"{endpoint}?{query}"
+    cache_seconds = max(0, getattr(settings, "WEATHER_CACHE_SECONDS", 600))
+    cache_key = f"weather:json:{sha256(request_url.encode('utf-8')).hexdigest()}"
+
+    if cache_seconds:
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return deepcopy(cached)
+
+    request = Request(request_url, headers={"User-Agent": "Lunora/1.0"})
 
     with urlopen(request, timeout=5) as response:
-        return json.loads(response.read().decode("utf-8"))
+        data = json.loads(response.read().decode("utf-8"))
+
+    if cache_seconds:
+        cache.set(cache_key, data, cache_seconds)
+    return data
 
 
 WEATHER_RADAR_TILE_LAYERS = {
@@ -191,7 +221,7 @@ def _build_context_from_api(current, forecast, fallback, location):
     sunset = _format_time(sys.get("sunset"))
 
     context = deepcopy(fallback)
-    context["search_query"] = location.get("label", "")
+    context["search_query"] = "" if location.get("is_default") else location.get("label", "")
     context["current"] = {
         "city": city_name,
         "detail": location_detail,
@@ -338,12 +368,13 @@ def _forecast_summary(daily_forecast):
 def _fallback_for_location(fallback, location, search_query):
     context = deepcopy(fallback)
     selected_label = location.get("label") or search_query
-    context["search_query"] = "" if selected_label == "Mein Standort" else selected_label
+    display_label = location.get("query") if location.get("is_default") else selected_label
+    context["search_query"] = search_query
 
-    if selected_label and selected_label != "Mein Standort":
-        context["current"]["city"] = location.get("name") or _short_location_name(selected_label)
-        context["current"]["detail"] = location.get("details") or _location_details_from_label(selected_label)
-        context["current"]["label"] = "Demo-Ort"
+    if display_label:
+        context["current"]["city"] = location.get("name") or _short_location_name(display_label)
+        context["current"]["detail"] = location.get("details") or _location_details_from_label(display_label)
+        context["current"]["label"] = "Standardort" if location.get("is_default") else "Demo-Ort"
         context["api_notice"] = (
             "Trage OPENWEATHER_API_KEY in deiner .env ein, um echte Wetterdaten zu laden."
         )
@@ -363,7 +394,12 @@ def _radar_context_for_location(location=None, current=None, city_name=""):
         lat = _coerce_float(coord.get("lat"))
     if lon is None:
         lon = _coerce_float(coord.get("lon"))
-    label = location.get("name") or _short_location_name(location.get("label", "")) or city_name
+    label = (
+        location.get("name")
+        or _short_location_name(location.get("query", ""))
+        or _short_location_name(location.get("label", ""))
+        or city_name
+    )
 
     if lat is None or lon is None:
         fallback_place = _fallback_place_for_label(label or settings.WEATHER_DEFAULT_CITY)

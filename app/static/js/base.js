@@ -112,8 +112,19 @@ window.addEventListener("storage", (event) => {
   }
 });
 
-document.querySelectorAll(".switch").forEach((button) => {
-  button.addEventListener("click", () => button.classList.toggle("is-on"));
+document.querySelectorAll(".switch").forEach((control) => {
+  const checkbox = control.querySelector("input[type='checkbox']");
+  if (!checkbox) {
+    control.addEventListener("click", () => control.classList.toggle("is-on"));
+    return;
+  }
+
+  const syncSwitchState = () => {
+    control.classList.toggle("is-on", checkbox.checked);
+  };
+
+  syncSwitchState();
+  checkbox.addEventListener("change", syncSwitchState);
 });
 
 document.querySelectorAll(".segmented-control").forEach((control) => {

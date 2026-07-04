@@ -5,7 +5,7 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
 
-from app.forms import AppearanceForm, CalendarSourceForm, ProfileForm
+from app.forms import AppearanceForm, CalendarSourceForm, ProfileForm, ProfilePreferencesForm
 from app.models import CalendarSource, Profile
 from app.view_models import get_dashboard_context, get_settings_context
 
@@ -74,10 +74,12 @@ def settings(request):
             return redirect(return_to)
         appearance_form = AppearanceForm(instance=profile)
         calendar_source_form = CalendarSourceForm(instance=calendar_source)
+        preferences_form = ProfilePreferencesForm(instance=profile)
     elif request.method == "POST" and request.POST.get("form_name") == "appearance":
         appearance_form = AppearanceForm(request.POST, instance=profile)
         form = ProfileForm(instance=profile)
         calendar_source_form = CalendarSourceForm(instance=calendar_source)
+        preferences_form = ProfilePreferencesForm(instance=profile)
         if appearance_form.is_valid():
             appearance_form.save()
             return redirect(return_to)
@@ -85,18 +87,28 @@ def settings(request):
         calendar_source_form = CalendarSourceForm(request.POST, instance=calendar_source)
         form = ProfileForm(instance=profile)
         appearance_form = AppearanceForm(instance=profile)
+        preferences_form = ProfilePreferencesForm(instance=profile)
         if calendar_source_form.is_valid():
             calendar_source = calendar_source_form.save(commit=False)
             calendar_source.user = request.user
             calendar_source.name = "Google Kalender"
             calendar_source.save()
             return redirect(return_to)
+    elif request.method == "POST" and request.POST.get("form_name") == "preferences":
+        preferences_form = ProfilePreferencesForm(request.POST, instance=profile)
+        form = ProfileForm(instance=profile)
+        appearance_form = AppearanceForm(instance=profile)
+        calendar_source_form = CalendarSourceForm(instance=calendar_source)
+        if preferences_form.is_valid():
+            preferences_form.save()
+            return redirect(return_to)
     else:
         form = ProfileForm(instance=profile)
         appearance_form = AppearanceForm(instance=profile)
         calendar_source_form = CalendarSourceForm(instance=calendar_source)
+        preferences_form = ProfilePreferencesForm(instance=profile)
 
-    context = get_settings_context()
+    context = get_settings_context(preferences_form)
     context.update(
         {
             "profile": profile,
@@ -104,6 +116,7 @@ def settings(request):
             "appearance_form": appearance_form,
             "calendar_source": calendar_source,
             "calendar_source_form": calendar_source_form,
+            "preferences_form": preferences_form,
             "return_to": return_to,
         }
     )

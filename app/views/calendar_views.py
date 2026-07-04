@@ -41,8 +41,6 @@ def calendar(request):
         return redirect(request.get_full_path())
     else:
         source_form = CalendarSourceForm(instance=source)
-        if source:
-            sync_result = sync_calendar_source(source)
 
     if "reminder_form" not in locals():
         reminder_form = CalendarReminderForm()

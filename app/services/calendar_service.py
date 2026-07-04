@@ -5,17 +5,30 @@ import re
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone as datetime_timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-from urllib.error import URLError
-from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
+from urllib.parse import urljoin
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from django.db import transaction
 from django.utils import timezone
 
 from app.models import CalendarEvent, CalendarSource
+from app.services.url_safety import validate_calendar_url
 
 SYNC_LOOKBACK_DAYS = 45
 SYNC_LOOKAHEAD_DAYS = 370
 TONE_SEQUENCE = ["blue", "green", "sand", "violet", "red"]
+MAX_ICAL_BYTES = 5_000_000
+MAX_ICAL_REDIRECTS = 4
+REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
+
+
+class NoRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_ICAL_OPENER = build_opener(NoRedirectHandler)
 
 
 @dataclass(frozen=True)
@@ -60,11 +73,33 @@ def sync_calendar_source(source, *, force=False):
 
 
 def fetch_ical(url):
-    request = Request(url, headers={"User-Agent": "Lunora Calendar Sync/1.0"})
-    with urlopen(request, timeout=12) as response:
-        content_type = response.headers.get("content-type", "")
-        data = response.read(5_000_000)
+    current_url = validate_calendar_url(url, resolve_dns=True)
 
+    for redirect_count in range(MAX_ICAL_REDIRECTS + 1):
+        request = Request(current_url, headers={"User-Agent": "Lunora Calendar Sync/1.0"})
+
+        try:
+            with _ICAL_OPENER.open(request, timeout=12) as response:
+                return _read_ical_response(response)
+        except HTTPError as error:
+            if error.code not in REDIRECT_STATUS_CODES:
+                raise
+            if redirect_count >= MAX_ICAL_REDIRECTS:
+                raise ValueError("Der Kalenderlink hat zu viele Weiterleitungen.")
+
+            location = error.headers.get("Location")
+            if not location:
+                raise ValueError("Der Kalenderlink leitet ohne Ziel weiter.")
+            current_url = validate_calendar_url(urljoin(current_url, location), resolve_dns=True)
+
+    raise ValueError("Der Kalenderlink hat zu viele Weiterleitungen.")
+
+
+def _read_ical_response(response):
+    content_type = response.headers.get("content-type", "")
+    data = response.read(MAX_ICAL_BYTES + 1)
+    if len(data) > MAX_ICAL_BYTES:
+        raise ValueError("Die iCal-Datei ist zu gross.")
     text = data.decode("utf-8-sig", errors="replace")
     if "BEGIN:VCALENDAR" not in text:
         raise ValueError("Der Kalenderlink liefert keine gueltige iCal-Datei.")

@@ -72,11 +72,22 @@ Beispiel:
 DJANGO_SECRET_KEY=dev-secret-key
 DJANGO_DEBUG=true
 DJANGO_ALLOWED_HOSTS=127.0.0.1,localhost
+DJANGO_CSRF_TRUSTED_ORIGINS=
 DJANGO_LANGUAGE_CODE=de-de
 DJANGO_TIME_ZONE=Europe/Berlin
+DJANGO_STATIC_ROOT=staticfiles
+PROFILE_IMAGE_MAX_BYTES=2097152
+PROFILE_IMAGE_MAX_WIDTH=4096
+PROFILE_IMAGE_MAX_HEIGHT=4096
+
+DJANGO_SECURE_SSL_REDIRECT=false
+DJANGO_SESSION_COOKIE_SECURE=false
+DJANGO_CSRF_COOKIE_SECURE=false
+DJANGO_SECURE_HSTS_SECONDS=0
 
 OPENWEATHER_API_KEY=
 WEATHER_DEFAULT_CITY=Buende,de
+WEATHER_CACHE_SECONDS=600
 ```
 
 Wichtige Variablen:
@@ -84,7 +95,16 @@ Wichtige Variablen:
 - `DJANGO_SECRET_KEY`: Django Secret Key
 - `DJANGO_DEBUG`: `true` oder `false`
 - `DJANGO_ALLOWED_HOSTS`: kommagetrennte Hostliste
+- `DJANGO_CSRF_TRUSTED_ORIGINS`: kommagetrennte HTTPS-Urspruenge fuer CSRF, z. B. `https://lunora.example.com`
+- `DJANGO_STATIC_ROOT`: Zielordner fuer `collectstatic`, standardmaessig `staticfiles`
+- `PROFILE_IMAGE_MAX_BYTES`, `PROFILE_IMAGE_MAX_WIDTH`, `PROFILE_IMAGE_MAX_HEIGHT`: Upload-Limits fuer Profilbilder
+- `DJANGO_SECURE_SSL_REDIRECT`: HTTPS-Weiterleitung, standardmaessig aktiv wenn `DJANGO_DEBUG=false`
+- `DJANGO_SESSION_COOKIE_SECURE` und `DJANGO_CSRF_COOKIE_SECURE`: Secure-Cookies, standardmaessig aktiv wenn `DJANGO_DEBUG=false`
+- `DJANGO_SECURE_HSTS_SECONDS`: HSTS-Dauer in Sekunden, standardmaessig `31536000` wenn `DJANGO_DEBUG=false`
+- `DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS` und `DJANGO_SECURE_HSTS_PRELOAD`: nur aktivieren, wenn alle Subdomains dauerhaft HTTPS-only sind
+- `DJANGO_USE_X_FORWARDED_PROTO`: fuer Deployments hinter einem vertrauenswuerdigen HTTPS-Reverse-Proxy
 - `OPENWEATHER_API_KEY` oder `WEATHER_API_KEY`: aktiviert echte Wetterdaten und Radar-Layer
+- `WEATHER_CACHE_SECONDS`: Cache-Dauer fuer OpenWeather-JSON-Antworten
 - `WEATHER_DEFAULT_CITY`: Standardort für Wetterdaten
 - `DJANGO_LANGUAGE_CODE`: Sprache, standardmäßig `de-de`
 - `DJANGO_TIME_ZONE`: Standardzeitzone, standardmäßig `Europe/Berlin`

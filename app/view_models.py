@@ -1,11 +1,14 @@
 import calendar
 from datetime import datetime, time, timedelta
 
+from django.db.models import F
 from django.utils import timezone
 
-from app.models import CalendarEvent, CalendarReminder, ConversationMember
+from app.models import CalendarEvent, CalendarReminder
+from app.services.message_queries import unread_total_for_user
 from app.services.user_preferences import (
     format_user_date,
+    format_user_datetime,
     format_user_time,
     get_user_month_name,
     get_user_weekday_name,
@@ -18,8 +21,9 @@ from app.services.weather_service import get_weather_context
 
 def get_dashboard_context(user=None):
     now = localtime_for_user(profile_or_user=user)
-    dashboard_weather = _dashboard_weather_context()
+    dashboard_weather = _dashboard_weather_context(user)
     unread_messages_total = _dashboard_unread_message_count(user)
+    upcoming_dashboard_events = _dashboard_upcoming_events(user, now) if user else []
 
     return {
         "active_page": "home",
@@ -38,7 +42,6 @@ def get_dashboard_context(user=None):
             {"label": "Dashboard", "icon": "fa-table-cells-large", "url_name": "home"},
             {"label": "Wetter", "icon": "fa-cloud-sun", "url_name": "weather"},
             {"label": "Kalender", "icon": "fa-calendar-days", "url_name": "calendar"},
-            {"label": "Projekte", "icon": "fa-folder", "url_name": "home"},
             {
                 "label": "Nachrichten",
                 "icon": "fa-message",
@@ -46,41 +49,66 @@ def get_dashboard_context(user=None):
                 "badge_key": "messages_unread",
                 "badge_count": unread_messages_total,
             },
+            {"label": "Einstellungen", "icon": "fa-gear", "url_name": "settings"},
         ],
         "recent_tools": [
-            {"title": "Notizen", "subtitle": "Weiter schreiben", "icon": "fa-note-sticky"},
-            {"title": "Planer", "subtitle": "Termine ansehen", "icon": "fa-calendar-check"},
+            {"title": "Kalender", "subtitle": f"{len(upcoming_dashboard_events)} kommende Termine" if upcoming_dashboard_events else "Kalender oeffnen", "icon": "fa-calendar-check", "url_name": "calendar"},
+            {"title": "Wetter", "subtitle": dashboard_weather.get("today", {}).get("city", "Standardort"), "icon": "fa-cloud-sun", "url_name": "weather"},
+            {"title": "Nachrichten", "subtitle": f"{unread_messages_total} ungelesen" if unread_messages_total else "Inbox oeffnen", "icon": "fa-message", "url_name": "messages"},
+            {"title": "Einstellungen", "subtitle": "Profil & Praeferenzen", "icon": "fa-gear", "url_name": "settings"},
             {"title": "Dateien", "subtitle": "Zuletzt geöffnet", "icon": "fa-folder-open"},
             {"title": "Analysen", "subtitle": "Einblicke ansehen", "icon": "fa-chart-simple"},
         ],
-        "upcoming_dashboard_events": _dashboard_upcoming_events(user, now) if user else [],
+        "upcoming_dashboard_events": upcoming_dashboard_events,
         "legacy_notes": [
             {"text": "Projektbrief prüfen", "done": True},
             {"text": "Landingpage designen", "done": False},
             {"text": "Präsentation vorbereiten", "done": False},
         ],
+        "recent_tools": _dashboard_tool_shortcuts(
+            upcoming_dashboard_events,
+            unread_messages_total,
+            dashboard_weather,
+        ),
+        "legacy_notes": [],
+    }
+
+
+def _preference_row(preferences_form, field_name, label, hint):
+    return {
+        "field": preferences_form[field_name] if preferences_form else None,
+        "label": label,
+        "hint": hint,
     }
 
 
 def _dashboard_unread_message_count(user):
-    if not user or not getattr(user, "is_authenticated", False):
-        return 0
+    return unread_total_for_user(user)
 
-    memberships = (
-        ConversationMember.objects.filter(user=user, is_archived=False)
-        .select_related("conversation")
-        .prefetch_related("conversation__messages")
-    )
-    return sum(member.unread_count() for member in memberships)
 
-def _dashboard_weather_context():
-    weather_context = get_weather_context({})
+def _dashboard_tool_shortcuts(upcoming_events, unread_messages_total, dashboard_weather):
+    event_count = len(upcoming_events)
+    event_subtitle = f"{event_count} kommende Termine" if event_count else "Kalender oeffnen"
+    unread_subtitle = f"{unread_messages_total} ungelesen" if unread_messages_total else "Inbox oeffnen"
+    weather_city = dashboard_weather.get("today", {}).get("city", "Standardort")
+
+    return [
+        {"title": "Kalender", "subtitle": event_subtitle, "icon": "fa-calendar-check", "url_name": "calendar"},
+        {"title": "Wetter", "subtitle": weather_city, "icon": "fa-cloud-sun", "url_name": "weather"},
+        {"title": "Nachrichten", "subtitle": unread_subtitle, "icon": "fa-message", "url_name": "messages"},
+        {"title": "Einstellungen", "subtitle": "Profil & Praeferenzen", "icon": "fa-gear", "url_name": "settings"},
+    ]
+
+
+def _dashboard_weather_context(user=None):
+    weather_context = get_weather_context({}, user=user)
     current = weather_context.get("current", {})
     daily_forecast = weather_context.get("daily_forecast") or []
     tomorrow = daily_forecast[0] if daily_forecast else {}
 
     return {
         "today": {
+            "city": current.get("city", "Buende"),
             "temperature": current.get("temperature", 24),
             "feels_like": current.get("feels_like", current.get("temperature", 24)),
             "description": current.get("description", "Teilweise bewölkt"),
@@ -97,8 +125,8 @@ def _dashboard_weather_context():
     }
 
 
-def get_settings_context():
-    return {
+def get_settings_context(preferences_form=None):
+    context = {
         "active_page": "settings",
         "accent_colors": ["#c2a276", "#7f916b", "#a5aa74", "#9eb1b6", "#aaa2be", "#c1a09a"],
         "region_rows": [
@@ -114,6 +142,17 @@ def get_settings_context():
             {"label": "Wöchentliche Zusammenfassung", "hint": "Kurzer Rückblick per E-Mail"},
         ],
     }
+    context["notification_rows"] = [
+        _preference_row(preferences_form, "notify_email", "E-Mail Benachrichtigungen", "Wichtige Updates erhalten"),
+        _preference_row(preferences_form, "notify_reminders", "Erinnerungen", "Aufgaben und Termine im Blick behalten"),
+        _preference_row(preferences_form, "notify_desktop", "Desktop Hinweise", "Benachrichtigungen auf diesem Geraet"),
+        _preference_row(preferences_form, "weekly_summary", "Woechentliche Zusammenfassung", "Kurzer Rueckblick per E-Mail"),
+    ]
+    context["privacy_rows"] = [
+        _preference_row(preferences_form, "analytics_enabled", "Analysen", "Hilft, Lunora besser zu machen"),
+        _preference_row(preferences_form, "usage_data_enabled", "Nutzungsdaten", "Anonyme Nutzung erfassen"),
+    ]
+    return context
 
 
 def _dashboard_upcoming_events(user, now):
@@ -195,7 +234,7 @@ def get_calendar_context(user, *, year=None, month=None):
     ]
     days_in_month = [month_date.replace(day=day) for day in range(1, calendar.monthrange(year, month)[1] + 1)]
     busy_days = {localtime_for_user(event.start_at, user).date() for event in month_events}
-    reminder_items = CalendarReminder.objects.filter(user=user)[:8]
+    reminder_items = _calendar_reminder_items(user, now)
     chart_bars = _calendar_chart_bars(month_events, year, month, user)
     prev_month = _shift_month(year, month, -1)
     next_month = _shift_month(year, month, 1)
@@ -253,6 +292,54 @@ def _upcoming_calendar_events(user, now):
         }
         for event in events
     ]
+
+
+def _calendar_reminder_items(user, now):
+    reminders = CalendarReminder.objects.filter(user=user).order_by(
+        "is_done",
+        F("due_at").asc(nulls_last=True),
+        "-created_at",
+    )[:8]
+    return [
+        {
+            "reminder": reminder,
+            "title": reminder.title,
+            "is_done": reminder.is_done,
+            "due_label": _calendar_reminder_due_label(reminder, now, user),
+            "due_state": _calendar_reminder_due_state(reminder, now, user),
+        }
+        for reminder in reminders
+    ]
+
+
+def _calendar_reminder_due_label(reminder, now, user):
+    if reminder.is_done:
+        return "Erledigt"
+    if not reminder.due_at:
+        return "Ohne Faelligkeitsdatum"
+
+    due_at = localtime_for_user(reminder.due_at, user)
+    today = now.date()
+    if due_at < now:
+        return f"Ueberfaellig seit {format_user_datetime(due_at, user)}"
+    if due_at.date() == today:
+        return f"Heute {format_user_time(due_at, user)}"
+    if due_at.date() == today + timedelta(days=1):
+        return f"Morgen {format_user_time(due_at, user)}"
+    return format_user_datetime(due_at, user)
+
+
+def _calendar_reminder_due_state(reminder, now, user):
+    if reminder.is_done:
+        return "is-done"
+    if not reminder.due_at:
+        return ""
+    due_at = localtime_for_user(reminder.due_at, user)
+    if due_at < now:
+        return "is-overdue"
+    if due_at.date() == now.date():
+        return "is-due-today"
+    return ""
 
 
 def _shift_month(year, month, direction):

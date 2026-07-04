@@ -18,6 +18,12 @@
     </header>
 
     <div class="settings-grid">
+        <form id="preferences-form" class="settings-hidden-form" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="preferences">
+            <input type="hidden" name="return_to" value="{{ return_to }}">
+        </form>
+
         <form id="appearance-form" class="glass-panel appearance-panel" method="post">
             {% csrf_token %}
             <input type="hidden" name="form_name" value="appearance">
@@ -119,7 +125,7 @@
                         <label class="upload-button" for="{{ profile_form.profile_image.id_for_label }}">
                             <i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i>
                             <span>Bild auswählen</span>
-                            <input class="profile-image-upload-input" type="file" name="{{ profile_form.profile_image.html_name }}" accept="image/*" id="{{ profile_form.profile_image.id_for_label }}" data-file-input>
+                            <input class="profile-image-upload-input" type="file" name="{{ profile_form.profile_image.html_name }}" accept="{{ profile_form.profile_image.field.widget.attrs.accept }}" id="{{ profile_form.profile_image.id_for_label }}" data-file-input>
                         </label>
                         <span class="selected-file-name" data-file-name-for="{{ profile_form.profile_image.id_for_label }}">Keine neue Datei ausgewählt</span>
                     </div>
@@ -142,12 +148,21 @@
 
         <section class="glass-panel notifications-panel">
             <div class="panel-title"><i class="fa-regular fa-bell"></i><h2>Benachrichtigungen</h2></div>
+            {% if preferences_form.non_field_errors %}
+            <div class="form-errors">{{ preferences_form.non_field_errors }}</div>
+            {% endif %}
             {% for row in notification_rows %}
             <div class="setting-line">
                 <span><strong>{{ row.label }}</strong><small>{{ row.hint }}</small></span>
-                <button class="switch is-on" type="button" aria-label="{{ row.label }}"></button>
+                <label class="switch {% if row.field.value %}is-on{% endif %}" aria-label="{{ row.label }}" for="{{ row.field.id_for_label }}">
+                    <input type="checkbox" name="{{ row.field.html_name }}" id="{{ row.field.id_for_label }}" form="preferences-form" {% if row.field.value %}checked{% endif %}>
+                </label>
             </div>
             {% endfor %}
+            <button class="primary-button preference-submit" type="submit" form="preferences-form">
+                <i class="fa-solid fa-floppy-disk"></i>
+                Benachrichtigungen speichern
+            </button>
         </section>
 
         <section class="glass-panel calendar-settings-panel">
@@ -223,12 +238,32 @@
             <div class="panel-title"><i class="fa-solid fa-shield-halved"></i><h2>Privatsphäre</h2></div>
             <div class="setting-line">
                 <span><strong>Analysen</strong><small>Hilft, Lunora besser zu machen</small></span>
-                <button class="switch is-on" type="button" aria-label="Analysen"></button>
+                <label class="switch {% if preferences_form.analytics_enabled.value %}is-on{% endif %}" aria-label="Analysen" for="{{ preferences_form.analytics_enabled.id_for_label }}">
+                    <input type="checkbox" name="{{ preferences_form.analytics_enabled.html_name }}" id="{{ preferences_form.analytics_enabled.id_for_label }}" form="preferences-form" {% if preferences_form.analytics_enabled.value %}checked{% endif %}>
+                </label>
             </div>
             <div class="setting-line">
                 <span><strong>Nutzungsdaten</strong><small>Anonyme Nutzung erfassen</small></span>
-                <button class="switch is-on" type="button" aria-label="Nutzungsdaten"></button>
+                <label class="switch {% if preferences_form.usage_data_enabled.value %}is-on{% endif %}" aria-label="Nutzungsdaten" for="{{ preferences_form.usage_data_enabled.id_for_label }}">
+                    <input type="checkbox" name="{{ preferences_form.usage_data_enabled.html_name }}" id="{{ preferences_form.usage_data_enabled.id_for_label }}" form="preferences-form" {% if preferences_form.usage_data_enabled.value %}checked{% endif %}>
+                </label>
             </div>
+            <div class="preference-field">
+                <label class="field-label" for="{{ preferences_form.weather_default_city.id_for_label }}">{{ preferences_form.weather_default_city.label }}</label>
+                <input type="text"
+                       name="{{ preferences_form.weather_default_city.html_name }}"
+                       id="{{ preferences_form.weather_default_city.id_for_label }}"
+                       value="{{ preferences_form.weather_default_city.value|default_if_none:'' }}"
+                       placeholder="{{ preferences_form.weather_default_city.field.widget.attrs.placeholder }}"
+                       autocomplete="{{ preferences_form.weather_default_city.field.widget.attrs.autocomplete }}"
+                       form="preferences-form">
+                <small class="field-hint">Wird fuer Dashboard und Wetterseite genutzt, wenn keine Suche aktiv ist.</small>
+                {{ preferences_form.weather_default_city.errors }}
+            </div>
+            <button class="primary-button preference-submit" type="submit" form="preferences-form">
+                <i class="fa-solid fa-floppy-disk"></i>
+                Praeferenzen speichern
+            </button>
         </section>
     </div>
 

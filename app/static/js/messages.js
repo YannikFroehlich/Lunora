@@ -66,6 +66,10 @@
       params.set("filter", currentUrl.searchParams.get("filter"));
     }
 
+    if (currentUrl.searchParams.has("before")) {
+      params.set("before", currentUrl.searchParams.get("before"));
+    }
+
     params.set("_", Date.now().toString());
     return params;
   };

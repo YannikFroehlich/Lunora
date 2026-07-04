@@ -2,6 +2,7 @@ from datetime import timedelta
 
 from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
+from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
@@ -9,6 +10,11 @@ from django.utils import timezone
 
 from app.forms import ConversationStartForm, MessageForm
 from app.models import ChatMessage, ChatMessageReaction, Conversation, ConversationMember
+from app.services.message_queries import (
+    current_members_by_conversation,
+    last_messages_by_conversation,
+    unread_counts_by_conversation,
+)
 from app.services.user_preferences import (
     format_user_date,
     format_user_datetime,
@@ -18,6 +24,7 @@ from app.services.user_preferences import (
 
 
 MESSAGE_REACTION_EMOJIS = [emoji for emoji, _label in ChatMessageReaction.EMOJI_CHOICES]
+MESSAGE_STREAM_PAGE_SIZE = 50
 
 
 @login_required
@@ -145,11 +152,13 @@ def messages(request, conversation_id=None):
 
     query = request.GET.get("q", "").strip()
     current_filter = request.GET.get("filter", "all")
+    message_before_id = request.GET.get("before", "").strip()
     all_inbox_items = _build_inbox_items(all_conversations, request.user)
     inbox_items = _filter_inbox_items(all_inbox_items, query, current_filter)
     overview_items = _build_messages_overview_items(all_inbox_items)
 
-    message_items = _build_message_items(selected_conversation, request.user) if selected_conversation else []
+    message_window = _build_message_window(selected_conversation, request.user, before_id=message_before_id)
+    message_items = message_window["message_items"]
     pinned_message_items = _build_pinned_message_items(selected_conversation, request.user) if selected_conversation else []
     selected_members = _build_member_items(selected_conversation, request.user) if selected_conversation else []
     current_member = _get_conversation_member(selected_conversation, request.user) if selected_conversation else None
@@ -166,6 +175,8 @@ def messages(request, conversation_id=None):
         "selected_avatar_url": _conversation_avatar_url_for(selected_conversation, request.user) if selected_conversation else "",
         "selected_members": selected_members,
         "message_items": message_items,
+        "has_older_messages": message_window["has_older_messages"],
+        "oldest_message_id": message_window["oldest_message_id"],
         "pinned_message_items": pinned_message_items,
         "reaction_emojis": MESSAGE_REACTION_EMOJIS,
         "message_form": message_form,
@@ -196,6 +207,7 @@ def messages_live_updates(request, conversation_id=None):
 
     query = request.GET.get("q", "").strip()
     current_filter = request.GET.get("filter", "all")
+    message_before_id = request.GET.get("before", "").strip()
     all_inbox_items = _build_inbox_items(all_conversations, request.user)
     inbox_items = _filter_inbox_items(all_inbox_items, query, current_filter)
     unread_total = sum(item["unread"] for item in all_inbox_items)
@@ -220,12 +232,15 @@ def messages_live_updates(request, conversation_id=None):
     }
 
     if selected_conversation:
-        message_items = _build_message_items(selected_conversation, request.user)
+        message_window = _build_message_window(selected_conversation, request.user, before_id=message_before_id)
+        message_items = message_window["message_items"]
         pinned_message_items = _build_pinned_message_items(selected_conversation, request.user)
         current_member = _get_conversation_member(selected_conversation, request.user)
         context.update(
             {
                 "message_items": message_items,
+                "has_older_messages": message_window["has_older_messages"],
+                "oldest_message_id": message_window["oldest_message_id"],
                 "pinned_message_items": pinned_message_items,
                 "current_member_state": _build_current_member_state(current_member, request.user),
             }
@@ -307,16 +322,13 @@ def _build_current_member_state(member, user):
 
 def _build_inbox_items(conversations, user):
     items = []
+    current_members = current_members_by_conversation(conversations, user)
+    last_messages = last_messages_by_conversation(conversations)
+    unread_counts = unread_counts_by_conversation(conversations, user, current_members)
+
     for conversation in conversations:
-        messages = list(conversation.messages.all())
-        last_message = messages[-1] if messages else None
-        member = next((row for row in conversation.member_rows.all() if row.user_id == user.id), None)
-        last_read_at = member.last_read_at if member else None
-        unread_count = sum(
-            1
-            for message in messages
-            if message.sender_id != user.id and (not last_read_at or message.created_at > last_read_at)
-        )
+        last_message = last_messages.get(conversation.id)
+        member = current_members.get(conversation.id)
         participants = list(conversation.member_rows.all())
         items.append(
             {
@@ -326,7 +338,7 @@ def _build_inbox_items(conversations, user):
                 "avatar_url": _conversation_avatar_url_for(conversation, user),
                 "preview": _conversation_preview(last_message, user),
                 "time": _conversation_time_label(last_message.created_at, user) if last_message else "Neu",
-                "unread": unread_count,
+                "unread": unread_counts.get(conversation.id, 0),
                 "is_group": conversation.is_group,
                 "is_muted": bool(member and member.is_muted),
                 "is_blocked": bool(member and member.is_blocked),
@@ -362,14 +374,55 @@ def _build_messages_overview_items(items):
     return unread_items[:5] or items[:5]
 
 
-def _build_message_items(conversation, user):
-    items = []
-    last_date = None
+def _build_message_window(conversation, user, before_id=None):
+    if not conversation:
+        return {
+            "message_items": [],
+            "has_older_messages": False,
+            "oldest_message_id": "",
+        }
+
+    messages, has_older_messages = _paginated_conversation_messages(conversation, before_id=before_id)
+    message_items = _build_message_items(conversation, user, messages)
+    return {
+        "message_items": message_items,
+        "has_older_messages": has_older_messages,
+        "oldest_message_id": message_items[0]["message"].id if message_items else "",
+    }
+
+
+def _paginated_conversation_messages(conversation, before_id=None):
     messages = conversation.messages.select_related("sender", "sender__profile", "pinned_by").prefetch_related(
         "reactions__user",
         "reactions__user__profile",
     )
-    for message in messages.all():
+    before_id = _coerce_positive_int(before_id)
+    if before_id:
+        anchor = conversation.messages.filter(pk=before_id).only("id", "created_at").first()
+        if anchor:
+            messages = messages.filter(
+                Q(created_at__lt=anchor.created_at)
+                | Q(created_at=anchor.created_at, id__lt=anchor.id)
+            )
+
+    newest_first = list(messages.order_by("-created_at", "-id")[: MESSAGE_STREAM_PAGE_SIZE + 1])
+    has_older_messages = len(newest_first) > MESSAGE_STREAM_PAGE_SIZE
+    page_messages = newest_first[:MESSAGE_STREAM_PAGE_SIZE]
+    return list(reversed(page_messages)), has_older_messages
+
+
+def _coerce_positive_int(value):
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
+def _build_message_items(conversation, user, messages):
+    items = []
+    last_date = None
+    for message in messages:
         message_date = localtime_for_user(message.created_at, user).date()
         items.append(
             {

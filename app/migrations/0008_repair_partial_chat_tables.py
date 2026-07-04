@@ -1,4 +1,4 @@
-# Repair migration for local SQLite databases where app.0007 was partially applied.
+# SQLite-only repair migration for local databases where app.0007 was partially applied.
 
 from django.db import migrations
 
@@ -77,6 +77,9 @@ def _execute_sql_script(schema_editor, sql_script):
 
 def repair_partial_chat_tables(apps, schema_editor):
     connection = schema_editor.connection
+    if connection.vendor != "sqlite":
+        return
+
     existing_tables = set(connection.introspection.table_names())
 
     needs_rebuild = False
@@ -89,12 +92,10 @@ def repair_partial_chat_tables(apps, schema_editor):
             break
 
     if needs_rebuild:
-        if connection.vendor == "sqlite":
-            schema_editor.execute("PRAGMA foreign_keys = OFF;")
+        schema_editor.execute("PRAGMA foreign_keys = OFF;")
         _execute_sql_script(schema_editor, DROP_CHAT_TABLES_SQL)
         _execute_sql_script(schema_editor, CHAT_TABLES_SQL)
-        if connection.vendor == "sqlite":
-            schema_editor.execute("PRAGMA foreign_keys = ON;")
+        schema_editor.execute("PRAGMA foreign_keys = ON;")
 
     _execute_sql_script(schema_editor, CHAT_INDEXES_SQL)
 
