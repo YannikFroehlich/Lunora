@@ -1,5 +1,5 @@
 .weather-shell {
-  max-width: 1280px;
+  max-width: 1540px;
 }
 
 .weather-toolbar {
@@ -140,13 +140,13 @@
 
 .weather-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.08fr) minmax(340px, 1fr);
+  grid-template-columns: minmax(0, 1.16fr) minmax(360px, 0.92fr);
   grid-template-areas:
     "current summary"
     "hourly days"
     "air days"
     "radar hint";
-  gap: 18px;
+  gap: 20px;
   margin-top: 20px;
 }
 
@@ -576,7 +576,7 @@
 
 .map-preview {
   position: relative;
-  min-height: 196px;
+  min-height: clamp(196px, 16vw, 270px);
   margin-top: 14px;
   overflow: hidden;
   isolation: isolate;
@@ -875,6 +875,10 @@
       "air"
       "radar"
       "hint";
+  }
+
+  .map-preview {
+    min-height: 230px;
   }
 }
 

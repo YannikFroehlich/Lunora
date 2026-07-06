@@ -1,10 +1,10 @@
 .dashboard-shell {
-  max-width: 1190px;
+  max-width: 1520px;
 }
 
 .dashboard-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.85fr) minmax(320px, 0.98fr);
+  grid-template-columns: minmax(0, 1.9fr) minmax(340px, 0.82fr);
   grid-template-areas:
     "welcome quote"
     "today quote"
@@ -488,6 +488,40 @@
 
   .clock-panel {
     min-height: 260px;
+  }
+}
+
+@media (min-width: 1500px) {
+  .dashboard-grid {
+    grid-template-columns: minmax(0, 2.05fr) minmax(360px, 0.78fr);
+    gap: 26px;
+  }
+
+  .welcome-panel {
+    min-height: 250px;
+    padding: 46px 48px 38px;
+  }
+
+  .today-panel,
+  .recent-panel,
+  .notes-panel,
+  .clock-panel {
+    padding-right: 38px;
+    padding-left: 38px;
+  }
+
+  .clock-panel {
+    min-height: 462px;
+  }
+
+  .quick-actions {
+    gap: 20px;
+    padding: 20px;
+  }
+
+  .action-tile,
+  .tool-tile {
+    min-height: 126px;
   }
 }
 

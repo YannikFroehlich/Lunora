@@ -1,17 +1,17 @@
 .messages-shell {
-  max-width: 1420px;
+  max-width: 1600px;
 }
 
 .messages-layout {
   display: grid;
-  grid-template-columns: minmax(300px, 0.9fr) minmax(520px, 1.55fr) minmax(280px, 0.68fr);
-  gap: 14px;
+  grid-template-columns: minmax(310px, 0.82fr) minmax(560px, 1.7fr) minmax(300px, 0.7fr);
+  gap: 16px;
   margin-top: 20px;
 }
 
 .messages-layout > .glass-panel {
-  min-height: 720px;
-  max-height: min(780px, calc(100vh - 170px));
+  height: clamp(700px, calc(100vh - 188px), 940px);
+  min-height: 0;
   padding: 18px;
 }
 
@@ -614,6 +614,7 @@
   }
 
   .messages-layout > .glass-panel {
+    height: auto;
     min-height: auto;
   }
 
