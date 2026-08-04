@@ -4,7 +4,7 @@
 {% block title %}Wetter | Lunora{% endblock %}
 
 {% block page_css %}
-<link rel="stylesheet" href="{% static 'css/weather.css' %}?v=responsive-1">
+<link rel="stylesheet" href="{% static 'css/weather.css' %}?v=weather-map-5">
 {% endblock %}
 
 {% block content %}
@@ -21,12 +21,12 @@
     <p class="api-notice" role="status">{{ api_notice }}</p>
     {% endif %}
 
-    {% if not radar.has_live %}
+    {% if not weather_map.available %}
     <section class="empty-state-card weather-key-state" aria-labelledby="weather-key-title">
         <i class="fa-solid fa-key" aria-hidden="true"></i>
         <div>
             <strong id="weather-key-title">Live-Wetter ist noch nicht verbunden</strong>
-            <p>Aktuell zeigt Lunora Demo-Werte und eine Vorschaukarte. Sobald die Wetterverbindung aktiv ist, erscheinen echte Messwerte und Radar-Layer.</p>
+            <p>Aktuell zeigt Lunora Demo-Werte und eine verschiebbare Basiskarte. Sobald die Wetterverbindung aktiv ist, lassen sich Temperatur, Niederschlag, Wolken, Wind und Luftdruck einblenden.</p>
         </div>
     </section>
     {% endif %}
@@ -153,51 +153,87 @@
             </div>
         </section>
 
-        <section class="glass-panel radar-panel">
+        <section class="glass-panel weather-map-panel">
             <div class="panel-title panel-title-between">
-                <span><i class="fa-solid fa-cloud-rain"></i> Regenradar</span>
-                <small>{{ radar.status }}</small>
+                <span><i class="fa-solid fa-map-location-dot"></i> Wetterkarte</span>
+                <small>{{ weather_map.status }}</small>
             </div>
-            <div class="map-preview {% if not radar.has_live %}is-demo{% endif %}"
+
+            <div class="weather-map-layer-picker" role="group" aria-label="Wetterebene auswählen">
+                {% for layer in weather_map.layers %}
+                <button type="button"
+                        class="weather-map-layer-button {% if layer.id == weather_map.default_layer %}is-active{% endif %}"
+                        data-weather-map-layer="{{ layer.id }}"
+                        data-weather-map-label="{{ layer.label }}"
+                        data-weather-map-unit="{{ layer.unit }}"
+                        data-weather-map-legend-start="{{ layer.legend_start }}"
+                        data-weather-map-legend-end="{{ layer.legend_end }}"
+                        data-weather-map-legend-class="{{ layer.legend_class }}"
+                        data-weather-map-hint="{{ layer.hint }}"
+                        data-weather-map-opacity="{{ layer.opacity }}"
+                        data-weather-map-tile-url="{% url 'weather_map_tile' layer.id 0 0 0 %}"
+                        aria-pressed="{% if layer.id == weather_map.default_layer %}true{% else %}false{% endif %}"
+                        {% if not weather_map.available %}disabled aria-disabled="true"{% endif %}>
+                    <i class="fa-solid {{ layer.icon }}" aria-hidden="true"></i>
+                    <span>{{ layer.label }}</span>
+                </button>
+                {% endfor %}
+            </div>
+
+            <p class="weather-map-click-hint">
+                <i class="fa-solid fa-location-dot" aria-hidden="true"></i>
+                {% if weather_map.available %}
+                Klicke auf einen Ort, um dort die aktuelle Temperatur zu sehen.
+                {% else %}
+                Mit verbundenem Wetterdienst kannst du per Klick die Temperatur eines Ortes abrufen.
+                {% endif %}
+            </p>
+
+            <div class="weather-map-shell {% if not weather_map.available %}is-unavailable{% endif %}"
                  role="region"
-                 tabindex="0"
-                 aria-label="Regenradar für {{ radar.location }}"
-                 data-radar-map
-                 data-radar-lat="{{ radar.center_lat }}"
-                 data-radar-lon="{{ radar.center_lon }}"
-                 data-radar-zoom="{{ radar.zoom }}"
-                 data-radar-location="{{ radar.location }}"
-                 data-radar-has-live="{{ radar.has_live|yesno:'true,false' }}"
-                 data-radar-cloud-tile-url="{% url 'weather_radar_layer_tile' 'clouds' 0 0 0 %}"
-                 data-radar-rain-tile-url="{% url 'weather_radar_layer_tile' 'precipitation' 0 0 0 %}">
-                <div class="radar-map-canvas" data-radar-canvas>
-                    <div class="radar-tile-layer" data-radar-tile-layer aria-hidden="true"></div>
-                    <div class="radar-tile-layer radar-cloud-layer" data-radar-cloud-layer aria-hidden="true"></div>
-                    <div class="radar-tile-layer radar-rain-layer" data-radar-rain-layer aria-hidden="true"></div>
-                    <span class="map-location"><i class="fa-solid fa-location-dot"></i> {{ radar.location }}</span>
-                    {% if not radar.has_live %}
-                    <span class="radar-demo-note">Demo-Karte ohne Live-Wolken</span>
-                    {% endif %}
+                 aria-label="Interaktive Wetterkarte für {{ weather_map.location }}"
+                 data-weather-map
+                 data-weather-map-lat="{{ weather_map.center_lat }}"
+                 data-weather-map-lon="{{ weather_map.center_lon }}"
+                 data-weather-map-zoom="{{ weather_map.zoom }}"
+                  data-weather-map-location="{{ weather_map.location }}"
+                  data-weather-map-available="{{ weather_map.available|yesno:'true,false' }}"
+                  data-weather-map-point-url="{% url 'weather_point' %}"
+                  data-weather-map-default-layer="{{ weather_map.default_layer }}">
+                <div class="weather-map-canvas"
+                     data-weather-map-canvas
+                     aria-label="Weltkarte. Mit Pfeiltasten, Maus oder Berührung verschieben."></div>
+
+                <div class="weather-map-actions" aria-label="Kartensteuerung">
+                    <button type="button" data-weather-map-reset aria-label="Zurück zu {{ weather_map.location }}">
+                        <i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i>
+                        <span>Zurück zu {{ weather_map.location }}</span>
+                    </button>
+                    <button type="button" data-weather-map-fullscreen aria-label="Wetterkarte im Vollbild anzeigen">
+                        <i class="fa-solid fa-up-right-and-down-left-from-center" aria-hidden="true"></i>
+                    </button>
                 </div>
-                <div class="radar-controls" aria-label="Radarsteuerung">
-                    <button type="button" data-radar-zoom-out aria-label="Radar herauszoomen"><i class="fa-solid fa-minus"></i></button>
-                    <button type="button" data-radar-zoom-in aria-label="Radar hineinzoomen"><i class="fa-solid fa-plus"></i></button>
-                    <button type="button" data-radar-fullscreen aria-label="Radar im Vollbild anzeigen"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button>
+
+                <div class="weather-map-legend" data-weather-map-legend aria-label="Legende für Temperatur">
+                    <div class="weather-map-legend-heading">
+                        <strong data-weather-map-legend-title>Temperatur</strong>
+                        <span data-weather-map-legend-unit>°C</span>
+                    </div>
+                    <span class="weather-map-legend-scale is-temperature" data-weather-map-legend-scale aria-hidden="true"></span>
+                    <div class="weather-map-legend-labels">
+                        <span data-weather-map-legend-start>Kälter</span>
+                        <span data-weather-map-legend-end>Wärmer</span>
+                    </div>
+                    <small data-weather-map-legend-hint>Die Farben zeigen die aktuelle Lufttemperatur.</small>
                 </div>
-                <div class="radar-legend" aria-label="Niederschlagsintensität">
-                    <span>Leicht</span>
-                    <span class="legend-bar"></span>
-                    <span>Stark</span>
-                </div>
-                <div class="radar-layer-chips" aria-label="Aktive Radar-Ebenen">
-                    {% if radar.has_live %}
-                    <span><i class="fa-solid fa-cloud"></i> Wolken</span>
-                    <span><i class="fa-solid fa-droplet"></i> Regen</span>
+
+                <p class="weather-map-status" data-weather-map-status role="status" aria-live="polite">
+                    {% if weather_map.available %}
+                    Temperatur wird geladen …
                     {% else %}
-                    <span><i class="fa-solid fa-circle-info"></i> Live-Layer aus</span>
+                    Wetterebenen benötigen einen verbundenen OpenWeather-Schlüssel.
                     {% endif %}
-                </div>
-                <span class="radar-attribution">© OpenStreetMap</span>
+                </p>
             </div>
         </section>
 
@@ -221,5 +257,8 @@
 {% endblock %}
 
 {% block page_js %}
-<script src="{% static 'js/weather.js' %}"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""></script>
+<script src="{% static 'js/weather.js' %}?v=weather-map-4"></script>
 {% endblock %}

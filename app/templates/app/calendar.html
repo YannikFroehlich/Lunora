@@ -4,7 +4,7 @@
 {% block title %}Kalender | Lunora{% endblock %}
 
 {% block page_css %}
-<link rel="stylesheet" href="{% static 'css/calendar.css' %}?v=responsive-1">
+<link rel="stylesheet" href="{% static 'css/calendar.css' %}?v=multi-source-1">
 {% endblock %}
 
 {% block content %}
@@ -25,21 +25,15 @@
                 <a class="icon-button" href="{% url 'calendar' %}?year={{ next_month.year }}&month={{ next_month.month }}" aria-label="Nächster Monat"><i class="fa-solid fa-chevron-right"></i></a>
                 <span class="toolbar-spacer"></span>
                 <a class="ghost-button" href="{% url 'calendar' %}"><i class="fa-regular fa-calendar"></i> Heute</a>
-                {% if calendar_source %}
+                {% if calendar_sources %}
                 <form method="post" class="inline-form">
                     {% csrf_token %}
-                    <input type="hidden" name="form_name" value="calendar_sync">
-                    <button class="primary-button" type="submit"><i class="fa-solid fa-rotate"></i> Synchronisieren</button>
+                    <input type="hidden" name="form_name" value="calendar_sync_all">
+                    <button class="primary-button" type="submit"><i class="fa-solid fa-rotate"></i> Alle synchronisieren</button>
                 </form>
                 {% endif %}
             </div>
-            {% if sync_result %}
-            <p class="{% if sync_result.synced %}sync-meta{% else %}sync-error{% endif %}">
-                {{ sync_result.message }}
-            </p>
-            {% elif calendar_last_synced_label %}
-            <p class="sync-meta">Zuletzt synchronisiert: {{ calendar_last_synced_label }}</p>
-            {% endif %}
+
             <div class="weekday-row">
                 <span>Mo</span><span>Di</span><span>Mi</span><span>Do</span><span>Fr</span><span>Sa</span><span>So</span>
             </div>
@@ -61,6 +55,43 @@
         </section>
 
         <aside class="side-stack">
+            <section class="glass-panel calendar-filter-panel">
+                <div class="panel-title panel-title-between">
+                    <div><h2>Meine Kalender</h2><p>{{ visible_calendar_count }} sichtbar</p></div>
+                    <a class="icon-button" href="{% url 'settings' %}?next={{ request.get_full_path|urlencode }}" aria-label="Kalender verwalten">
+                        <i class="fa-solid fa-gear"></i>
+                    </a>
+                </div>
+                {% if calendar_sources %}
+                <form class="calendar-visibility-form" method="post" data-calendar-visibility-form>
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="calendar_visibility">
+                    {% for item in calendar_sources %}
+                    <label class="calendar-source-row tone-{{ item.source.color }}">
+                        <input type="checkbox" name="visible_source_ids" value="{{ item.source.id }}" {% if item.source.is_visible %}checked{% endif %}>
+                        <span class="source-color-dot" aria-hidden="true"></span>
+                        <span class="source-copy">
+                            <strong>{{ item.source.name }}</strong>
+                            <small class="source-status is-{{ item.status_kind }}">{{ item.status_label }}</small>
+                        </span>
+                    </label>
+                    {% endfor %}
+                    <button class="ghost-button calendar-visibility-submit" type="submit">
+                        <i class="fa-regular fa-eye"></i>
+                        Ansicht aktualisieren
+                    </button>
+                </form>
+                {% else %}
+                <div class="empty-state-card is-compact">
+                    <i class="fa-regular fa-calendar-plus" aria-hidden="true"></i>
+                    <div>
+                        <strong>Noch kein Kalender</strong>
+                        <p>Füge deine privaten iCal-Links in den Einstellungen hinzu.</p>
+                    </div>
+                </div>
+                {% endif %}
+            </section>
+
             <section class="glass-panel today-events">
                 <div class="panel-title panel-title-between">
                     <div><h2>Heute</h2><p>{{ today_label }}</p></div>
@@ -79,8 +110,13 @@
                 <div class="empty-state-card is-compact">
                     <i class="fa-regular fa-calendar-check" aria-hidden="true"></i>
                     <div>
+                        {% if calendar_sources and visible_calendar_count == 0 %}
+                        <strong>Alle Kalender ausgeblendet</strong>
+                        <p>Aktiviere mindestens eine Checkbox, um Termine zu sehen.</p>
+                        {% else %}
                         <strong>Heute ist frei</strong>
                         <p>Für heute stehen keine Termine an.</p>
+                        {% endif %}
                     </div>
                 </div>
                 {% endif %}
@@ -90,7 +126,8 @@
                 <h2>Nächste Termine</h2>
                 {% if upcoming_events %}
                 {% for event in upcoming_events %}
-                <div class="upcoming-row">
+                <div class="upcoming-row tone-{{ event.tone }}">
+                    <span class="upcoming-dot" aria-hidden="true"></span>
                     <span>{{ event.date }}</span>
                     <strong>{{ event.title }}</strong>
                     <small>{{ event.category }}</small>
@@ -101,8 +138,13 @@
                 <div class="empty-state-card is-compact">
                     <i class="fa-regular fa-calendar-plus" aria-hidden="true"></i>
                     <div>
+                        {% if calendar_sources and visible_calendar_count == 0 %}
+                        <strong>Alle Kalender ausgeblendet</strong>
+                        <p>Aktiviere mindestens eine Checkbox, um kommende Termine zu sehen.</p>
+                        {% else %}
                         <strong>Keine kommenden Termine</strong>
-                        <p>Hinterlege deinen Kalender-Link in den Einstellungen, um die nächsten Termine hier zu sehen.</p>
+                        <p>Hinterlege deine Kalender-Links in den Einstellungen, um die nächsten Termine hier zu sehen.</p>
+                        {% endif %}
                     </div>
                 </div>
                 {% endif %}
@@ -162,4 +204,8 @@
         </section>
     </div>
 </section>
+{% endblock %}
+
+{% block page_js %}
+<script src="{% static 'js/calendar.js' %}"></script>
 {% endblock %}

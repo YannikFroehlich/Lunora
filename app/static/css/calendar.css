@@ -231,6 +231,95 @@
   margin-bottom: 16px;
 }
 
+.calendar-filter-panel .panel-title h2,
+.calendar-filter-panel .panel-title p {
+  margin: 0;
+}
+
+.calendar-filter-panel .panel-title p {
+  margin-top: 4px;
+  color: var(--color-muted);
+  font-size: 0.84rem;
+}
+
+.calendar-visibility-form {
+  display: grid;
+  gap: 10px;
+}
+
+.calendar-source-row {
+  display: grid;
+  grid-template-columns: 18px 14px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-height: 54px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-line);
+  cursor: pointer;
+}
+
+.calendar-source-row:last-of-type {
+  border-bottom: 0;
+}
+
+.calendar-source-row input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--tone);
+}
+
+.source-color-dot,
+.upcoming-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  background: var(--tone);
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--tone) 18%, transparent);
+}
+
+.source-copy,
+.source-copy strong,
+.source-copy small {
+  display: block;
+  min-width: 0;
+}
+
+.source-copy strong {
+  overflow: hidden;
+  color: var(--color-heading);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-status {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-status.is-error {
+  color: #a64d3d;
+}
+
+.calendar-visibility-submit {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.upcoming-row {
+  grid-template-columns: 10px 82px 1fr 72px 22px;
+}
+
+.upcoming-dot {
+  width: 8px;
+  height: 8px;
+  box-shadow: none;
+}
+
 .reminder-row {
   display: grid;
   grid-template-columns: 18px minmax(0, 1fr) 34px;
@@ -616,13 +705,24 @@
   }
 
   .upcoming-row {
-    grid-template-columns: 1fr 22px;
+    grid-template-columns: 10px minmax(0, 1fr) 22px;
     align-items: start;
   }
 
   .upcoming-row span,
   .upcoming-row small {
+    grid-column: 2;
+  }
+
+  .upcoming-row .upcoming-dot {
     grid-column: 1;
+    grid-row: 1 / span 3;
+    margin-top: 4px;
+  }
+
+  .upcoming-row i {
+    grid-column: 3;
+    grid-row: 1;
   }
 
   .timeline-row {

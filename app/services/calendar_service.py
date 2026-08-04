@@ -17,7 +17,6 @@ from app.services.url_safety import validate_calendar_url
 
 SYNC_LOOKBACK_DAYS = 45
 SYNC_LOOKAHEAD_DAYS = 370
-TONE_SEQUENCE = ["blue", "green", "sand", "violet", "red"]
 MAX_ICAL_BYTES = 5_000_000
 MAX_ICAL_REDIRECTS = 4
 REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
@@ -40,7 +39,6 @@ class ParsedEvent:
     start_at: datetime
     end_at: datetime
     is_all_day: bool
-    tone: str
 
 
 def sync_calendar_source(source, *, force=False):
@@ -70,6 +68,30 @@ def sync_calendar_source(source, *, force=False):
     source.last_error = ""
     source.save(update_fields=["last_synced_at", "last_error", "updated_at"])
     return {"synced": True, "message": f"{saved_count} Termine synchronisiert."}
+
+
+def sync_calendar_sources(sources, *, force=False):
+    source_list = list(sources)
+    enabled_sources = [source for source in source_list if source.enabled]
+    if not source_list:
+        return {"synced": False, "message": "Noch kein Kalender gespeichert."}
+    if not enabled_sources:
+        return {"synced": False, "message": "Keine aktiven Kalender zum Synchronisieren."}
+
+    results = [(source, sync_calendar_source(source, force=force)) for source in enabled_sources]
+    if len(results) == 1:
+        return results[0][1]
+
+    synced_count = sum(1 for _source, result in results if result.get("synced"))
+    failed_count = len(results) - synced_count
+    if failed_count and synced_count:
+        message = f"{synced_count} Kalender synchronisiert, {failed_count} mit Fehler."
+    elif failed_count:
+        message = f"{failed_count} Kalender konnten nicht synchronisiert werden."
+    else:
+        message = f"{synced_count} Kalender synchronisiert."
+
+    return {"synced": bool(synced_count), "message": message, "results": results}
 
 
 def fetch_ical(url):
@@ -124,7 +146,6 @@ def save_events(source, parsed_events):
                     "start_at": event.start_at,
                     "end_at": event.end_at,
                     "is_all_day": event.is_all_day,
-                    "tone": event.tone,
                 },
             )
 
@@ -219,7 +240,6 @@ def _event_instances(raw_event, index, window_start, window_end):
     title = _first_value(raw_event, "SUMMARY", "Ohne Titel")
     description = _first_value(raw_event, "DESCRIPTION", "")
     location = _first_value(raw_event, "LOCATION", "")
-    tone = TONE_SEQUENCE[index % len(TONE_SEQUENCE)]
     duration = end_at - start_at
     exclusions = _parse_exdates(raw_event)
     rrule = _first_value(raw_event, "RRULE", "")
@@ -234,7 +254,6 @@ def _event_instances(raw_event, index, window_start, window_end):
             start_at=event_start,
             end_at=event_start + duration,
             is_all_day=is_all_day,
-            tone=tone,
         )
         for event_start in starts
         if event_start < window_end and event_start + duration > window_start

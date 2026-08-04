@@ -209,130 +209,343 @@ if (weatherForm) {
   });
 }
 
-const radarMap = document.querySelector("[data-radar-map]");
+const weatherMapShell = document.querySelector("[data-weather-map]");
 
-if (radarMap) {
-  const canvas = radarMap.querySelector("[data-radar-canvas]");
-  const baseLayer = radarMap.querySelector("[data-radar-tile-layer]");
-  const cloudLayer = radarMap.querySelector("[data-radar-cloud-layer]");
-  const rainLayer = radarMap.querySelector("[data-radar-rain-layer]");
-  const zoomInButton = radarMap.querySelector("[data-radar-zoom-in]");
-  const zoomOutButton = radarMap.querySelector("[data-radar-zoom-out]");
-  const fullscreenButton = radarMap.querySelector("[data-radar-fullscreen]");
-  const cloudTileUrlTemplate = radarMap.dataset.radarCloudTileUrl || "";
-  const rainTileUrlTemplate = radarMap.dataset.radarRainTileUrl || "";
-  const hasLiveRadar = radarMap.dataset.radarHasLive === "true";
-  const centerLat = Number(radarMap.dataset.radarLat || 52.1984);
-  const centerLon = Number(radarMap.dataset.radarLon || 8.5864);
-  const minZoom = 5;
-  const maxZoom = 10;
-  const tileSize = 128;
-  let zoom = Math.min(maxZoom, Math.max(minZoom, Number(radarMap.dataset.radarZoom || 7)));
+if (weatherMapShell) {
+  const mapPanel = weatherMapShell.closest(".weather-map-panel");
+  const fullscreenTarget = mapPanel || weatherMapShell;
+  const canvas = weatherMapShell.querySelector("[data-weather-map-canvas]");
+  const resetButton = weatherMapShell.querySelector("[data-weather-map-reset]");
+  const fullscreenButton = weatherMapShell.querySelector("[data-weather-map-fullscreen]");
+  const status = weatherMapShell.querySelector("[data-weather-map-status]");
+  const legend = weatherMapShell.querySelector("[data-weather-map-legend]");
+  const legendTitle = weatherMapShell.querySelector("[data-weather-map-legend-title]");
+  const legendUnit = weatherMapShell.querySelector("[data-weather-map-legend-unit]");
+  const legendScale = weatherMapShell.querySelector("[data-weather-map-legend-scale]");
+  const legendStart = weatherMapShell.querySelector("[data-weather-map-legend-start]");
+  const legendEnd = weatherMapShell.querySelector("[data-weather-map-legend-end]");
+  const legendHint = weatherMapShell.querySelector("[data-weather-map-legend-hint]");
+  const layerButtons = Array.from(mapPanel?.querySelectorAll("[data-weather-map-layer]") || []);
+  const layersAvailable = weatherMapShell.dataset.weatherMapAvailable === "true";
+  const pointWeatherUrl = weatherMapShell.dataset.weatherMapPointUrl || "";
+  const locationName = weatherMapShell.dataset.weatherMapLocation || "Ausgewählter Ort";
+  const defaultLayerId = weatherMapShell.dataset.weatherMapDefaultLayer || "temperature";
+  const parsedLat = Number(weatherMapShell.dataset.weatherMapLat);
+  const parsedLon = Number(weatherMapShell.dataset.weatherMapLon);
+  const centerLat = Number.isFinite(parsedLat) ? parsedLat : 52.1984;
+  const centerLon = Number.isFinite(parsedLon) ? parsedLon : 8.5864;
+  const parsedZoom = Number(weatherMapShell.dataset.weatherMapZoom);
+  const initialZoom = Number.isFinite(parsedZoom) ? Math.min(10, Math.max(2, parsedZoom)) : 6;
 
-  function lonToTile(lon, currentZoom) {
-    return ((lon + 180) / 360) * 2 ** currentZoom;
+  function setStatus(message, isError = false) {
+    if (!status) return;
+    status.textContent = message;
+    status.classList.toggle("is-error", isError);
   }
 
-  function latToTile(lat, currentZoom) {
-    const radians = (lat * Math.PI) / 180;
-    return ((1 - Math.log(Math.tan(radians) + 1 / Math.cos(radians)) / Math.PI) / 2) * 2 ** currentZoom;
+  function updateLegend(button) {
+    if (!button) return;
+
+    const label = button.dataset.weatherMapLabel || "Wetterebene";
+    if (legendTitle) legendTitle.textContent = label;
+    if (legendUnit) legendUnit.textContent = button.dataset.weatherMapUnit || "";
+    if (legendStart) legendStart.textContent = button.dataset.weatherMapLegendStart || "";
+    if (legendEnd) legendEnd.textContent = button.dataset.weatherMapLegendEnd || "";
+    if (legendHint) legendHint.textContent = button.dataset.weatherMapHint || "";
+    if (legendScale) {
+      legendScale.className = `weather-map-legend-scale ${button.dataset.weatherMapLegendClass || ""}`.trim();
+    }
+    if (legend) legend.setAttribute("aria-label", `Legende für ${label}`);
   }
 
-  function wrapTileX(x, maxTile) {
-    return ((x % maxTile) + maxTile) % maxTile;
+  function setActiveButton(activeButton) {
+    layerButtons.forEach((button) => {
+      const isActive = button === activeButton;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
+    });
+    updateLegend(activeButton);
   }
 
-  function radarTileUrl(template, z, x, y) {
-    return template.replace(/\/0\/0\/0\.png$/, `/${z}/${x}/${y}.png`);
-  }
+  const defaultButton = layerButtons.find(
+    (button) => button.dataset.weatherMapLayer === defaultLayerId
+  ) || layerButtons[0];
+  setActiveButton(defaultButton);
 
-  function appendTile(layer, src, left, top, className = "radar-tile") {
-    const tile = document.createElement("img");
-    tile.className = className;
-    tile.src = src;
-    tile.alt = "";
-    tile.loading = "lazy";
-    tile.decoding = "async";
-    tile.draggable = false;
-    tile.style.left = `${left}px`;
-    tile.style.top = `${top}px`;
-    tile.addEventListener("error", () => tile.remove());
-    layer.appendChild(tile);
-  }
+  if (!canvas || typeof window.L === "undefined") {
+    layerButtons.forEach((button) => {
+      button.disabled = true;
+      button.setAttribute("aria-disabled", "true");
+    });
+    setStatus("Die interaktive Karte konnte nicht geladen werden.", true);
+  } else {
+    const map = window.L.map(canvas, {
+      minZoom: 2,
+      maxZoom: 10,
+      worldCopyJump: true,
+      keyboard: true,
+      scrollWheelZoom: true,
+      zoomControl: true,
+    }).setView([centerLat, centerLon], initialZoom);
 
-  function renderRadar() {
-    if (!canvas || !baseLayer || !cloudLayer || !rainLayer) {
-      return;
+    const baseMapLayer = window.L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      minZoom: 2,
+      maxZoom: 10,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    });
+    baseMapLayer.addTo(map);
+
+    const locationLabel = document.createElement("span");
+    locationLabel.textContent = locationName;
+    window.L.circleMarker([centerLat, centerLon], {
+      className: "weather-map-location-marker",
+      radius: 7,
+      color: "#fffaf3",
+      weight: 3,
+      fillColor: "#708a59",
+      fillOpacity: 1,
+    })
+      .addTo(map)
+      .bindTooltip(locationLabel, { direction: "top", offset: [0, -7] });
+
+    let activeWeatherLayer = null;
+    let selectedPointMarker = null;
+    let pointWeatherController = null;
+    let resizeTimer = null;
+
+    function formatTemperature(value) {
+      const temperature = Number(value);
+      if (!Number.isFinite(temperature)) return "–";
+      return new Intl.NumberFormat("de-DE", {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      }).format(temperature);
     }
 
-    const width = canvas.clientWidth || radarMap.clientWidth || 600;
-    const height = canvas.clientHeight || radarMap.clientHeight || 220;
-    const maxTile = 2 ** zoom;
-    const centerTileX = lonToTile(centerLon, zoom);
-    const centerTileY = latToTile(centerLat, zoom);
-    const startPixelX = centerTileX * tileSize - width / 2;
-    const startPixelY = centerTileY * tileSize - height / 2;
-    const startTileX = Math.floor(startPixelX / tileSize);
-    const startTileY = Math.floor(startPixelY / tileSize);
-    const endTileX = Math.ceil((startPixelX + width) / tileSize);
-    const endTileY = Math.ceil((startPixelY + height) / tileSize);
+    function createPointPopupContent({ state, weather, message }) {
+      const popup = document.createElement("div");
+      popup.className = `weather-map-point-content is-${state}`;
+      popup.setAttribute("aria-live", "polite");
 
-    baseLayer.innerHTML = "";
-    cloudLayer.innerHTML = "";
-    rainLayer.innerHTML = "";
+      const eyebrow = document.createElement("span");
+      eyebrow.className = "weather-map-point-eyebrow";
+      eyebrow.textContent = state === "loading" ? "Wird geladen" : "Aktuelles Wetter";
+      popup.appendChild(eyebrow);
 
-    for (let tileY = startTileY; tileY <= endTileY; tileY += 1) {
-      if (tileY < 0 || tileY >= maxTile) {
-        continue;
+      const title = document.createElement("strong");
+      title.className = "weather-map-point-title";
+      title.textContent = weather?.location || (state === "error" ? "Temperatur nicht verfügbar" : "Gewählter Ort");
+      popup.appendChild(title);
+
+      if (state === "success") {
+        const temperature = document.createElement("span");
+        temperature.className = "weather-map-point-temperature";
+        temperature.textContent = `${formatTemperature(weather.temperature)} °C`;
+        popup.appendChild(temperature);
+
+        const description = document.createElement("span");
+        description.className = "weather-map-point-description";
+        description.textContent = weather.description || "Aktuelles Wetter";
+        popup.appendChild(description);
+
+        const feelsLike = document.createElement("small");
+        feelsLike.className = "weather-map-point-meta";
+        feelsLike.textContent = `Gefühlt ${formatTemperature(weather.feels_like)} °C`;
+        popup.appendChild(feelsLike);
+      } else {
+        const feedback = document.createElement("span");
+        feedback.className = "weather-map-point-feedback";
+        feedback.textContent = message;
+        popup.appendChild(feedback);
       }
 
-      for (let tileX = startTileX; tileX <= endTileX; tileX += 1) {
-        const wrappedX = wrapTileX(tileX, maxTile);
-        const left = Math.round(tileX * tileSize - startPixelX);
-        const top = Math.round(tileY * tileSize - startPixelY);
-        appendTile(baseLayer, `https://tile.openstreetmap.org/${zoom}/${wrappedX}/${tileY}.png`, left, top);
+      return popup;
+    }
 
-        if (hasLiveRadar) {
-          appendTile(cloudLayer, radarTileUrl(cloudTileUrlTemplate, zoom, wrappedX, tileY), left, top);
-          appendTile(rainLayer, radarTileUrl(rainTileUrlTemplate, zoom, wrappedX, tileY), left, top);
+    function showPointPopup(latlng, content) {
+      if (!selectedPointMarker) {
+        selectedPointMarker = window.L.circleMarker(latlng, {
+          className: "weather-map-query-marker",
+          radius: 8,
+          color: "#fffaf3",
+          weight: 3,
+          fillColor: "#b27a45",
+          fillOpacity: 1,
+        }).addTo(map);
+      } else {
+        selectedPointMarker.setLatLng(latlng);
+      }
+
+      selectedPointMarker
+        .bindPopup(content, {
+          className: "weather-map-point-popup",
+          closeButton: true,
+          minWidth: 205,
+          maxWidth: 270,
+          offset: [0, -5],
+        })
+        .openPopup();
+    }
+
+    async function loadPointWeather(event) {
+      if (!layersAvailable || !pointWeatherUrl) return;
+
+      const latlng = event.latlng.wrap();
+      pointWeatherController?.abort();
+      pointWeatherController = new AbortController();
+      const currentController = pointWeatherController;
+
+      showPointPopup(
+        latlng,
+        createPointPopupContent({
+          state: "loading",
+          message: "Temperatur wird abgerufen …",
+        })
+      );
+
+      const requestUrl = new URL(pointWeatherUrl, window.location.origin);
+      requestUrl.searchParams.set("lat", latlng.lat.toFixed(5));
+      requestUrl.searchParams.set("lon", latlng.lng.toFixed(5));
+
+      try {
+        const response = await fetch(requestUrl, {
+          headers: { "X-Requested-With": "XMLHttpRequest" },
+          signal: currentController.signal,
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.ok || !payload.weather) {
+          throw new Error(payload.error || "Temperatur konnte nicht geladen werden.");
         }
+        if (currentController !== pointWeatherController) return;
+
+        showPointPopup(
+          latlng,
+          createPointPopupContent({ state: "success", weather: payload.weather })
+        );
+      } catch (error) {
+        if (error.name === "AbortError" || currentController !== pointWeatherController) return;
+        const message = error.message || "Temperatur konnte nicht geladen werden.";
+        showPointPopup(
+          latlng,
+          createPointPopupContent({ state: "error", message })
+        );
       }
     }
 
-    zoomOutButton.disabled = zoom <= minZoom;
-    zoomInButton.disabled = zoom >= maxZoom;
+    function refreshMapLayout(redrawLayers = false) {
+      window.requestAnimationFrame(() => map.invalidateSize({ pan: false }));
+      window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => {
+        map.invalidateSize({ pan: false });
+        if (redrawLayers) {
+          baseMapLayer.redraw();
+          activeWeatherLayer?.redraw();
+        }
+      }, 180);
+    }
+
+    function leafletTileUrl(template) {
+      return template.replace(/\/0\/0\/0\.png$/, "/{z}/{x}/{y}.png");
+    }
+
+    function showLayer(button) {
+      if (!layersAvailable || !button) return;
+
+      if (activeWeatherLayer) {
+        map.removeLayer(activeWeatherLayer);
+      }
+
+      setActiveButton(button);
+      const label = button.dataset.weatherMapLabel || "Wetterebene";
+      const tileUrl = leafletTileUrl(button.dataset.weatherMapTileUrl || "");
+      const opacity = Number(button.dataset.weatherMapOpacity || 0.78);
+      let loadedTile = false;
+
+      setStatus(`${label} wird geladen …`);
+      activeWeatherLayer = window.L.tileLayer(tileUrl, {
+        minZoom: 2,
+        maxZoom: 10,
+        maxNativeZoom: 10,
+        opacity: Number.isFinite(opacity) ? opacity : 0.78,
+        zIndex: 300,
+        keepBuffer: 2,
+        attribution: 'Wetterdaten &copy; <a href="https://openweathermap.org/">OpenWeather</a>',
+      });
+
+      activeWeatherLayer.on("tileload", () => {
+        if (loadedTile) return;
+        loadedTile = true;
+        setStatus(button.dataset.weatherMapHint || `${label} wird angezeigt.`);
+      });
+
+      activeWeatherLayer.on("tileerror", () => {
+        if (!loadedTile) {
+          setStatus(`${label} konnte nicht geladen werden. Bitte versuche es erneut.`, true);
+        }
+      });
+
+      activeWeatherLayer.addTo(map);
+    }
+
+    layerButtons.forEach((button) => {
+      button.addEventListener("click", () => showLayer(button));
+    });
+
+    map.on("popupopen", (event) => {
+      const closeButton = event.popup.getElement()?.querySelector(".leaflet-popup-close-button");
+      closeButton?.setAttribute("aria-label", "Temperaturanzeige schließen");
+    });
+
+    if (layersAvailable && pointWeatherUrl) {
+      canvas.classList.add("is-point-selectable");
+      map.on("click", loadPointWeather);
+    }
+
+    resetButton?.addEventListener("click", () => {
+      map.setView([centerLat, centerLon], initialZoom, { animate: true });
+      setStatus(`Karte ist wieder auf ${locationName} zentriert.`);
+    });
+
+    fullscreenButton?.addEventListener("click", async () => {
+      try {
+        if (document.fullscreenElement === fullscreenTarget) {
+          await document.exitFullscreen();
+        } else if (fullscreenTarget.requestFullscreen) {
+          await fullscreenTarget.requestFullscreen();
+        }
+      } catch (error) {
+        setStatus("Der Vollbildmodus konnte nicht geöffnet werden.", true);
+      }
+    });
+
+    document.addEventListener("fullscreenchange", () => {
+      const isFullscreen = document.fullscreenElement === fullscreenTarget;
+      const icon = fullscreenButton?.querySelector("i");
+      if (icon) {
+        icon.className = isFullscreen
+          ? "fa-solid fa-down-left-and-up-right-to-center"
+          : "fa-solid fa-up-right-and-down-left-from-center";
+      }
+      fullscreenButton?.setAttribute(
+        "aria-label",
+        isFullscreen ? "Vollbild der Wetterkarte beenden" : "Wetterkarte im Vollbild anzeigen"
+      );
+      refreshMapLayout(true);
+    });
+
+    window.addEventListener("resize", () => {
+      refreshMapLayout();
+    });
+
+    if ("ResizeObserver" in window) {
+      const mapResizeObserver = new ResizeObserver(() => {
+        refreshMapLayout();
+      });
+      mapResizeObserver.observe(weatherMapShell);
+    }
+
+    if (layersAvailable) {
+      showLayer(defaultButton);
+    }
   }
-
-  zoomOutButton?.addEventListener("click", () => {
-    zoom = Math.max(minZoom, zoom - 1);
-    renderRadar();
-  });
-
-  zoomInButton?.addEventListener("click", () => {
-    zoom = Math.min(maxZoom, zoom + 1);
-    renderRadar();
-  });
-
-  fullscreenButton?.addEventListener("click", async () => {
-    try {
-      if (document.fullscreenElement) {
-        await document.exitFullscreen();
-      } else if (radarMap.requestFullscreen) {
-        await radarMap.requestFullscreen();
-      }
-      window.setTimeout(renderRadar, 80);
-    } catch (error) {
-      // Fullscreen can be blocked by browser settings; the embedded radar still works.
-    }
-  });
-
-  window.addEventListener("resize", () => {
-    window.requestAnimationFrame(renderRadar);
-  });
-
-  document.addEventListener("fullscreenchange", () => {
-    window.setTimeout(renderRadar, 80);
-  });
-
-  renderRadar();
 }

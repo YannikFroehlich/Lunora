@@ -14,9 +14,15 @@ from django.utils import timezone
 
 from app.forms import CalendarSourceForm, ProfileForm
 from app.models import CalendarEvent, CalendarReminder, CalendarSource, ChatMessage, ChatMessageReaction, Conversation, ConversationMember, Profile
-from app.services.calendar_service import fetch_ical, parse_ical_events
+from app.services.calendar_service import fetch_ical, parse_ical_events, sync_calendar_sources
 from app.services.image_uploads import PROFILE_IMAGE_MAX_BYTES
-from app.services.weather_service import get_location_suggestions, get_weather_context
+from app.services.weather_service import (
+    WEATHER_MAP_LAYERS,
+    fetch_weather_map_tile,
+    get_location_suggestions,
+    get_weather_at_coordinates,
+    get_weather_context,
+)
 from app.views.message_views import _build_inbox_items
 
 
@@ -264,49 +270,58 @@ class SettingsProfileTests(TestCase):
 
         self.assertContains(response, "Präferenzen gespeichert.")
 
-    def test_calendar_source_can_be_saved(self):
+    def test_calendar_source_can_be_added_from_settings(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
         Profile.objects.create(user=user, display_name="Mira")
         self.client.login(username="mira@example.com", password="secret-12345")
 
-        with patch("app.views.calendar_views.sync_calendar_source", return_value={"synced": True, "message": "1 Termine synchronisiert."}):
+        with patch("app.views.core_views.sync_calendar_source", return_value={"synced": True, "message": "1 Termine synchronisiert."}) as sync_source:
             response = self.client.post(
-                "/calendar/",
+                "/settings/",
                 {
-                    "form_name": "calendar_source",
-                    "ical_url": "https://calendar.google.com/calendar/ical/example/private/basic.ics",
-                    "enabled": "on",
+                    "form_name": "calendar_source_add",
+                    "new-name": "Arbeit",
+                    "new-ical_url": "https://calendar.google.com/calendar/ical/settings/private/basic.ics",
+                    "new-color": "green",
+                    "new-enabled": "on",
                 },
             )
 
-        self.assertRedirects(response, "/calendar/")
+        self.assertRedirects(response, "/home/")
         source = CalendarSource.objects.get(user=user)
-        self.assertEqual(source.ical_url, "https://calendar.google.com/calendar/ical/example/private/basic.ics")
+        self.assertEqual(source.name, "Arbeit")
+        self.assertEqual(source.ical_url, "https://calendar.google.com/calendar/ical/settings/private/basic.ics")
+        self.assertEqual(source.color, "green")
+        self.assertTrue(source.is_visible)
         self.assertTrue(source.enabled)
+        sync_source.assert_called_once_with(source, force=True)
 
-    def test_calendar_source_can_be_saved_from_settings(self):
+    def test_calendar_source_failed_first_sync_is_kept(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
         Profile.objects.create(user=user, display_name="Mira")
         self.client.login(username="mira@example.com", password="secret-12345")
 
-        response = self.client.post(
-            "/settings/",
-            {
-                "form_name": "calendar_source",
-                "ical_url": "https://calendar.google.com/calendar/ical/settings/private/basic.ics",
-                "enabled": "on",
-            },
-        )
+        with patch("app.views.core_views.sync_calendar_source", return_value={"synced": False, "message": "Link nicht erreichbar."}):
+            response = self.client.post(
+                "/settings/",
+                {
+                    "form_name": "calendar_source_add",
+                    "new-name": "Familie",
+                    "new-ical_url": "https://calendar.google.com/calendar/ical/family/private/basic.ics",
+                    "new-color": "violet",
+                    "new-enabled": "on",
+                },
+            )
 
         self.assertRedirects(response, "/home/")
-        source = CalendarSource.objects.get(user=user)
-        self.assertEqual(source.ical_url, "https://calendar.google.com/calendar/ical/settings/private/basic.ics")
-        self.assertTrue(source.enabled)
+        self.assertTrue(CalendarSource.objects.filter(user=user, name="Familie").exists())
 
     def test_calendar_source_form_normalizes_webcal_urls(self):
         form = CalendarSourceForm(
             data={
+                "name": "Arbeit",
                 "ical_url": "webcal://calendar.google.com/calendar/ical/example/private/basic.ics",
+                "color": "blue",
                 "enabled": "on",
             }
         )
@@ -327,10 +342,31 @@ class SettingsProfileTests(TestCase):
 
         for url in unsafe_urls:
             with self.subTest(url=url):
-                form = CalendarSourceForm(data={"ical_url": url, "enabled": "on"})
+                form = CalendarSourceForm(data={"name": "Privat", "ical_url": url, "color": "blue", "enabled": "on"})
 
                 self.assertFalse(form.is_valid())
                 self.assertIn("ical_url", form.errors)
+
+    def test_calendar_source_form_rejects_duplicate_urls_for_user(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        CalendarSource.objects.create(
+            user=user,
+            name="Arbeit",
+            ical_url="https://calendar.google.com/calendar/ical/example/private/basic.ics",
+        )
+
+        form = CalendarSourceForm(
+            user=user,
+            data={
+                "name": "Duplikat",
+                "ical_url": "https://calendar.google.com/calendar/ical/example/private/basic.ics",
+                "color": "red",
+                "enabled": "on",
+            },
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("ical_url", form.errors)
 
     def test_settings_calendar_source_is_scoped_to_logged_in_user(self):
         mira = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
@@ -338,23 +374,26 @@ class SettingsProfileTests(TestCase):
         Profile.objects.create(user=mira, display_name="Mira")
         Profile.objects.create(user=lukas, display_name="Lukas")
         private_url = "https://calendar.google.com/calendar/ical/mira/private/basic.ics"
-        CalendarSource.objects.create(user=mira, ical_url=private_url)
+        CalendarSource.objects.create(user=mira, name="Miras Kalender", ical_url=private_url)
         self.client.login(username="lukas@example.com", password="secret-12345")
 
         response = self.client.get("/settings/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'name="form_name" value="calendar_source"')
+        self.assertContains(response, 'name="form_name" value="calendar_source_add"')
         self.assertNotContains(response, private_url)
 
-        response = self.client.post(
-            "/settings/",
-            {
-                "form_name": "calendar_source",
-                "ical_url": "https://calendar.google.com/calendar/ical/lukas/private/basic.ics",
-                "enabled": "on",
-            },
-        )
+        with patch("app.views.core_views.sync_calendar_source", return_value={"synced": True, "message": "1 Termine synchronisiert."}):
+            response = self.client.post(
+                "/settings/",
+                {
+                    "form_name": "calendar_source_add",
+                    "new-name": "Lukas Kalender",
+                    "new-ical_url": "https://calendar.google.com/calendar/ical/lukas/private/basic.ics",
+                    "new-color": "sand",
+                    "new-enabled": "on",
+                },
+            )
 
         self.assertRedirects(response, "/home/")
         self.assertEqual(CalendarSource.objects.get(user=mira).ical_url, private_url)
@@ -362,6 +401,77 @@ class SettingsProfileTests(TestCase):
             CalendarSource.objects.get(user=lukas).ical_url,
             "https://calendar.google.com/calendar/ical/lukas/private/basic.ics",
         )
+
+    def test_calendar_source_update_clears_events_when_url_changes(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        source = CalendarSource.objects.create(
+            user=user,
+            name="Alt",
+            ical_url="https://calendar.google.com/calendar/ical/old/private/basic.ics",
+        )
+        start_at = timezone.now() + timedelta(days=3)
+        CalendarEvent.objects.create(
+            user=user,
+            source=source,
+            external_id="old-event",
+            title="Alter Termin",
+            start_at=start_at,
+            end_at=start_at + timedelta(hours=1),
+        )
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        with patch("app.views.core_views.sync_calendar_source", return_value={"synced": True, "message": "1 Termine synchronisiert."}) as sync_source:
+            response = self.client.post(
+                "/settings/",
+                {
+                    "form_name": "calendar_source_update",
+                    "source_id": str(source.id),
+                    f"source-{source.id}-name": "Neu",
+                    f"source-{source.id}-ical_url": "https://calendar.google.com/calendar/ical/new/private/basic.ics",
+                    f"source-{source.id}-color": "red",
+                    f"source-{source.id}-enabled": "on",
+                },
+            )
+
+        self.assertRedirects(response, "/home/")
+        source.refresh_from_db()
+        self.assertEqual(source.name, "Neu")
+        self.assertEqual(source.color, "red")
+        self.assertEqual(source.ical_url, "https://calendar.google.com/calendar/ical/new/private/basic.ics")
+        self.assertFalse(CalendarEvent.objects.filter(source=source, external_id="old-event").exists())
+        sync_source.assert_called_once_with(source, force=True)
+
+    def test_calendar_source_delete_removes_events(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        source = CalendarSource.objects.create(
+            user=user,
+            name="Privat",
+            ical_url="https://calendar.google.com/calendar/ical/example/private/basic.ics",
+        )
+        start_at = timezone.now() + timedelta(days=1)
+        CalendarEvent.objects.create(
+            user=user,
+            source=source,
+            external_id="delete-event",
+            title="Loeschen",
+            start_at=start_at,
+            end_at=start_at + timedelta(hours=1),
+        )
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.post(
+            "/settings/",
+            {
+                "form_name": "calendar_source_delete",
+                "source_id": str(source.id),
+            },
+        )
+
+        self.assertRedirects(response, "/home/")
+        self.assertFalse(CalendarSource.objects.filter(pk=source.id).exists())
+        self.assertFalse(CalendarEvent.objects.filter(external_id="delete-event").exists())
 
     def test_calendar_page_does_not_render_calendar_source_form(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
@@ -371,9 +481,9 @@ class SettingsProfileTests(TestCase):
         response = self.client.get("/calendar/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertNotContains(response, 'name="form_name" value="calendar_source"')
+        self.assertNotContains(response, 'name="form_name" value="calendar_source_add"')
         self.assertNotContains(response, "Google Kalender-Link")
-        self.assertNotContains(response, "Kalender speichern")
+        self.assertNotContains(response, "Hinzufuegen")
 
     def test_calendar_page_get_does_not_sync_calendar_source(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
@@ -384,7 +494,7 @@ class SettingsProfileTests(TestCase):
         )
         self.client.login(username="mira@example.com", password="secret-12345")
 
-        with patch("app.views.calendar_views.sync_calendar_source") as sync_calendar:
+        with patch("app.views.calendar_views.sync_calendar_sources") as sync_calendar:
             response = self.client.get("/calendar/")
 
         self.assertEqual(response.status_code, 200)
@@ -395,6 +505,8 @@ class SettingsProfileTests(TestCase):
         Profile.objects.create(user=user, display_name="Mira")
         source = CalendarSource.objects.create(
             user=user,
+            name="Arbeit",
+            color="red",
             ical_url="https://calendar.google.com/calendar/ical/example/private/basic.ics",
         )
         start_at = timezone.make_aware(datetime(2026, 7, 8, 9, 0))
@@ -408,12 +520,12 @@ class SettingsProfileTests(TestCase):
         )
         self.client.login(username="mira@example.com", password="secret-12345")
 
-        with patch("app.views.calendar_views.sync_calendar_source", return_value={"synced": False, "message": "Kalender ist aktuell."}):
-            response = self.client.get("/calendar/?year=2026&month=7")
+        response = self.client.get("/calendar/?year=2026&month=7")
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Juli 2026")
         self.assertContains(response, "Design Review")
+        self.assertContains(response, "tone-red")
 
     def test_calendar_sync_result_is_visible(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
@@ -424,14 +536,128 @@ class SettingsProfileTests(TestCase):
         )
         self.client.login(username="mira@example.com", password="secret-12345")
 
-        with patch("app.views.calendar_views.sync_calendar_source", return_value={"synced": True, "message": "2 Termine synchronisiert."}):
+        with patch("app.views.calendar_views.sync_calendar_sources", return_value={"synced": True, "message": "2 Kalender synchronisiert."}):
             response = self.client.post(
                 "/calendar/",
-                {"form_name": "calendar_sync"},
+                {"form_name": "calendar_sync_all"},
+                follow=True,
             )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "2 Termine synchronisiert.")
+        self.assertContains(response, "2 Kalender synchronisiert.")
+
+    def test_calendar_visibility_filters_calendar_and_dashboard(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        visible_source = CalendarSource.objects.create(
+            user=user,
+            name="Arbeit",
+            color="green",
+            ical_url="https://calendar.google.com/calendar/ical/work/private/basic.ics",
+        )
+        hidden_source = CalendarSource.objects.create(
+            user=user,
+            name="Privat",
+            color="violet",
+            is_visible=False,
+            ical_url="https://calendar.google.com/calendar/ical/private/private/basic.ics",
+        )
+        start_at = timezone.localtime(timezone.now() + timedelta(days=2)).replace(hour=9, minute=0, second=0, microsecond=0)
+        calendar_url = f"/calendar/?year={start_at.year}&month={start_at.month}"
+        CalendarEvent.objects.create(
+            user=user,
+            source=visible_source,
+            external_id="visible-event",
+            title="Sichtbar",
+            start_at=start_at,
+            end_at=start_at + timedelta(hours=1),
+        )
+        CalendarEvent.objects.create(
+            user=user,
+            source=hidden_source,
+            external_id="hidden-event",
+            title="Verborgen",
+            start_at=start_at,
+            end_at=start_at + timedelta(hours=1),
+        )
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get(calendar_url)
+
+        self.assertContains(response, "Sichtbar")
+        self.assertContains(response, "tone-green")
+        self.assertNotContains(response, "Verborgen")
+
+        response = self.client.get("/home/")
+
+        self.assertContains(response, "Sichtbar")
+        self.assertNotContains(response, "Verborgen")
+
+        response = self.client.post(
+            calendar_url,
+            {
+                "form_name": "calendar_visibility",
+                "visible_source_ids": [str(hidden_source.id)],
+            },
+        )
+
+        self.assertRedirects(response, calendar_url)
+        visible_source.refresh_from_db()
+        hidden_source.refresh_from_db()
+        self.assertFalse(visible_source.is_visible)
+        self.assertTrue(hidden_source.is_visible)
+
+    def test_calendar_visibility_is_scoped_to_logged_in_user(self):
+        mira = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        lukas = User.objects.create_user(username="lukas@example.com", email="lukas@example.com", password="secret-12345")
+        Profile.objects.create(user=mira, display_name="Mira")
+        Profile.objects.create(user=lukas, display_name="Lukas")
+        mira_source = CalendarSource.objects.create(
+            user=mira,
+            name="Mira",
+            ical_url="https://calendar.google.com/calendar/ical/mira/private/basic.ics",
+        )
+        lukas_source = CalendarSource.objects.create(
+            user=lukas,
+            name="Lukas",
+            ical_url="https://calendar.google.com/calendar/ical/lukas/private/basic.ics",
+        )
+        self.client.login(username="lukas@example.com", password="secret-12345")
+
+        response = self.client.post(
+            "/calendar/",
+            {
+                "form_name": "calendar_visibility",
+                "visible_source_ids": [str(mira_source.id)],
+            },
+        )
+
+        self.assertRedirects(response, "/calendar/")
+        mira_source.refresh_from_db()
+        lukas_source.refresh_from_db()
+        self.assertTrue(mira_source.is_visible)
+        self.assertFalse(lukas_source.is_visible)
+
+    def test_sync_all_processes_hidden_sources_and_skips_disabled_sources(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        hidden_source = CalendarSource.objects.create(
+            user=user,
+            name="Hidden",
+            is_visible=False,
+            ical_url="https://calendar.google.com/calendar/ical/hidden/private/basic.ics",
+        )
+        disabled_source = CalendarSource.objects.create(
+            user=user,
+            name="Disabled",
+            enabled=False,
+            ical_url="https://calendar.google.com/calendar/ical/disabled/private/basic.ics",
+        )
+
+        with patch("app.services.calendar_service.sync_calendar_source", return_value={"synced": True, "message": "1 Termine synchronisiert."}) as sync_source:
+            result = sync_calendar_sources([hidden_source, disabled_source], force=True)
+
+        self.assertTrue(result["synced"])
+        sync_source.assert_called_once_with(hidden_source, force=True)
 
     def test_home_page_shows_upcoming_calendar_events(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
@@ -579,6 +805,17 @@ class FakeWeatherResponse:
         return json.dumps(self.payload).encode("utf-8")
 
 
+class FakeWeatherTileResponse:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return False
+
+    def read(self, _size=-1):
+        return b"png-bytes"
+
+
 class CalendarFetchSafetyTests(TestCase):
     def public_dns_result(self):
         return [(None, None, None, "", ("93.184.216.34", 443))]
@@ -617,51 +854,179 @@ class CalendarFetchSafetyTests(TestCase):
 
 
 @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
-class WeatherRadarTests(TestCase):
+class WeatherMapTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
-            username="radar@example.com",
-            email="radar@example.com",
+            username="map@example.com",
+            email="map@example.com",
             password="secret-12345",
-            first_name="Radar",
+            first_name="Map",
         )
-        Profile.objects.create(user=self.user, display_name="Radar")
+        Profile.objects.create(user=self.user, display_name="Map")
 
     @override_settings(WEATHER_API_KEY="")
-    def test_weather_page_renders_interactive_radar(self):
-        self.client.login(username="radar@example.com", password="secret-12345")
+    def test_weather_page_renders_interactive_weather_map(self):
+        self.client.login(username="map@example.com", password="secret-12345")
 
         response = self.client.get("/weather/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "data-radar-map")
-        self.assertContains(response, "data-radar-tile-layer")
-        self.assertContains(response, "data-radar-cloud-layer")
-        self.assertContains(response, "data-radar-rain-layer")
-        self.assertContains(response, "data-radar-cloud-tile-url")
-        self.assertContains(response, "data-radar-rain-tile-url")
-        self.assertContains(response, "data-radar-fullscreen")
+        self.assertContains(response, "data-weather-map")
+        self.assertContains(response, "data-weather-map-canvas")
+        self.assertContains(response, "data-weather-map-reset")
+        self.assertContains(response, "data-weather-map-fullscreen")
+        self.assertContains(response, 'data-weather-map-point-url="/weather/point/"')
+        self.assertContains(response, "per Klick die Temperatur eines Ortes abrufen")
+        self.assertContains(response, "Keine Einfärbung bedeutet aktuell kein Niederschlag.")
+        for layer in WEATHER_MAP_LAYERS:
+            self.assertContains(response, f'data-weather-map-layer="{layer}"')
+        self.assertContains(response, 'aria-disabled="true"', count=5)
 
     @override_settings(WEATHER_API_KEY="")
-    def test_weather_radar_tile_requires_api_key(self):
-        self.client.login(username="radar@example.com", password="secret-12345")
+    def test_weather_map_tile_requires_api_key(self):
+        self.client.login(username="map@example.com", password="secret-12345")
 
-        response = self.client.get("/weather/radar/7/67/43.png")
+        response = self.client.get("/weather/map/temperature/7/67/43.png")
 
         self.assertEqual(response.status_code, 404)
 
     @override_settings(WEATHER_API_KEY="test-key")
-    def test_weather_radar_tile_proxies_png(self):
-        self.client.login(username="radar@example.com", password="secret-12345")
+    def test_weather_map_tile_proxies_png(self):
+        self.client.login(username="map@example.com", password="secret-12345")
 
-        with patch("app.views.weather_views.fetch_weather_radar_tile", return_value=b"png-bytes") as fetch_tile:
-            response = self.client.get("/weather/radar/clouds/7/67/43.png")
+        with patch("app.views.weather_views.fetch_weather_map_tile", return_value=b"png-bytes") as fetch_tile:
+            response = self.client.get("/weather/map/wind/7/67/43.png")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "image/png")
         self.assertIn("max-age=300", response["Cache-Control"])
         self.assertEqual(response.content, b"png-bytes")
-        fetch_tile.assert_called_once_with(7, 67, 43, layer="clouds")
+        fetch_tile.assert_called_once_with(7, 67, 43, layer="wind")
+
+    def test_weather_map_tile_requires_login(self):
+        response = self.client.get("/weather/map/temperature/7/67/43.png")
+
+        self.assertRedirects(
+            response,
+            "/login/?next=/weather/map/temperature/7/67/43.png",
+        )
+
+    def test_weather_point_requires_login(self):
+        response = self.client.get("/weather/point/")
+
+        self.assertRedirects(response, "/login/?next=/weather/point/")
+
+    @override_settings(WEATHER_API_KEY="")
+    def test_weather_point_requires_api_key(self):
+        self.client.login(username="map@example.com", password="secret-12345")
+
+        response = self.client.get("/weather/point/?lat=52.52&lon=13.405")
+
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(response.json()["ok"])
+
+    @override_settings(WEATHER_API_KEY="test-key")
+    def test_weather_point_returns_current_temperature(self):
+        self.client.login(username="map@example.com", password="secret-12345")
+        weather = {
+            "location": "Berlin, DE",
+            "latitude": 52.52,
+            "longitude": 13.405,
+            "temperature": 18.4,
+            "feels_like": 17.9,
+            "description": "Leicht bewölkt",
+        }
+
+        with patch(
+            "app.views.weather_views.get_weather_at_coordinates",
+            return_value=weather,
+        ) as point_lookup:
+            response = self.client.get("/weather/point/?lat=52.52&lon=13.405")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"ok": True, "weather": weather})
+        point_lookup.assert_called_once_with("52.52", "13.405")
+
+    @override_settings(WEATHER_API_KEY="test-key")
+    def test_weather_point_rejects_invalid_coordinates(self):
+        self.client.login(username="map@example.com", password="secret-12345")
+
+        for latitude, longitude in [("91", "8"), ("52", "181"), ("x", "8"), ("NaN", "8")]:
+            with self.subTest(latitude=latitude, longitude=longitude):
+                response = self.client.get(
+                    "/weather/point/",
+                    {"lat": latitude, "lon": longitude},
+                )
+                self.assertEqual(response.status_code, 400)
+
+    @override_settings(
+        WEATHER_API_KEY="test-key",
+        WEATHER_API_BASE_URL="https://weather.example.test/data/2.5",
+    )
+    def test_weather_point_service_maps_provider_response(self):
+        provider_response = {
+            "name": "Berlin",
+            "sys": {"country": "DE"},
+            "main": {"temp": 18.44, "feels_like": 17.86},
+            "weather": [{"description": "leicht bewölkt"}],
+        }
+
+        with patch(
+            "app.services.weather_service._fetch_json",
+            return_value=provider_response,
+        ) as fetch_json:
+            weather = get_weather_at_coordinates("52.52", "13.405")
+
+        self.assertEqual(weather["location"], "Berlin, DE")
+        self.assertEqual(weather["temperature"], 18.4)
+        self.assertEqual(weather["feels_like"], 17.9)
+        self.assertEqual(weather["description"], "Leicht bewölkt")
+        fetch_json.assert_called_once_with(
+            "https://weather.example.test/data/2.5/weather",
+            {
+                "lat": 52.52,
+                "lon": 13.405,
+                "appid": "test-key",
+                "units": "metric",
+                "lang": "de",
+            },
+        )
+
+    @override_settings(
+        WEATHER_API_KEY="test-key",
+        WEATHER_TILE_BASE_URL="https://tiles.example.test/map",
+    )
+    def test_weather_map_service_maps_all_supported_layers(self):
+        expected_layers = {
+            "temperature": "temp_new",
+            "precipitation": "precipitation_new",
+            "clouds": "clouds_new",
+            "wind": "wind_new",
+            "pressure": "pressure_new",
+        }
+
+        for layer, provider_layer in expected_layers.items():
+            with self.subTest(layer=layer):
+                with patch(
+                    "app.services.weather_service.urlopen",
+                    return_value=FakeWeatherTileResponse(),
+                ) as mocked_urlopen:
+                    tile = fetch_weather_map_tile(7, 67, 43, layer=layer)
+
+                self.assertEqual(tile, b"png-bytes")
+                request = mocked_urlopen.call_args.args[0]
+                self.assertIn(f"/map/{provider_layer}/7/67/43.png", request.full_url)
+                self.assertIn("appid=test-key", request.full_url)
+
+    @override_settings(WEATHER_API_KEY="test-key")
+    def test_weather_map_service_rejects_invalid_layer_and_coordinates(self):
+        with self.assertRaisesMessage(ValueError, "Ungueltige Wetterkarten-Ebene"):
+            fetch_weather_map_tile(7, 67, 43, layer="snow")
+
+        for coordinates in [(0, 0, 0), (11, 0, 0), (7, 128, 43), (7, 67, 128)]:
+            with self.subTest(coordinates=coordinates):
+                with self.assertRaisesMessage(ValueError, "Ungueltige Wetterkarten-Kachel"):
+                    fetch_weather_map_tile(*coordinates, layer="temperature")
 
     @override_settings(WEATHER_API_KEY="")
     def test_weather_forecast_summary_uses_daily_forecast_values(self):
@@ -681,10 +1046,12 @@ class WeatherRadarTests(TestCase):
         self.assertEqual(context["current"]["city"], "Berlin")
         self.assertEqual(context["current"]["label"], "Standardort")
         self.assertEqual(context["search_query"], "")
+        self.assertEqual(context["weather_map"]["location"], "Berlin")
+        self.assertEqual(context["weather_map"]["default_layer"], "temperature")
 
     @override_settings(WEATHER_API_KEY="")
     def test_weather_page_can_save_current_place_as_default(self):
-        self.client.login(username="radar@example.com", password="secret-12345")
+        self.client.login(username="map@example.com", password="secret-12345")
 
         response = self.client.post(
             "/weather/",
@@ -713,7 +1080,7 @@ class WeatherRadarTests(TestCase):
 
     @override_settings(WEATHER_API_KEY="")
     def test_weather_page_renders_calculated_forecast_summary(self):
-        self.client.login(username="radar@example.com", password="secret-12345")
+        self.client.login(username="map@example.com", password="secret-12345")
 
         response = self.client.get("/weather/")
 

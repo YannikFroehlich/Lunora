@@ -1,4 +1,5 @@
 import json
+import math
 from copy import deepcopy
 from datetime import datetime
 from hashlib import sha256
@@ -65,6 +66,65 @@ def get_location_suggestions(query, limit=5):
         return _fallback_location_suggestions(clean_query, limit)
 
     return [_normalize_location(item) for item in locations[:limit]]
+
+
+def get_weather_at_coordinates(lat, lon):
+    """Return current weather for a point selected on the weather map."""
+    latitude = _coerce_float(lat)
+    longitude = _coerce_float(lon)
+
+    if (
+        latitude is None
+        or longitude is None
+        or not math.isfinite(latitude)
+        or not math.isfinite(longitude)
+        or latitude < -90
+        or latitude > 90
+        or longitude < -180
+        or longitude > 180
+    ):
+        raise ValueError("Ungültige Kartenkoordinaten.")
+
+    if not settings.WEATHER_API_KEY:
+        raise ValueError("Punktwetter ist ohne API-Schlüssel nicht verfügbar.")
+
+    current = _fetch_json(
+        f"{settings.WEATHER_API_BASE_URL}/weather",
+        {
+            "lat": latitude,
+            "lon": longitude,
+            "appid": settings.WEATHER_API_KEY,
+            "units": "metric",
+            "lang": "de",
+        },
+    )
+    main = current.get("main") or {}
+    weather = (current.get("weather") or [{}])[0]
+    temperature = _coerce_float(main.get("temp"))
+
+    if temperature is None or not math.isfinite(temperature):
+        raise RuntimeError("Wetterdienst hat keine Temperatur geliefert.")
+
+    feels_like = _coerce_float(main.get("feels_like"))
+    if feels_like is None or not math.isfinite(feels_like):
+        feels_like = temperature
+
+    location_name = (current.get("name") or "").strip()
+    country = ((current.get("sys") or {}).get("country") or "").strip()
+    if location_name and country:
+        location_name = f"{location_name}, {country}"
+    if not location_name:
+        location_name = f"{latitude:.2f}°, {longitude:.2f}°"
+
+    description = (weather.get("description") or "Aktuelles Wetter").strip().capitalize()
+    return {
+        "location": location_name,
+        "latitude": round(latitude, 4),
+        "longitude": round(longitude, 4),
+        "temperature": round(temperature, 1),
+        "feels_like": round(feels_like, 1),
+        "description": description,
+    }
 
 
 def _location_from_request(params, user=None):
@@ -149,31 +209,84 @@ def _fetch_json(endpoint, params):
     return data
 
 
-WEATHER_RADAR_TILE_LAYERS = {
-    "clouds": "clouds_new",
-    "precipitation": "precipitation_new",
+WEATHER_MAP_LAYERS = {
+    "temperature": {
+        "provider_layer": "temp_new",
+        "label": "Temperatur",
+        "icon": "fa-temperature-half",
+        "unit": "°C",
+        "legend_start": "Kälter",
+        "legend_end": "Wärmer",
+        "legend_class": "is-temperature",
+        "hint": "Die Farben zeigen die aktuelle Lufttemperatur.",
+        "opacity": 0.72,
+    },
+    "precipitation": {
+        "provider_layer": "precipitation_new",
+        "label": "Niederschlag",
+        "icon": "fa-cloud-rain",
+        "unit": "mm/h",
+        "legend_start": "Leicht",
+        "legend_end": "Stark",
+        "legend_class": "is-precipitation",
+        "hint": "Keine Einfärbung bedeutet aktuell kein Niederschlag.",
+        "opacity": 0.88,
+    },
+    "clouds": {
+        "provider_layer": "clouds_new",
+        "label": "Wolken",
+        "icon": "fa-cloud",
+        "unit": "%",
+        "legend_start": "0 %",
+        "legend_end": "100 %",
+        "legend_class": "is-clouds",
+        "hint": "Helle Flächen zeigen eine stärkere Bewölkung.",
+        "opacity": 0.82,
+    },
+    "wind": {
+        "provider_layer": "wind_new",
+        "label": "Wind",
+        "icon": "fa-wind",
+        "unit": "m/s",
+        "legend_start": "Ruhig",
+        "legend_end": "Stark",
+        "legend_class": "is-wind",
+        "hint": "Die Farben zeigen die aktuelle Windgeschwindigkeit.",
+        "opacity": 0.78,
+    },
+    "pressure": {
+        "provider_layer": "pressure_new",
+        "label": "Luftdruck",
+        "icon": "fa-gauge-high",
+        "unit": "hPa",
+        "legend_start": "Niedrig",
+        "legend_end": "Hoch",
+        "legend_class": "is-pressure",
+        "hint": "Die Farben zeigen den Luftdruck auf Meereshöhe.",
+        "opacity": 0.72,
+    },
 }
 
 
-def fetch_weather_radar_tile(z, x, y, layer="precipitation"):
+def fetch_weather_map_tile(z, x, y, layer="temperature"):
     if not settings.WEATHER_API_KEY:
-        raise ValueError("Wetter-Radar ist ohne API-Key nicht verfuegbar.")
+        raise ValueError("Wetterkarte ist ohne API-Key nicht verfuegbar.")
 
-    tile_layer = WEATHER_RADAR_TILE_LAYERS.get(layer)
-    if not tile_layer:
-        raise ValueError("Ungueltige Radar-Ebene.")
+    layer_config = WEATHER_MAP_LAYERS.get(layer)
+    if not layer_config:
+        raise ValueError("Ungueltige Wetterkarten-Ebene.")
 
     if z < 1 or z > 10:
-        raise ValueError("Ungueltige Radar-Kachel.")
+        raise ValueError("Ungueltige Wetterkarten-Kachel.")
 
     max_tile = 2 ** z
     if x < 0 or y < 0 or x >= max_tile or y >= max_tile:
-        raise ValueError("Ungueltige Radar-Kachel.")
+        raise ValueError("Ungueltige Wetterkarten-Kachel.")
 
     query = urlencode({"appid": settings.WEATHER_API_KEY})
     tile_base_url = settings.WEATHER_TILE_BASE_URL.rstrip("/")
-    endpoint = f"{tile_base_url}/{tile_layer}/{z}/{x}/{y}.png?{query}"
-    request = Request(endpoint, headers={"User-Agent": "Lunora Radar/1.0"})
+    endpoint = f"{tile_base_url}/{layer_config['provider_layer']}/{z}/{x}/{y}.png?{query}"
+    request = Request(endpoint, headers={"User-Agent": "Lunora Weather Map/1.0"})
 
     with urlopen(request, timeout=6) as response:
         return response.read(1_500_000)
@@ -277,7 +390,7 @@ def _build_context_from_api(current, forecast, fallback, location):
     context["forecast_summary"] = _forecast_summary(context["daily_forecast"])
     context["weather_tip"] = _build_weather_tip(current, forecast, weather)
     context["weather_hint"] = context["weather_tip"]["text"]
-    context["radar"] = _radar_context_for_location(location, current, city_name)
+    context["weather_map"] = _weather_map_context_for_location(location, current, city_name)
     return context
 
 
@@ -384,11 +497,14 @@ def _fallback_for_location(fallback, location, search_query):
             "Trage OPENWEATHER_API_KEY in deiner .env ein, um echte Wetterdaten zu laden."
         )
 
-    context["radar"] = _radar_context_for_location(location, city_name=context["current"]["city"])
+    context["weather_map"] = _weather_map_context_for_location(
+        location,
+        city_name=context["current"]["city"],
+    )
     return context
 
 
-def _radar_context_for_location(location=None, current=None, city_name=""):
+def _weather_map_context_for_location(location=None, current=None, city_name=""):
     location = location or {}
     current = current or {}
     coord = current.get("coord", {}) if isinstance(current, dict) else {}
@@ -412,13 +528,28 @@ def _radar_context_for_location(location=None, current=None, city_name=""):
         lon = fallback_place.get("lon", 8.5864)
         label = fallback_place.get("name", label or "Bünde")
 
+    layers = []
+    for layer_id, layer_config in WEATHER_MAP_LAYERS.items():
+        layers.append(
+            {
+                "id": layer_id,
+                **{
+                    key: value
+                    for key, value in layer_config.items()
+                    if key != "provider_layer"
+                },
+            }
+        )
+
     return {
         "center_lat": f"{lat:.4f}",
         "center_lon": f"{lon:.4f}",
-        "zoom": 7,
+        "zoom": 6,
         "location": label or "Bünde",
-        "status": "Live-Radar" if settings.WEATHER_API_KEY else "Demo-Vorschau",
-        "has_live": bool(settings.WEATHER_API_KEY),
+        "status": "Live-Ebenen" if settings.WEATHER_API_KEY else "Nur Basiskarte",
+        "available": bool(settings.WEATHER_API_KEY),
+        "default_layer": "temperature",
+        "layers": layers,
     }
 
 
@@ -691,7 +822,7 @@ def _fallback_weather_context():
         "daily_forecast": daily_forecast,
         "forecast_summary": _forecast_summary(daily_forecast),
         "air_quality": {"score": 28, "label": "Gut"},
-        "radar": _radar_context_for_location(city_name="Bünde"),
+        "weather_map": _weather_map_context_for_location(city_name="Bünde"),
         "weather_tip": weather_tip,
         "weather_hint": weather_tip["text"],
         "api_notice": "",

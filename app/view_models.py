@@ -142,13 +142,17 @@ def get_settings_context(preferences_form=None):
 
 
 def _dashboard_upcoming_events(user, now):
-    events = CalendarEvent.objects.filter(user=user, end_at__gte=now).select_related("source").order_by("start_at")[:5]
+    events = (
+        CalendarEvent.objects.filter(user=user, source__is_visible=True, end_at__gte=now)
+        .select_related("source")
+        .order_by("start_at")[:5]
+    )
     return [
         {
             "title": event.title,
             "date": format_user_date(event.start_at, user),
             "time": "Ganztägig" if event.is_all_day else format_user_time(event.start_at, user),
-            "tone": event.tone,
+            "tone": event.source.color,
         }
         for event in events
     ]
@@ -173,7 +177,12 @@ def get_calendar_context(user, *, year=None, month=None):
     range_start = timezone.make_aware(datetime.combine(visible_start, time.min), user_timezone)
     range_end = timezone.make_aware(datetime.combine(visible_end, time.min), user_timezone)
     events = list(
-        CalendarEvent.objects.filter(user=user, start_at__lt=range_end, end_at__gt=range_start)
+        CalendarEvent.objects.filter(
+            user=user,
+            source__is_visible=True,
+            start_at__lt=range_end,
+            end_at__gt=range_start,
+        )
         .select_related("source")
         .order_by("start_at", "title")
     )
@@ -192,7 +201,7 @@ def get_calendar_context(user, *, year=None, month=None):
                     "events": [
                         {
                             "label": event.title,
-                            "tone": event.tone,
+                            "tone": event.source.color,
                             "time": _calendar_event_time_label(event, user),
                         }
                         for event in day_events[:3]
@@ -207,7 +216,7 @@ def get_calendar_context(user, *, year=None, month=None):
             "time": _calendar_event_time_label(event, user),
             "title": event.title,
             "icon": "fa-calendar-day",
-            "tone": event.tone,
+            "tone": event.source.color,
         }
         for event in events_by_date.get(now.date(), [])
     ]
@@ -268,13 +277,18 @@ def _calendar_event_time_label(event, user):
 
 
 def _upcoming_calendar_events(user, now):
-    events = CalendarEvent.objects.filter(user=user, end_at__gte=now).select_related("source").order_by("start_at")[:6]
+    events = (
+        CalendarEvent.objects.filter(user=user, source__is_visible=True, end_at__gte=now)
+        .select_related("source")
+        .order_by("start_at")[:6]
+    )
     return [
         {
             "date": format_user_date(event.start_at, user),
             "title": event.title,
             "category": event.source.name,
             "icon": "fa-calendar-day",
+            "tone": event.source.color,
         }
         for event in events
     ]

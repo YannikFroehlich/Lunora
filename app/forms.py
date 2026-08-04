@@ -249,6 +249,11 @@ class ConversationStartForm(forms.Form):
 
 
 class CalendarSourceForm(forms.ModelForm):
+    name = forms.CharField(
+        label="Kalendername",
+        max_length=120,
+        widget=forms.TextInput(attrs={"placeholder": "z. B. Arbeit, Familie oder Geburtstage", "autocomplete": "off"}),
+    )
     ical_url = forms.CharField(
         label="Google Kalender-Link",
         widget=forms.URLInput(
@@ -262,22 +267,41 @@ class CalendarSourceForm(forms.ModelForm):
 
     class Meta:
         model = CalendarSource
-        fields = ["ical_url", "enabled"]
+        fields = ["name", "ical_url", "color", "enabled"]
         labels = {
+            "color": "Farbe",
             "enabled": "Automatisch synchronisieren",
         }
+        widgets = {
+            "color": forms.RadioSelect(),
+        }
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user = user
+        self.fields["enabled"].required = False
+        if not self.instance.pk:
+            self.fields["enabled"].initial = True
+
+    def clean_name(self):
+        return self.cleaned_data["name"].strip()
 
     def clean_ical_url(self):
         url = self.cleaned_data["ical_url"].strip()
         try:
-            return validate_calendar_url(url)
+            normalized_url = validate_calendar_url(url)
         except ValueError as error:
             raise forms.ValidationError(str(error)) from error
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if not self.instance.pk:
-            self.fields["enabled"].initial = True
+        user = self.user or getattr(self.instance, "user", None)
+        if user:
+            duplicate_sources = CalendarSource.objects.filter(user=user, ical_url=normalized_url)
+            if self.instance.pk:
+                duplicate_sources = duplicate_sources.exclude(pk=self.instance.pk)
+            if duplicate_sources.exists():
+                raise forms.ValidationError("Dieser Kalender-Link ist bereits gespeichert.")
+
+        return normalized_url
 
 
 class CalendarReminderForm(forms.ModelForm):

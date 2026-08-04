@@ -246,22 +246,7 @@ class ChatMessageReaction(models.Model):
 
 
 class CalendarSource(models.Model):
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="calendar_source")
-    name = models.CharField(max_length=120, default="Google Kalender")
-    ical_url = models.URLField(max_length=1000)
-    enabled = models.BooleanField(default=True)
-    sync_interval_minutes = models.PositiveSmallIntegerField(default=15)
-    last_synced_at = models.DateTimeField(blank=True, null=True)
-    last_error = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def __str__(self):
-        return self.name
-
-
-class CalendarEvent(models.Model):
-    TONE_CHOICES = [
+    COLOR_CHOICES = [
         ("blue", "Blau"),
         ("green", "Gruen"),
         ("red", "Rot"),
@@ -269,6 +254,28 @@ class CalendarEvent(models.Model):
         ("violet", "Violett"),
     ]
 
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="calendar_sources")
+    name = models.CharField(max_length=120, default="Google Kalender")
+    ical_url = models.URLField(max_length=1000)
+    color = models.CharField(max_length=12, choices=COLOR_CHOICES, default="blue")
+    is_visible = models.BooleanField(default=True)
+    enabled = models.BooleanField(default=True)
+    sync_interval_minutes = models.PositiveSmallIntegerField(default=15)
+    last_synced_at = models.DateTimeField(blank=True, null=True)
+    last_error = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["user", "ical_url"], name="unique_calendar_source_url_per_user"),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class CalendarEvent(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="calendar_events")
     source = models.ForeignKey(CalendarSource, on_delete=models.CASCADE, related_name="events")
     external_id = models.CharField(max_length=500)
@@ -278,7 +285,6 @@ class CalendarEvent(models.Model):
     start_at = models.DateTimeField()
     end_at = models.DateTimeField()
     is_all_day = models.BooleanField(default=False)
-    tone = models.CharField(max_length=12, choices=TONE_CHOICES, default="blue")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

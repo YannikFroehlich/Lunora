@@ -379,6 +379,12 @@
   font-size: 0.85rem;
 }
 
+.tone-blue { --tone: #8bb3cf; }
+.tone-green { --tone: #91a87c; }
+.tone-red { --tone: #d29a97; }
+.tone-sand { --tone: #c5a67d; }
+.tone-violet { --tone: #b5a2c9; }
+
 .event-dot {
   width: 9px;
   height: 9px;
