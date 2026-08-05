@@ -9,6 +9,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from app.forms import AppearanceForm, CalendarSourceForm, ProfileForm, ProfilePreferencesForm
 from app.models import CalendarSource, Profile
 from app.services.calendar_service import sync_calendar_source, sync_calendar_sources
+from app.services.system_settings import feature_enabled
 from app.services.user_preferences import format_user_datetime
 from app.view_models import get_dashboard_context, get_settings_context
 
@@ -90,6 +91,7 @@ def settings(request):
     return_to = get_safe_settings_return_url(request)
     bound_calendar_form = None
     bound_calendar_source_id = None
+    calendar_sync_enabled = feature_enabled("calendar_sync")
     calendar_add_form = CalendarSourceForm(user=request.user, prefix="new")
 
     if request.method == "POST" and request.POST.get("form_name") == "profile":
@@ -111,6 +113,9 @@ def settings(request):
             django_messages.success(request, "Darstellung und Region gespeichert.")
             return redirect(return_to)
     elif request.method == "POST" and request.POST.get("form_name") == "calendar_source_add":
+        if not calendar_sync_enabled:
+            django_messages.warning(request, "Kalendersynchronisierung ist voruebergehend deaktiviert.")
+            return redirect(return_to)
         calendar_add_form = CalendarSourceForm(request.POST, user=request.user, prefix="new")
         form = ProfileForm(instance=profile)
         appearance_form = AppearanceForm(instance=profile)
@@ -126,6 +131,9 @@ def settings(request):
                 django_messages.warning(request, f"{calendar_source.name} gespeichert: {sync_result.get('message')}")
             return redirect(return_to)
     elif request.method == "POST" and request.POST.get("form_name") == "calendar_source_update":
+        if not calendar_sync_enabled:
+            django_messages.warning(request, "Kalendersynchronisierung ist voruebergehend deaktiviert.")
+            return redirect(return_to)
         calendar_source = CalendarSource.objects.filter(user=request.user, pk=request.POST.get("source_id")).first()
         form = ProfileForm(instance=profile)
         appearance_form = AppearanceForm(instance=profile)
@@ -156,6 +164,9 @@ def settings(request):
                 django_messages.success(request, f"{calendar_source.name} gespeichert.")
             return redirect(return_to)
     elif request.method == "POST" and request.POST.get("form_name") == "calendar_source_delete":
+        if not calendar_sync_enabled:
+            django_messages.warning(request, "Kalendersynchronisierung ist voruebergehend deaktiviert.")
+            return redirect(return_to)
         deleted_count, _details = CalendarSource.objects.filter(
             user=request.user,
             pk=request.POST.get("source_id"),
@@ -164,6 +175,9 @@ def settings(request):
             django_messages.success(request, "Kalender geloescht.")
         return redirect(return_to)
     elif request.method == "POST" and request.POST.get("form_name") == "calendar_sync_all":
+        if not calendar_sync_enabled:
+            django_messages.warning(request, "Kalendersynchronisierung ist voruebergehend deaktiviert.")
+            return redirect(return_to)
         sync_result = sync_calendar_sources(
             CalendarSource.objects.filter(user=request.user).order_by("name", "id"),
             force=True,
@@ -203,6 +217,7 @@ def settings(request):
             ),
             "preferences_form": preferences_form,
             "return_to": return_to,
+            "calendar_sync_enabled": calendar_sync_enabled,
         }
     )
     return render(request, "app/settings.html", context)

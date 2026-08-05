@@ -4,7 +4,7 @@
 {% block title %}Kalender | Lunora{% endblock %}
 
 {% block page_css %}
-<link rel="stylesheet" href="{% static 'css/calendar.css' %}?v=multi-source-1">
+<link rel="stylesheet" href="{% static 'css/calendar.css' %}?v=event-create-1">
 {% endblock %}
 
 {% block content %}
@@ -24,8 +24,14 @@
                 <h2 id="calendar-month-title">{{ month_label }}</h2>
                 <a class="icon-button" href="{% url 'calendar' %}?year={{ next_month.year }}&month={{ next_month.month }}" aria-label="Nächster Monat"><i class="fa-solid fa-chevron-right"></i></a>
                 <span class="toolbar-spacer"></span>
+                {% if calendar_event_creation_enabled %}
+                <button class="ghost-button" type="button" data-event-dialog-open>
+                    <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                    Termin
+                </button>
+                {% endif %}
                 <a class="ghost-button" href="{% url 'calendar' %}"><i class="fa-regular fa-calendar"></i> Heute</a>
-                {% if calendar_sources %}
+                {% if calendar_sources and calendar_sync_enabled %}
                 <form method="post" class="inline-form">
                     {% csrf_token %}
                     <input type="hidden" name="form_name" value="calendar_sync_all">
@@ -41,7 +47,15 @@
                 {% for week in calendar_rows %}
                     {% for day in week %}
                     <article class="calendar-day {% if day.muted %}is-muted{% endif %} {% if day.today %}is-today{% endif %}">
-                        <strong>{{ day.number }}</strong>
+                        {% if calendar_event_creation_enabled %}
+                        <button class="calendar-day-number" type="button" data-event-date="{{ day.date_input }}" aria-label="Termin am {{ day.date_label }} anlegen">
+                            <strong>{{ day.number }}</strong>
+                        </button>
+                        {% else %}
+                        <span class="calendar-day-number">
+                            <strong>{{ day.number }}</strong>
+                        </span>
+                        {% endif %}
                         {% for event in day.events %}
                         <span class="event-chip tone-{{ event.tone }}" title="{{ event.time }} · {{ event.label }}">{{ event.label }}</span>
                         {% endfor %}
@@ -58,9 +72,11 @@
             <section class="glass-panel calendar-filter-panel">
                 <div class="panel-title panel-title-between">
                     <div><h2>Meine Kalender</h2><p>{{ visible_calendar_count }} sichtbar</p></div>
+                    {% if calendar_sync_enabled %}
                     <a class="icon-button" href="{% url 'settings' %}?next={{ request.get_full_path|urlencode }}" aria-label="Kalender verwalten">
                         <i class="fa-solid fa-gear"></i>
                     </a>
+                    {% endif %}
                 </div>
                 {% if calendar_sources %}
                 <form class="calendar-visibility-form" method="post" data-calendar-visibility-form>
@@ -150,6 +166,7 @@
                 {% endif %}
             </section>
 
+            {% if calendar_reminders_enabled %}
             <section class="glass-panel reminder-panel">
                 <div class="panel-title panel-title-between">
                     <h2>Erinnerungen</h2>
@@ -190,6 +207,7 @@
                 </div>
                 {% endif %}
             </section>
+            {% endif %}
         </aside>
 
         <section class="glass-panel month-stats">
@@ -204,8 +222,79 @@
         </section>
     </div>
 </section>
+
+{% if calendar_event_creation_enabled %}
+<dialog class="calendar-event-dialog" data-event-dialog data-has-errors="{{ event_form.errors|yesno:'true,false' }}" aria-labelledby="calendar-event-dialog-title">
+    <section class="glass-panel event-dialog-card">
+        <header class="event-dialog-header">
+            <div>
+                <span class="panel-kicker"><i class="fa-regular fa-calendar-plus" aria-hidden="true"></i> Eigener Kalender</span>
+                <h2 id="calendar-event-dialog-title">Termin anlegen</h2>
+            </div>
+            <button class="icon-button" type="button" data-event-dialog-close aria-label="Dialog schließen">
+                <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+            </button>
+        </header>
+
+        <form class="event-create-form" method="post" data-event-create-form>
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="calendar_event_add">
+            {% if event_form.non_field_errors %}
+            <div class="form-errors is-wide">{{ event_form.non_field_errors }}</div>
+            {% endif %}
+
+            <label class="event-form-field is-wide" for="{{ event_form.title.id_for_label }}">
+                <span>{{ event_form.title.label }}</span>
+                {{ event_form.title }}
+                {{ event_form.title.errors }}
+            </label>
+
+            <label class="event-form-field is-wide" for="{{ event_form.event_date.id_for_label }}">
+                <span>{{ event_form.event_date.label }}</span>
+                {{ event_form.event_date }}
+                {{ event_form.event_date.errors }}
+            </label>
+
+            <label class="event-form-field" data-event-time-field for="{{ event_form.start_time.id_for_label }}">
+                <span>{{ event_form.start_time.label }}</span>
+                {{ event_form.start_time }}
+                {{ event_form.start_time.errors }}
+            </label>
+
+            <label class="event-form-field" data-event-time-field for="{{ event_form.end_time.id_for_label }}">
+                <span>{{ event_form.end_time.label }} <small>optional</small></span>
+                {{ event_form.end_time }}
+                {{ event_form.end_time.errors }}
+            </label>
+
+            <label class="event-all-day is-wide" for="{{ event_form.is_all_day.id_for_label }}">
+                {{ event_form.is_all_day }}
+                <span>{{ event_form.is_all_day.label }}</span>
+            </label>
+
+            <label class="event-form-field is-wide" for="{{ event_form.location.id_for_label }}">
+                <span>{{ event_form.location.label }}</span>
+                {{ event_form.location }}
+                {{ event_form.location.errors }}
+            </label>
+
+            <div class="event-form-actions is-wide">
+                <button class="ghost-button" type="button" data-event-dialog-close>Abbrechen</button>
+                <button class="primary-button" type="submit">
+                    <i class="fa-solid fa-check" aria-hidden="true"></i>
+                    Termin speichern
+                </button>
+            </div>
+        </form>
+    </section>
+</dialog>
+{% endif %}
 {% endblock %}
 
 {% block page_js %}
-<script src="{% static 'js/calendar.js' %}"></script>
+{% if calendar_event_creation_enabled %}
+<script src="{% static 'js/calendar.js' %}?v=event-create-1"></script>
+{% else %}
+<script src="{% static 'js/calendar.js' %}?v=event-create-1"></script>
+{% endif %}
 {% endblock %}

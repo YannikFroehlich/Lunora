@@ -1,15 +1,10 @@
-from django.contrib.auth.views import LoginView, LogoutView
+from django.contrib.auth.views import LogoutView
 from django.urls import path
 from django.views.generic import RedirectView
 
-from app.forms import EmailLoginForm
 import app.views as view
 
-login_view = LoginView.as_view(
-    template_name="app/login.html",
-    authentication_form=EmailLoginForm,
-    redirect_authenticated_user=True,
-)
+login_view = view.LunoraLoginView.as_view()
 
 urlpatterns = [
     path("", RedirectView.as_view(url="/home/", permanent=False)),
@@ -17,6 +12,7 @@ urlpatterns = [
     path("accounts/login/", login_view, name="accounts_login"),
     path("logout/", LogoutView.as_view(), name="logout"),
     path("register/", view.register, name="register"),
+    path("administration/", view.administration, name="administration"),
     path("home/", view.home, name="home"),
     path("settings/", view.settings, name="settings"),
     path("weather/", view.weather, name="weather"),

@@ -52,6 +52,11 @@
     <a class="nav-orb {% if active_page == 'settings' %}is-active{% endif %}" href="{% if active_page == 'settings' %}{{ settings_url }}{% else %}{{ settings_url }}?next={{ request.get_full_path|urlencode }}{% endif %}" aria-label="Einstellungen">
         <i class="fa-solid fa-gear" aria-hidden="true"></i>
     </a>
+    {% if request.user.is_superuser %}
+    <a class="nav-orb {% if active_page == 'administration' %}is-active{% endif %}" href="{% url 'administration' %}" aria-label="Administration">
+        <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+    </a>
+    {% endif %}
     <form class="nav-form" method="post" action="{% url 'logout' %}">
         {% csrf_token %}
         <button class="nav-orb" type="submit" aria-label="Abmelden">
@@ -78,7 +83,7 @@
     {% block content %}{% endblock %}
 </main>
 
-<script src="{% static 'js/base.js' %}?v=toast-2"></script>
+<script src="{% static 'js/base.js' %}?v=scroll-restore-1"></script>
 {% block page_js %}{% endblock %}
 </body>
 </html>

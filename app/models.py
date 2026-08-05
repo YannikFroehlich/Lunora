@@ -6,6 +6,35 @@ from django.utils import timezone
 from app.services.image_uploads import validate_profile_image_file
 
 
+class SystemSettings(models.Model):
+    normal_login_enabled = models.BooleanField(default=True)
+    calendar_event_creation_enabled = models.BooleanField(default=True)
+    calendar_reminders_enabled = models.BooleanField(default=True)
+    calendar_sync_enabled = models.BooleanField(default=True)
+    messages_enabled = models.BooleanField(default=True)
+    weather_enabled = models.BooleanField(default=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="+",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Systemeinstellung"
+        verbose_name_plural = "Systemeinstellungen"
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return "Lunora Systemeinstellungen"
+
+
 class Profile(models.Model):
     THEME_CHOICES = [
         ("light", "Heller Modus"),
@@ -277,8 +306,14 @@ class CalendarSource(models.Model):
 
 class CalendarEvent(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="calendar_events")
-    source = models.ForeignKey(CalendarSource, on_delete=models.CASCADE, related_name="events")
-    external_id = models.CharField(max_length=500)
+    source = models.ForeignKey(
+        CalendarSource,
+        on_delete=models.CASCADE,
+        related_name="events",
+        blank=True,
+        null=True,
+    )
+    external_id = models.CharField(max_length=500, blank=True, default="")
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     location = models.CharField(max_length=255, blank=True)

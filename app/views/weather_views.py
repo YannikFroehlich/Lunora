@@ -6,6 +6,7 @@ from django.shortcuts import redirect, render
 from django.views.decorators.http import require_GET
 
 from app.models import Profile
+from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.weather_service import (
     fetch_weather_map_tile,
     get_location_suggestions,
@@ -16,6 +17,9 @@ from app.services.weather_service import (
 
 @login_required
 def weather(request):
+    if not feature_enabled("weather"):
+        return disabled_feature_response(request, "weather")
+
     if request.method == "POST" and request.POST.get("form_name") == "weather_default":
         default_city = request.POST.get("weather_default_city", "").strip()
         if default_city:
@@ -33,6 +37,8 @@ def weather(request):
 
 @login_required
 def weather_suggestions(request):
+    if not feature_enabled("weather"):
+        return disabled_feature_response(request, "weather", json_response=True)
     query = request.GET.get("q", "")
     return JsonResponse({"results": get_location_suggestions(query)})
 
@@ -40,6 +46,9 @@ def weather_suggestions(request):
 @login_required
 @require_GET
 def weather_point(request):
+    if not feature_enabled("weather"):
+        return disabled_feature_response(request, "weather", json_response=True)
+
     if not settings.WEATHER_API_KEY:
         return JsonResponse(
             {
@@ -67,6 +76,9 @@ def weather_point(request):
 
 @login_required
 def weather_map_tile(request, layer, z, x, y):
+    if not feature_enabled("weather"):
+        return disabled_feature_response(request, "weather", json_response=True)
+
     try:
         tile = fetch_weather_map_tile(z, x, y, layer=layer)
     except ValueError as error:

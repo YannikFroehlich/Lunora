@@ -1,4 +1,5 @@
 from app.models import Profile
+from app.services.system_settings import feature_flags, get_system_settings
 
 
 def _hex_to_rgb(hex_color):
@@ -52,3 +53,10 @@ def appearance_settings(request):
             pass
 
     return {"appearance": _appearance_from_profile(profile)}
+
+
+def system_settings(request):
+    return {
+        "system_settings": get_system_settings(),
+        "feature_flags": feature_flags(),
+    }

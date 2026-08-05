@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from app.forms import ConversationStartForm, MessageForm
 from app.models import ChatMessage, ChatMessageReaction, Conversation, ConversationMember
+from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.message_queries import (
     current_members_by_conversation,
     last_messages_by_conversation,
@@ -29,6 +30,9 @@ MESSAGE_STREAM_PAGE_SIZE = 50
 
 @login_required
 def messages(request, conversation_id=None):
+    if not feature_enabled("messages"):
+        return disabled_feature_response(request, "messages")
+
     selected_conversation = _get_user_conversation(request.user, conversation_id) if conversation_id else None
     message_form = MessageForm()
     start_form = ConversationStartForm(user=request.user)
@@ -192,6 +196,9 @@ def messages(request, conversation_id=None):
 
 @login_required
 def messages_live_updates(request, conversation_id=None):
+    if not feature_enabled("messages"):
+        return disabled_feature_response(request, "messages", json_response=True)
+
     if request.method != "GET":
         return JsonResponse({"ok": False, "error": "Nur GET ist erlaubt."}, status=405)
 

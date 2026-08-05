@@ -11,6 +11,11 @@
             <span>Lunora</span>
         </div>
         <h1>Anmelden</h1>
+        {% if login_disabled %}
+        <div class="api-notice">
+            Der Login ist fuer Nutzer voruebergehend deaktiviert. Administratoren koennen sich weiterhin anmelden.
+        </div>
+        {% endif %}
         <p>Willkommen zurück in deinem Workspace.</p>
 
         <form class="auth-form" method="post">
@@ -30,7 +35,9 @@
             <button class="primary-button auth-submit" type="submit">Anmelden</button>
         </form>
 
+        {% if not login_disabled %}
         <p class="auth-switch">Noch kein Konto? <a href="{% url 'register' %}">Jetzt registrieren</a></p>
+        {% endif %}
     </div>
 </section>
 {% endblock %}

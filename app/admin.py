@@ -9,6 +9,7 @@ from app.models import (
     Conversation,
     ConversationMember,
     Profile,
+    SystemSettings,
 )
 
 
@@ -16,6 +17,21 @@ from app.models import (
 class ProfileAdmin(admin.ModelAdmin):
     list_display = ("display_name", "user", "theme", "timezone_name", "updated_at")
     search_fields = ("display_name", "user__username", "user__email")
+
+
+@admin.register(SystemSettings)
+class SystemSettingsAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "normal_login_enabled",
+        "calendar_event_creation_enabled",
+        "calendar_reminders_enabled",
+        "calendar_sync_enabled",
+        "messages_enabled",
+        "weather_enabled",
+        "updated_at",
+    )
+    readonly_fields = ("created_at", "updated_at")
 
 
 class ConversationMemberInline(admin.TabularInline):

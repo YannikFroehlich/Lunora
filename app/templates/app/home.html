@@ -39,7 +39,7 @@
             </div>
         </aside>
 
-        <section class="glass-panel quick-actions" aria-label="Schnellzugriff" data-home-messages-live-url="{% url 'messages_live_updates' %}">
+        <section class="glass-panel quick-actions" aria-label="Schnellzugriff" {% if dashboard_messages_enabled %}data-home-messages-live-url="{% url 'messages_live_updates' %}"{% endif %}>
             {% for tile in nav_tiles %}
             <a class="action-tile" href="{% url tile.url_name %}">
                 {% if tile.badge_key == "messages_unread" %}
@@ -96,6 +96,7 @@
             <a class="panel-link" href="{% url 'calendar' %}">Kalender ansehen <i class="fa-solid fa-chevron-right"></i></a>
         </section>
 
+        {% if dashboard_weather_enabled %}
         <section class="glass-panel today-panel weather-overview-panel">
             <article class="weather-overview-card">
                 <span class="panel-kicker"><i class="fa-regular fa-sun"></i> Heute</span>
@@ -114,6 +115,7 @@
                 </div>
             </article>
         </section>
+        {% endif %}
     </div>
 </section>
 {% endblock %}

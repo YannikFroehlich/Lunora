@@ -1,18 +1,84 @@
+from datetime import datetime, time, timedelta
+
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm, UsernameField
 from django.contrib.auth.models import User
 from django.core.files.storage import default_storage
+from django.db.models import Q
 
-from app.models import CalendarReminder, CalendarSource, ChatMessage, Profile
+from app.models import CalendarEvent, CalendarReminder, CalendarSource, ChatMessage, Profile, SystemSettings
 from app.services.image_uploads import PROFILE_IMAGE_ACCEPT, validate_profile_image_file
+from app.services.user_preferences import get_user_zoneinfo, localtime_for_user
 from app.services.url_safety import validate_calendar_url
 
 
 class EmailLoginForm(AuthenticationForm):
     username = UsernameField(
-        label="E-Mail",
-        widget=forms.EmailInput(attrs={"autofocus": True, "autocomplete": "email", "placeholder": "you@example.com"}),
+        label="E-Mail oder Benutzername",
+        widget=forms.TextInput(
+            attrs={
+                "autofocus": True,
+                "autocomplete": "username",
+                "placeholder": "you@example.com oder Benutzername",
+            }
+        ),
     )
+
+    def clean(self):
+        identifier = self.cleaned_data.get("username")
+        if identifier:
+            self.cleaned_data["username"] = self._resolve_username(identifier)
+        return super().clean()
+
+    def _resolve_username(self, identifier):
+        identifier = identifier.strip()
+        usernames = list(
+            User.objects.filter(Q(username__iexact=identifier) | Q(email__iexact=identifier))
+            .values_list("username", flat=True)
+            .distinct()[:2]
+        )
+        if len(usernames) == 1:
+            return usernames[0]
+        return identifier
+
+    def confirm_login_allowed(self, user):
+        from app.services.system_settings import user_can_login
+
+        super().confirm_login_allowed(user)
+        if not user_can_login(user):
+            raise forms.ValidationError(
+                "Der Login ist voruebergehend deaktiviert.",
+                code="login_disabled",
+            )
+
+
+class SystemSettingsForm(forms.ModelForm):
+    class Meta:
+        model = SystemSettings
+        fields = [
+            "normal_login_enabled",
+            "calendar_event_creation_enabled",
+            "calendar_reminders_enabled",
+            "calendar_sync_enabled",
+            "messages_enabled",
+            "weather_enabled",
+        ]
+        labels = {
+            "normal_login_enabled": "Login und Registrierung fuer Nutzer",
+            "calendar_event_creation_enabled": "Kalender: eigene Termine erstellen",
+            "calendar_reminders_enabled": "Kalender: Erinnerungen",
+            "calendar_sync_enabled": "Kalender: Synchronisierung und Quellen",
+            "messages_enabled": "Nachrichten",
+            "weather_enabled": "Wetter",
+        }
+        widgets = {
+            "normal_login_enabled": forms.CheckboxInput(),
+            "calendar_event_creation_enabled": forms.CheckboxInput(),
+            "calendar_reminders_enabled": forms.CheckboxInput(),
+            "calendar_sync_enabled": forms.CheckboxInput(),
+            "messages_enabled": forms.CheckboxInput(),
+            "weather_enabled": forms.CheckboxInput(),
+        }
 
 
 class RegistrationForm(UserCreationForm):
@@ -254,6 +320,7 @@ class CalendarSourceForm(forms.ModelForm):
         max_length=120,
         widget=forms.TextInput(attrs={"placeholder": "z. B. Arbeit, Familie oder Geburtstage", "autocomplete": "off"}),
     )
+
     ical_url = forms.CharField(
         label="Google Kalender-Link",
         widget=forms.URLInput(
@@ -333,3 +400,108 @@ class CalendarReminderForm(forms.ModelForm):
 
     def clean_title(self):
         return self.cleaned_data["title"].strip()
+
+
+class CalendarEventForm(forms.Form):
+    title = forms.CharField(
+        label="Titel",
+        max_length=255,
+        widget=forms.TextInput(
+            attrs={
+                "placeholder": "z. B. Zahnarzttermin",
+                "autocomplete": "off",
+                "autofocus": True,
+            }
+        ),
+    )
+    event_date = forms.DateField(
+        label="Datum",
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        input_formats=["%Y-%m-%d"],
+    )
+    start_time = forms.TimeField(
+        label="Beginn",
+        required=False,
+        widget=forms.TimeInput(attrs={"type": "time"}, format="%H:%M"),
+        input_formats=["%H:%M"],
+    )
+    end_time = forms.TimeField(
+        label="Ende",
+        required=False,
+        widget=forms.TimeInput(attrs={"type": "time"}, format="%H:%M"),
+        input_formats=["%H:%M"],
+    )
+    is_all_day = forms.BooleanField(label="Ganztägig", required=False)
+    location = forms.CharField(
+        label="Ort",
+        max_length=255,
+        required=False,
+        widget=forms.TextInput(attrs={"placeholder": "Optional", "autocomplete": "off"}),
+    )
+
+    def __init__(self, *args, user=None, **kwargs):
+        self.user = user
+        super().__init__(*args, **kwargs)
+
+        if not self.is_bound:
+            now = localtime_for_user(profile_or_user=user)
+            start_at = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+            self.initial.update(
+                {
+                    "event_date": start_at.date(),
+                    "start_time": start_at.time(),
+                    "end_time": (start_at + timedelta(hours=1)).time(),
+                }
+            )
+
+    def clean_title(self):
+        return self.cleaned_data["title"].strip()
+
+    def clean_location(self):
+        return self.cleaned_data.get("location", "").strip()
+
+    def clean(self):
+        cleaned_data = super().clean()
+        event_date = cleaned_data.get("event_date")
+        start_time = cleaned_data.get("start_time")
+        end_time = cleaned_data.get("end_time")
+        is_all_day = cleaned_data.get("is_all_day", False)
+
+        if not event_date:
+            return cleaned_data
+
+        user_timezone = get_user_zoneinfo(self.user)
+        if is_all_day:
+            start_at = datetime.combine(event_date, time.min, tzinfo=user_timezone)
+            end_at = start_at + timedelta(days=1)
+        else:
+            if not start_time:
+                self.add_error("start_time", "Bitte gib eine Startzeit an.")
+                return cleaned_data
+
+            start_at = datetime.combine(event_date, start_time, tzinfo=user_timezone)
+            if end_time:
+                end_at = datetime.combine(event_date, end_time, tzinfo=user_timezone)
+                if end_at <= start_at:
+                    self.add_error("end_time", "Die Endzeit muss nach der Startzeit liegen.")
+                    return cleaned_data
+            else:
+                end_at = start_at + timedelta(hours=1)
+
+        cleaned_data["start_at"] = start_at
+        cleaned_data["end_at"] = end_at
+        return cleaned_data
+
+    def save(self, *, user):
+        if not self.is_valid():
+            raise ValueError("Ein ungültiges Terminformular kann nicht gespeichert werden.")
+
+        return CalendarEvent.objects.create(
+            user=user,
+            source=None,
+            title=self.cleaned_data["title"],
+            location=self.cleaned_data["location"],
+            start_at=self.cleaned_data["start_at"],
+            end_at=self.cleaned_data["end_at"],
+            is_all_day=self.cleaned_data["is_all_day"],
+        )

@@ -9,11 +9,11 @@ from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase, override_settings
+from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 
 from app.forms import CalendarSourceForm, ProfileForm
-from app.models import CalendarEvent, CalendarReminder, CalendarSource, ChatMessage, ChatMessageReaction, Conversation, ConversationMember, Profile
+from app.models import CalendarEvent, CalendarReminder, CalendarSource, ChatMessage, ChatMessageReaction, Conversation, ConversationMember, Profile, SystemSettings
 from app.services.calendar_service import fetch_ical, parse_ical_events, sync_calendar_sources
 from app.services.image_uploads import PROFILE_IMAGE_MAX_BYTES
 from app.services.weather_service import (
@@ -50,6 +50,30 @@ class SettingsProfileTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Anmelden")
+
+    def test_login_accepts_email_for_user_with_separate_username(self):
+        User.objects.create_user(username="mira", email="mira@example.com", password="secret-12345")
+
+        response = self.client.post(
+            "/login/",
+            {"username": "MIRA@example.com", "password": "secret-12345"},
+        )
+
+        self.assertRedirects(response, "/home/")
+        self.assertTrue(response.wsgi_request.user.is_authenticated)
+        self.assertEqual(response.wsgi_request.user.username, "mira")
+
+    def test_login_accepts_username(self):
+        User.objects.create_user(username="mira", email="mira@example.com", password="secret-12345")
+
+        response = self.client.post(
+            "/login/",
+            {"username": "mira", "password": "secret-12345"},
+        )
+
+        self.assertRedirects(response, "/home/")
+        self.assertTrue(response.wsgi_request.user.is_authenticated)
+        self.assertEqual(response.wsgi_request.user.username, "mira")
 
     def test_registration_creates_user_and_profile(self):
         response = self.client.post(
@@ -526,6 +550,80 @@ class SettingsProfileTests(TestCase):
         self.assertContains(response, "Juli 2026")
         self.assertContains(response, "Design Review")
         self.assertContains(response, "tone-red")
+
+    def test_manual_calendar_event_can_be_created(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira", timezone_name="Europe/Berlin")
+        self.client.login(username="mira@example.com", password="secret-12345")
+        calendar_url = "/calendar/?year=2099&month=8"
+
+        response = self.client.post(
+            calendar_url,
+            {
+                "form_name": "calendar_event_add",
+                "title": "Zahnarzttermin",
+                "event_date": "2099-08-12",
+                "start_time": "10:30",
+                "end_time": "11:15",
+                "location": "Praxis am Markt",
+            },
+        )
+
+        self.assertRedirects(response, calendar_url)
+        event = CalendarEvent.objects.get(user=user, title="Zahnarzttermin")
+        self.assertIsNone(event.source)
+        self.assertEqual(event.external_id, "")
+        self.assertEqual(timezone.localtime(event.start_at).strftime("%Y-%m-%d %H:%M"), "2099-08-12 10:30")
+        self.assertEqual(timezone.localtime(event.end_at).strftime("%Y-%m-%d %H:%M"), "2099-08-12 11:15")
+        self.assertEqual(event.location, "Praxis am Markt")
+
+        response = self.client.get(calendar_url)
+
+        self.assertContains(response, "Zahnarzttermin")
+        self.assertContains(response, "tone-sand")
+        self.assertContains(response, "Eigener Termin")
+
+    def test_manual_all_day_event_uses_the_full_selected_day(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira", timezone_name="Europe/Berlin")
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.post(
+            "/calendar/?year=2099&month=8",
+            {
+                "form_name": "calendar_event_add",
+                "title": "Geburtstag",
+                "event_date": "2099-08-13",
+                "is_all_day": "on",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        event = CalendarEvent.objects.get(user=user, title="Geburtstag")
+        self.assertTrue(event.is_all_day)
+        self.assertEqual(timezone.localtime(event.start_at).strftime("%Y-%m-%d %H:%M"), "2099-08-13 00:00")
+        self.assertEqual(timezone.localtime(event.end_at).strftime("%Y-%m-%d %H:%M"), "2099-08-14 00:00")
+
+    def test_manual_calendar_event_rejects_an_end_before_its_start(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.post(
+            "/calendar/?year=2099&month=8",
+            {
+                "form_name": "calendar_event_add",
+                "title": "Ungültiger Termin",
+                "event_date": "2099-08-14",
+                "start_time": "15:00",
+                "end_time": "14:00",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Die Endzeit muss nach der Startzeit liegen.")
+        self.assertContains(response, 'data-has-errors="true"')
+        self.assertFalse(CalendarEvent.objects.filter(user=user).exists())
 
     def test_calendar_sync_result_is_visible(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
@@ -1492,3 +1590,180 @@ class MessageLiveUpdateTests(TestCase):
         self.assertTrue(response.json()["ok"])
         self.assertIn("contact_list_html", response.json())
         self.assertIn("overview_html", response.json())
+
+
+@override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
+class AdministrationFeatureFlagTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="mira@example.com",
+            email="mira@example.com",
+            password="secret-12345",
+        )
+        Profile.objects.create(user=self.user, display_name="Mira")
+        self.staff = User.objects.create_user(
+            username="staff@example.com",
+            email="staff@example.com",
+            password="secret-12345",
+            is_staff=True,
+        )
+        self.superuser = User.objects.create_superuser(
+            username="admin@example.com",
+            email="admin@example.com",
+            password="secret-12345",
+        )
+
+    def test_administration_requires_superuser(self):
+        response = self.client.get("/administration/")
+        self.assertRedirects(response, "/login/?next=/administration/")
+
+        self.client.login(username="mira@example.com", password="secret-12345")
+        response = self.client.get("/administration/")
+        self.assertEqual(response.status_code, 403)
+
+        self.client.logout()
+        self.client.login(username="staff@example.com", password="secret-12345")
+        response = self.client.get("/administration/")
+        self.assertEqual(response.status_code, 403)
+
+        self.client.logout()
+        self.client.login(username="admin@example.com", password="secret-12345")
+        response = self.client.get("/administration/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Administration")
+
+    def test_superuser_can_save_system_settings(self):
+        self.client.login(username="admin@example.com", password="secret-12345")
+
+        response = self.client.post(
+            "/administration/",
+            {
+                "form_name": "system_settings",
+                "normal_login_enabled": "on",
+                "calendar_reminders_enabled": "on",
+                "weather_enabled": "on",
+            },
+        )
+
+        self.assertRedirects(response, "/administration/")
+        settings_obj = SystemSettings.objects.get(pk=1)
+        self.assertTrue(settings_obj.normal_login_enabled)
+        self.assertFalse(settings_obj.calendar_event_creation_enabled)
+        self.assertTrue(settings_obj.calendar_reminders_enabled)
+        self.assertFalse(settings_obj.calendar_sync_enabled)
+        self.assertFalse(settings_obj.messages_enabled)
+        self.assertTrue(settings_obj.weather_enabled)
+        self.assertEqual(settings_obj.updated_by, self.superuser)
+
+    def test_login_lock_blocks_regular_login_and_registration_but_allows_admin(self):
+        SystemSettings.objects.create(normal_login_enabled=False)
+
+        response = self.client.post(
+            "/login/",
+            {"username": "mira@example.com", "password": "secret-12345"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.wsgi_request.user.is_authenticated)
+        self.assertContains(response, "Der Login ist fuer Nutzer voruebergehend deaktiviert")
+
+        response = self.client.post(
+            "/register/",
+            {
+                "name": "Neue Person",
+                "email": "neu@example.com",
+                "password1": "secret-12345",
+                "password2": "secret-12345",
+            },
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(User.objects.filter(username="neu@example.com").exists())
+
+        response = self.client.post(
+            "/login/",
+            {"username": "admin@example.com", "password": "secret-12345"},
+        )
+        self.assertRedirects(response, "/home/")
+
+    def test_disabled_calendar_event_creation_blocks_direct_post(self):
+        SystemSettings.objects.create(calendar_event_creation_enabled=False)
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.post(
+            "/calendar/",
+            {
+                "form_name": "calendar_event_add",
+                "title": "Blockierter Termin",
+                "event_date": "2026-08-05",
+                "start_time": "10:00",
+                "end_time": "11:00",
+            },
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(CalendarEvent.objects.filter(title="Blockierter Termin").exists())
+
+    def test_disabled_reminders_block_direct_post(self):
+        SystemSettings.objects.create(calendar_reminders_enabled=False)
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.post(
+            "/calendar/",
+            {"form_name": "reminder_add", "title": "Blockierte Erinnerung"},
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(CalendarReminder.objects.filter(title="Blockierte Erinnerung").exists())
+
+    def test_disabled_calendar_sync_hides_settings_forms_and_blocks_direct_post(self):
+        SystemSettings.objects.create(calendar_sync_enabled=False)
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get("/settings/")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'name="form_name" value="calendar_source_add"')
+        self.assertContains(response, "Kalendersynchronisierung pausiert")
+
+        response = self.client.post(
+            "/settings/",
+            {
+                "form_name": "calendar_source_add",
+                "new-name": "Privat",
+                "new-ical_url": "https://calendar.google.com/calendar/ical/example/basic.ics",
+                "new-color": "blue",
+                "new-enabled": "on",
+            },
+        )
+
+        self.assertRedirects(response, "/home/")
+        self.assertFalse(CalendarSource.objects.filter(user=self.user, name="Privat").exists())
+
+    def test_disabled_messages_and_weather_return_unavailable(self):
+        SystemSettings.objects.create(messages_enabled=False, weather_enabled=False)
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get("/messages/")
+        self.assertEqual(response.status_code, 503)
+        response = self.client.get("/messages/live/")
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["ok"], False)
+
+        response = self.client.get("/weather/")
+        self.assertEqual(response.status_code, 503)
+        response = self.client.get("/weather/suggest/?q=Berlin")
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["ok"], False)
+
+    def test_force_logout_removes_other_authenticated_sessions(self):
+        admin_client = Client()
+        user_client = Client()
+        other_admin_client = Client()
+        self.assertTrue(admin_client.login(username="admin@example.com", password="secret-12345"))
+        self.assertTrue(user_client.login(username="mira@example.com", password="secret-12345"))
+        self.assertTrue(other_admin_client.login(username="admin@example.com", password="secret-12345"))
+
+        response = admin_client.post("/administration/", {"form_name": "force_logout_all"})
+        self.assertRedirects(response, "/administration/")
+
+        self.assertEqual(admin_client.get("/administration/").status_code, 200)
+        self.assertRedirects(user_client.get("/home/"), "/login/?next=/home/")
+        self.assertRedirects(other_admin_client.get("/administration/"), "/login/?next=/administration/")

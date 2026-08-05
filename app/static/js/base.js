@@ -1,8 +1,65 @@
 const THEME_STORAGE_KEY = "lunora-theme";
+const SCROLL_RESTORE_STORAGE_KEY = "lunora-pending-scroll-restore";
+const SCROLL_RESTORE_MAX_AGE_MS = 60 * 1000;
 const isAuthenticated = document.documentElement.dataset.authenticated === "true";
 const themeToggleButton = document.querySelector(".theme-toggle");
 const themeToggleIcon = themeToggleButton?.querySelector("i");
 const themeChoiceButtons = document.querySelectorAll("[data-theme-choice]");
+
+function getCurrentPageKey() {
+  return `${window.location.pathname}${window.location.search}`;
+}
+
+function saveScrollPosition() {
+  try {
+    sessionStorage.setItem(
+      SCROLL_RESTORE_STORAGE_KEY,
+      JSON.stringify({
+        page: getCurrentPageKey(),
+        left: window.scrollX,
+        top: window.scrollY,
+        savedAt: Date.now(),
+      })
+    );
+  } catch (error) {
+    // Navigating still works normally if session storage is unavailable.
+  }
+}
+
+function restoreScrollPosition() {
+  let savedPosition = null;
+
+  try {
+    const storedValue = sessionStorage.getItem(SCROLL_RESTORE_STORAGE_KEY);
+    sessionStorage.removeItem(SCROLL_RESTORE_STORAGE_KEY);
+    savedPosition = storedValue ? JSON.parse(storedValue) : null;
+  } catch (error) {
+    return;
+  }
+
+  const isRecent = savedPosition
+    && Number.isFinite(savedPosition.left)
+    && Number.isFinite(savedPosition.top)
+    && Date.now() - savedPosition.savedAt <= SCROLL_RESTORE_MAX_AGE_MS;
+
+  if (!isRecent || savedPosition.page !== getCurrentPageKey()) {
+    return;
+  }
+
+  // Wait until the browser has laid out the newly rendered page before scrolling.
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      window.scrollTo({
+        left: savedPosition.left,
+        top: savedPosition.top,
+        behavior: "auto",
+      });
+    });
+  });
+}
+
+restoreScrollPosition();
+window.addEventListener("pagehide", saveScrollPosition);
 
 function getInitialTheme() {
   const serverTheme = document.documentElement.dataset.theme;

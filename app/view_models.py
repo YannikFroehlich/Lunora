@@ -1,11 +1,12 @@
 import calendar
 from datetime import datetime, time, timedelta
 
-from django.db.models import F
+from django.db.models import F, Q
 from django.utils import timezone
 
 from app.models import CalendarEvent, CalendarReminder
 from app.services.message_queries import unread_total_for_user
+from app.services.system_settings import feature_enabled, feature_flags
 from app.services.user_preferences import (
     format_user_date,
     format_user_datetime,
@@ -21,15 +22,19 @@ from app.services.weather_service import get_weather_context
 
 def get_dashboard_context(user=None):
     now = localtime_for_user(profile_or_user=user)
-    dashboard_weather = _dashboard_weather_context(user)
-    unread_messages_total = _dashboard_unread_message_count(user)
+    flags = feature_flags()
+    dashboard_weather = _dashboard_weather_context(user) if flags["weather"] else {}
+    unread_messages_total = _dashboard_unread_message_count(user) if flags["messages"] else 0
     upcoming_dashboard_events = _dashboard_upcoming_events(user, now) if user else []
+    nav_tiles = _dashboard_nav_tiles(user, unread_messages_total, flags)
 
     return {
         "active_page": "home",
         "today_label": format_user_date(now, user),
         "time_label": format_user_time(now, user),
         "dashboard_weather": dashboard_weather,
+        "dashboard_weather_enabled": flags["weather"],
+        "dashboard_messages_enabled": flags["messages"],
         "clock": {
             "time": format_user_time(now, user),
             "weekday": get_user_weekday_name(now, user),
@@ -38,23 +43,12 @@ def get_dashboard_context(user=None):
             "year": now.strftime("%Y"),
             "timezone": get_user_timezone_name(user),
         },
-        "nav_tiles": [
-            {"label": "Dashboard", "icon": "fa-table-cells-large", "url_name": "home"},
-            {"label": "Wetter", "icon": "fa-cloud-sun", "url_name": "weather"},
-            {"label": "Kalender", "icon": "fa-calendar-days", "url_name": "calendar"},
-            {
-                "label": "Nachrichten",
-                "icon": "fa-message",
-                "url_name": "messages",
-                "badge_key": "messages_unread",
-                "badge_count": unread_messages_total,
-            },
-            {"label": "Einstellungen", "icon": "fa-gear", "url_name": "settings"},
-        ],
+        "nav_tiles": nav_tiles,
         "recent_tools": _dashboard_tool_shortcuts(
             upcoming_dashboard_events,
             unread_messages_total,
             dashboard_weather,
+            flags,
         ),
         "upcoming_dashboard_events": upcoming_dashboard_events,
     }
@@ -72,6 +66,30 @@ def _dashboard_unread_message_count(user):
     return unread_total_for_user(user)
 
 
+def _dashboard_nav_tiles(user, unread_messages_total, flags):
+    tiles = [
+        {"label": "Dashboard", "icon": "fa-table-cells-large", "url_name": "home"},
+        {"label": "Kalender", "icon": "fa-calendar-days", "url_name": "calendar"},
+        {"label": "Einstellungen", "icon": "fa-gear", "url_name": "settings"},
+    ]
+    if flags["weather"]:
+        tiles.insert(1, {"label": "Wetter", "icon": "fa-cloud-sun", "url_name": "weather"})
+    if flags["messages"]:
+        tiles.insert(
+            -1,
+            {
+                "label": "Nachrichten",
+                "icon": "fa-message",
+                "url_name": "messages",
+                "badge_key": "messages_unread",
+                "badge_count": unread_messages_total,
+            },
+        )
+    if user and getattr(user, "is_superuser", False):
+        tiles.append({"label": "Administration", "icon": "fa-shield-halved", "url_name": "administration"})
+    return tiles
+
+
 def _dashboard_tool_shortcuts(upcoming_events, unread_messages_total, dashboard_weather):
     event_count = len(upcoming_events)
     event_subtitle = f"{event_count} kommende Termine" if event_count else "Kalender oeffnen"
@@ -84,6 +102,22 @@ def _dashboard_tool_shortcuts(upcoming_events, unread_messages_total, dashboard_
         {"title": "Nachrichten", "subtitle": unread_subtitle, "icon": "fa-message", "url_name": "messages"},
         {"title": "Einstellungen", "subtitle": "Profil & Präferenzen", "icon": "fa-gear", "url_name": "settings"},
     ]
+
+
+def _dashboard_tool_shortcuts(upcoming_events, unread_messages_total, dashboard_weather, flags):
+    event_count = len(upcoming_events)
+    event_subtitle = f"{event_count} kommende Termine" if event_count else "Kalender oeffnen"
+    unread_subtitle = f"{unread_messages_total} ungelesen" if unread_messages_total else "Inbox oeffnen"
+    weather_city = dashboard_weather.get("today", {}).get("city", "Standardort")
+    tools = [
+        {"title": "Kalender", "subtitle": event_subtitle, "icon": "fa-calendar-check", "url_name": "calendar"},
+        {"title": "Einstellungen", "subtitle": "Profil & Praeferenzen", "icon": "fa-gear", "url_name": "settings"},
+    ]
+    if flags["weather"]:
+        tools.insert(1, {"title": "Wetter", "subtitle": weather_city, "icon": "fa-cloud-sun", "url_name": "weather"})
+    if flags["messages"]:
+        tools.insert(2, {"title": "Nachrichten", "subtitle": unread_subtitle, "icon": "fa-message", "url_name": "messages"})
+    return tools
 
 
 def _dashboard_weather_context(user=None):
@@ -143,7 +177,11 @@ def get_settings_context(preferences_form=None):
 
 def _dashboard_upcoming_events(user, now):
     events = (
-        CalendarEvent.objects.filter(user=user, source__is_visible=True, end_at__gte=now)
+        CalendarEvent.objects.filter(
+            Q(source__isnull=True) | Q(source__is_visible=True),
+            user=user,
+            end_at__gte=now,
+        )
         .select_related("source")
         .order_by("start_at")[:5]
     )
@@ -152,7 +190,7 @@ def _dashboard_upcoming_events(user, now):
             "title": event.title,
             "date": format_user_date(event.start_at, user),
             "time": "Ganztägig" if event.is_all_day else format_user_time(event.start_at, user),
-            "tone": event.source.color,
+            "tone": _calendar_event_tone(event),
         }
         for event in events
     ]
@@ -178,8 +216,8 @@ def get_calendar_context(user, *, year=None, month=None):
     range_end = timezone.make_aware(datetime.combine(visible_end, time.min), user_timezone)
     events = list(
         CalendarEvent.objects.filter(
+            Q(source__isnull=True) | Q(source__is_visible=True),
             user=user,
-            source__is_visible=True,
             start_at__lt=range_end,
             end_at__gt=range_start,
         )
@@ -196,12 +234,14 @@ def get_calendar_context(user, *, year=None, month=None):
             row.append(
                 {
                     "number": str(day.day),
+                    "date_input": day.isoformat(),
+                    "date_label": format_user_date(day, user),
                     "muted": day.month != month,
                     "today": day == now.date(),
                     "events": [
                         {
                             "label": event.title,
-                            "tone": event.source.color,
+                            "tone": _calendar_event_tone(event),
                             "time": _calendar_event_time_label(event, user),
                         }
                         for event in day_events[:3]
@@ -216,7 +256,7 @@ def get_calendar_context(user, *, year=None, month=None):
             "time": _calendar_event_time_label(event, user),
             "title": event.title,
             "icon": "fa-calendar-day",
-            "tone": event.source.color,
+            "tone": _calendar_event_tone(event),
         }
         for event in events_by_date.get(now.date(), [])
     ]
@@ -229,7 +269,8 @@ def get_calendar_context(user, *, year=None, month=None):
     ]
     days_in_month = [month_date.replace(day=day) for day in range(1, calendar.monthrange(year, month)[1] + 1)]
     busy_days = {localtime_for_user(event.start_at, user).date() for event in month_events}
-    reminder_items = _calendar_reminder_items(user, now)
+    calendar_reminders_enabled = feature_enabled("calendar_reminders")
+    reminder_items = _calendar_reminder_items(user, now) if calendar_reminders_enabled else []
     chart_bars = _calendar_chart_bars(month_events, year, month, user)
     prev_month = _shift_month(year, month, -1)
     next_month = _shift_month(year, month, 1)
@@ -250,6 +291,9 @@ def get_calendar_context(user, *, year=None, month=None):
             "chart_bars": chart_bars,
         },
         "reminders": reminder_items,
+        "calendar_reminders_enabled": calendar_reminders_enabled,
+        "calendar_event_creation_enabled": feature_enabled("calendar_event_creation"),
+        "calendar_sync_enabled": feature_enabled("calendar_sync"),
     }
 
 
@@ -276,9 +320,17 @@ def _calendar_event_time_label(event, user):
     return format_user_time(event.start_at, user)
 
 
+def _calendar_event_tone(event):
+    return event.source.color if event.source_id else "sand"
+
+
 def _upcoming_calendar_events(user, now):
     events = (
-        CalendarEvent.objects.filter(user=user, source__is_visible=True, end_at__gte=now)
+        CalendarEvent.objects.filter(
+            Q(source__isnull=True) | Q(source__is_visible=True),
+            user=user,
+            end_at__gte=now,
+        )
         .select_related("source")
         .order_by("start_at")[:6]
     )
@@ -286,9 +338,9 @@ def _upcoming_calendar_events(user, now):
         {
             "date": format_user_date(event.start_at, user),
             "title": event.title,
-            "category": event.source.name,
+            "category": event.source.name if event.source_id else "Eigener Termin",
             "icon": "fa-calendar-day",
-            "tone": event.source.color,
+            "tone": _calendar_event_tone(event),
         }
         for event in events
     ]
