@@ -14,6 +14,7 @@ FEATURE_FIELDS = {
     "calendar_reminders": "calendar_reminders_enabled",
     "calendar_sync": "calendar_sync_enabled",
     "messages": "messages_enabled",
+    "notes": "notes_enabled",
     "weather": "weather_enabled",
 }
 
@@ -23,6 +24,7 @@ FEATURE_LABELS = {
     "calendar_reminders": "Erinnerungen",
     "calendar_sync": "Kalendersynchronisierung",
     "messages": "Nachrichten",
+    "notes": "Notizen",
     "weather": "Wetter",
 }
 
@@ -34,6 +36,7 @@ class DefaultSystemSettings:
     calendar_reminders_enabled: bool = True
     calendar_sync_enabled: bool = True
     messages_enabled: bool = True
+    notes_enabled: bool = True
     weather_enabled: bool = True
     updated_by: object = None
     updated_at: object = None

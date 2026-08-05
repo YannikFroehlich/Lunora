@@ -7,13 +7,14 @@ from urllib.error import HTTPError
 
 from django.contrib.auth.models import User
 from django.core.cache import cache
+from django.core.management import call_command
 from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 
 from app.forms import CalendarSourceForm, ProfileForm
-from app.models import CalendarEvent, CalendarReminder, CalendarSource, ChatMessage, ChatMessageReaction, Conversation, ConversationMember, Profile, SystemSettings
+from app.models import CalendarEvent, CalendarReminder, CalendarSource, ChatMessage, ChatMessageReaction, Conversation, ConversationMember, Note, NoteAttachment, NoteShare, NoteUserState, NoteVersion, Profile, SystemSettings
 from app.services.calendar_service import fetch_ical, parse_ical_events, sync_calendar_sources
 from app.services.image_uploads import PROFILE_IMAGE_MAX_BYTES
 from app.services.weather_service import (
@@ -23,6 +24,7 @@ from app.services.weather_service import (
     get_weather_at_coordinates,
     get_weather_context,
 )
+from app.services.notes import prune_note_versions, purge_expired_notes
 from app.views.message_views import _build_inbox_items
 
 
@@ -35,6 +37,19 @@ PNG_1X1_BYTES = (
     b"\r\n-\xb4"
     b"\x00\x00\x00\x00IEND\xaeB`\x82"
 )
+
+
+def note_document(text="Gedanke"):
+    return {
+        "type": "doc",
+        "content": [
+            {
+                "type": "paragraph",
+                "attrs": {"textAlign": None},
+                "content": [{"type": "text", "text": text, "marks": [{"type": "bold"}]}],
+            }
+        ],
+    }
 
 
 
@@ -1767,3 +1782,387 @@ class AdministrationFeatureFlagTests(TestCase):
         self.assertEqual(admin_client.get("/administration/").status_code, 200)
         self.assertRedirects(user_client.get("/home/"), "/login/?next=/home/")
         self.assertRedirects(other_admin_client.get("/administration/"), "/login/?next=/administration/")
+
+
+@override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
+class NotesTests(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(
+            username="owner@example.com", email="owner@example.com", password="secret-12345", first_name="Owner"
+        )
+        self.reader = User.objects.create_user(
+            username="reader@example.com", email="reader@example.com", password="secret-12345", first_name="Reader"
+        )
+        self.editor = User.objects.create_user(
+            username="editor@example.com", email="editor@example.com", password="secret-12345", first_name="Editor"
+        )
+        Profile.objects.create(user=self.owner, display_name="Owner")
+        Profile.objects.create(user=self.reader, display_name="Reader")
+        Profile.objects.create(user=self.editor, display_name="Editor")
+        self.client.login(username="owner@example.com", password="secret-12345")
+
+    def create_note(self, title="Projektidee"):
+        response = self.client.post(
+            "/notes/api/create/",
+            data=json.dumps({"title": title}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        return Note.objects.get(pk=response.json()["note"]["id"])
+
+    def save_note(self, note, *, text="Erster Inhalt", tags=None, revision=None, client=None):
+        return (client or self.client).patch(
+            f"/notes/api/{note.id}/",
+            data=json.dumps(
+                {
+                    "title": note.title,
+                    "document": note_document(text),
+                    "tags": tags or [],
+                    "base_revision": revision or note.revision,
+                }
+            ),
+            content_type="application/json",
+        )
+
+    def test_notes_require_login_and_render_editor(self):
+        self.client.logout()
+        self.assertRedirects(self.client.get("/notes/"), "/login/?next=/notes/")
+        self.client.login(username="owner@example.com", password="secret-12345")
+        note = self.create_note()
+        response = self.client.get(f"/notes/{note.id}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Textformatierung")
+        self.assertContains(response, "Versionsverlauf")
+        self.assertContains(response, "Projektidee")
+        self.assertContains(response, "data-table-dialog-open")
+        self.assertContains(response, "data-table-dialog")
+        self.assertContains(response, "Tabellenwerkzeuge")
+        self.assertContains(response, f'data-note-card="{note.id}"')
+        self.assertContains(response, "data-note-card-title")
+        self.assertContains(response, "data-note-card-preview")
+        self.assertContains(response, "data-note-card-updated")
+        self.assertContains(response, "data-note-card-tags")
+
+    def test_notes_overview_does_not_automatically_open_first_note(self):
+        note = self.create_note()
+        response = self.client.get("/notes/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.context["selected_note_data"])
+        self.assertContains(response, "Dein Platz für Gedanken")
+        self.assertContains(response, '<a class="notes-mobile-back" href="/notes/"', count=0)
+
+        detail = self.client.get(f"/notes/{note.id}/")
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.context["selected_note_data"]["id"], note.id)
+        self.assertContains(detail, '<a class="notes-mobile-back" href="/notes/"')
+
+    def test_note_save_derives_plain_text_tags_and_search(self):
+        note = self.create_note()
+        response = self.save_note(note, text="Mondlicht Planung", tags=["Projekt", "projekt", "Wichtig"])
+        self.assertEqual(response.status_code, 200, response.content)
+        saved_note = response.json()["note"]
+        self.assertEqual(saved_note["preview"], "Mondlicht Planung")
+        self.assertEqual(saved_note["tags"], ["Projekt", "Wichtig"])
+        self.assertTrue(saved_note["updated_at"])
+        note.refresh_from_db()
+        self.assertEqual(note.plain_text, "Mondlicht Planung")
+        self.assertEqual(note.revision, 2)
+        self.assertEqual(list(note.tags.values_list("normalized_name", flat=True)), ["projekt", "wichtig"])
+        response = self.client.get("/notes/?q=Mondlicht")
+        self.assertContains(response, "Projektidee")
+        response = self.client.get("/notes/?tag=projekt")
+        self.assertContains(response, "Projektidee")
+
+    def test_stale_revision_returns_conflict_without_overwriting(self):
+        note = self.create_note()
+        first = self.save_note(note, text="Serverstand", revision=1)
+        self.assertEqual(first.status_code, 200)
+        stale = self.save_note(note, text="Veralteter Stand", revision=1)
+        self.assertEqual(stale.status_code, 409)
+        self.assertEqual(stale.json()["error"], "revision_conflict")
+        note.refresh_from_db()
+        self.assertEqual(note.plain_text, "Serverstand")
+
+    def test_share_roles_and_personal_pin_are_enforced(self):
+        note = self.create_note()
+        NoteShare.objects.create(note=note, user=self.reader, role=NoteShare.ROLE_READER)
+        NoteShare.objects.create(note=note, user=self.editor, role=NoteShare.ROLE_EDITOR)
+        reader_client = Client()
+        editor_client = Client()
+        reader_client.login(username="reader@example.com", password="secret-12345")
+        editor_client.login(username="editor@example.com", password="secret-12345")
+
+        denied = self.save_note(note, client=reader_client)
+        self.assertEqual(denied.status_code, 403)
+        pin = reader_client.post(
+            f"/notes/api/{note.id}/actions/", data=json.dumps({"action": "pin"}), content_type="application/json"
+        )
+        self.assertEqual(pin.status_code, 200)
+        self.assertTrue(NoteUserState.objects.get(note=note, user=self.reader).is_pinned)
+        self.assertFalse(NoteUserState.objects.get(note=note, user=self.owner).is_pinned)
+
+        changed = self.save_note(note, text="Vom Bearbeiter", client=editor_client)
+        self.assertEqual(changed.status_code, 200, changed.content)
+        note.refresh_from_db()
+        self.assertEqual(note.plain_text, "Vom Bearbeiter")
+
+    def test_only_owner_can_manage_shares_and_trash(self):
+        note = self.create_note()
+        NoteShare.objects.create(note=note, user=self.editor, role=NoteShare.ROLE_EDITOR)
+        editor_client = Client()
+        editor_client.login(username="editor@example.com", password="secret-12345")
+        denied = editor_client.post(
+            f"/notes/api/{note.id}/actions/", data=json.dumps({"action": "trash"}), content_type="application/json"
+        )
+        self.assertEqual(denied.status_code, 403)
+        denied = editor_client.post(
+            f"/notes/api/{note.id}/shares/",
+            data=json.dumps({"user_id": self.reader.id, "role": "reader"}),
+            content_type="application/json",
+        )
+        self.assertEqual(denied.status_code, 403)
+
+        trashed = self.client.post(
+            f"/notes/api/{note.id}/actions/", data=json.dumps({"action": "trash"}), content_type="application/json"
+        )
+        self.assertEqual(trashed.status_code, 200)
+        self.assertEqual(editor_client.get(f"/notes/api/{note.id}/").status_code, 404)
+        restored = self.client.post(
+            f"/notes/api/{note.id}/actions/", data=json.dumps({"action": "restore"}), content_type="application/json"
+        )
+        self.assertEqual(restored.status_code, 200)
+
+    def test_version_history_and_restore_create_new_revision(self):
+        note = self.create_note()
+        saved = self.save_note(note, text="Neue Fassung")
+        self.assertEqual(saved.status_code, 200)
+        version = NoteVersion.objects.get(note=note)
+        note.refresh_from_db()
+        response = self.client.post(
+            f"/notes/api/{note.id}/versions/{version.id}/restore/",
+            data=json.dumps({"base_revision": note.revision}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        note.refresh_from_db()
+        self.assertEqual(note.plain_text, "")
+        self.assertEqual(note.revision, 3)
+        self.assertEqual(note.versions.count(), 2)
+
+    def test_version_history_is_limited_to_100_entries_and_90_days(self):
+        note = self.create_note()
+        for revision in range(105):
+            NoteVersion.objects.create(
+                note=note,
+                created_by=self.owner,
+                source_revision=revision + 1,
+                title=f"Version {revision + 1}",
+                document=note_document(str(revision + 1)),
+            )
+        oldest = note.versions.order_by("created_at").first()
+        NoteVersion.objects.filter(pk=oldest.pk).update(created_at=timezone.now() - timedelta(days=91))
+        prune_note_versions(note)
+        self.assertEqual(note.versions.count(), 100)
+        self.assertFalse(NoteVersion.objects.filter(pk=oldest.pk).exists())
+
+    def test_tiptap_table_attributes_are_accepted(self):
+        note = self.create_note()
+        table_document = {
+            "type": "doc",
+            "content": [
+                {
+                    "type": "table",
+                    "content": [
+                        {
+                            "type": "tableRow",
+                            "content": [
+                                {
+                                    "type": "tableHeader",
+                                    "attrs": {"colspan": 1, "rowspan": 1, "colwidth": None, "align": None},
+                                    "content": [{"type": "paragraph", "attrs": {"textAlign": None}}],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+        response = self.client.patch(
+            f"/notes/api/{note.id}/",
+            data=json.dumps({"title": note.title, "document": table_document, "tags": [], "base_revision": 1}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+
+    def test_private_image_upload_requires_note_access(self):
+        note = self.create_note()
+        with TemporaryDirectory() as private_root, override_settings(PRIVATE_MEDIA_ROOT=private_root):
+            upload = SimpleUploadedFile("moon.png", PNG_1X1_BYTES, content_type="image/png")
+            response = self.client.post(
+                f"/notes/api/{note.id}/attachments/", {"kind": "image", "file": upload}
+            )
+            self.assertEqual(response.status_code, 201, response.content)
+            attachment = NoteAttachment.objects.get(note=note)
+            allowed = self.client.get(f"/notes/attachments/{attachment.file_id}/inline/")
+            self.assertEqual(allowed.status_code, 200)
+            allowed.close()
+            stranger_client = Client()
+            stranger_client.login(username="reader@example.com", password="secret-12345")
+            self.assertEqual(
+                stranger_client.get(f"/notes/attachments/{attachment.file_id}/inline/").status_code,
+                404,
+            )
+
+    def test_invalid_editor_json_and_unsafe_links_are_rejected(self):
+        note = self.create_note()
+        unsafe = {
+            "type": "doc",
+            "content": [{"type": "paragraph", "content": [{"type": "text", "text": "X", "marks": [{"type": "link", "attrs": {"href": "javascript:alert(1)"}}]}]}],
+        }
+        response = self.client.patch(
+            f"/notes/api/{note.id}/",
+            data=json.dumps({"title": note.title, "document": unsafe, "tags": [], "base_revision": note.revision}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        note.refresh_from_db()
+        self.assertEqual(note.revision, 1)
+
+    def test_tiptap_link_attributes_are_accepted(self):
+        note = self.create_note()
+        linked_document = {
+            "type": "doc",
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "YouTube",
+                            "marks": [
+                                {
+                                    "type": "link",
+                                    "attrs": {
+                                        "href": "youtube.com",
+                                        "target": "_blank",
+                                        "rel": "noopener noreferrer",
+                                        "class": None,
+                                        "title": None,
+                                    },
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+        response = self.client.patch(
+            f"/notes/api/{note.id}/",
+            data=json.dumps({"title": note.title, "document": linked_document, "tags": [], "base_revision": 1}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        saved_document = response.json()["note"]["document"]
+        self.assertEqual(saved_document["content"][0]["content"][0]["marks"][0]["attrs"]["href"], "https://youtube.com")
+
+    def test_pdf_export_preserves_access_control_and_returns_pdf(self):
+        note = self.create_note("PDF Beispiel")
+        note.document = {
+            "type": "doc",
+            "content": [
+                {
+                    "type": "heading",
+                    "attrs": {"level": 1, "textAlign": "center"},
+                    "content": [{"type": "text", "text": "Gestaltete Überschrift"}],
+                },
+                {
+                    "type": "paragraph",
+                    "attrs": {"textAlign": "justify"},
+                    "content": [
+                        {"type": "text", "text": "Fett", "marks": [{"type": "bold"}]},
+                        {"type": "text", "text": " und farbig", "marks": [{"type": "textStyle", "attrs": {"color": "#a67c52", "fontSize": "18px", "lineHeight": "1.5"}}]},
+                    ],
+                },
+                {
+                    "type": "bulletList",
+                    "content": [
+                        {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Listenpunkt"}]}]},
+                    ],
+                },
+                {
+                    "type": "table",
+                    "content": [
+                        {
+                            "type": "tableRow",
+                            "content": [
+                                {"type": "tableHeader", "attrs": {"colspan": 1, "rowspan": 1}, "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Spalte"}]}]},
+                                {"type": "tableHeader", "attrs": {"colspan": 1, "rowspan": 1}, "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Wert"}]}]},
+                            ],
+                        },
+                        {
+                            "type": "tableRow",
+                            "content": [
+                                {"type": "tableCell", "attrs": {"colspan": 1, "rowspan": 1}, "content": [{"type": "paragraph", "content": [{"type": "text", "text": "A"}]}]},
+                                {"type": "tableCell", "attrs": {"colspan": 1, "rowspan": 1}, "content": [{"type": "paragraph", "content": [{"type": "text", "text": "1"}]}]},
+                            ],
+                        },
+                    ],
+                },
+            ],
+        }
+        note.plain_text = "Gestaltete Überschrift Fett und farbig Listenpunkt Spalte Wert A 1"
+        note.save(update_fields=["document", "plain_text"])
+
+        response = self.client.get(f"/notes/{note.id}/export/pdf/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertIn("attachment", response["Content-Disposition"])
+        self.assertIn(".pdf", response["Content-Disposition"])
+        self.assertEqual(response["Cache-Control"], "private, no-store")
+        pdf_bytes = b"".join(response.streaming_content)
+        response.close()
+        self.assertTrue(pdf_bytes.startswith(b"%PDF-"))
+        self.assertIn(b"%%EOF", pdf_bytes[-1024:])
+        self.assertGreater(len(pdf_bytes), 2000)
+
+        NoteShare.objects.create(note=note, user=self.reader, role=NoteShare.ROLE_READER)
+        reader_client = Client()
+        reader_client.login(username="reader@example.com", password="secret-12345")
+        reader_response = reader_client.get(f"/notes/{note.id}/export/pdf/")
+        self.assertEqual(reader_response.status_code, 200)
+        reader_response.close()
+
+        stranger_client = Client()
+        stranger_client.login(username="editor@example.com", password="secret-12345")
+        self.assertEqual(stranger_client.get(f"/notes/{note.id}/export/pdf/").status_code, 404)
+        self.assertRedirects(Client().get(f"/notes/{note.id}/export/pdf/"), f"/login/?next=/notes/{note.id}/export/pdf/")
+
+    def test_shortcut_conflicts_are_rejected_and_valid_overrides_persist(self):
+        invalid = self.client.patch(
+            "/notes/api/shortcuts/",
+            data=json.dumps({"shortcuts": {"save": "Mod+S", "bold": "Mod+S"}}),
+            content_type="application/json",
+        )
+        self.assertEqual(invalid.status_code, 400)
+        valid = self.client.patch(
+            "/notes/api/shortcuts/",
+            data=json.dumps({"shortcuts": {"save": "Alt+S", "bold": ""}}),
+            content_type="application/json",
+        )
+        self.assertEqual(valid.status_code, 200, valid.content)
+        self.owner.profile.refresh_from_db()
+        self.assertEqual(self.owner.profile.note_shortcuts, {"save": "Alt+S", "bold": ""})
+
+    def test_expired_trash_is_purged_with_private_files(self):
+        note = self.create_note()
+        note.deleted_at = timezone.now() - timedelta(days=31)
+        note.save(update_fields=["deleted_at"])
+        self.assertEqual(purge_expired_notes(), 1)
+        self.assertFalse(Note.objects.filter(pk=note.id).exists())
+
+    def test_disabled_notes_feature_blocks_page_and_api(self):
+        settings_obj = SystemSettings.objects.create(notes_enabled=False)
+        self.assertEqual(self.client.get("/notes/").status_code, 503)
+        response = self.client.post("/notes/api/create/", data="{}", content_type="application/json")
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(response.json()["ok"])

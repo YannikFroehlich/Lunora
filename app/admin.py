@@ -8,6 +8,12 @@ from app.models import (
     ChatMessageReaction,
     Conversation,
     ConversationMember,
+    Note,
+    NoteAttachment,
+    NoteShare,
+    NoteTag,
+    NoteUserState,
+    NoteVersion,
     Profile,
     SystemSettings,
 )
@@ -28,6 +34,7 @@ class SystemSettingsAdmin(admin.ModelAdmin):
         "calendar_reminders_enabled",
         "calendar_sync_enabled",
         "messages_enabled",
+        "notes_enabled",
         "weather_enabled",
         "updated_at",
     )
@@ -91,3 +98,25 @@ class CalendarReminderAdmin(admin.ModelAdmin):
     list_display = ("title", "user", "is_done", "created_at")
     list_filter = ("is_done", "created_at")
     search_fields = ("title", "user__username")
+
+
+class NoteShareInline(admin.TabularInline):
+    model = NoteShare
+    extra = 0
+    autocomplete_fields = ("user",)
+
+
+@admin.register(Note)
+class NoteAdmin(admin.ModelAdmin):
+    list_display = ("title", "owner", "revision", "deleted_at", "updated_at")
+    list_filter = ("deleted_at", "created_at", "updated_at")
+    search_fields = ("title", "plain_text", "owner__username", "owner__email")
+    autocomplete_fields = ("owner", "last_edited_by")
+    filter_horizontal = ("tags",)
+    inlines = (NoteShareInline,)
+
+
+admin.site.register(NoteTag)
+admin.site.register(NoteUserState)
+admin.site.register(NoteAttachment)
+admin.site.register(NoteVersion)

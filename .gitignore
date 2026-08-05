@@ -18,6 +18,7 @@ local_settings.py
 # Django generated/static output
 staticfiles/
 media/
+private_media/
 
 # Environment / Secrets
 .env
@@ -44,6 +45,7 @@ desktop.ini
 htmlcov/
 
 # Build
+node_modules/
 build/
 dist/
 *.egg-info/

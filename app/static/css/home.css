@@ -184,7 +184,7 @@
 .quick-actions {
   grid-area: actions;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
   gap: 18px;
   padding: 18px;
 }

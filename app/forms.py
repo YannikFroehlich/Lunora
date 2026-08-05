@@ -61,6 +61,7 @@ class SystemSettingsForm(forms.ModelForm):
             "calendar_reminders_enabled",
             "calendar_sync_enabled",
             "messages_enabled",
+            "notes_enabled",
             "weather_enabled",
         ]
         labels = {
@@ -69,6 +70,7 @@ class SystemSettingsForm(forms.ModelForm):
             "calendar_reminders_enabled": "Kalender: Erinnerungen",
             "calendar_sync_enabled": "Kalender: Synchronisierung und Quellen",
             "messages_enabled": "Nachrichten",
+            "notes_enabled": "Notizen",
             "weather_enabled": "Wetter",
         }
         widgets = {
@@ -77,6 +79,7 @@ class SystemSettingsForm(forms.ModelForm):
             "calendar_reminders_enabled": forms.CheckboxInput(),
             "calendar_sync_enabled": forms.CheckboxInput(),
             "messages_enabled": forms.CheckboxInput(),
+            "notes_enabled": forms.CheckboxInput(),
             "weather_enabled": forms.CheckboxInput(),
         }
 

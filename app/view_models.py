@@ -4,7 +4,7 @@ from datetime import datetime, time, timedelta
 from django.db.models import F, Q
 from django.utils import timezone
 
-from app.models import CalendarEvent, CalendarReminder
+from app.models import CalendarEvent, CalendarReminder, NoteShare
 from app.services.message_queries import unread_total_for_user
 from app.services.system_settings import feature_enabled, feature_flags
 from app.services.user_preferences import (
@@ -25,8 +25,9 @@ def get_dashboard_context(user=None):
     flags = feature_flags()
     dashboard_weather = _dashboard_weather_context(user) if flags["weather"] else {}
     unread_messages_total = _dashboard_unread_message_count(user) if flags["messages"] else 0
+    new_note_shares = _dashboard_new_note_share_count(user) if flags["notes"] else 0
     upcoming_dashboard_events = _dashboard_upcoming_events(user, now) if user else []
-    nav_tiles = _dashboard_nav_tiles(user, unread_messages_total, flags)
+    nav_tiles = _dashboard_nav_tiles(user, unread_messages_total, new_note_shares, flags)
 
     return {
         "active_page": "home",
@@ -35,6 +36,8 @@ def get_dashboard_context(user=None):
         "dashboard_weather": dashboard_weather,
         "dashboard_weather_enabled": flags["weather"],
         "dashboard_messages_enabled": flags["messages"],
+        "dashboard_notes_enabled": flags["notes"],
+        "dashboard_new_note_shares": new_note_shares,
         "clock": {
             "time": format_user_time(now, user),
             "weekday": get_user_weekday_name(now, user),
@@ -48,6 +51,7 @@ def get_dashboard_context(user=None):
             upcoming_dashboard_events,
             unread_messages_total,
             dashboard_weather,
+            new_note_shares,
             flags,
         ),
         "upcoming_dashboard_events": upcoming_dashboard_events,
@@ -66,7 +70,13 @@ def _dashboard_unread_message_count(user):
     return unread_total_for_user(user)
 
 
-def _dashboard_nav_tiles(user, unread_messages_total, flags):
+def _dashboard_new_note_share_count(user):
+    if not user:
+        return 0
+    return NoteShare.objects.filter(user=user, first_opened_at__isnull=True, note__deleted_at__isnull=True).count()
+
+
+def _dashboard_nav_tiles(user, unread_messages_total, new_note_shares, flags):
     tiles = [
         {"label": "Dashboard", "icon": "fa-table-cells-large", "url_name": "home"},
         {"label": "Kalender", "icon": "fa-calendar-days", "url_name": "calendar"},
@@ -83,6 +93,17 @@ def _dashboard_nav_tiles(user, unread_messages_total, flags):
                 "url_name": "messages",
                 "badge_key": "messages_unread",
                 "badge_count": unread_messages_total,
+            },
+        )
+    if flags["notes"]:
+        tiles.insert(
+            -1,
+            {
+                "label": "Notizen",
+                "icon": "fa-note-sticky",
+                "url_name": "notes",
+                "badge_key": "notes_new",
+                "badge_count": new_note_shares,
             },
         )
     if user and getattr(user, "is_superuser", False):
@@ -104,7 +125,7 @@ def _dashboard_tool_shortcuts(upcoming_events, unread_messages_total, dashboard_
     ]
 
 
-def _dashboard_tool_shortcuts(upcoming_events, unread_messages_total, dashboard_weather, flags):
+def _dashboard_tool_shortcuts(upcoming_events, unread_messages_total, dashboard_weather, new_note_shares, flags):
     event_count = len(upcoming_events)
     event_subtitle = f"{event_count} kommende Termine" if event_count else "Kalender oeffnen"
     unread_subtitle = f"{unread_messages_total} ungelesen" if unread_messages_total else "Inbox oeffnen"
@@ -117,6 +138,9 @@ def _dashboard_tool_shortcuts(upcoming_events, unread_messages_total, dashboard_
         tools.insert(1, {"title": "Wetter", "subtitle": weather_city, "icon": "fa-cloud-sun", "url_name": "weather"})
     if flags["messages"]:
         tools.insert(2, {"title": "Nachrichten", "subtitle": unread_subtitle, "icon": "fa-message", "url_name": "messages"})
+    if flags["notes"]:
+        note_subtitle = f"{new_note_shares} neue Freigabe(n)" if new_note_shares else "Notizen öffnen"
+        tools.insert(-1, {"title": "Notizen", "subtitle": note_subtitle, "icon": "fa-note-sticky", "url_name": "notes"})
     return tools
 
 

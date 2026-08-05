@@ -10,6 +10,7 @@ Lunora ist ein kleines Django-basiertes Workspace-Dashboard mit ruhiger Glas-UI.
 - Wetterseite mit Ortssuche, Demo-Daten ohne API-Key, OpenWeather-Anbindung und Regenradar-Proxy
 - Kalenderseite mit privatem iCal-/Google-Kalender-Link, Synchronisierung, Monatsübersicht, Tagesliste, kommenden Terminen und Erinnerungen
 - Nachrichtenseite mit Direktunterhaltungen, ungelesenen Nachrichten, Live-Updates, Reaktionen, angepinnten Nachrichten, Lesestatus, Stummschalten und Blockieren
+- Notizbereich mit Rich-Text-Editor, Autosave, frei belegbaren Hotkeys, Hashtags, Freigaben, Versionen, privaten Anhängen, layoutgetreuem PDF-Export, Archiv und Papierkorb
 - Responsive UI mit gemeinsamen Design-Tokens, Darkmode-Kontrast, Fokuszuständen und gestylten Scrollbars
 
 ## Tech Stack
@@ -19,6 +20,8 @@ Lunora ist ein kleines Django-basiertes Workspace-Dashboard mit ruhiger Glas-UI.
 - SQLite für lokale Entwicklung
 - Django Templates
 - Vanilla CSS und JavaScript
+- Tiptap 3 und Vite für das lokal gebündelte Notiz-Frontend
+- ReportLab und Pillow für den serverseitigen, berechtigungsgeprüften Notiz-PDF-Export
 
 ## Projektstruktur
 
@@ -50,6 +53,8 @@ Lunora/
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
+npm ci
+npm run build
 python manage.py migrate
 python manage.py runserver
 ```
@@ -79,6 +84,7 @@ DJANGO_STATIC_ROOT=staticfiles
 PROFILE_IMAGE_MAX_BYTES=2097152
 PROFILE_IMAGE_MAX_WIDTH=4096
 PROFILE_IMAGE_MAX_HEIGHT=4096
+DJANGO_PRIVATE_MEDIA_ROOT=private_media
 
 DJANGO_SECURE_SSL_REDIRECT=false
 DJANGO_SESSION_COOKIE_SECURE=false
@@ -98,6 +104,7 @@ Wichtige Variablen:
 - `DJANGO_CSRF_TRUSTED_ORIGINS`: kommagetrennte HTTPS-Urspruenge fuer CSRF, z. B. `https://lunora.example.com`
 - `DJANGO_STATIC_ROOT`: Zielordner fuer `collectstatic`, standardmaessig `staticfiles`
 - `PROFILE_IMAGE_MAX_BYTES`, `PROFILE_IMAGE_MAX_WIDTH`, `PROFILE_IMAGE_MAX_HEIGHT`: Upload-Limits fuer Profilbilder
+- `DJANGO_PRIVATE_MEDIA_ROOT`: nicht öffentlich ausgelieferter Speicherort für private Notizanhänge
 - `DJANGO_SECURE_SSL_REDIRECT`: HTTPS-Weiterleitung, standardmaessig aktiv wenn `DJANGO_DEBUG=false`
 - `DJANGO_SESSION_COOKIE_SECURE` und `DJANGO_CSRF_COOKIE_SECURE`: Secure-Cookies, standardmaessig aktiv wenn `DJANGO_DEBUG=false`
 - `DJANGO_SECURE_HSTS_SECONDS`: HSTS-Dauer in Sekunden, standardmaessig `31536000` wenn `DJANGO_DEBUG=false`
@@ -116,6 +123,8 @@ Ohne Wetter-API-Key zeigt Lunora Demo-Wetterdaten und eine Radar-Vorschau.
 ```powershell
 python manage.py check
 python manage.py test
+npm test
+npm run build
 ```
 
 Für JavaScript-Syntaxchecks:
@@ -123,6 +132,14 @@ Für JavaScript-Syntaxchecks:
 ```powershell
 node --check app\static\js\weather.js
 node --check app\static\js\messages.js
+```
+
+Der Notizeditor wird aus `frontend/` nach `app/static/js/bundles/notes.js` gebaut. Die npm-Versionen sind in `package-lock.json` festgeschrieben.
+
+Notizen im Papierkorb werden nach 30 Tagen durch folgenden Command endgültig gelöscht. In einer Deployment-Umgebung sollte er täglich eingeplant werden:
+
+```powershell
+python manage.py purge_expired_notes
 ```
 
 ## Entwicklungshinweise
@@ -138,4 +155,5 @@ node --check app\static\js\messages.js
 - Keine echten Secrets, API-Keys, privaten Kalenderlinks, lokalen Datenbanken oder Uploads committen.
 - `.env`, `db.sqlite3` und `media/` sind lokale Entwicklungsdaten.
 - Kalenderquellen können private iCal-URLs enthalten und sollten nicht geloggt oder öffentlich angezeigt werden.
+- Notizanhänge liegen unter `DJANGO_PRIVATE_MEDIA_ROOT` und dürfen nur über die berechtigungsgeprüften Download-Endpunkte ausgeliefert werden.
 - Wetter-API-Keys bleiben serverseitig und werden nicht an Browser-JavaScript weitergegeben.

@@ -1,9 +1,13 @@
+import uuid
+
 from django.conf import settings
 from django.db import models
 from django.db.models import Count, Prefetch
 from django.utils import timezone
 
 from app.services.image_uploads import validate_profile_image_file
+from app.services.note_content import empty_note_document
+from app.services.note_files import note_upload_to, private_note_storage
 
 
 class SystemSettings(models.Model):
@@ -12,6 +16,7 @@ class SystemSettings(models.Model):
     calendar_reminders_enabled = models.BooleanField(default=True)
     calendar_sync_enabled = models.BooleanField(default=True)
     messages_enabled = models.BooleanField(default=True)
+    notes_enabled = models.BooleanField(default=True)
     weather_enabled = models.BooleanField(default=True)
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -92,6 +97,7 @@ class Profile(models.Model):
     weekly_summary = models.BooleanField(default=False)
     analytics_enabled = models.BooleanField(default=True)
     usage_data_enabled = models.BooleanField(default=False)
+    note_shortcuts = models.JSONField(default=dict, blank=True)
     weather_default_city = models.CharField(max_length=120, blank=True, default="Bünde,de")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -346,3 +352,142 @@ class CalendarReminder(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class Note(models.Model):
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="owned_notes")
+    title = models.CharField(max_length=200, default="Unbenannte Notiz")
+    document = models.JSONField(default=empty_note_document)
+    plain_text = models.TextField(blank=True)
+    revision = models.PositiveIntegerField(default=1)
+    last_edited_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="last_edited_notes",
+    )
+    tags = models.ManyToManyField("NoteTag", blank=True, related_name="notes")
+    deleted_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at", "-id"]
+        indexes = [
+            models.Index(fields=["owner", "deleted_at", "updated_at"], name="app_note_owner_state_idx"),
+        ]
+
+    def __str__(self):
+        return self.title
+
+
+class NoteTag(models.Model):
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="note_tags")
+    normalized_name = models.CharField(max_length=30)
+    display_name = models.CharField(max_length=30)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["normalized_name"]
+        constraints = [
+            models.UniqueConstraint(fields=["owner", "normalized_name"], name="unique_note_tag_per_owner"),
+        ]
+
+    def __str__(self):
+        return f"#{self.display_name}"
+
+
+class NoteShare(models.Model):
+    ROLE_READER = "reader"
+    ROLE_EDITOR = "editor"
+    ROLE_CHOICES = [(ROLE_READER, "Leser"), (ROLE_EDITOR, "Bearbeiter")]
+
+    note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name="shares")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="shared_notes")
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default=ROLE_READER)
+    first_opened_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["note", "user"], name="unique_note_share_per_user"),
+        ]
+
+    def __str__(self):
+        return f"{self.user} – {self.note} ({self.role})"
+
+
+class NoteUserState(models.Model):
+    note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name="user_states")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="note_states")
+    is_pinned = models.BooleanField(default=False)
+    pinned_at = models.DateTimeField(blank=True, null=True)
+    is_archived = models.BooleanField(default=False)
+    archived_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["note", "user"], name="unique_note_state_per_user"),
+        ]
+
+
+class NoteAttachment(models.Model):
+    KIND_IMAGE = "image"
+    KIND_FILE = "file"
+    KIND_CHOICES = [(KIND_IMAGE, "Bild"), (KIND_FILE, "Datei")]
+
+    note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name="attachments")
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="note_attachments",
+    )
+    file_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    file = models.FileField(storage=private_note_storage, upload_to=note_upload_to, max_length=500)
+    kind = models.CharField(max_length=10, choices=KIND_CHOICES)
+    original_name = models.CharField(max_length=255)
+    content_type = models.CharField(max_length=160)
+    size = models.PositiveBigIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return self.original_name
+
+
+class NoteVersion(models.Model):
+    REASON_AUTOSAVE = "autosave"
+    REASON_RESTORE = "restore"
+    REASON_CONFLICT = "conflict"
+    REASON_CHOICES = [
+        (REASON_AUTOSAVE, "Automatisch"),
+        (REASON_RESTORE, "Vor Wiederherstellung"),
+        (REASON_CONFLICT, "Vor Überschreiben"),
+    ]
+
+    note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name="versions")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="note_versions",
+    )
+    source_revision = models.PositiveIntegerField()
+    title = models.CharField(max_length=200)
+    document = models.JSONField()
+    tags = models.JSONField(default=list)
+    reason = models.CharField(max_length=12, choices=REASON_CHOICES, default=REASON_AUTOSAVE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [models.Index(fields=["note", "created_at"], name="app_notever_note_time_idx")]
+
+    def __str__(self):
+        return f"{self.note} – Revision {self.source_revision}"
