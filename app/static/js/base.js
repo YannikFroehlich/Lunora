@@ -268,3 +268,52 @@ if (document.readyState === "loading") {
 }
 
 window.addEventListener("pageshow", initFlashMessages);
+
+function initDesktopReminderNotifications() {
+  const claimUrl = document.documentElement.dataset.notificationClaimUrl;
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+  if (!isAuthenticated || !claimUrl || !csrfToken || !("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+
+  let claimInProgress = false;
+  const claimNotifications = async () => {
+    if (claimInProgress) return;
+    claimInProgress = true;
+    try {
+      const response = await fetch(claimUrl, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json",
+          "X-CSRFToken": csrfToken,
+        },
+      });
+      if (!response.ok) return;
+      const payload = await response.json();
+      (payload.notifications || []).forEach((item) => {
+        const notification = new Notification(item.title, {
+          body: item.due_label ? `Fällig: ${item.due_label}` : "Eine Lunora-Erinnerung ist fällig.",
+          tag: `lunora-reminder-${item.id}`,
+        });
+        notification.addEventListener("click", () => {
+          window.focus();
+          window.location.href = item.url;
+          notification.close();
+        });
+      });
+    } catch (error) {
+      // A later polling cycle retries if the browser or network is temporarily unavailable.
+    } finally {
+      claimInProgress = false;
+    }
+  };
+
+  window.setTimeout(claimNotifications, 1500);
+  window.setInterval(claimNotifications, 60 * 1000);
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initDesktopReminderNotifications);
+} else {
+  initDesktopReminderNotifications();
+}

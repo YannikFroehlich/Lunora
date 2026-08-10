@@ -224,8 +224,6 @@ class ProfilePreferencesForm(forms.ModelForm):
             "notify_reminders",
             "notify_desktop",
             "weekly_summary",
-            "analytics_enabled",
-            "usage_data_enabled",
             "weather_default_city",
         ]
         labels = {
@@ -233,8 +231,6 @@ class ProfilePreferencesForm(forms.ModelForm):
             "notify_reminders": "Erinnerungen",
             "notify_desktop": "Desktop Hinweise",
             "weekly_summary": "Wöchentliche Zusammenfassung",
-            "analytics_enabled": "Analysen",
-            "usage_data_enabled": "Nutzungsdaten",
             "weather_default_city": "Standard-Wetterort",
         }
         widgets = {
@@ -242,8 +238,6 @@ class ProfilePreferencesForm(forms.ModelForm):
             "notify_reminders": forms.CheckboxInput(),
             "notify_desktop": forms.CheckboxInput(),
             "weekly_summary": forms.CheckboxInput(),
-            "analytics_enabled": forms.CheckboxInput(),
-            "usage_data_enabled": forms.CheckboxInput(),
             "weather_default_city": forms.TextInput(
                 attrs={
                     "placeholder": "z. B. Bünde,de",
@@ -259,8 +253,6 @@ class ProfilePreferencesForm(forms.ModelForm):
             "notify_reminders",
             "notify_desktop",
             "weekly_summary",
-            "analytics_enabled",
-            "usage_data_enabled",
         ]:
             self.fields[field_name].required = False
 

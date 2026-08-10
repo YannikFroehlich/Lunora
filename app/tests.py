@@ -1,11 +1,14 @@
 import json
 from datetime import datetime, timedelta
 from email.message import Message
+from io import StringIO
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from urllib.error import HTTPError
+from zoneinfo import ZoneInfo
 
 from django.contrib.auth.models import User
+from django.core import mail
 from django.core.cache import cache
 from django.core.management import call_command
 from django.core.files.storage import default_storage
@@ -14,9 +17,11 @@ from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 
 from app.forms import CalendarSourceForm, ProfileForm
-from app.models import CalendarEvent, CalendarReminder, CalendarSource, ChatMessage, ChatMessageReaction, Conversation, ConversationMember, Note, NoteAttachment, NoteShare, NoteUserState, NoteVersion, Profile, SystemSettings
+from app.models import CalendarEvent, CalendarReminder, CalendarSource, ChatMessage, ChatMessageReaction, Conversation, ConversationMember, Note, NoteAttachment, NoteShare, NoteUserState, NoteVersion, Profile, SystemSettings, WeeklySummaryDelivery
 from app.services.calendar_service import fetch_ical, parse_ical_events, sync_calendar_sources
 from app.services.image_uploads import PROFILE_IMAGE_MAX_BYTES
+from app.services.notifications import send_due_reminder_emails, send_weekly_summaries
+from app.services.scheduled_tasks import sync_due_calendars
 from app.services.weather_service import (
     WEATHER_MAP_LAYERS,
     fetch_weather_map_tile,
@@ -285,9 +290,20 @@ class SettingsProfileTests(TestCase):
         self.assertTrue(user.profile.notify_reminders)
         self.assertFalse(user.profile.notify_desktop)
         self.assertTrue(user.profile.weekly_summary)
-        self.assertFalse(user.profile.analytics_enabled)
-        self.assertTrue(user.profile.usage_data_enabled)
+        self.assertTrue(user.profile.analytics_enabled)
+        self.assertFalse(user.profile.usage_data_enabled)
         self.assertEqual(user.profile.weather_default_city, "Berlin,de")
+
+    def test_settings_hide_unimplemented_analytics_controls(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get("/settings/")
+
+        self.assertNotContains(response, 'name="analytics_enabled"')
+        self.assertNotContains(response, 'name="usage_data_enabled"')
+        self.assertContains(response, "Erinnerungszustellung")
 
     def test_settings_save_shows_feedback_message(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
@@ -967,6 +983,124 @@ class CalendarFetchSafetyTests(TestCase):
 
 
 @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
+@override_settings(
+    PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"],
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    DEFAULT_FROM_EMAIL="Lunora <noreply@example.test>",
+    LUNORA_WEEKLY_SUMMARY_HOUR=8,
+)
+class ScheduledAutomationTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="mira@example.com",
+            email="mira@example.com",
+            password="secret-12345",
+        )
+        self.profile = Profile.objects.create(
+            user=self.user,
+            display_name="Mira",
+            notify_email=True,
+            notify_reminders=True,
+            notify_desktop=True,
+            weekly_summary=True,
+            timezone_name="Europe/Berlin",
+        )
+
+    def test_due_calendar_sources_are_synced_and_recent_sources_are_skipped(self):
+        now = timezone.now()
+        due_source = CalendarSource.objects.create(
+            user=self.user,
+            name="Fällig",
+            ical_url="https://calendar.google.com/calendar/ical/due/private/basic.ics",
+            last_synced_at=now - timedelta(minutes=20),
+            sync_interval_minutes=15,
+        )
+        CalendarSource.objects.create(
+            user=self.user,
+            name="Aktuell",
+            ical_url="https://calendar.google.com/calendar/ical/current/private/basic.ics",
+            last_synced_at=now - timedelta(minutes=5),
+            sync_interval_minutes=15,
+        )
+
+        with patch(
+            "app.services.scheduled_tasks.sync_calendar_source",
+            return_value={"synced": True, "message": "Aktualisiert."},
+        ) as sync_source:
+            result = sync_due_calendars(now=now)
+
+        self.assertEqual(result, {"synced": 1, "failed": 0, "skipped": 1})
+        sync_source.assert_called_once_with(due_source, force=True)
+
+    def test_due_reminder_email_is_sent_only_once(self):
+        reminder = CalendarReminder.objects.create(
+            user=self.user,
+            title="Rechnung bezahlen",
+            due_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        first_result = send_due_reminder_emails()
+        second_result = send_due_reminder_emails()
+
+        self.assertEqual(first_result, {"sent": 1, "failed": 0})
+        self.assertEqual(second_result, {"sent": 0, "failed": 0})
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("Rechnung bezahlen", mail.outbox[0].subject)
+        reminder.refresh_from_db()
+        self.assertIsNotNone(reminder.email_notified_at)
+
+    def test_desktop_notification_claim_is_preference_scoped_and_one_time(self):
+        reminder = CalendarReminder.objects.create(
+            user=self.user,
+            title="Präsentation starten",
+            due_at=timezone.now() - timedelta(minutes=1),
+        )
+        self.client.force_login(self.user)
+
+        first_response = self.client.post("/notifications/claim/")
+        second_response = self.client.post("/notifications/claim/")
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(first_response.json()["notifications"][0]["title"], "Präsentation starten")
+        self.assertEqual(second_response.json(), {"notifications": []})
+        reminder.refresh_from_db()
+        self.assertIsNotNone(reminder.desktop_notified_at)
+
+    def test_weekly_summary_is_sent_once_on_monday(self):
+        monday = timezone.make_aware(datetime(2026, 8, 10, 9, 0), ZoneInfo("Europe/Berlin"))
+        CalendarEvent.objects.create(
+            user=self.user,
+            title="Team Sync",
+            start_at=monday + timedelta(days=1),
+            end_at=monday + timedelta(days=1, hours=1),
+        )
+        CalendarReminder.objects.create(user=self.user, title="Agenda vorbereiten")
+
+        first_result = send_weekly_summaries(now=monday)
+        second_result = send_weekly_summaries(now=monday)
+
+        self.assertEqual(first_result["sent"], 1)
+        self.assertEqual(second_result["sent"], 0)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("Team Sync", mail.outbox[0].body)
+        self.assertIn("Agenda vorbereiten", mail.outbox[0].body)
+        self.assertTrue(WeeklySummaryDelivery.objects.filter(user=self.user, week_start=monday.date()).exists())
+
+    def test_automation_command_runs_one_cycle_by_default(self):
+        result = {
+            "calendar_sync": {"synced": 1, "failed": 0, "skipped": 2},
+            "reminder_emails": {"sent": 1, "failed": 0},
+            "weekly_summaries": {"sent": 1, "failed": 0, "skipped": 0},
+        }
+        output = StringIO()
+
+        with patch("app.management.commands.run_automations.run_scheduled_tasks", return_value=result) as run_tasks:
+            call_command("run_automations", stdout=output)
+
+        run_tasks.assert_called_once_with()
+        self.assertIn("Kalender: 1 synchronisiert", output.getvalue())
+
+
 class WeatherMapTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(

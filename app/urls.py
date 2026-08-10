@@ -24,6 +24,7 @@ urlpatterns = [
         name="weather_map_tile",
     ),
     path("calendar/", view.calendar, name="calendar"),
+    path("notifications/claim/", view.claim_desktop_notifications, name="notification_claim"),
     path("messages/", view.messages, name="messages"),
     path("messages/live/", view.messages_live_updates, name="messages_live_updates"),
     path("messages/<int:conversation_id>/live/", view.messages_live_updates, name="messages_live_detail_updates"),

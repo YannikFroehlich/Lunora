@@ -91,9 +91,9 @@ class Profile(models.Model):
     date_format = models.CharField(max_length=24, choices=DATE_FORMAT_CHOICES, default="de_numeric")
     time_format = models.CharField(max_length=12, choices=TIME_FORMAT_CHOICES, default="24h")
     timezone_name = models.CharField(max_length=64, choices=TIMEZONE_CHOICES, default="Europe/Berlin")
-    notify_email = models.BooleanField(default=True)
+    notify_email = models.BooleanField(default=False)
     notify_reminders = models.BooleanField(default=True)
-    notify_desktop = models.BooleanField(default=True)
+    notify_desktop = models.BooleanField(default=False)
     weekly_summary = models.BooleanField(default=False)
     analytics_enabled = models.BooleanField(default=True)
     usage_data_enabled = models.BooleanField(default=False)
@@ -344,6 +344,8 @@ class CalendarReminder(models.Model):
     title = models.CharField(max_length=180)
     due_at = models.DateTimeField(blank=True, null=True)
     is_done = models.BooleanField(default=False)
+    email_notified_at = models.DateTimeField(blank=True, null=True)
+    desktop_notified_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -352,6 +354,21 @@ class CalendarReminder(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class WeeklySummaryDelivery(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="weekly_summaries")
+    week_start = models.DateField()
+    sent_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-week_start", "-sent_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["user", "week_start"], name="unique_weekly_summary_per_user"),
+        ]
+
+    def __str__(self):
+        return f"{self.user} – Woche ab {self.week_start:%d.%m.%Y}"
 
 
 class Note(models.Model):

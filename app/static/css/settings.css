@@ -287,6 +287,31 @@
   margin-top: 16px;
 }
 
+.notification-permission-status {
+  min-height: 1.4em;
+  margin: 14px 0 0;
+  color: var(--color-muted);
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.notification-permission-status:empty {
+  display: none;
+}
+
+.notification-permission-status.is-error {
+  color: var(--color-danger, #a94f44);
+}
+
+.notification-permission-button {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.notification-permission-button[hidden] {
+  display: none;
+}
+
 .settings-calendar-form .field-label {
   margin: 0 0 8px;
 }
@@ -658,6 +683,19 @@
   .button-row,
   .calendar-form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .settings-column,
+  .settings-column > .glass-panel,
+  .settings-column > form.glass-panel {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .preference-submit,
+  .notifications-panel .preference-submit {
+    width: 100%;
+    min-width: 0;
   }
 
   .settings-footer {

@@ -157,7 +157,7 @@ button:disabled,
 
 .floating-nav {
   position: fixed;
-  top: 34px;
+  top: 12px;
   left: 58px;
   z-index: 20;
   display: flex;
@@ -743,7 +743,7 @@ button:disabled,
   }
 
   .floating-nav {
-    top: 18px;
+    top: 12px;
     left: 18px;
   }
 

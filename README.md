@@ -67,6 +67,20 @@ http://127.0.0.1:8000/
 
 `runserver` läuft dauerhaft, bis er mit `Ctrl+C` beendet wird.
 
+Automatische Kalender-Synchronisierung, fällige Erinnerungs-E-Mails und Wochenberichte laufen in einem zweiten Prozess:
+
+```powershell
+python manage.py run_automations --loop
+```
+
+Pro Deployment darf nur ein dauerhafter Automatikprozess laufen, damit externe Kalender und E-Mail-Anbieter nicht doppelt angesprochen werden. Desktop-Hinweise werden bei erteilter Browserfreigabe zugestellt, solange mindestens ein Lunora-Tab geöffnet ist.
+
+Für einen einzelnen Durchlauf, beispielsweise über die Windows-Aufgabenplanung oder Cron, genügt:
+
+```powershell
+python manage.py run_automations
+```
+
 ## Konfiguration
 
 Lokale Konfiguration wird aus einer `.env` im Projektroot geladen.
@@ -115,6 +129,9 @@ Wichtige Variablen:
 - `WEATHER_DEFAULT_CITY`: Standardort für Wetterdaten
 - `DJANGO_LANGUAGE_CODE`: Sprache, standardmäßig `de-de`
 - `DJANGO_TIME_ZONE`: Standardzeitzone, standardmäßig `Europe/Berlin`
+- `DJANGO_EMAIL_BACKEND` und die `DJANGO_EMAIL_*`-Variablen: E-Mail-Zustellung für Erinnerungen und Wochenberichte
+- `LUNORA_AUTOMATION_INTERVAL_SECONDS`: Intervall des dauerhaft laufenden Automatikprozesses
+- `LUNORA_WEEKLY_SUMMARY_HOUR`: lokale Montagstunde, ab der ein Wochenbericht versendet wird
 
 Ohne Wetter-API-Key zeigt Lunora Demo-Wetterdaten und eine Radar-Vorschau.
 

@@ -187,14 +187,10 @@ def get_settings_context(preferences_form=None):
         ],
     }
     context["notification_rows"] = [
-        _preference_row(preferences_form, "notify_email", "E-Mail Benachrichtigungen", "Wichtige Updates erhalten"),
-        _preference_row(preferences_form, "notify_reminders", "Erinnerungen", "Aufgaben und Termine im Blick behalten"),
-        _preference_row(preferences_form, "notify_desktop", "Desktop Hinweise", "Benachrichtigungen auf diesem Gerät"),
-        _preference_row(preferences_form, "weekly_summary", "Wöchentliche Zusammenfassung", "Kurzer Rückblick per E-Mail"),
-    ]
-    context["privacy_rows"] = [
-        _preference_row(preferences_form, "analytics_enabled", "Analysen", "Hilft, Lunora besser zu machen"),
-        _preference_row(preferences_form, "usage_data_enabled", "Nutzungsdaten", "Anonyme Nutzung erfassen"),
+        _preference_row(preferences_form, "notify_reminders", "Erinnerungszustellung", "Fällige Erinnerungen automatisch zustellen"),
+        _preference_row(preferences_form, "notify_email", "E-Mail-Versand", "Fällige Erinnerungen per E-Mail erhalten"),
+        _preference_row(preferences_form, "notify_desktop", "Desktop-Hinweise", "Bei geöffnetem Lunora-Tab im Browser anzeigen"),
+        _preference_row(preferences_form, "weekly_summary", "Wöchentliche Zusammenfassung", "Montags einen Überblick per E-Mail erhalten"),
     ]
     return context
 

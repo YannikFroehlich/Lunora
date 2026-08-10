@@ -16,6 +16,7 @@ from app.models import (
     NoteVersion,
     Profile,
     SystemSettings,
+    WeeklySummaryDelivery,
 )
 
 
@@ -95,9 +96,17 @@ class CalendarEventAdmin(admin.ModelAdmin):
 
 @admin.register(CalendarReminder)
 class CalendarReminderAdmin(admin.ModelAdmin):
-    list_display = ("title", "user", "is_done", "created_at")
+    list_display = ("title", "user", "is_done", "due_at", "email_notified_at", "desktop_notified_at")
     list_filter = ("is_done", "created_at")
     search_fields = ("title", "user__username")
+
+
+@admin.register(WeeklySummaryDelivery)
+class WeeklySummaryDeliveryAdmin(admin.ModelAdmin):
+    list_display = ("user", "week_start", "sent_at")
+    list_filter = ("week_start", "sent_at")
+    search_fields = ("user__username", "user__email")
+    autocomplete_fields = ("user",)
 
 
 class NoteShareInline(admin.TabularInline):

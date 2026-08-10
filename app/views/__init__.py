@@ -3,6 +3,7 @@ from .auth_views import LunoraLoginView, register
 from .calendar_views import calendar
 from .core_views import home, settings
 from .message_views import messages, messages_live_updates
+from .notification_views import claim_desktop_notifications
 from .note_views import (
     note_action_api,
     note_attachment_download,
@@ -26,6 +27,7 @@ __all__ = [
     "home",
     "messages",
     "messages_live_updates",
+    "claim_desktop_notifications",
     "notes",
     "note_create_api",
     "note_detail_api",

@@ -4,7 +4,7 @@
 {% block title %}Einstellungen | Lunora{% endblock %}
 
 {% block page_css %}
-<link rel="stylesheet" href="{% static 'css/settings.css' %}?v=multi-calendar-3">
+<link rel="stylesheet" href="{% static 'css/settings.css' %}?v=multi-calendar-4">
 {% endblock %}
 
 {% block content %}
@@ -249,6 +249,11 @@
                     </label>
                 </div>
                 {% endfor %}
+                <p class="notification-permission-status" role="status" data-desktop-notification-status></p>
+                <button class="ghost-button notification-permission-button" type="button" data-request-notification-permission>
+                    <i class="fa-regular fa-bell" aria-hidden="true"></i>
+                    Browserfreigabe erteilen
+                </button>
                 <button class="primary-button preference-submit" type="submit" form="preferences-form">
                     <i class="fa-solid fa-floppy-disk"></i>
                     Benachrichtigungen speichern
@@ -363,20 +368,8 @@
                 </div>
             </section>
 
-            <section class="glass-panel privacy-panel">
-                <div class="panel-title"><i class="fa-solid fa-shield-halved"></i><h2>Privatsphäre</h2></div>
-                <div class="setting-line">
-                    <span><strong>Analysen</strong><small>Hilft, Lunora besser zu machen</small></span>
-                    <label class="switch {% if preferences_form.analytics_enabled.value %}is-on{% endif %}" aria-label="Analysen" for="{{ preferences_form.analytics_enabled.id_for_label }}">
-                        <input type="checkbox" name="{{ preferences_form.analytics_enabled.html_name }}" id="{{ preferences_form.analytics_enabled.id_for_label }}" form="preferences-form" {% if preferences_form.analytics_enabled.value %}checked{% endif %}>
-                    </label>
-                </div>
-                <div class="setting-line">
-                    <span><strong>Nutzungsdaten</strong><small>Anonyme Nutzung erfassen</small></span>
-                    <label class="switch {% if preferences_form.usage_data_enabled.value %}is-on{% endif %}" aria-label="Nutzungsdaten" for="{{ preferences_form.usage_data_enabled.id_for_label }}">
-                        <input type="checkbox" name="{{ preferences_form.usage_data_enabled.html_name }}" id="{{ preferences_form.usage_data_enabled.id_for_label }}" form="preferences-form" {% if preferences_form.usage_data_enabled.value %}checked{% endif %}>
-                    </label>
-                </div>
+            <section class="glass-panel weather-preferences-panel">
+                <div class="panel-title"><i class="fa-solid fa-cloud-sun"></i><h2>Wetter</h2></div>
                 <div class="preference-field">
                     <label class="field-label" for="{{ preferences_form.weather_default_city.id_for_label }}">{{ preferences_form.weather_default_city.label }}</label>
                     <input type="text"
@@ -405,5 +398,5 @@
 {% endblock %}
 
 {% block page_js %}
-<script src="{% static 'js/settings.js' %}"></script>
+<script src="{% static 'js/settings.js' %}?v=notifications-1"></script>
 {% endblock %}
