@@ -1,5 +1,6 @@
-import { Editor, Node, mergeAttributes } from "@tiptap/core";
+import { Editor, Mark, Node, mergeAttributes } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
+import { CodeBlockLowlight } from "@tiptap/extension-code-block-lowlight";
 import { Highlight } from "@tiptap/extension-highlight";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
 import { TableKit } from "@tiptap/extension-table";
@@ -7,6 +8,8 @@ import { TextAlign } from "@tiptap/extension-text-align";
 import { TextStyleKit } from "@tiptap/extension-text-style";
 import { Underline } from "@tiptap/extension-underline";
 import { CharacterCount } from "@tiptap/extensions";
+import Suggestion from "@tiptap/suggestion";
+import { common, createLowlight } from "lowlight";
 
 import { normalizeLinkHref } from "./link-utils.js";
 import { eventToShortcut, findShortcutConflict, mergeShortcuts, shortcutMatches } from "./shortcut-utils.js";
@@ -45,6 +48,8 @@ async function requestJson(url, options = {}) {
 function attachmentUrl(id, disposition) {
   return `/notes/attachments/${encodeURIComponent(id)}/${disposition}/`;
 }
+
+const lowlight = createLowlight(common);
 
 const NoteImage = Node.create({
   name: "noteImage",
@@ -115,6 +120,149 @@ function formatBytes(value) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+const Mention = Node.create({
+  name: "mention",
+  group: "inline",
+  inline: true,
+  atom: true,
+  selectable: false,
+  addOptions() {
+    return { suggestion: { char: "@" } };
+  },
+  addAttributes() {
+    return {
+      userId: { default: null, parseHTML: (element) => Number(element.dataset.userId) || null },
+      label: { default: "", parseHTML: (element) => element.dataset.label || element.textContent.replace(/^@/, "") },
+    };
+  },
+  parseHTML() {
+    return [{ tag: "span[data-mention]" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "span",
+      mergeAttributes(HTMLAttributes, {
+        "data-mention": "true",
+        "data-user-id": HTMLAttributes.userId,
+        "data-label": HTMLAttributes.label,
+        class: "note-mention",
+      }),
+      `@${HTMLAttributes.label}`,
+    ];
+  },
+  renderText({ node }) {
+    return `@${node.attrs.label}`;
+  },
+  addProseMirrorPlugins() {
+    return [Suggestion({ editor: this.editor, ...this.options.suggestion })];
+  },
+});
+
+const CommentThread = Mark.create({
+  name: "commentThread",
+  addAttributes() {
+    return {
+      threadId: { default: null, parseHTML: (element) => element.dataset.threadId },
+    };
+  },
+  parseHTML() {
+    return [{ tag: "span[data-comment-thread]" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "span",
+      mergeAttributes(HTMLAttributes, {
+        "data-comment-thread": "true",
+        "data-thread-id": HTMLAttributes.threadId,
+        class: "note-comment-mark",
+      }),
+      0,
+    ];
+  },
+});
+
+function createMentionSuggestionRenderer() {
+  let popup = null;
+  let items = [];
+  let selectedIndex = 0;
+  let command = null;
+
+  function renderOptions() {
+    if (!popup) return;
+    popup.innerHTML = "";
+    if (!items.length) {
+      popup.hidden = true;
+      return;
+    }
+    popup.hidden = false;
+    items.forEach((item, index) => {
+      const option = document.createElement("button");
+      option.type = "button";
+      option.className = `mention-suggestion-option${index === selectedIndex ? " is-active" : ""}`;
+      option.textContent = item.name;
+      option.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+        command(item);
+      });
+      popup.append(option);
+    });
+  }
+
+  function positionPopup(clientRect) {
+    const rect = clientRect?.();
+    if (!popup || !rect) return;
+    popup.style.left = `${rect.left}px`;
+    popup.style.top = `${rect.bottom + 6}px`;
+  }
+
+  return {
+    onStart(props) {
+      popup = document.createElement("div");
+      popup.className = "mention-suggestion-popup";
+      document.body.append(popup);
+      items = props.items;
+      selectedIndex = 0;
+      command = props.command;
+      positionPopup(props.clientRect);
+      renderOptions();
+    },
+    onUpdate(props) {
+      items = props.items;
+      selectedIndex = Math.min(selectedIndex, Math.max(0, items.length - 1));
+      command = props.command;
+      positionPopup(props.clientRect);
+      renderOptions();
+    },
+    onKeyDown(props) {
+      if (!items.length) return false;
+      if (props.event.key === "ArrowDown") {
+        selectedIndex = (selectedIndex + 1) % items.length;
+        renderOptions();
+        return true;
+      }
+      if (props.event.key === "ArrowUp") {
+        selectedIndex = (selectedIndex - 1 + items.length) % items.length;
+        renderOptions();
+        return true;
+      }
+      if (props.event.key === "Enter") {
+        command(items[selectedIndex]);
+        return true;
+      }
+      if (props.event.key === "Escape") {
+        popup?.remove();
+        popup = null;
+        return true;
+      }
+      return false;
+    },
+    onExit() {
+      popup?.remove();
+      popup = null;
+    },
+  };
+}
+
 const COMMAND_DEFAULTS = {
   save: { label: "Speichern", shortcut: "Mod+S" },
   undo: { label: "Rückgängig", shortcut: "Mod+Z" },
@@ -145,6 +293,9 @@ const COMMAND_DEFAULTS = {
   image: { label: "Bild einfügen", shortcut: "Alt+Shift+I" },
   attachment: { label: "Datei einfügen", shortcut: "Alt+Shift+A" },
   horizontalRule: { label: "Trennlinie", shortcut: "Alt+Shift+-" },
+  codeBlock: { label: "Codeblock", shortcut: "Mod+Alt+C" },
+  addComment: { label: "Kommentar hinzufügen", shortcut: "Mod+Alt+M" },
+  comments: { label: "Kommentare anzeigen", shortcut: "Mod+Alt+/" },
   insertTable: { label: "Tabelle einfügen", shortcut: "Ctrl+Alt+T" },
   addRowBefore: { label: "Zeile darüber", shortcut: "Ctrl+Alt+ArrowUp" },
   addRowAfter: { label: "Zeile darunter", shortcut: "Ctrl+Alt+ArrowDown" },
@@ -191,6 +342,7 @@ function initNotesApp() {
   const shortcutDialog = document.querySelector("[data-shortcut-dialog]");
   const conflictDialog = document.querySelector("[data-conflict-dialog]");
   const tableDialog = document.querySelector("[data-table-dialog]");
+  const commentsDialog = document.querySelector("[data-comments-dialog]");
 
   if (note && document.querySelector("[data-note-editor]")) {
     editor = new Editor({
@@ -198,7 +350,8 @@ function initNotesApp() {
       editable: Boolean(note.can_edit && !note.is_deleted),
       content: note.document,
       extensions: [
-        StarterKit.configure({ heading: { levels: [1, 2, 3] }, link: { openOnClick: !note.can_edit } }),
+        StarterKit.configure({ heading: { levels: [1, 2, 3] }, link: { openOnClick: !note.can_edit }, codeBlock: false }),
+        CodeBlockLowlight.configure({ lowlight }),
         Underline,
         Highlight.configure({ multicolor: true }),
         TextStyleKit,
@@ -209,6 +362,26 @@ function initNotesApp() {
         CharacterCount,
         NoteImage,
         NoteAttachmentNode,
+        CommentThread,
+        Mention.configure({
+          suggestion: {
+            items: async ({ query }) => {
+              const { data } = await requestJson(`/notes/api/${note.id}/mention-candidates/?q=${encodeURIComponent(query)}`);
+              return data.users || [];
+            },
+            command: ({ editor: mentionEditor, range, props }) => {
+              mentionEditor
+                .chain()
+                .focus()
+                .insertContentAt(range, [
+                  { type: "mention", attrs: { userId: props.id, label: props.name } },
+                  { type: "text", text: " " },
+                ])
+                .run();
+            },
+            render: createMentionSuggestionRenderer,
+          },
+        }),
       ],
       onUpdate: () => {
         updateCounts();
@@ -300,6 +473,8 @@ function initNotesApp() {
       indent: () => sinkCurrentListItem(),
       outdent: () => liftCurrentListItem(),
       horizontalRule: () => editor?.chain().focus().setHorizontalRule().run(),
+      codeBlock: () => editor?.chain().focus().toggleCodeBlock().run(),
+      addComment: addCommentToSelection,
       insertTable: () => insertTable(),
       addRowBefore: () => editor?.chain().focus().addRowBefore().run(),
       addRowAfter: () => editor?.chain().focus().addRowAfter().run(),
@@ -334,6 +509,7 @@ function initNotesApp() {
       duplicate: () => performAction("duplicate"),
       trash: trashCurrentNote,
       share: openShareDialog,
+      comments: openCommentsDialog,
       versions: openVersionsDialog,
       exportPdf: exportPdf,
       shortcutSettings: openShortcutDialog,
@@ -370,6 +546,7 @@ function initNotesApp() {
     if (format === "lineHeight") editor.chain().focus().setLineHeight(value).run();
     if (format === "textColor") editor.chain().focus().setColor(value).run();
     if (format === "highlight") editor.chain().focus().toggleHighlight({ color: value }).run();
+    if (format === "codeLanguage") editor.chain().focus().updateAttributes("codeBlock", { language: value || null }).run();
   }
 
   function openFormatControl(format) {
@@ -405,16 +582,24 @@ function initNotesApp() {
 
   function updateToolbarState() {
     if (!editor) return;
+    const inCodeBlock = editor.isActive("codeBlock");
     const active = {
       bold: editor.isActive("bold"), italic: editor.isActive("italic"), underline: editor.isActive("underline"),
       strike: editor.isActive("strike"), bulletList: editor.isActive("bulletList"), orderedList: editor.isActive("orderedList"),
       taskList: editor.isActive("taskList"), alignLeft: editor.isActive({ textAlign: "left" }),
       alignCenter: editor.isActive({ textAlign: "center" }), alignRight: editor.isActive({ textAlign: "right" }),
-      alignJustify: editor.isActive({ textAlign: "justify" }), link: editor.isActive("link"),
+      alignJustify: editor.isActive({ textAlign: "justify" }), link: editor.isActive("link"), codeBlock: inCodeBlock,
     };
     Object.entries(active).forEach(([action, value]) => {
       document.querySelectorAll(`[data-command="${action}"]`).forEach((button) => button.classList.toggle("is-active", value));
     });
+
+    const languageGroup = document.querySelector("[data-code-language-group]");
+    if (languageGroup) languageGroup.hidden = !inCodeBlock;
+    const languageSelect = document.querySelector('[data-format="codeLanguage"]');
+    if (languageSelect && inCodeBlock) {
+      languageSelect.value = editor.getAttributes("codeBlock").language || "";
+    }
   }
 
   function updateCounts() {
@@ -685,6 +870,133 @@ function initNotesApp() {
     if (!response.ok) return window.alert(data.error || "Freigabe konnte nicht entfernt werden.");
     note.shares = note.shares.filter((share) => share.user_id !== userId);
     renderShares(note.shares);
+  }
+
+  async function addCommentToSelection() {
+    if (!editor || !note?.can_edit || note?.is_deleted) return;
+    const { from, to, empty } = editor.state.selection;
+    if (empty) {
+      window.alert("Markiere zuerst einen Textabschnitt, um ihn zu kommentieren.");
+      return;
+    }
+    const body = window.prompt("Kommentar zu dieser Textstelle:");
+    if (!body || !body.trim()) return;
+    const anchorText = editor.state.doc.textBetween(from, to, " ");
+    const threadId = window.crypto.randomUUID();
+    const { response, data } = await requestJson(`/notes/api/${note.id}/comments/`, {
+      method: "POST",
+      body: JSON.stringify({ thread_id: threadId, anchor_text: anchorText, body: body.trim() }),
+    });
+    if (!response.ok || !data.ok) {
+      window.alert(data.error || "Kommentar konnte nicht gespeichert werden.");
+      return;
+    }
+    editor.chain().setTextSelection({ from, to }).setMark("commentThread", { threadId }).run();
+  }
+
+  async function openCommentsDialog() {
+    if (!commentsDialog || !note) return;
+    const target = document.querySelector("[data-comment-thread-list]");
+    target.innerHTML = '<p class="dialog-hint">Kommentare werden geladen …</p>';
+    commentsDialog.showModal();
+    const { response, data } = await requestJson(`/notes/api/${note.id}/comments/`);
+    if (!response.ok) {
+      target.textContent = data.error || "Kommentare konnten nicht geladen werden.";
+      return;
+    }
+    renderCommentThreads(data.threads || []);
+  }
+
+  function renderCommentThreads(threads) {
+    const target = document.querySelector("[data-comment-thread-list]");
+    if (!target) return;
+    target.innerHTML = threads.length ? "" : '<p class="dialog-hint">Noch keine Kommentare vorhanden.</p>';
+    threads.forEach((thread) => {
+      const row = document.createElement("div");
+      row.className = `comment-thread-row${thread.is_resolved ? " is-resolved" : ""}`;
+      row.innerHTML = [
+        '<button type="button" class="comment-thread-anchor"></button>',
+        '<div class="comment-list"></div>',
+        note?.can_edit && !note?.is_deleted
+          ? '<form class="comment-reply-form"><input type="text" placeholder="Antworten ..." aria-label="Antworten"></form>'
+          : "",
+        '<div class="comment-thread-actions">',
+        '<button type="button" class="ghost-button" data-thread-toggle-resolve></button>',
+        '<button type="button" class="is-danger" data-thread-delete aria-label="Kommentar löschen"><i class="fa-solid fa-trash"></i></button>',
+        "</div>",
+      ].join("");
+
+      const anchorButton = row.querySelector(".comment-thread-anchor");
+      anchorButton.textContent = thread.anchor_text ? `„${thread.anchor_text}“` : "Textstelle ansehen";
+      anchorButton.addEventListener("click", () => jumpToCommentThread(thread.thread_id));
+
+      const list = row.querySelector(".comment-list");
+      thread.comments.forEach((comment) => {
+        const item = document.createElement("div");
+        item.className = "comment-item";
+        item.innerHTML = "<strong></strong><p></p><small></small>";
+        item.querySelector("strong").textContent = comment.author;
+        item.querySelector("p").textContent = comment.body;
+        item.querySelector("small").textContent = new Date(comment.created_at).toLocaleString();
+        list.append(item);
+      });
+
+      const resolveButton = row.querySelector("[data-thread-toggle-resolve]");
+      resolveButton.textContent = thread.is_resolved ? "Wieder öffnen" : "Auflösen";
+      resolveButton.addEventListener("click", () => toggleThreadResolved(thread.thread_id, !thread.is_resolved));
+
+      row.querySelector("[data-thread-delete]").addEventListener("click", () => deleteCommentThread(thread.thread_id));
+
+      const replyForm = row.querySelector(".comment-reply-form");
+      replyForm?.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const input = replyForm.querySelector("input");
+        const body = input.value.trim();
+        if (!body) return;
+        input.value = "";
+        replyToCommentThread(thread.thread_id, body);
+      });
+
+      target.append(row);
+    });
+  }
+
+  async function replyToCommentThread(threadId, body) {
+    const { response, data } = await requestJson(`/notes/api/${note.id}/comments/${threadId}/`, {
+      method: "POST",
+      body: JSON.stringify({ action: "reply", body }),
+    });
+    if (!response.ok) return window.alert(data.error || "Antwort konnte nicht gespeichert werden.");
+    renderCommentThreads(data.threads || []);
+  }
+
+  async function toggleThreadResolved(threadId, resolved) {
+    const { response, data } = await requestJson(`/notes/api/${note.id}/comments/${threadId}/`, {
+      method: "POST",
+      body: JSON.stringify({ action: resolved ? "resolve" : "reopen" }),
+    });
+    if (!response.ok) return window.alert(data.error || "Aktion fehlgeschlagen.");
+    renderCommentThreads(data.threads || []);
+  }
+
+  async function deleteCommentThread(threadId) {
+    if (!window.confirm("Diesen Kommentar-Thread wirklich löschen?")) return;
+    const { response, data } = await requestJson(`/notes/api/${note.id}/comments/${threadId}/`, { method: "DELETE" });
+    if (!response.ok) return window.alert(data.error || "Löschen fehlgeschlagen.");
+    const { data: listData } = await requestJson(`/notes/api/${note.id}/comments/`);
+    renderCommentThreads(listData.threads || []);
+  }
+
+  function jumpToCommentThread(threadId) {
+    const element = document.querySelector(`[data-note-editor] [data-thread-id="${threadId}"]`);
+    if (!element) {
+      window.alert("Diese Textstelle ist in der aktuellen Ansicht nicht sichtbar.");
+      return;
+    }
+    commentsDialog?.close();
+    element.scrollIntoView({ behavior: "smooth", block: "center" });
+    element.classList.add("is-highlighted");
+    window.setTimeout(() => element.classList.remove("is-highlighted"), 1400);
   }
 
   async function openVersionsDialog() {

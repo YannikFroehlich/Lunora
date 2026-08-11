@@ -1,5 +1,6 @@
 import json
 import re
+import uuid
 from datetime import datetime, timedelta
 from email.message import Message
 from io import StringIO
@@ -18,10 +19,15 @@ from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 
 from app.forms import CalendarSourceForm, ProfileForm
-from app.models import CalendarEvent, CalendarReminder, CalendarSource, ChatMessage, ChatMessageReaction, Conversation, ConversationMember, Note, NoteAttachment, NoteShare, NoteUserState, NoteVersion, Profile, SystemSettings, WeeklySummaryDelivery
+from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, CalendarSource, ChatMessage, ChatMessageAttachment, ChatMessageReaction, Conversation, ConversationMember, Note, NoteActivityNotification, NoteAttachment, NoteCommentThread, NoteShare, NoteUserState, NoteVersion, Profile, SystemSettings, WeeklySummaryDelivery
 from app.services.calendar_service import fetch_ical, parse_ical_events, sync_calendar_sources
 from app.services.image_uploads import PROFILE_IMAGE_MAX_BYTES
-from app.services.notifications import send_due_reminder_emails, send_weekly_summaries
+from app.services.notifications import (
+    send_due_reminder_emails,
+    send_new_invitation_emails,
+    send_note_activity_emails,
+    send_weekly_summaries,
+)
 from app.services.scheduled_tasks import sync_due_calendars
 from app.services.weather_service import (
     WEATHER_MAP_LAYERS,
@@ -700,6 +706,90 @@ class SettingsProfileTests(TestCase):
         self.assertContains(response, "tone-sand")
         self.assertContains(response, "Eigener Termin")
 
+    def test_calendar_event_with_attendee_creates_invitation_visible_to_invitee(self):
+        organizer = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        invitee = User.objects.create_user(username="lukas@example.com", email="lukas@example.com", password="secret-12345")
+        Profile.objects.create(user=organizer, display_name="Mira", timezone_name="Europe/Berlin")
+        Profile.objects.create(user=invitee, display_name="Lukas", timezone_name="Europe/Berlin")
+        self.client.login(username="mira@example.com", password="secret-12345")
+        calendar_url = "/calendar/?year=2099&month=8"
+
+        response = self.client.post(
+            calendar_url,
+            {
+                "form_name": "calendar_event_add",
+                "title": "Projektmeeting",
+                "event_date": "2099-08-12",
+                "start_time": "10:30",
+                "end_time": "11:15",
+                "attendees": [str(invitee.id)],
+            },
+        )
+        self.assertRedirects(response, calendar_url)
+
+        event = CalendarEvent.objects.get(user=organizer, title="Projektmeeting")
+        attendee = CalendarEventAttendee.objects.get(event=event, user=invitee)
+        self.assertEqual(attendee.status, CalendarEventAttendee.STATUS_INVITED)
+        self.assertEqual(attendee.invited_by, organizer)
+
+        self.client.logout()
+        self.client.login(username="lukas@example.com", password="secret-12345")
+        response = self.client.get(calendar_url)
+        self.assertContains(response, "Projektmeeting")
+        self.assertContains(response, "Einladungen")
+
+    def test_invitee_can_accept_and_decline_event_invitation(self):
+        organizer = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        invitee = User.objects.create_user(username="lukas@example.com", email="lukas@example.com", password="secret-12345")
+        Profile.objects.create(user=organizer, display_name="Mira")
+        Profile.objects.create(user=invitee, display_name="Lukas")
+        event = CalendarEvent.objects.create(
+            user=organizer,
+            title="Projektmeeting",
+            start_at=timezone.now() + timedelta(days=1),
+            end_at=timezone.now() + timedelta(days=1, hours=1),
+        )
+        attendee = CalendarEventAttendee.objects.create(event=event, user=invitee, invited_by=organizer)
+
+        self.client.login(username="lukas@example.com", password="secret-12345")
+        response = self.client.post(
+            "/calendar/",
+            {"form_name": "event_rsvp", "attendee_id": str(attendee.id), "status": "accepted"},
+        )
+        self.assertRedirects(response, "/calendar/")
+        attendee.refresh_from_db()
+        self.assertEqual(attendee.status, CalendarEventAttendee.STATUS_ACCEPTED)
+        self.assertIsNotNone(attendee.responded_at)
+
+        self.client.post(
+            "/calendar/",
+            {"form_name": "event_rsvp", "attendee_id": str(attendee.id), "status": "declined"},
+        )
+        attendee.refresh_from_db()
+        self.assertEqual(attendee.status, CalendarEventAttendee.STATUS_DECLINED)
+
+    def test_rsvp_action_cannot_target_another_users_invitation(self):
+        organizer = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        invitee = User.objects.create_user(username="lukas@example.com", email="lukas@example.com", password="secret-12345")
+        outsider = User.objects.create_user(username="anna@example.com", email="anna@example.com", password="secret-12345")
+        for user in (organizer, invitee, outsider):
+            Profile.objects.create(user=user, display_name=user.first_name or user.username)
+        event = CalendarEvent.objects.create(
+            user=organizer,
+            title="Projektmeeting",
+            start_at=timezone.now() + timedelta(days=1),
+            end_at=timezone.now() + timedelta(days=1, hours=1),
+        )
+        attendee = CalendarEventAttendee.objects.create(event=event, user=invitee, invited_by=organizer)
+
+        self.client.login(username="anna@example.com", password="secret-12345")
+        self.client.post(
+            "/calendar/",
+            {"form_name": "event_rsvp", "attendee_id": str(attendee.id), "status": "accepted"},
+        )
+        attendee.refresh_from_db()
+        self.assertEqual(attendee.status, CalendarEventAttendee.STATUS_INVITED)
+
     def test_manual_all_day_event_uses_the_full_selected_day(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
         Profile.objects.create(user=user, display_name="Mira", timezone_name="Europe/Berlin")
@@ -1191,6 +1281,54 @@ class ScheduledAutomationTests(TestCase):
         self.assertEqual(second_response.json(), {"notifications": []})
         reminder.refresh_from_db()
         self.assertIsNotNone(reminder.desktop_notified_at)
+
+    def test_event_invitation_email_and_desktop_claim_are_sent_only_once(self):
+        organizer = User.objects.create_user(username="lukas@example.com", email="lukas@example.com", password="secret-12345")
+        Profile.objects.create(user=organizer, display_name="Lukas")
+        event = CalendarEvent.objects.create(
+            user=organizer,
+            title="Projektmeeting",
+            start_at=timezone.now() + timedelta(days=1),
+            end_at=timezone.now() + timedelta(days=1, hours=1),
+        )
+        CalendarEventAttendee.objects.create(event=event, user=self.user, invited_by=organizer)
+
+        first_email_result = send_new_invitation_emails()
+        second_email_result = send_new_invitation_emails()
+        self.assertEqual(first_email_result, {"sent": 1, "failed": 0})
+        self.assertEqual(second_email_result, {"sent": 0, "failed": 0})
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("Projektmeeting", mail.outbox[0].subject)
+
+        self.client.force_login(self.user)
+        first_response = self.client.post("/notifications/claim/")
+        second_response = self.client.post("/notifications/claim/")
+        self.assertEqual(first_response.json()["notifications"][0]["title"], "Einladung: Projektmeeting")
+        self.assertEqual(second_response.json(), {"notifications": []})
+
+    def test_note_activity_email_and_desktop_claim_are_sent_only_once(self):
+        actor = User.objects.create_user(username="anna@example.com", email="anna@example.com", password="secret-12345")
+        Profile.objects.create(user=actor, display_name="Anna")
+        note = Note.objects.create(owner=actor, title="Ideen")
+        NoteActivityNotification.objects.create(
+            note=note,
+            recipient=self.user,
+            actor=actor,
+            kind=NoteActivityNotification.KIND_MENTION,
+            excerpt="Hallo @Mira",
+        )
+
+        first_email_result = send_note_activity_emails()
+        second_email_result = send_note_activity_emails()
+        self.assertEqual(first_email_result, {"sent": 1, "failed": 0})
+        self.assertEqual(second_email_result, {"sent": 0, "failed": 0})
+        self.assertEqual(len(mail.outbox), 1)
+
+        self.client.force_login(self.user)
+        first_response = self.client.post("/notifications/claim/")
+        second_response = self.client.post("/notifications/claim/")
+        self.assertEqual(first_response.json()["notifications"][0]["title"], "Anna hat dich erwähnt")
+        self.assertEqual(second_response.json(), {"notifications": []})
 
     def test_weekly_summary_is_sent_once_on_monday(self):
         monday = timezone.make_aware(datetime(2026, 8, 10, 9, 0), ZoneInfo("Europe/Berlin"))
@@ -1867,6 +2005,221 @@ class MessagesPageTests(TestCase):
         )
         self.assertRedirects(response, f"/messages/{conversation.id}/")
         self.assertFalse(conversation.messages.filter(body="Auch nicht").exists())
+
+    def test_start_conversation_with_multiple_recipients_creates_group(self):
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.post(
+            "/messages/",
+            {
+                "form_name": "start_conversation",
+                "recipient": [str(self.lukas.id), str(self.anna.id)],
+                "title": "Projektteam",
+                "body": "Hallo zusammen!",
+            },
+        )
+
+        conversation = Conversation.objects.get()
+        self.assertRedirects(response, f"/messages/{conversation.id}/")
+        self.assertTrue(conversation.is_group)
+        self.assertEqual(conversation.title, "Projektteam")
+        self.assertEqual(conversation.participants.count(), 3)
+        self.assertEqual(conversation.messages.get().body, "Hallo zusammen!")
+
+    def test_group_avatar_falls_back_to_gr_without_title(self):
+        conversation = Conversation.objects.create(created_by=self.mira, is_group=True)
+        ConversationMember.objects.create(conversation=conversation, user=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.lukas)
+        ConversationMember.objects.create(conversation=conversation, user=self.anna)
+
+        self.assertEqual(conversation.avatar_for(self.mira), "GR")
+
+    def test_member_can_add_and_leave_group(self):
+        conversation = Conversation.objects.create(created_by=self.mira, title="Team", is_group=True)
+        ConversationMember.objects.create(conversation=conversation, user=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.lukas)
+
+        self.client.login(username="mira@example.com", password="secret-12345")
+        response = self.client.post(
+            f"/messages/{conversation.id}/",
+            {
+                "form_name": "member_action",
+                "conversation_id": str(conversation.id),
+                "action": "add_member",
+                "new_member": str(self.anna.id),
+            },
+        )
+        self.assertRedirects(response, f"/messages/{conversation.id}/")
+        self.assertTrue(ConversationMember.objects.filter(conversation=conversation, user=self.anna).exists())
+
+        self.client.logout()
+        self.client.login(username="lukas@example.com", password="secret-12345")
+        response = self.client.post(
+            f"/messages/{conversation.id}/",
+            {"form_name": "member_action", "conversation_id": str(conversation.id), "action": "leave_group"},
+        )
+        self.assertRedirects(response, "/messages/")
+        self.assertFalse(ConversationMember.objects.filter(conversation=conversation, user=self.lukas).exists())
+
+    def test_leave_group_action_is_ignored_for_direct_conversations(self):
+        conversation = Conversation.objects.create(created_by=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.lukas)
+
+        self.client.login(username="mira@example.com", password="secret-12345")
+        response = self.client.post(
+            f"/messages/{conversation.id}/",
+            {"form_name": "member_action", "conversation_id": str(conversation.id), "action": "leave_group"},
+        )
+        self.assertRedirects(response, f"/messages/{conversation.id}/")
+        self.assertTrue(ConversationMember.objects.filter(conversation=conversation, user=self.mira).exists())
+
+    def test_sending_attachment_without_body_is_valid_and_downloadable(self):
+        conversation = Conversation.objects.create(created_by=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.lukas)
+
+        self.client.login(username="mira@example.com", password="secret-12345")
+        with TemporaryDirectory() as private_root, override_settings(PRIVATE_MEDIA_ROOT=private_root):
+            upload = SimpleUploadedFile("moon.png", PNG_1X1_BYTES, content_type="image/png")
+            response = self.client.post(
+                f"/messages/{conversation.id}/",
+                {
+                    "form_name": "message",
+                    "conversation_id": str(conversation.id),
+                    "body": "",
+                    "attachment": upload,
+                },
+            )
+            self.assertRedirects(response, f"/messages/{conversation.id}/")
+
+            message = conversation.messages.get()
+            attachment = message.attachment
+            self.assertEqual(attachment.kind, "image")
+            self.assertEqual(attachment.uploaded_by, self.mira)
+
+            download_url = f"/messages/attachments/{attachment.file_id}/inline/"
+            response = self.client.get(download_url)
+            self.assertEqual(response.status_code, 200)
+
+            self.client.logout()
+            self.client.login(username="anna@example.com", password="secret-12345")
+            response = self.client.get(download_url)
+            self.assertEqual(response.status_code, 404)
+
+    def test_message_without_body_or_attachment_is_invalid(self):
+        conversation = Conversation.objects.create(created_by=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.lukas)
+
+        self.client.login(username="mira@example.com", password="secret-12345")
+        response = self.client.post(
+            f"/messages/{conversation.id}/",
+            {"form_name": "message", "conversation_id": str(conversation.id), "body": ""},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(conversation.messages.exists())
+
+    def test_deleting_message_removes_attachment(self):
+        conversation = Conversation.objects.create(created_by=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.lukas)
+
+        self.client.login(username="mira@example.com", password="secret-12345")
+        with TemporaryDirectory() as private_root, override_settings(PRIVATE_MEDIA_ROOT=private_root):
+            upload = SimpleUploadedFile("moon.png", PNG_1X1_BYTES, content_type="image/png")
+            self.client.post(
+                f"/messages/{conversation.id}/",
+                {
+                    "form_name": "message",
+                    "conversation_id": str(conversation.id),
+                    "body": "",
+                    "attachment": upload,
+                },
+            )
+            message = conversation.messages.get()
+
+            self.client.post(
+                f"/messages/{conversation.id}/",
+                {
+                    "form_name": "message_action",
+                    "conversation_id": str(conversation.id),
+                    "message_id": str(message.id),
+                    "action": "delete",
+                },
+            )
+
+            self.assertFalse(ChatMessageAttachment.objects.filter(message=message).exists())
+
+    def test_replying_to_message_links_and_renders_quote(self):
+        conversation = Conversation.objects.create(created_by=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.lukas)
+        original = ChatMessage.objects.create(conversation=conversation, sender=self.lukas, body="Erste Nachricht")
+
+        self.client.login(username="mira@example.com", password="secret-12345")
+        response = self.client.post(
+            f"/messages/{conversation.id}/",
+            {
+                "form_name": "message",
+                "conversation_id": str(conversation.id),
+                "body": "Antwort darauf",
+                "reply_to_id": str(original.id),
+            },
+        )
+        self.assertRedirects(response, f"/messages/{conversation.id}/")
+
+        reply = conversation.messages.get(body="Antwort darauf")
+        self.assertEqual(reply.reply_to_id, original.id)
+
+        response = self.client.get(f"/messages/{conversation.id}/")
+        self.assertContains(response, "Erste Nachricht")
+        self.assertContains(response, f'href="#message-{original.id}"')
+
+    def test_replying_to_deleted_message_shows_placeholder(self):
+        conversation = Conversation.objects.create(created_by=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.lukas)
+        original = ChatMessage.objects.create(
+            conversation=conversation,
+            sender=self.lukas,
+            body="",
+            is_deleted=True,
+        )
+        reply = ChatMessage.objects.create(
+            conversation=conversation,
+            sender=self.mira,
+            body="Antwort auf geloeschte Nachricht",
+            reply_to=original,
+        )
+
+        self.client.login(username="mira@example.com", password="secret-12345")
+        response = self.client.get(f"/messages/{conversation.id}/")
+        self.assertContains(response, "Diese Nachricht wurde gelöscht.")
+
+    def test_typing_ping_sets_typing_until_and_appears_in_live_updates(self):
+        conversation = Conversation.objects.create(created_by=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.lukas)
+
+        self.client.login(username="mira@example.com", password="secret-12345")
+        response = self.client.post(f"/messages/{conversation.id}/typing/")
+        self.assertEqual(response.status_code, 200)
+
+        member = ConversationMember.objects.get(conversation=conversation, user=self.mira)
+        self.assertIsNotNone(member.typing_until)
+        self.assertGreater(member.typing_until, timezone.now())
+
+        self.client.logout()
+        self.client.login(username="lukas@example.com", password="secret-12345")
+        response = self.client.get(f"/messages/{conversation.id}/live/")
+        self.assertEqual(response.json()["typing_label"], "Mira schreibt …")
+
+        member.typing_until = timezone.now() - timedelta(seconds=1)
+        member.save(update_fields=["typing_until"])
+        response = self.client.get(f"/messages/{conversation.id}/live/")
+        self.assertEqual(response.json()["typing_label"], "")
 
 
 class MessageReadReceiptTests(TestCase):
@@ -2587,3 +2940,223 @@ class NotesTests(TestCase):
                 ).status_code,
                 503,
             )
+            self.assertEqual(self.client.get(f"/notes/api/{note.id}/mention-candidates/?q=re").status_code, 503)
+            self.assertEqual(self.client.get(f"/notes/api/{note.id}/comments/").status_code, 503)
+            self.assertEqual(
+                self.client.post(
+                    f"/notes/api/{note.id}/comments/",
+                    data=json.dumps({"thread_id": str(uuid.uuid4()), "body": "Hallo"}),
+                    content_type="application/json",
+                ).status_code,
+                503,
+            )
+            self.assertEqual(
+                self.client.post(
+                    f"/notes/api/{note.id}/comments/{uuid.uuid4()}/",
+                    data=json.dumps({"action": "reply", "body": "Hallo"}),
+                    content_type="application/json",
+                ).status_code,
+                503,
+            )
+
+    def test_code_block_language_is_validated(self):
+        note = self.create_note()
+        document = {
+            "type": "doc",
+            "content": [
+                {
+                    "type": "codeBlock",
+                    "attrs": {"language": "python"},
+                    "content": [{"type": "text", "text": "print('hi')"}],
+                }
+            ],
+        }
+        response = self.client.patch(
+            f"/notes/api/{note.id}/",
+            data=json.dumps({"title": note.title, "document": document, "tags": [], "base_revision": note.revision}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+
+        note.refresh_from_db()
+        document["content"][0]["attrs"]["language"] = "cobol"
+        response = self.client.patch(
+            f"/notes/api/{note.id}/",
+            data=json.dumps({"title": note.title, "document": document, "tags": [], "base_revision": note.revision}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def mention_document(self, user, label, text="Hallo "):
+        return {
+            "type": "doc",
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {"type": "text", "text": text},
+                        {"type": "mention", "attrs": {"userId": user.id, "label": label}},
+                    ],
+                }
+            ],
+        }
+
+    def test_mentioning_user_with_access_is_allowed_and_notifies(self):
+        note = self.create_note()
+        NoteShare.objects.create(note=note, user=self.reader, role=NoteShare.ROLE_READER)
+        document = self.mention_document(self.reader, "Reader")
+
+        response = self.client.patch(
+            f"/notes/api/{note.id}/",
+            data=json.dumps({"title": note.title, "document": document, "tags": [], "base_revision": note.revision}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+
+        note.refresh_from_db()
+        self.assertIn("@Reader", note.plain_text)
+        notification = NoteActivityNotification.objects.get(note=note, recipient=self.reader)
+        self.assertEqual(notification.kind, NoteActivityNotification.KIND_MENTION)
+        self.assertEqual(notification.actor, self.owner)
+
+        # Saving again without a new mention must not create a duplicate notification.
+        response = self.client.patch(
+            f"/notes/api/{note.id}/",
+            data=json.dumps({"title": note.title, "document": document, "tags": [], "base_revision": note.revision}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(NoteActivityNotification.objects.filter(note=note, recipient=self.reader).count(), 1)
+
+    def test_mentioning_user_without_access_is_rejected(self):
+        note = self.create_note()
+        outsider = User.objects.create_user(username="outsider@example.com", email="outsider@example.com", password="secret-12345")
+        document = self.mention_document(outsider, "Outsider")
+
+        response = self.client.patch(
+            f"/notes/api/{note.id}/",
+            data=json.dumps({"title": note.title, "document": document, "tags": [], "base_revision": note.revision}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(NoteActivityNotification.objects.filter(note=note).exists())
+
+    def test_mention_candidates_only_include_users_with_access(self):
+        note = self.create_note()
+        NoteShare.objects.create(note=note, user=self.reader, role=NoteShare.ROLE_READER)
+
+        response = self.client.get(f"/notes/api/{note.id}/mention-candidates/")
+        self.assertEqual(response.status_code, 200)
+        names = {user["name"] for user in response.json()["users"]}
+        self.assertEqual(names, {"Reader"})
+
+    def test_comment_thread_full_lifecycle(self):
+        note = self.create_note()
+        NoteShare.objects.create(note=note, user=self.reader, role=NoteShare.ROLE_READER)
+        thread_id = str(uuid.uuid4())
+
+        response = self.client.post(
+            f"/notes/api/{note.id}/comments/",
+            data=json.dumps({"thread_id": thread_id, "anchor_text": "Erster Inhalt", "body": "Was meinst du hiermit?"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        threads = response.json()["threads"]
+        self.assertEqual(len(threads), 1)
+        self.assertEqual(threads[0]["comments"][0]["body"], "Was meinst du hiermit?")
+
+        notification = NoteActivityNotification.objects.get(note=note, recipient=self.reader)
+        self.assertEqual(notification.kind, NoteActivityNotification.KIND_COMMENT)
+
+        document = {
+            "type": "doc",
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [{"type": "text", "text": "Erster Inhalt", "marks": [{"type": "commentThread", "attrs": {"threadId": thread_id}}]}],
+                }
+            ],
+        }
+        response = self.client.patch(
+            f"/notes/api/{note.id}/",
+            data=json.dumps({"title": note.title, "document": document, "tags": [], "base_revision": note.revision}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+
+        self.client.logout()
+        self.client.login(username="reader@example.com", password="secret-12345")
+        response = self.client.post(
+            f"/notes/api/{note.id}/comments/{thread_id}/",
+            data=json.dumps({"action": "reply", "body": "Nur ein Hinweis."}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(len(response.json()["threads"][0]["comments"]), 2)
+        self.assertTrue(NoteActivityNotification.objects.filter(note=note, recipient=self.owner, kind=NoteActivityNotification.KIND_COMMENT).exists())
+
+        response = self.client.post(
+            f"/notes/api/{note.id}/comments/{thread_id}/",
+            data=json.dumps({"action": "resolve"}),
+            content_type="application/json",
+        )
+        self.assertTrue(response.json()["threads"][0]["is_resolved"])
+
+        response = self.client.delete(f"/notes/api/{note.id}/comments/{thread_id}/")
+        self.assertEqual(response.status_code, 403)
+
+        self.client.logout()
+        self.client.login(username="owner@example.com", password="secret-12345")
+        response = self.client.delete(f"/notes/api/{note.id}/comments/{thread_id}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(NoteCommentThread.objects.filter(note=note).exists())
+
+    def test_saving_document_with_unknown_comment_thread_is_rejected(self):
+        note = self.create_note()
+        document = {
+            "type": "doc",
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [{"type": "text", "text": "Erster Inhalt", "marks": [{"type": "commentThread", "attrs": {"threadId": str(uuid.uuid4())}}]}],
+                }
+            ],
+        }
+        response = self.client.patch(
+            f"/notes/api/{note.id}/",
+            data=json.dumps({"title": note.title, "document": document, "tags": [], "base_revision": note.revision}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_duplicating_note_strips_comment_marks(self):
+        note = self.create_note()
+        thread_id = str(uuid.uuid4())
+        self.client.post(
+            f"/notes/api/{note.id}/comments/",
+            data=json.dumps({"thread_id": thread_id, "anchor_text": "Erster Inhalt", "body": "Kommentar"}),
+            content_type="application/json",
+        )
+        document = {
+            "type": "doc",
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [{"type": "text", "text": "Erster Inhalt", "marks": [{"type": "commentThread", "attrs": {"threadId": thread_id}}]}],
+                }
+            ],
+        }
+        self.client.patch(
+            f"/notes/api/{note.id}/",
+            data=json.dumps({"title": note.title, "document": document, "tags": [], "base_revision": note.revision}),
+            content_type="application/json",
+        )
+
+        response = self.client.post(
+            f"/notes/api/{note.id}/actions/",
+            data=json.dumps({"action": "duplicate"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        duplicate = Note.objects.get(pk=response.json()["note"]["id"])
+        self.assertNotIn("commentThread", json.dumps(duplicate.document))

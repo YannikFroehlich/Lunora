@@ -1,9 +1,10 @@
 from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
+from django.utils import timezone
 
 from app.forms import CalendarEventForm, CalendarReminderForm
-from app.models import CalendarReminder, CalendarSource
+from app.models import CalendarEventAttendee, CalendarReminder, CalendarSource
 from app.services.calendar_service import sync_calendar_sources
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.user_preferences import format_user_datetime
@@ -70,6 +71,15 @@ def calendar(request):
             event_form.save(user=request.user)
             django_messages.success(request, "Termin erstellt.")
             return redirect(request.get_full_path())
+
+    if request.method == "POST" and request.POST.get("form_name") == "event_rsvp":
+        status = request.POST.get("status")
+        if status in {CalendarEventAttendee.STATUS_ACCEPTED, CalendarEventAttendee.STATUS_DECLINED}:
+            CalendarEventAttendee.objects.filter(
+                pk=request.POST.get("attendee_id"),
+                user=request.user,
+            ).update(status=status, responded_at=timezone.now())
+        return redirect(request.get_full_path())
 
     if request.method == "POST" and request.POST.get("form_name") == "reminder_add":
         if not calendar_reminders_enabled:

@@ -144,6 +144,21 @@ select:focus-visible,
   box-shadow: var(--focus-ring);
 }
 
+/*
+ * Focus rings on wrapped inputs: this box-shadow follows the FOCUSED
+ * element's own border-radius, not its parent's. A borderless input
+ * (border: 0, no radius) placed inside a decorative rounded/pill wrapper
+ * (e.g. a search field's background+border+border-radius div) will render
+ * a square-cornered glow that visibly breaks out of the rounded wrapper.
+ *
+ * Fix: on the wrapper, add `:focus-within { border-color: ...; box-shadow:
+ * 0 0 0 3px rgba(181, 150, 104, 0.14); }` (matching the wrapper's own
+ * border-radius), and on the inner input add `:focus-visible { box-shadow:
+ * none; }` to suppress this default ring. See .search-field (weather.css)
+ * or .notes-search (notes.css) for reference, or .reminder-date-field
+ * (calendar.css) for the same pattern applied to a non-search field.
+ */
+
 button:disabled,
 [aria-disabled="true"] {
   cursor: not-allowed;

@@ -9,14 +9,17 @@ from .auth_views import (
 )
 from .calendar_views import calendar
 from .core_views import home, settings
-from .message_views import messages, messages_live_updates
+from .message_views import chat_attachment_download, chat_typing_ping, messages, messages_live_updates
 from .notification_views import claim_desktop_notifications
 from .note_views import (
     note_action_api,
     note_attachment_download,
     note_attachment_upload_api,
+    note_comment_thread_api,
+    note_comments_api,
     note_create_api,
     note_detail_api,
+    note_mention_candidates_api,
     note_pdf_export,
     note_share_candidates_api,
     note_share_delete_api,
@@ -34,6 +37,8 @@ __all__ = [
     "home",
     "messages",
     "messages_live_updates",
+    "chat_typing_ping",
+    "chat_attachment_download",
     "claim_desktop_notifications",
     "notes",
     "note_create_api",
@@ -45,6 +50,9 @@ __all__ = [
     "note_share_candidates_api",
     "note_attachment_upload_api",
     "note_attachment_download",
+    "note_mention_candidates_api",
+    "note_comments_api",
+    "note_comment_thread_api",
     "note_versions_api",
     "note_version_restore_api",
     "note_shortcuts_api",

@@ -885,3 +885,125 @@
     width: 100%;
   }
 }
+
+.event-chip.is-invited {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.event-chip.is-invited i {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+}
+
+.recipient-checkbox-list {
+  display: grid;
+  gap: 4px;
+  max-height: 180px;
+  padding: 8px;
+  overflow-y: auto;
+  background: var(--surface-control-hover);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: 12px;
+}
+
+.recipient-checkbox-list ul {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recipient-checkbox-list li label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  color: var(--color-text);
+  font-weight: 500;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.recipient-checkbox-list li label:hover {
+  background: var(--surface-selected);
+}
+
+.recipient-checkbox-list input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-accent);
+}
+
+.invitation-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.invitation-row:last-of-type {
+  border-bottom: 0;
+}
+
+.invitation-row span,
+.invitation-row strong,
+.invitation-row small {
+  display: block;
+  min-width: 0;
+}
+
+.invitation-row small {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--color-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.invitation-row form {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+  margin: 0;
+}
+
+.invitation-accept,
+.invitation-decline {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.28);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.invitation-accept {
+  color: #4d7a3e;
+}
+
+.invitation-accept:hover {
+  background: rgba(145, 168, 124, 0.24);
+  border-color: rgba(145, 168, 124, 0.42);
+}
+
+.invitation-decline {
+  color: #a64d3d;
+}
+
+.invitation-decline:hover {
+  background: rgba(166, 77, 61, 0.12);
+  border-color: rgba(166, 77, 61, 0.28);
+}
+
+[data-theme="dark"] .recipient-checkbox-list,
+[data-theme="dark"] .invitation-accept,
+[data-theme="dark"] .invitation-decline {
+  background: rgba(255, 255, 255, 0.06);
+}

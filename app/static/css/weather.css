@@ -46,6 +46,17 @@
   outline: 0;
 }
 
+/* Focus ring belongs on the pill-shaped wrapper, not the borderless input —
+   see the "Focus rings on wrapped inputs" rule in base.css. */
+.search-field:focus-within {
+  border-color: rgba(181, 150, 104, 0.62);
+  box-shadow: 0 0 0 3px rgba(181, 150, 104, 0.14);
+}
+
+.search-field input:focus-visible {
+  box-shadow: none;
+}
+
 .suggestion-list {
   position: absolute;
   top: calc(100% + 10px);

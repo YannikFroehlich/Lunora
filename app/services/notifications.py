@@ -7,7 +7,15 @@ from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from app.models import CalendarEvent, CalendarReminder, NoteShare, Profile, WeeklySummaryDelivery
+from app.models import (
+    CalendarEvent,
+    CalendarEventAttendee,
+    CalendarReminder,
+    NoteActivityNotification,
+    NoteShare,
+    Profile,
+    WeeklySummaryDelivery,
+)
 from app.services.message_queries import unread_total_for_user
 from app.services.user_preferences import format_user_datetime, localtime_for_user
 
@@ -147,6 +155,170 @@ def send_weekly_summaries(*, now=None):
         sent += 1
 
     return {"sent": sent, "failed": failed, "skipped": skipped}
+
+
+def _display_name(user):
+    profile_name = getattr(getattr(user, "profile", None), "display_name", "")
+    return profile_name or user.get_full_name() or user.email or user.get_username()
+
+
+def claim_due_note_activity(user, *, now=None, limit=5):
+    """Atomically claim pending mention/comment notifications for one browser notification batch."""
+    current_time = now or timezone.now()
+    try:
+        profile = user.profile
+    except Profile.DoesNotExist:
+        return []
+
+    if not profile.notify_desktop:
+        return []
+
+    with transaction.atomic():
+        notifications = list(
+            NoteActivityNotification.objects.select_for_update()
+            .filter(recipient=user, desktop_notified_at__isnull=True)
+            .select_related("note", "actor")
+            .order_by("created_at", "id")[:limit]
+        )
+        if notifications:
+            NoteActivityNotification.objects.filter(pk__in=[item.pk for item in notifications]).update(
+                desktop_notified_at=current_time
+            )
+
+    return [
+        {
+            "id": f"note-activity-{item.id}",
+            "title": _note_activity_title(item),
+            "body": item.note.title,
+            "url": f"/notes/{item.note_id}/",
+        }
+        for item in notifications
+    ]
+
+
+def _note_activity_title(item):
+    actor_name = _display_name(item.actor) if item.actor else "Jemand"
+    if item.kind == NoteActivityNotification.KIND_MENTION:
+        return f"{actor_name} hat dich erwähnt"
+    return f"{actor_name} hat kommentiert"
+
+
+def send_note_activity_emails(*, now=None):
+    """Send each pending mention/comment email once and leave failed deliveries retryable."""
+    current_time = now or timezone.now()
+    notifications = list(
+        NoteActivityNotification.objects.filter(
+            email_notified_at__isnull=True,
+            recipient__is_active=True,
+            recipient__profile__notify_email=True,
+        )
+        .exclude(recipient__email="")
+        .select_related("note", "recipient", "actor")
+        .order_by("created_at", "id")
+    )
+
+    sent = 0
+    failed = 0
+    for notification in notifications:
+        try:
+            send_mail(
+                subject=f"Lunora: {_note_activity_title(notification)}",
+                message=(
+                    f"{_note_activity_title(notification)} in der Notiz „{notification.note.title}“.\n\n"
+                    f"{notification.excerpt}\n\n"
+                    "Öffne Lunora, um die Notiz anzusehen."
+                ),
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[notification.recipient.email],
+                fail_silently=False,
+            )
+        except Exception:
+            failed += 1
+            logger.exception("Note activity email delivery failed for notification %s", notification.pk)
+            continue
+
+        updated = NoteActivityNotification.objects.filter(pk=notification.pk, email_notified_at__isnull=True).update(
+            email_notified_at=current_time
+        )
+        sent += int(bool(updated))
+
+    return {"sent": sent, "failed": failed}
+
+
+def claim_due_event_invitations(user, *, now=None, limit=5):
+    """Atomically claim pending calendar event invitations for one browser notification batch."""
+    current_time = now or timezone.now()
+    try:
+        profile = user.profile
+    except Profile.DoesNotExist:
+        return []
+
+    if not profile.notify_desktop:
+        return []
+
+    with transaction.atomic():
+        invitations = list(
+            CalendarEventAttendee.objects.select_for_update()
+            .filter(user=user, desktop_notified_at__isnull=True)
+            .select_related("event", "invited_by")
+            .order_by("created_at", "id")[:limit]
+        )
+        if invitations:
+            CalendarEventAttendee.objects.filter(pk__in=[item.pk for item in invitations]).update(
+                desktop_notified_at=current_time
+            )
+
+    return [
+        {
+            "id": f"event-invite-{item.id}",
+            "title": f"Einladung: {item.event.title}",
+            "body": format_user_datetime(item.event.start_at, user),
+        }
+        for item in invitations
+    ]
+
+
+def send_new_invitation_emails(*, now=None):
+    """Send each pending calendar invitation email once and leave failed deliveries retryable."""
+    current_time = now or timezone.now()
+    invitations = list(
+        CalendarEventAttendee.objects.filter(
+            email_notified_at__isnull=True,
+            user__is_active=True,
+            user__profile__notify_email=True,
+        )
+        .exclude(user__email="")
+        .select_related("event", "user", "invited_by")
+        .order_by("created_at", "id")
+    )
+
+    sent = 0
+    failed = 0
+    for invitation in invitations:
+        organizer_name = _display_name(invitation.invited_by) if invitation.invited_by else "Jemand"
+        try:
+            send_mail(
+                subject=f"Lunora: Einladung zu „{invitation.event.title}“",
+                message=(
+                    f"{organizer_name} hat dich zum Termin „{invitation.event.title}“ eingeladen.\n\n"
+                    f"Beginn: {format_user_datetime(invitation.event.start_at, invitation.user)}\n"
+                    "Öffne Lunora, um die Einladung anzunehmen oder abzulehnen."
+                ),
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[invitation.user.email],
+                fail_silently=False,
+            )
+        except Exception:
+            failed += 1
+            logger.exception("Event invitation email delivery failed for attendee %s", invitation.pk)
+            continue
+
+        updated = CalendarEventAttendee.objects.filter(pk=invitation.pk, email_notified_at__isnull=True).update(
+            email_notified_at=current_time
+        )
+        sent += int(bool(updated))
+
+    return {"sent": sent, "failed": failed}
 
 
 def _weekly_summary_text(user, current_time):

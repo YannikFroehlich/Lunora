@@ -7,7 +7,8 @@ from django.core.cache import cache
 from django.core.files.storage import default_storage
 from django.db.models import Q
 
-from app.models import CalendarEvent, CalendarReminder, CalendarSource, ChatMessage, Profile, SystemSettings
+from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, CalendarSource, ChatMessage, Profile, SystemSettings
+from app.services.chat_files import infer_attachment_kind, validate_note_upload
 from app.services.image_uploads import PROFILE_IMAGE_ACCEPT, validate_profile_image_file
 from app.services.user_preferences import get_user_zoneinfo, localtime_for_user
 from app.services.url_safety import validate_calendar_url
@@ -296,6 +297,8 @@ class ProfilePreferencesForm(forms.ModelForm):
 
 
 class MessageForm(forms.ModelForm):
+    attachment = forms.FileField(label="Anhang", required=False)
+
     class Meta:
         model = ChatMessage
         fields = ["body"]
@@ -310,18 +313,37 @@ class MessageForm(forms.ModelForm):
             )
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["body"].required = False
+
     def clean_body(self):
-        body = self.cleaned_data["body"].strip()
-        if not body:
-            raise forms.ValidationError("Bitte gib eine Nachricht ein.")
-        return body
+        return self.cleaned_data["body"].strip()
+
+    def clean_attachment(self):
+        upload = self.cleaned_data.get("attachment")
+        if upload:
+            validate_note_upload(upload, kind=infer_attachment_kind(upload.name))
+        return upload
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if not cleaned_data.get("body") and not cleaned_data.get("attachment"):
+            raise forms.ValidationError("Bitte gib eine Nachricht ein oder füge einen Anhang hinzu.")
+        return cleaned_data
 
 
 class ConversationStartForm(forms.Form):
-    recipient = forms.ModelChoiceField(
-        label="Kontakt",
+    recipient = forms.ModelMultipleChoiceField(
+        label="Kontakt(e)",
         queryset=User.objects.none(),
-        empty_label="Kontakt auswählen",
+        widget=forms.CheckboxSelectMultiple,
+    )
+    title = forms.CharField(
+        label="Gruppenname (optional)",
+        max_length=140,
+        required=False,
+        widget=forms.TextInput(attrs={"placeholder": "z. B. Familie oder Projektteam", "autocomplete": "off"}),
     )
     body = forms.CharField(
         label="Erste Nachricht",
@@ -472,10 +494,21 @@ class CalendarEventForm(forms.Form):
         required=False,
         widget=forms.TextInput(attrs={"placeholder": "Optional", "autocomplete": "off"}),
     )
+    attendees = forms.ModelMultipleChoiceField(
+        label="Teilnehmer einladen",
+        queryset=User.objects.none(),
+        widget=forms.CheckboxSelectMultiple,
+        required=False,
+    )
 
     def __init__(self, *args, user=None, **kwargs):
         self.user = user
         super().__init__(*args, **kwargs)
+        self.fields["attendees"].queryset = (
+            User.objects.filter(is_active=True)
+            .exclude(pk=getattr(user, "pk", None))
+            .order_by("first_name", "email", "username")
+        )
 
         if not self.is_bound:
             now = localtime_for_user(profile_or_user=user)
@@ -530,7 +563,7 @@ class CalendarEventForm(forms.Form):
         if not self.is_valid():
             raise ValueError("Ein ungültiges Terminformular kann nicht gespeichert werden.")
 
-        return CalendarEvent.objects.create(
+        event = CalendarEvent.objects.create(
             user=user,
             source=None,
             title=self.cleaned_data["title"],
@@ -539,3 +572,14 @@ class CalendarEventForm(forms.Form):
             end_at=self.cleaned_data["end_at"],
             is_all_day=self.cleaned_data["is_all_day"],
         )
+
+        attendees = self.cleaned_data.get("attendees")
+        if attendees:
+            CalendarEventAttendee.objects.bulk_create(
+                [
+                    CalendarEventAttendee(event=event, user=attendee, invited_by=user)
+                    for attendee in attendees
+                ]
+            )
+
+        return event

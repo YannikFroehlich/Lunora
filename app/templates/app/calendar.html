@@ -57,7 +57,7 @@
                         </span>
                         {% endif %}
                         {% for event in day.events %}
-                        <span class="event-chip tone-{{ event.tone }}" title="{{ event.time }} · {{ event.label }}">{{ event.label }}</span>
+                        <span class="event-chip tone-{{ event.tone }} {% if event.is_invited %}is-invited{% endif %}" title="{{ event.time }} · {{ event.label }}">{% if event.is_invited %}<i class="fa-solid fa-user-group" aria-hidden="true"></i>{% endif %}{{ event.label }}</span>
                         {% endfor %}
                         {% if day.overflow %}
                         <span class="event-more">+{{ day.overflow }} weitere</span>
@@ -119,6 +119,7 @@
                     <time>{{ event.time }}</time>
                     <span class="timeline-dot tone-{{ event.tone }}"></span>
                     <strong>{{ event.title }}</strong>
+                    {% if event.is_invited %}<i class="fa-solid fa-user-group" title="Einladung"></i>{% endif %}
                     <i class="fa-solid {{ event.icon }}"></i>
                 </div>
                 {% endfor %}
@@ -147,6 +148,7 @@
                     <span>{{ event.date }}</span>
                     <strong>{{ event.title }}</strong>
                     <small>{{ event.category }}</small>
+                    {% if event.is_invited %}<i class="fa-solid fa-user-group" title="Einladung"></i>{% endif %}
                     <i class="fa-solid {{ event.icon }}"></i>
                 </div>
                 {% endfor %}
@@ -165,6 +167,30 @@
                 </div>
                 {% endif %}
             </section>
+
+            {% if pending_invitations %}
+            <section class="glass-panel invitations-panel">
+                <div class="panel-title panel-title-between">
+                    <h2>Einladungen</h2>
+                    <i class="fa-solid fa-user-group"></i>
+                </div>
+                {% for invitation in pending_invitations %}
+                <div class="invitation-row">
+                    <span>
+                        <strong>{{ invitation.event_title }}</strong>
+                        <small>{{ invitation.organizer_name }} · {{ invitation.when }}</small>
+                    </span>
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="form_name" value="event_rsvp">
+                        <input type="hidden" name="attendee_id" value="{{ invitation.attendee_id }}">
+                        <button class="invitation-accept" type="submit" name="status" value="accepted" aria-label="Annehmen"><i class="fa-solid fa-check"></i></button>
+                        <button class="invitation-decline" type="submit" name="status" value="declined" aria-label="Ablehnen"><i class="fa-solid fa-xmark"></i></button>
+                    </form>
+                </div>
+                {% endfor %}
+            </section>
+            {% endif %}
 
             {% if calendar_reminders_enabled %}
             <section class="glass-panel reminder-panel">
@@ -276,6 +302,12 @@
                 <span>{{ event_form.location.label }}</span>
                 {{ event_form.location }}
                 {{ event_form.location.errors }}
+            </label>
+
+            <label class="event-form-field is-wide">
+                <span>{{ event_form.attendees.label }}</span>
+                <div class="recipient-checkbox-list">{{ event_form.attendees }}</div>
+                {{ event_form.attendees.errors }}
             </label>
 
             <div class="event-form-actions is-wide">

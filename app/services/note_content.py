@@ -32,8 +32,32 @@ ALLOWED_NODE_TYPES = {
     "tableCell",
     "noteImage",
     "noteAttachment",
+    "mention",
 }
-ALLOWED_MARK_TYPES = {"bold", "italic", "underline", "strike", "code", "link", "textStyle", "highlight"}
+ALLOWED_MARK_TYPES = {"bold", "italic", "underline", "strike", "code", "link", "textStyle", "highlight", "commentThread"}
+THREAD_ID_RE = re.compile(r"^[0-9a-fA-F-]{36}$")
+ALLOWED_CODE_LANGUAGES = {
+    "plaintext",
+    "javascript",
+    "typescript",
+    "python",
+    "bash",
+    "json",
+    "css",
+    "xml",
+    "sql",
+    "java",
+    "csharp",
+    "cpp",
+    "c",
+    "go",
+    "rust",
+    "ruby",
+    "php",
+    "yaml",
+    "markdown",
+    "diff",
+}
 ALLOWED_FONTS = {"Inter", "Arial", "Georgia", "Times New Roman", "Courier New"}
 ALLOWED_FONT_SIZES = {"10px", "12px", "14px", "16px", "18px", "24px", "32px", "48px"}
 ALLOWED_LINE_HEIGHTS = {"1", "1.15", "1.5", "2"}
@@ -60,11 +84,15 @@ def validate_note_document(document):
     if len(encoded) > MAX_DOCUMENT_BYTES:
         raise ValidationError("Die Notiz ist zu groß.")
 
-    state = {"nodes": 0, "characters": 0, "attachments": set()}
+    state = {"nodes": 0, "characters": 0, "attachments": set(), "mentions": set(), "comment_threads": set()}
     _validate_node(document, depth=0, state=state)
     if state["characters"] > MAX_TEXT_CHARACTERS:
         raise ValidationError("Die Notiz enthält zu viel Text.")
-    return state["attachments"]
+    return {
+        "attachments": state["attachments"],
+        "mentions": state["mentions"],
+        "comment_threads": state["comment_threads"],
+    }
 
 
 def _validate_node(node, *, depth, state):
@@ -94,7 +122,7 @@ def _validate_node(node, *, depth, state):
         if not isinstance(marks, list):
             raise ValidationError("Textformatierungen sind ungültig.")
         for mark in marks:
-            _validate_mark(mark)
+            _validate_mark(mark, state)
     elif "text" in node or "marks" in node:
         raise ValidationError("Nur Textelemente dürfen Textformatierungen enthalten.")
 
@@ -121,6 +149,7 @@ def _validate_node_attrs(node_type, attrs, state):
         "tableHeader": {"colspan", "rowspan", "colwidth", "backgroundColor", "align"},
         "noteImage": {"attachmentId", "alt", "title", "width"},
         "noteAttachment": {"attachmentId", "name", "size"},
+        "mention": {"userId", "label"},
     }.get(node_type, set())
     if set(attrs) - allowed:
         raise ValidationError(f"Das Element „{node_type}“ enthält unerlaubte Attribute.")
@@ -128,8 +157,8 @@ def _validate_node_attrs(node_type, attrs, state):
         raise ValidationError("Die Textausrichtung ist ungültig.")
     if node_type == "heading" and attrs.get("level") not in {1, 2, 3}:
         raise ValidationError("Es sind nur Überschriften der Ebenen 1 bis 3 erlaubt.")
-    if node_type == "codeBlock" and attrs.get("language") not in {None, ""}:
-        raise ValidationError("Programmiersprachen-Markierungen sind in Notizen nicht erlaubt.")
+    if node_type == "codeBlock" and attrs.get("language") not in {None, ""} and attrs.get("language") not in ALLOWED_CODE_LANGUAGES:
+        raise ValidationError("Diese Programmiersprache ist nicht erlaubt.")
     if node_type == "taskItem" and not isinstance(attrs.get("checked", False), bool):
         raise ValidationError("Der Checklistenstatus ist ungültig.")
     if node_type in {"tableCell", "tableHeader"}:
@@ -156,9 +185,16 @@ def _validate_node_attrs(node_type, attrs, state):
             raise ValidationError("Dateiname oder Alternativtext ist zu lang.")
         if "width" in attrs and (not isinstance(attrs["width"], int) or not 120 <= attrs["width"] <= 1600):
             raise ValidationError("Die Bildbreite ist ungültig.")
+    if node_type == "mention":
+        user_id = attrs.get("userId")
+        if not isinstance(user_id, int) or user_id <= 0:
+            raise ValidationError("Die Erwähnung verweist auf keinen gültigen Nutzer.")
+        if not isinstance(attrs.get("label"), str) or not attrs["label"] or len(attrs["label"]) > 100:
+            raise ValidationError("Der Erwähnungstext ist ungültig.")
+        state["mentions"].add(user_id)
 
 
-def _validate_mark(mark):
+def _validate_mark(mark, state):
     if not isinstance(mark, dict) or set(mark) - {"type", "attrs"}:
         raise ValidationError("Eine Textformatierung ist ungültig.")
     mark_type = mark.get("type")
@@ -208,6 +244,11 @@ def _validate_mark(mark):
     elif mark_type == "highlight":
         if set(attrs) - {"color"} or (attrs.get("color") and not HEX_COLOR_RE.fullmatch(attrs["color"])):
             raise ValidationError("Die Markierfarbe ist ungültig.")
+    elif mark_type == "commentThread":
+        thread_id = str(attrs.get("threadId", ""))
+        if set(attrs) - {"threadId"} or not THREAD_ID_RE.fullmatch(thread_id):
+            raise ValidationError("Der Kommentarbezug ist ungültig.")
+        state["comment_threads"].add(thread_id.lower())
     elif attrs:
         raise ValidationError(f"Die Textformatierung „{mark_type}“ darf keine Attribute enthalten.")
 
@@ -218,6 +259,8 @@ def document_plain_text(document):
     def visit(node):
         if node.get("type") == "text":
             parts.append(node.get("text", ""))
+        elif node.get("type") == "mention":
+            parts.append(f"@{(node.get('attrs') or {}).get('label', '')}")
         elif node.get("type") in {"hardBreak", "paragraph", "heading", "listItem", "taskItem", "tableRow"}:
             if parts and not parts[-1].endswith("\n"):
                 parts.append("\n")
@@ -226,6 +269,24 @@ def document_plain_text(document):
 
     visit(document)
     return re.sub(r"\n{3,}", "\n\n", "".join(parts)).strip()
+
+
+def extract_mention_user_ids(document):
+    """Collect mention userIds from an already-trusted (previously validated) document tree."""
+    user_ids = set()
+
+    def visit(node):
+        if not isinstance(node, dict):
+            return
+        if node.get("type") == "mention":
+            user_id = (node.get("attrs") or {}).get("userId")
+            if isinstance(user_id, int):
+                user_ids.add(user_id)
+        for child in node.get("content") or []:
+            visit(child)
+
+    visit(document)
+    return user_ids
 
 
 def normalize_tags(tags):

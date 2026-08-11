@@ -1,4 +1,5 @@
 import copy
+import uuid
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
@@ -8,9 +9,20 @@ from django.db import transaction
 from django.db.models import BooleanField, Case, Exists, OuterRef, Q, Sum, Value, When
 from django.utils import timezone
 
-from app.models import Note, NoteAttachment, NoteShare, NoteTag, NoteUserState, NoteVersion
+from app.models import (
+    Note,
+    NoteActivityNotification,
+    NoteAttachment,
+    NoteComment,
+    NoteCommentThread,
+    NoteShare,
+    NoteTag,
+    NoteUserState,
+    NoteVersion,
+)
 from app.services.note_content import (
     document_plain_text,
+    extract_mention_user_ids,
     normalize_tags,
     validate_note_document,
 )
@@ -148,9 +160,15 @@ def save_note(user, note_id, *, title, document, tags, base_revision, conflict_r
         clean_title = "Unbenannte Notiz"
     if len(clean_title) > 200:
         raise ValidationError("Der Titel darf maximal 200 Zeichen lang sein.")
-    attachment_ids = validate_note_document(document)
+    validated = validate_note_document(document)
+    attachment_ids = validated["attachments"]
+    mention_ids = validated["mentions"]
+    comment_thread_ids = validated["comment_threads"]
     normalized_tags = normalize_tags(tags)
     _validate_attachment_references(note, attachment_ids)
+    _validate_mention_references(note, mention_ids)
+    _validate_comment_thread_references(note, comment_thread_ids)
+    new_mention_ids = mention_ids - extract_mention_user_ids(note.document) - {user.id}
 
     if conflict_resolution:
         _create_version(note, user, NoteVersion.REASON_CONFLICT)
@@ -168,6 +186,8 @@ def save_note(user, note_id, *, title, document, tags, base_revision, conflict_r
     )
     _set_note_tags(note, normalized_tags)
     prune_note_versions(note)
+    if new_mention_ids:
+        _create_note_activity_notifications(note, user, new_mention_ids, NoteActivityNotification.KIND_MENTION)
     return note
 
 
@@ -180,6 +200,39 @@ def _validate_attachment_references(note, attachment_ids):
     }
     if found != set(attachment_ids):
         raise ValidationError("Die Notiz verweist auf eine fremde oder nicht vorhandene Datei.")
+
+
+def _validate_comment_thread_references(note, thread_ids):
+    if not thread_ids:
+        return
+    found = {
+        str(value).lower()
+        for value in note.comment_threads.filter(thread_id__in=thread_ids).values_list("thread_id", flat=True)
+    }
+    if found != set(thread_ids):
+        raise ValidationError("Die Notiz verweist auf einen unbekannten Kommentarbezug.")
+
+
+def note_accessible_user_ids(note):
+    return {note.owner_id} | {share.user_id for share in note.shares.all()}
+
+
+def _validate_mention_references(note, mentioned_user_ids):
+    if not mentioned_user_ids:
+        return
+    if not set(mentioned_user_ids) <= note_accessible_user_ids(note):
+        raise ValidationError("Du kannst nur Personen erwähnen, die diese Notiz bereits sehen dürfen.")
+
+
+def _create_note_activity_notifications(note, actor, recipient_ids, kind):
+    excerpt = note.plain_text[:200]
+    NoteActivityNotification.objects.bulk_create(
+        [
+            NoteActivityNotification(note=note, recipient_id=recipient_id, actor=actor, kind=kind, excerpt=excerpt)
+            for recipient_id in recipient_ids
+            if recipient_id != actor.id
+        ]
+    )
 
 
 def _set_note_tags(note, normalized_tags):
@@ -313,7 +366,7 @@ def set_trash_state(user, note_id, *, action):
 def duplicate_note(user, note_id, *, title=None, document=None, tags=None):
     source = get_accessible_note(user, note_id)
     source_document = document if document is not None else source.document
-    attachment_ids = validate_note_document(source_document)
+    attachment_ids = validate_note_document(source_document)["attachments"]
     _validate_attachment_references(source, attachment_ids)
     target = create_note(user, title=(title or f"{source.title} (Kopie)")[:200])
     id_map = {}
@@ -334,7 +387,7 @@ def duplicate_note(user, note_id, *, title=None, document=None, tags=None):
             )
             target_attachment.save()
             id_map[str(attachment.file_id).lower()] = str(target_attachment.file_id)
-    target.document = _rewrite_attachment_ids(copy.deepcopy(source_document), id_map)
+    target.document = _strip_comment_marks(_rewrite_attachment_ids(copy.deepcopy(source_document), id_map))
     target.plain_text = document_plain_text(target.document)
     target.last_edited_by = user
     target.save(update_fields=["document", "plain_text", "last_edited_by", "updated_at"])
@@ -349,6 +402,17 @@ def _rewrite_attachment_ids(node, id_map):
         attrs["attachmentId"] = id_map.get(str(attrs["attachmentId"]).lower(), attrs["attachmentId"])
     for child in node.get("content") or []:
         _rewrite_attachment_ids(child, id_map)
+    return node
+
+
+def _strip_comment_marks(node):
+    """A duplicated note starts without the source note's comment threads, so any
+    commentThread marks would otherwise dangle and fail validation on the next save."""
+    marks = node.get("marks")
+    if marks:
+        node["marks"] = [mark for mark in marks if mark.get("type") != "commentThread"]
+    for child in node.get("content") or []:
+        _strip_comment_marks(child)
     return node
 
 
@@ -430,6 +494,98 @@ def purge_expired_notes(*, now=None):
         _delete_note_files(note)
         note.delete()
     return len(notes)
+
+
+def serialize_comment_thread(thread):
+    return {
+        "thread_id": str(thread.thread_id),
+        "anchor_text": thread.anchor_text,
+        "is_resolved": thread.is_resolved,
+        "resolved_by": display_name(thread.resolved_by) if thread.resolved_by else None,
+        "created_at": thread.created_at.isoformat(),
+        "comments": [
+            {
+                "id": comment.id,
+                "author": display_name(comment.author) if comment.author else "Unbekannt",
+                "author_id": comment.author_id,
+                "body": comment.body,
+                "created_at": comment.created_at.isoformat(),
+            }
+            for comment in thread.comments.all()
+        ],
+    }
+
+
+def list_comment_threads(note):
+    threads = note.comment_threads.select_related(
+        "created_by", "created_by__profile", "resolved_by", "resolved_by__profile"
+    ).prefetch_related("comments__author", "comments__author__profile")
+    return [serialize_comment_thread(thread) for thread in threads]
+
+
+def _get_note_comment_thread(note, thread_id):
+    thread = note.comment_threads.filter(thread_id=thread_id).first()
+    if not thread:
+        raise NoteCommentThread.DoesNotExist
+    return thread
+
+
+def create_comment_thread(user, note_id, *, thread_id, anchor_text, body):
+    note = get_accessible_note(user, note_id)
+    clean_body = str(body or "").strip()
+    if not clean_body:
+        raise ValidationError("Bitte gib einen Kommentar ein.")
+    if len(clean_body) > 2000:
+        raise ValidationError("Der Kommentar ist zu lang.")
+    try:
+        parsed_thread_id = uuid.UUID(str(thread_id))
+    except (ValueError, TypeError, AttributeError) as error:
+        raise ValidationError("Der Kommentarbezug ist ungültig.") from error
+
+    thread = NoteCommentThread.objects.create(
+        note=note,
+        thread_id=parsed_thread_id,
+        anchor_text=str(anchor_text or "").strip()[:200],
+        created_by=user,
+    )
+    NoteComment.objects.create(thread=thread, author=user, body=clean_body)
+    recipients = note_accessible_user_ids(note) - {user.id}
+    if recipients:
+        _create_note_activity_notifications(note, user, recipients, NoteActivityNotification.KIND_COMMENT)
+    return thread
+
+
+def add_comment_reply(user, note_id, thread_id, body):
+    note = get_accessible_note(user, note_id)
+    thread = _get_note_comment_thread(note, thread_id)
+    clean_body = str(body or "").strip()
+    if not clean_body:
+        raise ValidationError("Bitte gib einen Kommentar ein.")
+    if len(clean_body) > 2000:
+        raise ValidationError("Der Kommentar ist zu lang.")
+    NoteComment.objects.create(thread=thread, author=user, body=clean_body)
+    recipients = note_accessible_user_ids(note) - {user.id}
+    if recipients:
+        _create_note_activity_notifications(note, user, recipients, NoteActivityNotification.KIND_COMMENT)
+    return thread
+
+
+def set_comment_thread_resolved(user, note_id, thread_id, resolved):
+    note = get_accessible_note(user, note_id)
+    thread = _get_note_comment_thread(note, thread_id)
+    thread.is_resolved = bool(resolved)
+    thread.resolved_by = user if resolved else None
+    thread.resolved_at = timezone.now() if resolved else None
+    thread.save(update_fields=["is_resolved", "resolved_by", "resolved_at"])
+    return thread
+
+
+def delete_comment_thread(user, note_id, thread_id):
+    note = get_accessible_note(user, note_id)
+    thread = _get_note_comment_thread(note, thread_id)
+    if thread.created_by_id != user.id and note.owner_id != user.id:
+        raise PermissionDenied("Nur die Ersteller*in oder die Notiz-Eigentümer*in darf diesen Kommentar löschen.")
+    thread.delete()
 
 
 def _delete_note_files(note):

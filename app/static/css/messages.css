@@ -1239,3 +1239,274 @@
     grid-template-columns: 1fr;
   }
 }
+
+.field-hint {
+  display: block;
+  margin-top: -2px;
+  color: var(--color-muted);
+  font-size: 0.76rem;
+  font-weight: 500;
+}
+
+.recipient-checkbox-list {
+  display: grid;
+  gap: 4px;
+  max-height: 180px;
+  padding: 8px;
+  overflow-y: auto;
+  background: var(--surface-control-hover);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: 12px;
+}
+
+.recipient-checkbox-list ul {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recipient-checkbox-list li label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  color: var(--color-text);
+  font-weight: 500;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.recipient-checkbox-list li label:hover {
+  background: var(--surface-selected);
+}
+
+.recipient-checkbox-list input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-accent);
+}
+
+.add-member-form {
+  display: grid;
+  grid-template-columns: 1fr 40px;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 4px;
+}
+
+.add-member-form select {
+  min-height: 40px;
+  padding: 0 10px;
+  color: var(--color-text);
+  background: var(--surface-control);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: 10px;
+  outline: 0;
+}
+
+.add-member-form button {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  color: var(--color-accent-strong);
+  background: var(--surface-control);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.add-member-form button:hover {
+  background: var(--surface-selected);
+}
+
+.message-attachment {
+  margin-bottom: 8px;
+}
+
+.message-attachment.is-image img {
+  display: block;
+  max-width: 100%;
+  max-height: 260px;
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+.attachment-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  color: inherit;
+  text-decoration: none;
+  background: rgba(255, 255, 255, 0.34);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: 12px;
+}
+
+.attachment-chip:hover {
+  border-color: rgba(181, 150, 104, 0.42);
+}
+
+.attachment-chip i {
+  color: var(--color-accent-strong);
+}
+
+.attachment-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-chip small {
+  flex-shrink: 0;
+  color: var(--color-muted);
+}
+
+.reply-quote {
+  display: grid;
+  gap: 1px;
+  margin-bottom: 6px;
+  padding: 6px 10px;
+  color: inherit;
+  text-decoration: none;
+  background: rgba(255, 255, 255, 0.30);
+  border-left: 3px solid var(--color-accent-strong);
+  border-radius: 8px;
+}
+
+.reply-quote strong {
+  color: var(--color-accent-strong);
+  font-size: 0.76rem;
+}
+
+.reply-quote span {
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bubble.is-highlighted > div {
+  animation: message-highlight-flash 1.4s ease-out;
+}
+
+@keyframes message-highlight-flash {
+  0% { box-shadow: 0 0 0 3px rgba(181, 150, 104, 0.55); }
+  100% { box-shadow: none; }
+}
+
+/* Drei Spalten: Anhang-Button, Textarea, Senden — ergaenzt die Basisregel weiter oben. */
+.compose-bar {
+  grid-template-columns: 44px 1fr 52px;
+}
+
+.attach-button {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  align-self: end;
+  place-items: center;
+  color: var(--color-accent-strong);
+  background: var(--surface-control-hover);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.attach-button:hover {
+  background: var(--surface-selected);
+}
+
+.reply-preview-strip,
+.attachment-preview-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  background: var(--surface-control);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: 12px;
+}
+
+.reply-preview-strip > div {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.reply-preview-strip strong {
+  color: var(--color-accent-strong);
+  font-size: 0.78rem;
+}
+
+.reply-preview-strip span {
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: 0.84rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-preview-chip {
+  color: var(--color-text);
+  font-size: 0.86rem;
+}
+
+.attachment-preview-chip i {
+  color: var(--color-accent-strong);
+}
+
+.attachment-preview-chip span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#cancel-reply-button,
+#cancel-attachment-button {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  place-items: center;
+  color: var(--color-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+#cancel-reply-button:hover,
+#cancel-attachment-button:hover {
+  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.typing-indicator {
+  margin: 0 2px;
+  color: var(--color-muted);
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+.typing-indicator:empty {
+  display: none;
+}
+
+[data-theme="dark"] .recipient-checkbox-list,
+[data-theme="dark"] .add-member-form select,
+[data-theme="dark"] .add-member-form button,
+[data-theme="dark"] .attachment-chip,
+[data-theme="dark"] .reply-quote,
+[data-theme="dark"] .reply-preview-strip,
+[data-theme="dark"] .attachment-preview-chip,
+[data-theme="dark"] .attach-button {
+  background: rgba(255, 255, 255, 0.06);
+}

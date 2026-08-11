@@ -292,8 +292,8 @@ function initDesktopReminderNotifications() {
       const payload = await response.json();
       (payload.notifications || []).forEach((item) => {
         const notification = new Notification(item.title, {
-          body: item.due_label ? `Fällig: ${item.due_label}` : "Eine Lunora-Erinnerung ist fällig.",
-          tag: `lunora-reminder-${item.id}`,
+          body: item.body || (item.due_label ? `Fällig: ${item.due_label}` : "Eine Lunora-Erinnerung ist fällig."),
+          tag: `lunora-notification-${item.id}`,
         });
         notification.addEventListener("click", () => {
           window.focus();

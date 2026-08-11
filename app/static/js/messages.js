@@ -138,6 +138,11 @@
       updateUnreadFilterBadge(Number(data.unread_total || 0));
       replaceOuterHtml("#messages-contact-list", data.contact_list_html);
 
+      const typingIndicator = document.getElementById("typing-indicator");
+      if (typingIndicator) {
+        typingIndicator.textContent = data.typing_label || "";
+      }
+
       const overview = document.getElementById("messages-overview");
       if (overview && typeof data.overview_html === "string") {
         overview.outerHTML = data.overview_html;
@@ -185,6 +190,38 @@
     });
   }
 
+  const csrfToken = () => document.querySelector('meta[name="csrf-token"]')?.content;
+  let lastTypingPingAt = 0;
+  const TYPING_PING_INTERVAL_MS = 3000;
+
+  document.addEventListener("input", (event) => {
+    if (!event.target.matches?.(".compose-bar textarea")) {
+      return;
+    }
+
+    const typingUrl = chatPanel?.dataset.messagesTypingUrl;
+    if (!typingUrl) {
+      return;
+    }
+
+    const now = Date.now();
+    if (now - lastTypingPingAt < TYPING_PING_INTERVAL_MS) {
+      return;
+    }
+    lastTypingPingAt = now;
+
+    fetch(typingUrl, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "X-Requested-With": "XMLHttpRequest",
+        "X-CSRFToken": csrfToken(),
+      },
+    }).catch(() => {
+      // Ein verpasster Tippt-Indikator-Ping ist unkritisch, der naechste folgt in Kuerze.
+    });
+  });
+
   const actionForm = document.getElementById("message-action-form");
   const contextMenu = document.getElementById("message-context-menu");
 
@@ -208,8 +245,35 @@
   const deleteButton = contextMenu.querySelector('[data-menu-action="delete"]');
   const pinButton = contextMenu.querySelector('[data-menu-action="pin"]');
   const pinLabel = contextMenu.querySelector("[data-menu-pin-label]");
+  const replyButton = contextMenu.querySelector('[data-menu-action="reply"]');
   const reactionGroup = contextMenu.querySelector("[data-context-reactions]");
   let activeBubble = null;
+
+  const startReplyTo = (bubble) => {
+    const strip = document.getElementById("reply-preview-strip");
+    const replyToInput = document.getElementById("compose-reply-to-id");
+    if (!strip || !replyToInput) {
+      return;
+    }
+
+    strip.querySelector("[data-reply-sender]").textContent = bubble.dataset.senderName || "";
+    strip.querySelector("[data-reply-text]").textContent = bubble.dataset.preview || "";
+    replyToInput.value = bubble.dataset.messageId;
+    strip.hidden = false;
+
+    document.querySelector(".compose-bar textarea")?.focus();
+  };
+
+  const cancelReply = () => {
+    const strip = document.getElementById("reply-preview-strip");
+    const replyToInput = document.getElementById("compose-reply-to-id");
+    if (strip) {
+      strip.hidden = true;
+    }
+    if (replyToInput) {
+      replyToInput.value = "";
+    }
+  };
 
   const hideContextMenu = () => {
     contextMenu.hidden = true;
@@ -277,6 +341,10 @@
       pinLabel.textContent = isPinned ? "Loslösen" : "Anpinnen";
     }
 
+    if (replyButton) {
+      replyButton.hidden = bubble.dataset.canReply !== "true";
+    }
+
     placeContextMenu(point || event);
     contextMenu.querySelector("button:not([hidden])")?.focus();
   };
@@ -321,10 +389,64 @@
     }
 
     const action = button.dataset.menuAction;
-    const messageId = activeBubble.dataset.messageId;
-    const emoji = button.dataset.emoji || "";
+    const bubble = activeBubble;
     hideContextMenu();
-    submitMessageAction(messageId, action, emoji);
+
+    if (action === "reply") {
+      startReplyTo(bubble);
+      return;
+    }
+
+    submitMessageAction(bubble.dataset.messageId, action, button.dataset.emoji || "");
+  });
+
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("#cancel-reply-button")) {
+      cancelReply();
+      return;
+    }
+
+    if (event.target.closest("#cancel-attachment-button")) {
+      const chip = document.getElementById("attachment-preview-chip");
+      const input = document.getElementById("compose-attachment-input");
+      if (input) {
+        input.value = "";
+      }
+      if (chip) {
+        chip.hidden = true;
+      }
+      return;
+    }
+
+    const replyQuote = event.target.closest?.(".reply-quote[data-reply-jump]");
+    if (replyQuote) {
+      const target = document.getElementById(`message-${replyQuote.dataset.replyJump}`);
+      if (target) {
+        event.preventDefault();
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+        target.classList.add("is-highlighted");
+        window.setTimeout(() => target.classList.remove("is-highlighted"), 1400);
+      }
+    }
+  });
+
+  document.addEventListener("change", (event) => {
+    if (!event.target.matches?.("#compose-attachment-input")) {
+      return;
+    }
+
+    const chip = document.getElementById("attachment-preview-chip");
+    const file = event.target.files?.[0];
+    if (!chip) {
+      return;
+    }
+
+    if (file) {
+      chip.querySelector("[data-attachment-preview-name]").textContent = file.name;
+      chip.hidden = false;
+    } else {
+      chip.hidden = true;
+    }
   });
 
   document.addEventListener("click", (event) => {

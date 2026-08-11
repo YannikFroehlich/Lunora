@@ -69,6 +69,17 @@
   border-radius: 14px;
 }
 
+/* Focus ring belongs on the rounded wrapper, not the borderless input —
+   see the "Focus rings on wrapped inputs" rule in base.css. */
+.notes-search:focus-within {
+  border-color: rgba(181, 150, 104, 0.62);
+  box-shadow: 0 0 0 3px rgba(181, 150, 104, 0.14);
+}
+
+.notes-search input:focus-visible {
+  box-shadow: none;
+}
+
 .notes-search i,
 .note-tag-editor i {
   color: var(--color-accent-strong);
@@ -424,6 +435,7 @@
 .note-toolbar select[data-format="fontFamily"] { width: 104px; }
 .note-toolbar select[data-format="fontSize"] { width: 52px; }
 .note-toolbar select[data-format="lineHeight"] { width: 58px; }
+.note-toolbar select[data-format="codeLanguage"] { width: 128px; }
 
 .toolbar-color {
   position: relative;
@@ -530,6 +542,142 @@
 .note-editor-page .tiptap td { min-width: 70px; padding: 8px; border: 1px solid rgba(120, 99, 76, 0.28); vertical-align: top; }
 .note-editor-page .tiptap th { background: rgba(194, 162, 118, 0.16); }
 .note-editor-page .selectedCell { outline: 2px solid var(--color-accent-strong); }
+
+.note-editor-page .tiptap pre {
+  margin: 1em 0;
+  padding: 14px 16px;
+  overflow-x: auto;
+  color: #e9e1d8;
+  background: #2d2925;
+  border-radius: 10px;
+  font-family: "Courier New", monospace;
+  font-size: 0.88em;
+  line-height: 1.5;
+}
+
+.note-editor-page .tiptap code {
+  font-family: "Courier New", monospace;
+}
+
+.note-editor-page .tiptap pre code {
+  padding: 0;
+  color: inherit;
+  background: none;
+}
+
+.note-editor-page .tiptap pre .hljs-comment,
+.note-editor-page .tiptap pre .hljs-quote {
+  color: #9c8f7f;
+  font-style: italic;
+}
+
+.note-editor-page .tiptap pre .hljs-keyword,
+.note-editor-page .tiptap pre .hljs-selector-tag,
+.note-editor-page .tiptap pre .hljs-literal,
+.note-editor-page .tiptap pre .hljs-tag {
+  color: #e2b98b;
+}
+
+.note-editor-page .tiptap pre .hljs-string,
+.note-editor-page .tiptap pre .hljs-attr,
+.note-editor-page .tiptap pre .hljs-attribute,
+.note-editor-page .tiptap pre .hljs-regexp,
+.note-editor-page .tiptap pre .hljs-addition {
+  color: #b7c98a;
+}
+
+.note-editor-page .tiptap pre .hljs-title,
+.note-editor-page .tiptap pre .hljs-name,
+.note-editor-page .tiptap pre .hljs-section {
+  color: #e8cf9a;
+  font-weight: 700;
+}
+
+.note-editor-page .tiptap pre .hljs-number,
+.note-editor-page .tiptap pre .hljs-symbol {
+  color: #cf9fc7;
+}
+
+.note-editor-page .tiptap pre .hljs-type,
+.note-editor-page .tiptap pre .hljs-built_in,
+.note-editor-page .tiptap pre .hljs-builtin-name,
+.note-editor-page .tiptap pre .hljs-class .hljs-title {
+  color: #93b8c9;
+}
+
+.note-editor-page .tiptap pre .hljs-variable,
+.note-editor-page .tiptap pre .hljs-template-variable,
+.note-editor-page .tiptap pre .hljs-deletion {
+  color: #d3a5a5;
+}
+
+.note-mention {
+  padding: 1px 6px;
+  color: var(--color-accent-strong);
+  font-weight: 650;
+  background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+  border-radius: 999px;
+}
+
+.note-comment-mark {
+  background: rgba(241, 217, 158, 0.42);
+  border-bottom: 2px solid var(--color-accent-strong);
+}
+
+.note-comment-mark.is-highlighted {
+  animation: comment-highlight-flash 1.4s ease-out;
+}
+
+@keyframes comment-highlight-flash {
+  0% { background: rgba(241, 217, 158, 0.85); }
+  100% { background: rgba(241, 217, 158, 0.42); }
+}
+
+.mention-suggestion-popup {
+  position: fixed;
+  z-index: 9999;
+  display: grid;
+  min-width: 200px;
+  max-width: 280px;
+  max-height: 240px;
+  padding: 6px;
+  overflow-y: auto;
+  background: rgba(255, 250, 242, 0.98);
+  border: 1px solid rgba(181, 150, 104, 0.28);
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(58, 45, 29, 0.18);
+  backdrop-filter: blur(18px);
+}
+
+.mention-suggestion-popup[hidden] {
+  display: none;
+}
+
+.mention-suggestion-option {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  color: #332d27;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.mention-suggestion-option.is-active,
+.mention-suggestion-option:hover {
+  background: rgba(194, 162, 118, 0.22);
+}
+
+[data-theme="dark"] .mention-suggestion-popup {
+  background: rgba(45, 41, 37, 0.98);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+[data-theme="dark"] .mention-suggestion-option {
+  color: #e9e1d8;
+}
 
 .note-image {
   display: block;
@@ -655,6 +803,77 @@
 .share-row select { width: 118px; }
 
 .dialog-hint { color: var(--color-muted); line-height: 1.45; }
+.comment-thread-list { display: grid; gap: 10px; min-height: 200px; max-height: 60dvh; overflow-y: auto; }
+
+.comment-thread-row {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  background: var(--surface-control);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: 13px;
+}
+
+.comment-thread-row.is-resolved {
+  opacity: 0.62;
+}
+
+.comment-thread-anchor {
+  padding: 6px 9px;
+  color: var(--color-accent-strong);
+  font-size: 0.86rem;
+  font-style: italic;
+  text-align: left;
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  border: 0;
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.comment-list {
+  display: grid;
+  gap: 8px;
+}
+
+.comment-item strong {
+  display: block;
+  color: var(--color-heading);
+  font-size: 0.86rem;
+}
+
+.comment-item p {
+  margin: 2px 0;
+  line-height: 1.4;
+}
+
+.comment-item small {
+  color: var(--color-muted);
+  font-size: 0.76rem;
+}
+
+.comment-reply-form input {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 12px;
+  color: var(--color-text);
+  background: var(--surface-control-hover);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: 10px;
+  outline: 0;
+}
+
+.comment-thread-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.comment-thread-actions button {
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 9px;
+}
+
 .shortcut-list { min-height: 260px; max-height: 50dvh; }
 .shortcut-row { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(180px, 0.75fr) 36px; align-items: center; }
 .shortcut-row input { width: 100%; }

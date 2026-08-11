@@ -4,7 +4,7 @@ from datetime import datetime, time, timedelta
 from django.db.models import F, Q
 from django.utils import timezone
 
-from app.models import CalendarEvent, CalendarReminder, NoteShare
+from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, NoteShare
 from app.services.message_queries import unread_total_for_user
 from app.services.system_settings import feature_enabled, feature_flags
 from app.services.user_preferences import (
@@ -12,6 +12,7 @@ from app.services.user_preferences import (
     format_user_datetime,
     format_user_time,
     get_user_month_name,
+    get_user_time_format,
     get_user_weekday_name,
     get_user_zoneinfo,
     get_user_timezone_name,
@@ -45,6 +46,7 @@ def get_dashboard_context(user=None):
             "month": get_user_month_name(now, user),
             "year": now.strftime("%Y"),
             "timezone": get_user_timezone_name(user),
+            "time_format": get_user_time_format(user),
         },
         "nav_tiles": nav_tiles,
         "recent_tools": _dashboard_tool_shortcuts(
@@ -181,13 +183,22 @@ def get_settings_context(preferences_form=None):
     return context
 
 
+def _display_name(user):
+    profile_name = getattr(getattr(user, "profile", None), "display_name", "")
+    return profile_name or user.get_full_name() or user.email or user.get_username()
+
+
+def _calendar_visible_events_query(user):
+    """Events the user owns (from a visible source or manually created) plus events they were invited to."""
+    return CalendarEvent.objects.filter(
+        (Q(user=user) & (Q(source__isnull=True) | Q(source__is_visible=True))) | Q(attendees__user=user)
+    ).distinct()
+
+
 def _dashboard_upcoming_events(user, now):
     events = (
-        CalendarEvent.objects.filter(
-            Q(source__isnull=True) | Q(source__is_visible=True),
-            user=user,
-            end_at__gte=now,
-        )
+        _calendar_visible_events_query(user)
+        .filter(end_at__gte=now)
         .select_related("source")
         .order_by("start_at")[:5]
     )
@@ -221,12 +232,8 @@ def get_calendar_context(user, *, year=None, month=None):
     range_start = timezone.make_aware(datetime.combine(visible_start, time.min), user_timezone)
     range_end = timezone.make_aware(datetime.combine(visible_end, time.min), user_timezone)
     events = list(
-        CalendarEvent.objects.filter(
-            Q(source__isnull=True) | Q(source__is_visible=True),
-            user=user,
-            start_at__lt=range_end,
-            end_at__gt=range_start,
-        )
+        _calendar_visible_events_query(user)
+        .filter(start_at__lt=range_end, end_at__gt=range_start)
         .select_related("source")
         .order_by("start_at", "title")
     )
@@ -249,6 +256,7 @@ def get_calendar_context(user, *, year=None, month=None):
                             "label": event.title,
                             "tone": _calendar_event_tone(event),
                             "time": _calendar_event_time_label(event, user),
+                            "is_invited": event.user_id != user.id,
                         }
                         for event in day_events[:3]
                     ],
@@ -263,6 +271,7 @@ def get_calendar_context(user, *, year=None, month=None):
             "title": event.title,
             "icon": "fa-calendar-day",
             "tone": _calendar_event_tone(event),
+            "is_invited": event.user_id != user.id,
         }
         for event in events_by_date.get(now.date(), [])
     ]
@@ -297,6 +306,7 @@ def get_calendar_context(user, *, year=None, month=None):
             "chart_bars": chart_bars,
         },
         "reminders": reminder_items,
+        "pending_invitations": _pending_invitation_items(user),
         "calendar_reminders_enabled": calendar_reminders_enabled,
         "calendar_event_creation_enabled": feature_enabled("calendar_event_creation"),
         "calendar_sync_enabled": feature_enabled("calendar_sync"),
@@ -332,11 +342,8 @@ def _calendar_event_tone(event):
 
 def _upcoming_calendar_events(user, now):
     events = (
-        CalendarEvent.objects.filter(
-            Q(source__isnull=True) | Q(source__is_visible=True),
-            user=user,
-            end_at__gte=now,
-        )
+        _calendar_visible_events_query(user)
+        .filter(end_at__gte=now)
         .select_related("source")
         .order_by("start_at")[:6]
     )
@@ -344,11 +351,37 @@ def _upcoming_calendar_events(user, now):
         {
             "date": format_user_date(event.start_at, user),
             "title": event.title,
-            "category": event.source.name if event.source_id else "Eigener Termin",
+            "category": _calendar_event_category(event, user),
             "icon": "fa-calendar-day",
             "tone": _calendar_event_tone(event),
+            "is_invited": event.user_id != user.id,
         }
         for event in events
+    ]
+
+
+def _calendar_event_category(event, user):
+    if event.source_id:
+        return event.source.name
+    if event.user_id != user.id:
+        return "Einladung"
+    return "Eigener Termin"
+
+
+def _pending_invitation_items(user):
+    attendee_rows = (
+        CalendarEventAttendee.objects.filter(user=user, status=CalendarEventAttendee.STATUS_INVITED)
+        .select_related("event", "event__user", "event__user__profile")
+        .order_by("event__start_at")[:10]
+    )
+    return [
+        {
+            "attendee_id": row.id,
+            "event_title": row.event.title,
+            "organizer_name": _display_name(row.event.user),
+            "when": format_user_datetime(row.event.start_at, user),
+        }
+        for row in attendee_rows
     ]
 
 

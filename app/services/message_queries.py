@@ -37,6 +37,7 @@ def last_messages_by_conversation(conversations):
         for message in ChatMessage.objects.filter(pk__in=message_ids_by_conversation.values()).select_related(
             "sender",
             "sender__profile",
+            "attachment",
         )
     }
     return {

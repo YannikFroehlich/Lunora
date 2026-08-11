@@ -5,7 +5,12 @@ from django.utils import timezone
 
 from app.models import CalendarSource
 from app.services.calendar_service import sync_calendar_source
-from app.services.notifications import send_due_reminder_emails, send_weekly_summaries
+from app.services.notifications import (
+    send_due_reminder_emails,
+    send_new_invitation_emails,
+    send_note_activity_emails,
+    send_weekly_summaries,
+)
 from app.services.system_settings import feature_enabled
 
 
@@ -19,10 +24,20 @@ def run_scheduled_tasks(*, now=None):
         reminder_result = send_due_reminder_emails(now=current_time)
     else:
         reminder_result = {"sent": 0, "failed": 0, "disabled": True}
+    if feature_enabled("calendar_event_creation"):
+        invitation_result = send_new_invitation_emails(now=current_time)
+    else:
+        invitation_result = {"sent": 0, "failed": 0, "disabled": True}
+    if feature_enabled("notes"):
+        note_activity_result = send_note_activity_emails(now=current_time)
+    else:
+        note_activity_result = {"sent": 0, "failed": 0, "disabled": True}
     weekly_result = send_weekly_summaries(now=current_time)
     return {
         "calendar_sync": sync_result,
         "reminder_emails": reminder_result,
+        "event_invitation_emails": invitation_result,
+        "note_activity_emails": note_activity_result,
         "weekly_summaries": weekly_result,
     }
 

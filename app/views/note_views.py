@@ -10,23 +10,29 @@ from django.shortcuts import redirect, render
 from django.utils.http import content_disposition_header
 from django.views.decorators.http import require_http_methods
 
-from app.models import Note, NoteAttachment, NoteShare, NoteVersion, Profile
+from app.models import Note, NoteAttachment, NoteCommentThread, NoteShare, NoteVersion, Profile
 from app.services.note_files import NOTE_FILE_ACCEPT, NOTE_IMAGE_ACCEPT
 from app.services.note_pdf import note_pdf_filename, render_note_pdf
 from app.services.notes import (
     NoteConflictError,
     accessible_notes,
+    add_comment_reply,
     create_attachment,
+    create_comment_thread,
     create_note,
+    delete_comment_thread,
     display_name,
     duplicate_note,
     get_accessible_note,
+    list_comment_threads,
     mark_shared_note_opened,
+    note_accessible_user_ids,
     remove_note_share,
     restore_note_version,
     save_note,
     serialize_note,
     serialize_version,
+    set_comment_thread_resolved,
     set_personal_state,
     set_trash_state,
     share_note,
@@ -305,6 +311,90 @@ def note_share_candidates_api(request):
             "users": [{"id": user.id, "name": display_name(user), "email": user.email} for user in users],
         }
     )
+
+
+@login_required
+@require_http_methods(["GET"])
+def note_mention_candidates_api(request, note_id):
+    disabled = _feature_guard(request, json_response=True)
+    if disabled:
+        return disabled
+    try:
+        note = get_accessible_note(request.user, note_id)
+    except Note.DoesNotExist:
+        return _error_response("Notiz nicht gefunden.", status=404)
+
+    query = request.GET.get("q", "").strip()
+    users = (
+        get_user_model().objects.filter(is_active=True, pk__in=note_accessible_user_ids(note))
+        .exclude(pk=request.user.id)
+        .select_related("profile")
+    )
+    if query:
+        users = users.filter(Q(first_name__icontains=query) | Q(username__icontains=query) | Q(email__icontains=query))
+    return JsonResponse(
+        {
+            "ok": True,
+            "users": [{"id": user.id, "name": display_name(user)} for user in users[:10]],
+        }
+    )
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def note_comments_api(request, note_id):
+    disabled = _feature_guard(request, json_response=True)
+    if disabled:
+        return disabled
+    try:
+        note = get_accessible_note(request.user, note_id)
+        if request.method == "POST":
+            payload = _json_body(request)
+            create_comment_thread(
+                request.user,
+                note_id,
+                thread_id=payload.get("thread_id"),
+                anchor_text=payload.get("anchor_text", ""),
+                body=payload.get("body"),
+            )
+        return JsonResponse({"ok": True, "threads": list_comment_threads(note)})
+    except Note.DoesNotExist:
+        return _error_response("Notiz nicht gefunden.", status=404)
+    except PermissionDenied as error:
+        return _error_response(error, status=403)
+    except ValidationError as error:
+        return _error_response(error)
+
+
+@login_required
+@require_http_methods(["POST", "DELETE"])
+def note_comment_thread_api(request, note_id, thread_id):
+    disabled = _feature_guard(request, json_response=True)
+    if disabled:
+        return disabled
+    try:
+        if request.method == "DELETE":
+            delete_comment_thread(request.user, note_id, thread_id)
+            return JsonResponse({"ok": True})
+
+        payload = _json_body(request)
+        action = payload.get("action")
+        if action == "reply":
+            add_comment_reply(request.user, note_id, thread_id, payload.get("body"))
+        elif action == "resolve":
+            set_comment_thread_resolved(request.user, note_id, thread_id, True)
+        elif action == "reopen":
+            set_comment_thread_resolved(request.user, note_id, thread_id, False)
+        else:
+            raise ValidationError("Unbekannte Kommentaraktion.")
+        note = get_accessible_note(request.user, note_id)
+        return JsonResponse({"ok": True, "threads": list_comment_threads(note)})
+    except (Note.DoesNotExist, NoteCommentThread.DoesNotExist):
+        return _error_response("Kommentar nicht gefunden.", status=404)
+    except PermissionDenied as error:
+        return _error_response(error, status=403)
+    except ValidationError as error:
+        return _error_response(error)
 
 
 @login_required

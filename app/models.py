@@ -5,6 +5,7 @@ from django.db import models
 from django.db.models import Count, Exists, OuterRef, Prefetch
 from django.utils import timezone
 
+from app.services.chat_files import chat_upload_to
 from app.services.image_uploads import validate_profile_image_file
 from app.services.note_content import empty_note_document
 from app.services.note_files import note_upload_to, private_note_storage
@@ -160,6 +161,8 @@ class Conversation(models.Model):
     def avatar_for(self, user):
         if self.title:
             return "".join(word[0] for word in self.title.split()[:2]).upper() or "GR"
+        if self.is_group:
+            return "GR"
         other = next((member.user for member in self.member_rows.all() if member.user_id != user.id), None)
         return self.initials_for_user(other or user)
 
@@ -207,6 +210,7 @@ class ConversationMember(models.Model):
     is_blocked = models.BooleanField(default=False)
     muted_until = models.DateTimeField(blank=True, null=True)
     last_read_at = models.DateTimeField(blank=True, null=True)
+    typing_until = models.DateTimeField(blank=True, null=True)
     joined_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -243,6 +247,13 @@ class ChatMessage(models.Model):
         blank=True,
         null=True,
         related_name="pinned_chat_messages",
+    )
+    reply_to = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="replies",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     edited_at = models.DateTimeField(blank=True, null=True)
@@ -288,6 +299,34 @@ class ChatMessageReaction(models.Model):
 
     def __str__(self):
         return f"{self.emoji} von {self.user}"
+
+
+class ChatMessageAttachment(models.Model):
+    KIND_IMAGE = "image"
+    KIND_FILE = "file"
+    KIND_CHOICES = [(KIND_IMAGE, "Bild"), (KIND_FILE, "Datei")]
+
+    message = models.OneToOneField(ChatMessage, on_delete=models.CASCADE, related_name="attachment")
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="chat_attachments",
+    )
+    file_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    file = models.FileField(storage=private_note_storage, upload_to=chat_upload_to, max_length=500)
+    kind = models.CharField(max_length=10, choices=KIND_CHOICES)
+    original_name = models.CharField(max_length=255)
+    content_type = models.CharField(max_length=160)
+    size = models.PositiveBigIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return self.original_name
 
 
 class CalendarSource(models.Model):
@@ -347,6 +386,40 @@ class CalendarEvent(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class CalendarEventAttendee(models.Model):
+    STATUS_INVITED = "invited"
+    STATUS_ACCEPTED = "accepted"
+    STATUS_DECLINED = "declined"
+    STATUS_CHOICES = [
+        (STATUS_INVITED, "Eingeladen"),
+        (STATUS_ACCEPTED, "Zugesagt"),
+        (STATUS_DECLINED, "Abgesagt"),
+    ]
+
+    event = models.ForeignKey(CalendarEvent, on_delete=models.CASCADE, related_name="attendees")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="calendar_invitations")
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=STATUS_INVITED)
+    invited_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="+",
+    )
+    responded_at = models.DateTimeField(blank=True, null=True)
+    email_notified_at = models.DateTimeField(blank=True, null=True)
+    desktop_notified_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["event", "user"], name="unique_attendee_per_event"),
+        ]
+
+    def __str__(self):
+        return f"{self.user} @ {self.event}"
 
 
 class CalendarReminder(models.Model):
@@ -518,3 +591,85 @@ class NoteVersion(models.Model):
 
     def __str__(self):
         return f"{self.note} – Revision {self.source_revision}"
+
+
+class NoteCommentThread(models.Model):
+    note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name="comment_threads")
+    thread_id = models.UUIDField(unique=True)
+    anchor_text = models.CharField(max_length=200, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="+",
+    )
+    is_resolved = models.BooleanField(default=False)
+    resolved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="+",
+    )
+    resolved_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return self.anchor_text[:60] or str(self.thread_id)
+
+
+class NoteComment(models.Model):
+    thread = models.ForeignKey(NoteCommentThread, on_delete=models.CASCADE, related_name="comments")
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="+",
+    )
+    body = models.TextField(max_length=2000)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return self.body[:60]
+
+
+class NoteActivityNotification(models.Model):
+    KIND_MENTION = "mention"
+    KIND_COMMENT = "comment"
+    KIND_CHOICES = [
+        (KIND_MENTION, "Erwähnung"),
+        (KIND_COMMENT, "Kommentar"),
+    ]
+
+    note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name="activity_notifications")
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="note_activity_notifications",
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="+",
+    )
+    kind = models.CharField(max_length=10, choices=KIND_CHOICES)
+    excerpt = models.CharField(max_length=200, blank=True)
+    email_notified_at = models.DateTimeField(blank=True, null=True)
+    desktop_notified_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"{self.get_kind_display()} für {self.recipient}"

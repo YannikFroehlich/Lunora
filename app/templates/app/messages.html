@@ -38,10 +38,15 @@
                     {% csrf_token %}
                     <input type="hidden" name="form_name" value="start_conversation">
                     <label>
-                        Kontakt
-                        {{ start_form.recipient }}
+                        Kontakt(e)
+                        <span class="field-hint">Mehrere ausgewählte Kontakte starten eine Gruppe.</span>
+                        <div class="recipient-checkbox-list">{{ start_form.recipient }}</div>
                     </label>
                     {% if start_form.recipient.errors %}<small class="form-error">{{ start_form.recipient.errors|striptags }}</small>{% endif %}
+                    <label>
+                        Gruppenname (optional)
+                        {{ start_form.title }}
+                    </label>
                     <label>
                         Erste Nachricht
                         {{ start_form.body }}
@@ -54,7 +59,7 @@
             {% include "app/partials/messages_contact_list.html" %}
         </aside>
 
-        <section class="glass-panel chat-panel" data-messages-live-url="{% if selected_conversation %}{% url 'messages_live_detail_updates' selected_conversation.id %}{% else %}{% url 'messages_live_updates' %}{% endif %}">
+        <section class="glass-panel chat-panel" data-messages-live-url="{% if selected_conversation %}{% url 'messages_live_detail_updates' selected_conversation.id %}{% else %}{% url 'messages_live_updates' %}{% endif %}" {% if selected_conversation %}data-messages-typing-url="{% url 'messages_typing_ping' selected_conversation.id %}"{% endif %}>
             {% if selected_conversation %}
             <header class="chat-header">
                 <span class="avatar">
@@ -82,6 +87,7 @@
                     <button type="button" role="menuitem" data-menu-action="reaction" data-emoji="{{ emoji }}" aria-label="Mit {{ emoji }} reagieren">{{ emoji }}</button>
                     {% endfor %}
                 </div>
+                <button type="button" role="menuitem" data-menu-action="reply"><i class="fa-solid fa-reply"></i> Antworten</button>
                 <button type="button" role="menuitem" data-menu-action="pin"><i class="fa-solid fa-thumbtack"></i><span data-menu-pin-label>Anpinnen</span></button>
                 <button class="is-danger" type="button" role="menuitem" data-menu-action="delete"><i class="fa-solid fa-trash"></i> Löschen</button>
             </div>
@@ -94,6 +100,8 @@
                 <input type="hidden" name="action" value="">
                 <input type="hidden" name="emoji" value="">
             </form>
+
+            <div class="typing-indicator" id="typing-indicator" aria-live="polite"></div>
 
             <div id="message-compose-region" data-compose-blocked="{% if current_member_state.is_blocked or current_member_state.blocked_by_recipient %}true{% else %}false{% endif %}">
                 {% include "app/partials/messages_compose.html" %}
@@ -170,6 +178,30 @@
                     <span><strong>{{ member.name }}</strong><small>{{ member.status }}</small></span>
                 </div>
                 {% endfor %}
+                {% if selected_conversation.is_group %}
+                {% if available_recipients %}
+                <form class="add-member-form" method="post" action="{% url 'messages_detail' selected_conversation.id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="member_action">
+                    <input type="hidden" name="conversation_id" value="{{ selected_conversation.id }}">
+                    <input type="hidden" name="action" value="add_member">
+                    <select name="new_member" aria-label="Mitglied hinzufügen" required>
+                        <option value="" selected disabled>Mitglied hinzufügen ...</option>
+                        {% for candidate in available_recipients %}
+                        <option value="{{ candidate.id }}">{{ candidate.get_full_name|default:candidate.email }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" aria-label="Hinzufügen"><i class="fa-solid fa-user-plus"></i></button>
+                </form>
+                {% endif %}
+                <form method="post" action="{% url 'messages_detail' selected_conversation.id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="member_action">
+                    <input type="hidden" name="conversation_id" value="{{ selected_conversation.id }}">
+                    <input type="hidden" name="action" value="leave_group">
+                    <button class="management-wide-button is-danger" type="submit"><i class="fa-solid fa-right-from-bracket"></i> Gruppe verlassen</button>
+                </form>
+                {% endif %}
             </section>
             {% else %}
             <div class="empty-card details-empty">
