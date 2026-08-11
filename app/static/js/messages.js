@@ -148,6 +148,15 @@
         pinnedRegion.innerHTML = data.pinned_messages_html;
       }
 
+      const composeRegion = document.getElementById("message-compose-region");
+      if (composeRegion && typeof data.compose_html === "string") {
+        const isBlocked = String(Boolean(data.compose_blocked));
+        if (composeRegion.dataset.composeBlocked !== isBlocked) {
+          composeRegion.innerHTML = data.compose_html;
+          composeRegion.dataset.composeBlocked = isBlocked;
+        }
+      }
+
       const messageStream = document.getElementById("message-stream");
       if (messageStream && typeof data.message_stream_html === "string") {
         const shouldScrollDown = isNearBottom(messageStream);

@@ -53,6 +53,9 @@ def messages(request, conversation_id=None):
             if current_member and current_member.is_blocked:
                 django_messages.error(request, "Du hast diesen Chat blockiert. Hebe die Blockierung auf, um wieder zu schreiben.")
                 return redirect("messages_detail", conversation_id=selected_conversation.id)
+            if _conversation_blocked_for_sender(selected_conversation, request.user):
+                django_messages.error(request, "Diese Nachricht konnte nicht gesendet werden.")
+                return redirect("messages_detail", conversation_id=selected_conversation.id)
             if message_form.is_valid():
                 message = message_form.save(commit=False)
                 message.conversation = selected_conversation
@@ -83,7 +86,7 @@ def messages(request, conversation_id=None):
                     ).update(is_archived=False)
 
                 body = start_form.cleaned_data.get("body")
-                if body:
+                if body and not _conversation_blocked_for_sender(selected_conversation, request.user):
                     message = ChatMessage.objects.create(
                         conversation=selected_conversation,
                         sender=request.user,
@@ -91,6 +94,8 @@ def messages(request, conversation_id=None):
                     )
                     selected_conversation.updated_at = message.created_at
                     selected_conversation.save(update_fields=["updated_at"])
+                elif body:
+                    django_messages.error(request, "Diese Nachricht konnte nicht gesendet werden.")
                 selected_conversation.mark_read_for(request.user)
                 return redirect("messages_detail", conversation_id=selected_conversation.id)
 
@@ -167,7 +172,7 @@ def messages(request, conversation_id=None):
     pinned_message_items = _build_pinned_message_items(selected_conversation, request.user) if selected_conversation else []
     selected_members = _build_member_items(selected_conversation, request.user) if selected_conversation else []
     current_member = _get_conversation_member(selected_conversation, request.user) if selected_conversation else None
-    current_member_state = _build_current_member_state(current_member, request.user)
+    current_member_state = _build_current_member_state(current_member, request.user, selected_conversation)
 
     context = {
         "active_page": "messages",
@@ -231,6 +236,7 @@ def messages_live_updates(request, conversation_id=None):
         "conversation_total": len(all_inbox_items),
         "overview_items": _build_messages_overview_items(all_inbox_items),
         "reaction_emojis": MESSAGE_REACTION_EMOJIS,
+        "message_form": MessageForm(),
     }
 
     payload = {
@@ -251,14 +257,19 @@ def messages_live_updates(request, conversation_id=None):
                 "has_older_messages": message_window["has_older_messages"],
                 "oldest_message_id": message_window["oldest_message_id"],
                 "pinned_message_items": pinned_message_items,
-                "current_member_state": _build_current_member_state(current_member, request.user),
+                "current_member_state": _build_current_member_state(current_member, request.user, selected_conversation),
             }
         )
+        current_member_state = context["current_member_state"]
         payload.update(
             {
                 "selected_conversation_id": selected_conversation.id,
                 "message_stream_html": render_to_string("app/partials/messages_stream.html", context, request=request),
                 "pinned_messages_html": render_to_string("app/partials/messages_pinned.html", context, request=request),
+                "compose_html": render_to_string("app/partials/messages_compose.html", context, request=request),
+                "compose_blocked": bool(
+                    current_member_state["is_blocked"] or current_member_state["blocked_by_recipient"]
+                ),
                 "last_message_id": message_items[-1]["message"].id if message_items else None,
             }
         )
@@ -281,6 +292,13 @@ def _get_conversation_member(conversation, user):
         (member for member in conversation.member_rows.all() if member.user_id == user.id),
         None,
     )
+
+
+def _conversation_blocked_for_sender(conversation, user):
+    """Whether the other side of a direct conversation has blocked it, so `user` cannot send."""
+    if not conversation or conversation.is_group:
+        return False
+    return any(member.is_blocked for member in _other_conversation_members(conversation, user))
 
 
 def _apply_conversation_member_action(conversation, user, action):
@@ -313,12 +331,13 @@ def _apply_conversation_member_action(conversation, user, action):
         member.save(update_fields=update_fields)
 
 
-def _build_current_member_state(member, user):
+def _build_current_member_state(member, user, conversation=None):
     if not member:
         return {
             "is_muted": False,
             "muted_until_label": "",
             "is_blocked": False,
+            "blocked_by_recipient": False,
         }
 
     is_muted = member.is_muted
@@ -326,6 +345,7 @@ def _build_current_member_state(member, user):
         "is_muted": is_muted,
         "muted_until_label": format_user_datetime(member.muted_until, user) if is_muted else "",
         "is_blocked": member.is_blocked,
+        "blocked_by_recipient": _conversation_blocked_for_sender(conversation, user),
     }
 
 

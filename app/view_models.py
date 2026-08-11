@@ -111,20 +111,6 @@ def _dashboard_nav_tiles(user, unread_messages_total, new_note_shares, flags):
     return tiles
 
 
-def _dashboard_tool_shortcuts(upcoming_events, unread_messages_total, dashboard_weather):
-    event_count = len(upcoming_events)
-    event_subtitle = f"{event_count} kommende Termine" if event_count else "Kalender oeffnen"
-    unread_subtitle = f"{unread_messages_total} ungelesen" if unread_messages_total else "Inbox oeffnen"
-    weather_city = dashboard_weather.get("today", {}).get("city", "Standardort")
-
-    return [
-        {"title": "Kalender", "subtitle": event_subtitle, "icon": "fa-calendar-check", "url_name": "calendar"},
-        {"title": "Wetter", "subtitle": weather_city, "icon": "fa-cloud-sun", "url_name": "weather"},
-        {"title": "Nachrichten", "subtitle": unread_subtitle, "icon": "fa-message", "url_name": "messages"},
-        {"title": "Einstellungen", "subtitle": "Profil & Präferenzen", "icon": "fa-gear", "url_name": "settings"},
-    ]
-
-
 def _dashboard_tool_shortcuts(upcoming_events, unread_messages_total, dashboard_weather, new_note_shares, flags):
     event_count = len(upcoming_events)
     event_subtitle = f"{event_count} kommende Termine" if event_count else "Kalender oeffnen"

@@ -48,6 +48,15 @@ def env_int(name, default=0):
         raise ImproperlyConfigured(f"{name} muss eine ganze Zahl sein.") from error
 
 
+def env_admins(name, default=""):
+    """Parse "Name:email,Name:email" (or plain emails) into Django's ADMINS format."""
+    admins = []
+    for entry in env_list(name, default):
+        admin_name, _sep, email = entry.partition(":")
+        admins.append((admin_name.strip(), email.strip() or admin_name.strip()))
+    return admins
+
+
 load_env_file(BASE_DIR / ".env")
 
 DEBUG = env_bool("DJANGO_DEBUG", True)
@@ -170,6 +179,39 @@ EMAIL_USE_TLS = env_bool("DJANGO_EMAIL_USE_TLS", True)
 EMAIL_USE_SSL = env_bool("DJANGO_EMAIL_USE_SSL", False)
 EMAIL_TIMEOUT = env_int("DJANGO_EMAIL_TIMEOUT", 10)
 DEFAULT_FROM_EMAIL = os.getenv("DJANGO_DEFAULT_FROM_EMAIL", "Lunora <noreply@localhost>")
+
+# Empty by default: harmless while running locally with DEBUG=true. Set DJANGO_ADMINS
+# once this is deployed with DEBUG=false and a real e-mail backend, and Django emails
+# these addresses automatically on unhandled server errors.
+ADMINS = env_admins("DJANGO_ADMINS")
+MANAGERS = ADMINS
+SERVER_EMAIL = os.getenv("DJANGO_SERVER_EMAIL", DEFAULT_FROM_EMAIL)
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "filters": {
+        "require_debug_false": {"()": "django.utils.log.RequireDebugFalse"},
+    },
+    "handlers": {
+        "console": {
+            "level": "WARNING",
+            "class": "logging.StreamHandler",
+        },
+        "mail_admins": {
+            "level": "ERROR",
+            "filters": ["require_debug_false"],
+            "class": "django.utils.log.AdminEmailHandler",
+        },
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console", "mail_admins"],
+            "level": "INFO",
+            "propagate": False,
+        },
+    },
+}
 
 LUNORA_AUTOMATION_INTERVAL_SECONDS = env_int("LUNORA_AUTOMATION_INTERVAL_SECONDS", 60)
 LUNORA_WEEKLY_SUMMARY_HOUR = env_int("LUNORA_WEEKLY_SUMMARY_HOUR", 8)

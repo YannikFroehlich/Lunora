@@ -3,6 +3,7 @@ from datetime import datetime, time, timedelta
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm, UsernameField
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.core.files.storage import default_storage
 from django.db.models import Q
 
@@ -10,6 +11,14 @@ from app.models import CalendarEvent, CalendarReminder, CalendarSource, ChatMess
 from app.services.image_uploads import PROFILE_IMAGE_ACCEPT, validate_profile_image_file
 from app.services.user_preferences import get_user_zoneinfo, localtime_for_user
 from app.services.url_safety import validate_calendar_url
+
+
+LOGIN_ATTEMPT_LIMIT = 5
+LOGIN_ATTEMPT_LOCKOUT_SECONDS = 15 * 60
+
+
+def _login_attempt_cache_key(identifier):
+    return f"login-attempts:{identifier.strip().casefold()}"
 
 
 class EmailLoginForm(AuthenticationForm):
@@ -25,10 +34,36 @@ class EmailLoginForm(AuthenticationForm):
     )
 
     def clean(self):
-        identifier = self.cleaned_data.get("username")
-        if identifier:
-            self.cleaned_data["username"] = self._resolve_username(identifier)
-        return super().clean()
+        """Throttle repeated failed logins per resolved identifier.
+
+        Keyed on the resolved username (not the raw input) so alternating between
+        an account's e-mail and username doesn't reset the attempt count. This uses
+        the default cache, so the counter is per-process — sufficient for a single
+        local `runserver` process, but it would need a shared cache backend (e.g.
+        Redis) to hold up across multiple WSGI workers.
+        """
+        raw_identifier = self.cleaned_data.get("username")
+        resolved_identifier = self._resolve_username(raw_identifier) if raw_identifier else None
+        if resolved_identifier:
+            self.cleaned_data["username"] = resolved_identifier
+            cache_key = _login_attempt_cache_key(resolved_identifier)
+            if cache.get(cache_key, 0) >= LOGIN_ATTEMPT_LIMIT:
+                raise forms.ValidationError(
+                    "Zu viele fehlgeschlagene Anmeldeversuche. Bitte warte einige Minuten und versuche es erneut.",
+                    code="login_locked",
+                )
+
+        try:
+            cleaned_data = super().clean()
+        except forms.ValidationError:
+            if resolved_identifier:
+                cache_key = _login_attempt_cache_key(resolved_identifier)
+                cache.set(cache_key, cache.get(cache_key, 0) + 1, LOGIN_ATTEMPT_LOCKOUT_SECONDS)
+            raise
+
+        if resolved_identifier:
+            cache.delete(_login_attempt_cache_key(resolved_identifier))
+        return cleaned_data
 
     def _resolve_username(self, identifier):
         identifier = identifier.strip()
@@ -302,7 +337,11 @@ class ConversationStartForm(forms.Form):
 
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
-        users = User.objects.exclude(pk=getattr(user, "pk", None)).order_by("first_name", "email", "username")
+        users = (
+            User.objects.filter(is_active=True)
+            .exclude(pk=getattr(user, "pk", None))
+            .order_by("first_name", "email", "username")
+        )
         self.fields["recipient"].queryset = users
 
     def clean_body(self):

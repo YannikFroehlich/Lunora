@@ -272,6 +272,9 @@ def note_shares_api(request, note_id):
 @login_required
 @require_http_methods(["DELETE"])
 def note_share_delete_api(request, note_id, user_id):
+    disabled = _feature_guard(request, json_response=True)
+    if disabled:
+        return disabled
     try:
         remove_note_share(request.user, note_id, user_id)
         return JsonResponse({"ok": True})
@@ -284,6 +287,9 @@ def note_share_delete_api(request, note_id, user_id):
 @login_required
 @require_http_methods(["GET"])
 def note_share_candidates_api(request):
+    disabled = _feature_guard(request, json_response=True)
+    if disabled:
+        return disabled
     query = request.GET.get("q", "").strip()
     if len(query) < 2:
         return JsonResponse({"ok": True, "users": []})
@@ -304,6 +310,9 @@ def note_share_candidates_api(request):
 @login_required
 @require_http_methods(["POST"])
 def note_attachment_upload_api(request, note_id):
+    disabled = _feature_guard(request, json_response=True)
+    if disabled:
+        return disabled
     try:
         upload = request.FILES.get("file")
         kind = request.POST.get("kind", "file")
@@ -334,6 +343,9 @@ def note_attachment_upload_api(request, note_id):
 @login_required
 @require_http_methods(["GET"])
 def note_attachment_download(request, file_id, disposition):
+    disabled = _feature_guard(request, json_response=True)
+    if disabled:
+        return disabled
     attachment = NoteAttachment.objects.select_related("note").filter(file_id=file_id).first()
     if not attachment or disposition not in {"inline", "download"}:
         return _error_response("Datei nicht gefunden.", status=404)
@@ -356,6 +368,9 @@ def note_attachment_download(request, file_id, disposition):
 @login_required
 @require_http_methods(["GET"])
 def note_versions_api(request, note_id):
+    disabled = _feature_guard(request, json_response=True)
+    if disabled:
+        return disabled
     try:
         note = get_accessible_note(request.user, note_id)
         return JsonResponse({"ok": True, "versions": [serialize_version(item) for item in note.versions.all()[:100]]})
@@ -366,6 +381,9 @@ def note_versions_api(request, note_id):
 @login_required
 @require_http_methods(["POST"])
 def note_version_restore_api(request, note_id, version_id):
+    disabled = _feature_guard(request, json_response=True)
+    if disabled:
+        return disabled
     try:
         payload = _json_body(request)
         note = restore_note_version(
@@ -390,6 +408,9 @@ def note_version_restore_api(request, note_id, version_id):
 @login_required
 @require_http_methods(["GET", "PATCH"])
 def note_shortcuts_api(request):
+    disabled = _feature_guard(request, json_response=True)
+    if disabled:
+        return disabled
     profile, _created = Profile.objects.get_or_create(
         user=request.user,
         defaults={"display_name": request.user.first_name or request.user.get_username()},

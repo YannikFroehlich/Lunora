@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime, timedelta
 from email.message import Message
 from io import StringIO
@@ -95,6 +96,48 @@ class SettingsProfileTests(TestCase):
         self.assertTrue(response.wsgi_request.user.is_authenticated)
         self.assertEqual(response.wsgi_request.user.username, "mira")
 
+    def test_repeated_failed_logins_lock_out_further_attempts(self):
+        cache.clear()
+        User.objects.create_user(username="mira", email="mira@example.com", password="secret-12345")
+
+        for _ in range(5):
+            response = self.client.post(
+                "/login/",
+                {"username": "mira@example.com", "password": "wrong-password"},
+            )
+            self.assertFalse(response.wsgi_request.user.is_authenticated)
+
+        response = self.client.post(
+            "/login/",
+            {"username": "mira@example.com", "password": "secret-12345"},
+        )
+
+        self.assertFalse(response.wsgi_request.user.is_authenticated)
+        self.assertContains(response, "Zu viele fehlgeschlagene Anmeldeversuche")
+
+        response = self.client.post(
+            "/login/",
+            {"username": "mira", "password": "secret-12345"},
+        )
+
+        self.assertFalse(response.wsgi_request.user.is_authenticated)
+        self.assertContains(response, "Zu viele fehlgeschlagene Anmeldeversuche")
+
+    def test_successful_login_clears_previous_failed_attempts(self):
+        cache.clear()
+        User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+
+        for _ in range(4):
+            self.client.post("/login/", {"username": "mira@example.com", "password": "wrong-password"})
+
+        response = self.client.post(
+            "/login/",
+            {"username": "mira@example.com", "password": "secret-12345"},
+        )
+
+        self.assertRedirects(response, "/home/")
+        self.assertTrue(response.wsgi_request.user.is_authenticated)
+
     def test_registration_creates_user_and_profile(self):
         response = self.client.post(
             "/register/",
@@ -110,6 +153,49 @@ class SettingsProfileTests(TestCase):
         user = User.objects.get(username="mira@example.com")
         self.assertTrue(user.check_password("sicheres-passwort-42"))
         self.assertEqual(user.profile.display_name, "Mira Beispiel")
+
+    def test_password_reset_flow_updates_password_and_allows_login(self):
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="old-secret-123"
+        )
+
+        self.assertEqual(self.client.get("/password-reset/").status_code, 200)
+
+        response = self.client.post("/password-reset/", {"email": "mira@example.com"})
+        self.assertRedirects(response, "/password-reset/done/")
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].subject, "Lunora – Passwort zurücksetzen")
+        self.assertEqual(mail.outbox[0].to, ["mira@example.com"])
+
+        reset_url = re.search(r"http://\S+/reset/\S+/", mail.outbox[0].body).group(0)
+        reset_path = reset_url.split("testserver", 1)[1]
+
+        redirect_response = self.client.get(reset_path)
+        self.assertEqual(redirect_response.status_code, 302)
+        confirm_path = redirect_response["Location"]
+
+        confirm_page = self.client.get(confirm_path)
+        self.assertContains(confirm_page, "Neues Passwort festlegen")
+
+        response = self.client.post(
+            confirm_path,
+            {"new_password1": "brandneues-passwort-99", "new_password2": "brandneues-passwort-99"},
+        )
+        self.assertRedirects(response, "/reset/done/")
+
+        user.refresh_from_db()
+        self.assertTrue(user.check_password("brandneues-passwort-99"))
+
+        login_response = self.client.post(
+            "/login/", {"username": "mira@example.com", "password": "brandneues-passwort-99"}
+        )
+        self.assertRedirects(login_response, "/home/")
+
+    def test_password_reset_confirm_rejects_invalid_link(self):
+        response = self.client.get("/reset/not-a-real-uid/not-a-real-token/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Link ungültig")
 
     def test_logged_in_user_can_update_profile(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
@@ -906,6 +992,46 @@ END:VCALENDAR
         self.assertEqual(events[0].title, "Team Sync")
         self.assertEqual(events[1].start_at.day, 13)
 
+    def test_ical_parser_expands_yearly_recurrence_across_multiple_years(self):
+        ical = """BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:birthday@example.com
+SUMMARY:Geburtstag
+DTSTART;VALUE=DATE:20200315
+DTEND;VALUE=DATE:20200316
+RRULE:FREQ=YEARLY
+END:VEVENT
+END:VCALENDAR
+"""
+        events = parse_ical_events(
+            ical,
+            window_start=timezone.make_aware(datetime(2026, 1, 1)),
+            window_end=timezone.make_aware(datetime(2027, 6, 1)),
+        )
+
+        self.assertEqual(len(events), 2)
+        self.assertEqual([event.start_at.year for event in events], [2026, 2027])
+        self.assertTrue(all(event.start_at.month == 3 and event.start_at.day == 15 for event in events))
+
+    def test_ical_parser_respects_yearly_interval_and_until(self):
+        ical = """BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:anniversary@example.com
+SUMMARY:Jubilaeum
+DTSTART;VALUE=DATE:20220701
+DTEND;VALUE=DATE:20220702
+RRULE:FREQ=YEARLY;INTERVAL=2;UNTIL=20280101
+END:VEVENT
+END:VCALENDAR
+"""
+        events = parse_ical_events(
+            ical,
+            window_start=timezone.make_aware(datetime(2022, 1, 1)),
+            window_end=timezone.make_aware(datetime(2030, 1, 1)),
+        )
+
+        self.assertEqual([event.start_at.year for event in events], [2022, 2024, 2026])
+
 
 class FakeIcalResponse:
     headers = {"content-type": "text/calendar"}
@@ -1369,6 +1495,22 @@ class MessagesPageTests(TestCase):
 
         self.assertRedirects(response, "/login/?next=/messages/")
 
+    def test_start_conversation_excludes_inactive_users(self):
+        self.anna.is_active = False
+        self.anna.save(update_fields=["is_active"])
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get("/messages/")
+        self.assertNotContains(response, "anna@example.com")
+
+        response = self.client.post(
+            "/messages/",
+            {"form_name": "start_conversation", "recipient": str(self.anna.id), "body": "Hallo"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Conversation.objects.exists())
+
     def test_user_can_start_direct_conversation_and_send_message(self):
         self.client.login(username="mira@example.com", password="secret-12345")
 
@@ -1400,6 +1542,19 @@ class MessagesPageTests(TestCase):
         self.assertRedirects(response, f"/messages/{conversation.id}/")
         self.assertEqual(conversation.messages.count(), 2)
         self.assertTrue(conversation.messages.filter(body="Noch eine Nachricht", sender=self.mira).exists())
+
+        response = self.client.post(
+            "/messages/",
+            {
+                "form_name": "start_conversation",
+                "recipient": str(self.lukas.id),
+                "body": "Nochmal ueber Neue Unterhaltung",
+            },
+        )
+
+        self.assertRedirects(response, f"/messages/{conversation.id}/")
+        self.assertEqual(Conversation.objects.count(), 1)
+        self.assertEqual(conversation.messages.count(), 3)
 
     def test_non_member_cannot_open_conversation(self):
         conversation = Conversation.objects.create(created_by=self.mira)
@@ -1678,6 +1833,41 @@ class MessagesPageTests(TestCase):
         membership.refresh_from_db()
         self.assertFalse(membership.is_blocked)
 
+    def test_being_blocked_prevents_sending_and_hides_compose_bar(self):
+        conversation = Conversation.objects.create(created_by=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.lukas)
+
+        self.client.login(username="lukas@example.com", password="secret-12345")
+        self.client.post(
+            f"/messages/{conversation.id}/",
+            {"form_name": "member_action", "conversation_id": str(conversation.id), "action": "block"},
+        )
+        self.client.logout()
+
+        self.client.login(username="mira@example.com", password="secret-12345")
+        response = self.client.get(f"/messages/{conversation.id}/")
+        self.assertContains(response, "Diese Nachricht kann derzeit nicht gesendet werden.")
+        self.assertNotContains(response, 'class="compose-bar"')
+
+        response = self.client.post(
+            f"/messages/{conversation.id}/",
+            {
+                "form_name": "message",
+                "conversation_id": str(conversation.id),
+                "body": "Sollte nicht ankommen",
+            },
+        )
+        self.assertRedirects(response, f"/messages/{conversation.id}/")
+        self.assertFalse(conversation.messages.filter(body="Sollte nicht ankommen").exists())
+
+        response = self.client.post(
+            "/messages/",
+            {"form_name": "start_conversation", "recipient": str(self.lukas.id), "body": "Auch nicht"},
+        )
+        self.assertRedirects(response, f"/messages/{conversation.id}/")
+        self.assertFalse(conversation.messages.filter(body="Auch nicht").exists())
+
 
 class MessageReadReceiptTests(TestCase):
     def test_outgoing_message_shows_read_receipt_after_recipient_opened_chat(self):
@@ -1727,6 +1917,34 @@ class MessageLiveUpdateTests(TestCase):
 
         recipient_member.refresh_from_db()
         self.assertIsNotNone(recipient_member.last_read_at)
+
+    def test_live_updates_report_compose_blocked_state(self):
+        sender = User.objects.create_user(username="sender-block@example.com", email="sender-block@example.com", password="secret-12345")
+        recipient = User.objects.create_user(username="recipient-block@example.com", email="recipient-block@example.com", password="secret-12345")
+        Profile.objects.create(user=sender, display_name="Sender Block")
+        Profile.objects.create(user=recipient, display_name="Recipient Block")
+
+        conversation = Conversation.objects.create(created_by=sender)
+        ConversationMember.objects.create(conversation=conversation, user=sender)
+        ConversationMember.objects.create(conversation=conversation, user=recipient)
+
+        self.client.login(username="sender-block@example.com", password="secret-12345")
+        response = self.client.get(f"/messages/{conversation.id}/live/")
+        payload = response.json()
+        self.assertFalse(payload["compose_blocked"])
+        self.assertIn('class="compose-bar"', payload["compose_html"])
+
+        self.client.login(username="recipient-block@example.com", password="secret-12345")
+        self.client.post(
+            f"/messages/{conversation.id}/",
+            {"form_name": "member_action", "conversation_id": str(conversation.id), "action": "block"},
+        )
+
+        self.client.login(username="sender-block@example.com", password="secret-12345")
+        response = self.client.get(f"/messages/{conversation.id}/live/")
+        payload = response.json()
+        self.assertTrue(payload["compose_blocked"])
+        self.assertIn("Diese Nachricht kann derzeit nicht gesendet werden.", payload["compose_html"])
 
     def test_overview_live_updates_return_contact_list(self):
         user = User.objects.create_user(username="overview-live@example.com", email="overview-live@example.com", password="secret-12345")
@@ -1832,6 +2050,14 @@ class AdministrationFeatureFlagTests(TestCase):
             {"username": "admin@example.com", "password": "secret-12345"},
         )
         self.assertRedirects(response, "/home/")
+
+    def test_login_lock_blocks_password_reset_requests(self):
+        SystemSettings.objects.create(normal_login_enabled=False)
+
+        response = self.client.post("/password-reset/", {"email": "mira@example.com"})
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(len(mail.outbox), 0)
 
     def test_disabled_calendar_event_creation_blocks_direct_post(self):
         SystemSettings.objects.create(calendar_event_creation_enabled=False)
@@ -2295,8 +2521,69 @@ class NotesTests(TestCase):
         self.assertFalse(Note.objects.filter(pk=note.id).exists())
 
     def test_disabled_notes_feature_blocks_page_and_api(self):
-        settings_obj = SystemSettings.objects.create(notes_enabled=False)
-        self.assertEqual(self.client.get("/notes/").status_code, 503)
-        response = self.client.post("/notes/api/create/", data="{}", content_type="application/json")
-        self.assertEqual(response.status_code, 503)
-        self.assertFalse(response.json()["ok"])
+        note = self.create_note()
+        self.save_note(note, text="Erster Inhalt")
+        note.refresh_from_db()
+        NoteShare.objects.create(note=note, user=self.reader, role=NoteShare.ROLE_READER)
+        version = NoteVersion.objects.create(
+            note=note,
+            created_by=self.owner,
+            source_revision=note.revision,
+            title=note.title,
+            document=note.document,
+            tags=[],
+        )
+
+        with TemporaryDirectory() as private_root, override_settings(PRIVATE_MEDIA_ROOT=private_root):
+            upload = SimpleUploadedFile("moon.png", PNG_1X1_BYTES, content_type="image/png")
+            attachment_response = self.client.post(
+                f"/notes/api/{note.id}/attachments/", {"kind": "image", "file": upload}
+            )
+            self.assertEqual(attachment_response.status_code, 201, attachment_response.content)
+            attachment = NoteAttachment.objects.get(note=note)
+
+            SystemSettings.objects.update_or_create(pk=1, defaults={"notes_enabled": False})
+
+            self.assertEqual(self.client.get("/notes/").status_code, 503)
+            self.assertEqual(self.client.get(f"/notes/{note.id}/export/pdf/").status_code, 503)
+            response = self.client.post("/notes/api/create/", data="{}", content_type="application/json")
+            self.assertEqual(response.status_code, 503)
+            self.assertFalse(response.json()["ok"])
+            self.assertEqual(self.client.get(f"/notes/api/{note.id}/").status_code, 503)
+            self.assertEqual(
+                self.client.post(
+                    f"/notes/api/{note.id}/actions/", data="{}", content_type="application/json"
+                ).status_code,
+                503,
+            )
+            self.assertEqual(self.client.get(f"/notes/api/{note.id}/shares/").status_code, 503)
+            self.assertEqual(
+                self.client.delete(f"/notes/api/{note.id}/shares/{self.reader.id}/").status_code, 503
+            )
+            self.assertEqual(self.client.get("/notes/api/share-candidates/?q=re").status_code, 503)
+            self.assertEqual(
+                self.client.post(
+                    f"/notes/api/{note.id}/attachments/",
+                    {"kind": "image", "file": SimpleUploadedFile("moon2.png", PNG_1X1_BYTES, content_type="image/png")},
+                ).status_code,
+                503,
+            )
+            self.assertEqual(self.client.get(f"/notes/attachments/{attachment.file_id}/inline/").status_code, 503)
+            self.assertEqual(self.client.get(f"/notes/api/{note.id}/versions/").status_code, 503)
+            self.assertEqual(
+                self.client.post(
+                    f"/notes/api/{note.id}/versions/{version.id}/restore/",
+                    data=json.dumps({"base_revision": note.revision}),
+                    content_type="application/json",
+                ).status_code,
+                503,
+            )
+            self.assertEqual(self.client.get("/notes/api/shortcuts/").status_code, 503)
+            self.assertEqual(
+                self.client.patch(
+                    "/notes/api/shortcuts/",
+                    data=json.dumps({"shortcuts": {}}),
+                    content_type="application/json",
+                ).status_code,
+                503,
+            )

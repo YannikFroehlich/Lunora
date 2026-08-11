@@ -1,5 +1,12 @@
 from .administration_views import administration
-from .auth_views import LunoraLoginView, register
+from .auth_views import (
+    LunoraLoginView,
+    LunoraPasswordResetCompleteView,
+    LunoraPasswordResetConfirmView,
+    LunoraPasswordResetDoneView,
+    LunoraPasswordResetView,
+    register,
+)
 from .calendar_views import calendar
 from .core_views import home, settings
 from .message_views import messages, messages_live_updates
@@ -42,6 +49,10 @@ __all__ = [
     "note_version_restore_api",
     "note_shortcuts_api",
     "LunoraLoginView",
+    "LunoraPasswordResetView",
+    "LunoraPasswordResetDoneView",
+    "LunoraPasswordResetConfirmView",
+    "LunoraPasswordResetCompleteView",
     "register",
     "settings",
     "weather",

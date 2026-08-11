@@ -35,6 +35,7 @@
             <button class="primary-button auth-submit" type="submit">Anmelden</button>
         </form>
 
+        <p class="auth-switch"><a href="{% url 'password_reset' %}">Passwort vergessen?</a></p>
         {% if not login_disabled %}
         <p class="auth-switch">Noch kein Konto? <a href="{% url 'register' %}">Jetzt registrieren</a></p>
         {% endif %}

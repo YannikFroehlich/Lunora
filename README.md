@@ -130,6 +130,8 @@ Wichtige Variablen:
 - `DJANGO_LANGUAGE_CODE`: Sprache, standardmäßig `de-de`
 - `DJANGO_TIME_ZONE`: Standardzeitzone, standardmäßig `Europe/Berlin`
 - `DJANGO_EMAIL_BACKEND` und die `DJANGO_EMAIL_*`-Variablen: E-Mail-Zustellung für Erinnerungen und Wochenberichte
+- `DJANGO_ADMINS`: kommagetrennte `Name:email`-Liste, die bei unbehandelten Serverfehlern benachrichtigt wird, sobald `DJANGO_DEBUG=false` ist; leer und wirkungslos im lokalen Betrieb
+- `DJANGO_SERVER_EMAIL`: Absenderadresse für diese Fehlerbenachrichtigungen
 - `LUNORA_AUTOMATION_INTERVAL_SECONDS`: Intervall des dauerhaft laufenden Automatikprozesses
 - `LUNORA_WEEKLY_SUMMARY_HOUR`: lokale Montagstunde, ab der ein Wochenbericht versendet wird
 

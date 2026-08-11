@@ -95,21 +95,9 @@
                 <input type="hidden" name="emoji" value="">
             </form>
 
-            {% if current_member_state.is_blocked %}
-            <div class="compose-disabled-card">
-                <i class="fa-solid fa-ban"></i>
-                <span>Du hast diesen Chat blockiert. Hebe die Blockierung rechts auf, um wieder Nachrichten zu senden.</span>
+            <div id="message-compose-region" data-compose-blocked="{% if current_member_state.is_blocked or current_member_state.blocked_by_recipient %}true{% else %}false{% endif %}">
+                {% include "app/partials/messages_compose.html" %}
             </div>
-            {% else %}
-            <form class="compose-bar" method="post" action="{% url 'messages_detail' selected_conversation.id %}">
-                {% csrf_token %}
-                <input type="hidden" name="form_name" value="message">
-                <input type="hidden" name="conversation_id" value="{{ selected_conversation.id }}">
-                {{ message_form.body }}
-                <button class="send-button" type="submit" aria-label="Senden"><i class="fa-solid fa-paper-plane"></i></button>
-            </form>
-            {% if message_form.body.errors %}<small class="compose-error">{{ message_form.body.errors|striptags }}</small>{% endif %}
-            {% endif %}
             {% else %}
             {% include "app/partials/messages_overview.html" %}
             {% endif %}

@@ -339,6 +339,8 @@ def _expand_starts(start_at, rrule, window_start, window_end, exclusions):
             occurrence += timedelta(weeks=interval)
         elif freq == "MONTHLY":
             occurrence = _add_months(occurrence, interval)
+        elif freq == "YEARLY":
+            occurrence = _add_months(occurrence, 12 * interval)
         else:
             break
 

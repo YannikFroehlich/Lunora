@@ -2,7 +2,7 @@ import uuid
 
 from django.conf import settings
 from django.db import models
-from django.db.models import Count, Prefetch
+from django.db.models import Count, Exists, OuterRef, Prefetch
 from django.utils import timezone
 
 from app.services.image_uploads import validate_profile_image_file
@@ -178,9 +178,19 @@ class Conversation(models.Model):
 
     @classmethod
     def find_direct_between(cls, first_user, second_user):
+        """Find the existing 1:1 conversation between two users, if any.
+
+        Membership is checked via `Exists` subqueries rather than chained `.filter()`
+        calls on `member_rows`, because each chained filter on the same reverse relation
+        adds its own join, and `Count("member_rows", distinct=True)` would then only
+        count rows from the last-added join instead of all of the conversation's members.
+        """
+        has_first_member = ConversationMember.objects.filter(conversation=OuterRef("pk"), user=first_user)
+        has_second_member = ConversationMember.objects.filter(conversation=OuterRef("pk"), user=second_user)
         return (
-            cls.objects.filter(is_group=False, member_rows__user=first_user)
-            .filter(member_rows__user=second_user)
+            cls.objects.filter(is_group=False)
+            .annotate(has_first_member=Exists(has_first_member), has_second_member=Exists(has_second_member))
+            .filter(has_first_member=True, has_second_member=True)
             .annotate(member_count=Count("member_rows", distinct=True))
             .filter(member_count=2)
             .first()
