@@ -29,6 +29,7 @@ from .note_views import (
     note_versions_api,
     notes,
 )
+from .search_views import global_search
 from .weather_views import weather, weather_map_tile, weather_point, weather_suggestions
 
 __all__ = [
@@ -56,6 +57,7 @@ __all__ = [
     "note_versions_api",
     "note_version_restore_api",
     "note_shortcuts_api",
+    "global_search",
     "LunoraLoginView",
     "LunoraPasswordResetView",
     "LunoraPasswordResetDoneView",

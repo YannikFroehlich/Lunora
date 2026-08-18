@@ -187,11 +187,18 @@ ADMINS = env_admins("DJANGO_ADMINS")
 MANAGERS = ADMINS
 SERVER_EMAIL = os.getenv("DJANGO_SERVER_EMAIL", DEFAULT_FROM_EMAIL)
 
+def _skip_disabled_feature_response(record):
+    # 503 in this app only ever means "feature disabled" (see disabled_feature_response) -
+    # expected, routine traffic, not a server error worth paging an admin about.
+    return getattr(record, "status_code", None) != 503
+
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "filters": {
         "require_debug_false": {"()": "django.utils.log.RequireDebugFalse"},
+        "skip_disabled_feature_response": {"()": "django.utils.log.CallbackFilter", "callback": _skip_disabled_feature_response},
     },
     "handlers": {
         "console": {
@@ -200,7 +207,7 @@ LOGGING = {
         },
         "mail_admins": {
             "level": "ERROR",
-            "filters": ["require_debug_false"],
+            "filters": ["require_debug_false", "skip_disabled_feature_response"],
             "class": "django.utils.log.AdminEmailHandler",
         },
     },

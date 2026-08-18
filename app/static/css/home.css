@@ -24,6 +24,9 @@
 }
 
 .brand-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   width: fit-content;
   margin-top: 14px !important;
   padding: 8px 16px;
@@ -34,6 +37,37 @@
   background: color-mix(in srgb, var(--color-accent) 16%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-accent-strong) 18%, transparent);
   border-radius: 999px;
+}
+
+.brand-logo {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--color-accent-strong) 55%, transparent));
+}
+
+.hero-logo {
+  position: absolute;
+  right: 40px;
+  bottom: 18px;
+  z-index: 1;
+  width: 128px;
+  height: 128px;
+  object-fit: contain;
+  opacity: 0.92;
+  pointer-events: none;
+  animation: hero-logo-glow 3600ms ease-in-out infinite alternate;
+}
+
+@keyframes hero-logo-glow {
+  from {
+    filter: drop-shadow(0 0 14px color-mix(in srgb, var(--color-accent-strong) 38%, transparent))
+            drop-shadow(0 0 30px color-mix(in srgb, var(--color-accent) 20%, transparent));
+  }
+  to {
+    filter: drop-shadow(0 0 26px color-mix(in srgb, var(--color-accent-strong) 68%, transparent))
+            drop-shadow(0 0 52px color-mix(in srgb, var(--color-accent) 42%, transparent));
+  }
 }
 
 .clock-panel {
@@ -532,6 +566,10 @@
 }
 
 @media (max-width: 680px) {
+  .hero-logo {
+    display: none;
+  }
+
   .quick-actions,
   .tool-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

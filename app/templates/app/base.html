@@ -12,6 +12,16 @@
     <link rel="stylesheet" href="{% static 'css/base.css' %}?v=responsive-1">
     {% block page_css %}{% endblock %}
 
+    <link rel="icon" href="{% static 'img/favicon.ico' %}" sizes="any">
+    <link rel="icon" type="image/png" sizes="32x32" href="{% static 'img/favicon-32.png' %}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{% static 'img/favicon-16.png' %}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{% static 'img/apple-touch-icon.png' %}">
+    <link rel="manifest" href="{% static 'site.webmanifest' %}">
+    <meta name="theme-color" content="#c2a276">
+    <meta name="apple-mobile-web-app-title" content="Lunora">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -48,6 +58,9 @@
 <nav class="floating-nav" aria-label="Hauptnavigation">
     <a class="nav-orb {% if active_page == 'home' %}is-active{% endif %}" href="{% url 'home' %}" aria-label="Dashboard">
         <i class="fa-solid fa-house" aria-hidden="true"></i>
+    </a>
+    <a class="nav-orb {% if active_page == 'search' %}is-active{% endif %}" href="{% url 'global_search' %}" aria-label="Suche">
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
     </a>
     {% url 'settings' as settings_url %}
     <a class="nav-orb {% if active_page == 'settings' %}is-active{% endif %}" href="{% if active_page == 'settings' %}{{ settings_url }}{% else %}{{ settings_url }}?next={{ request.get_full_path|urlencode }}{% endif %}" aria-label="Einstellungen">

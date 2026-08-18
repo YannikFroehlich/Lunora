@@ -375,6 +375,18 @@ class CalendarEvent(models.Model):
     start_at = models.DateTimeField()
     end_at = models.DateTimeField()
     is_all_day = models.BooleanField(default=False)
+    recurrence_id = models.UUIDField(null=True, blank=True, db_index=True)
+    recurrence_rule = models.CharField(
+        max_length=10,
+        blank=True,
+        default="",
+        choices=[
+            ("DAILY", "Täglich"),
+            ("WEEKLY", "Wöchentlich"),
+            ("MONTHLY", "Monatlich"),
+            ("YEARLY", "Jährlich"),
+        ],
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

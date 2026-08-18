@@ -4,7 +4,7 @@
 {% block title %}Kalender | Lunora{% endblock %}
 
 {% block page_css %}
-<link rel="stylesheet" href="{% static 'css/calendar.css' %}?v=event-create-1">
+<link rel="stylesheet" href="{% static 'css/calendar.css' %}?v=event-repeat-1">
 {% endblock %}
 
 {% block content %}
@@ -119,8 +119,27 @@
                     <time>{{ event.time }}</time>
                     <span class="timeline-dot tone-{{ event.tone }}"></span>
                     <strong>{{ event.title }}</strong>
+                    {% if event.recurrence_id %}<i class="fa-solid fa-repeat" title="Wiederkehrender Termin"></i>{% endif %}
                     {% if event.is_invited %}<i class="fa-solid fa-user-group" title="Einladung"></i>{% endif %}
                     <i class="fa-solid {{ event.icon }}"></i>
+                    {% if event.can_delete %}
+                    <span class="event-row-actions">
+                        <form method="post">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_name" value="calendar_event_delete">
+                            <input type="hidden" name="event_id" value="{{ event.event_id }}">
+                            <button class="icon-button" type="submit" aria-label="Termin löschen"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
+                        </form>
+                        {% if event.recurrence_id %}
+                        <form method="post">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_name" value="calendar_event_delete_series">
+                            <input type="hidden" name="recurrence_id" value="{{ event.recurrence_id }}">
+                            <button class="icon-button" type="submit" aria-label="Serie löschen"><i class="fa-solid fa-layer-group" aria-hidden="true"></i></button>
+                        </form>
+                        {% endif %}
+                    </span>
+                    {% endif %}
                 </div>
                 {% endfor %}
                 {% else %}
@@ -148,8 +167,27 @@
                     <span>{{ event.date }}</span>
                     <strong>{{ event.title }}</strong>
                     <small>{{ event.category }}</small>
+                    {% if event.recurrence_id %}<i class="fa-solid fa-repeat" title="Wiederkehrender Termin"></i>{% endif %}
                     {% if event.is_invited %}<i class="fa-solid fa-user-group" title="Einladung"></i>{% endif %}
                     <i class="fa-solid {{ event.icon }}"></i>
+                    {% if event.can_delete %}
+                    <span class="event-row-actions">
+                        <form method="post">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_name" value="calendar_event_delete">
+                            <input type="hidden" name="event_id" value="{{ event.event_id }}">
+                            <button class="icon-button" type="submit" aria-label="Termin löschen"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
+                        </form>
+                        {% if event.recurrence_id %}
+                        <form method="post">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_name" value="calendar_event_delete_series">
+                            <input type="hidden" name="recurrence_id" value="{{ event.recurrence_id }}">
+                            <button class="icon-button" type="submit" aria-label="Serie löschen"><i class="fa-solid fa-layer-group" aria-hidden="true"></i></button>
+                        </form>
+                        {% endif %}
+                    </span>
+                    {% endif %}
                 </div>
                 {% endfor %}
                 {% else %}
@@ -298,6 +336,18 @@
                 <span>{{ event_form.is_all_day.label }}</span>
             </label>
 
+            <label class="event-form-field" for="{{ event_form.repeat.id_for_label }}">
+                <span>{{ event_form.repeat.label }}</span>
+                {{ event_form.repeat }}
+                {{ event_form.repeat.errors }}
+            </label>
+
+            <label class="event-form-field" data-event-repeat-field for="{{ event_form.repeat_until.id_for_label }}">
+                <span>{{ event_form.repeat_until.label }}</span>
+                {{ event_form.repeat_until }}
+                {{ event_form.repeat_until.errors }}
+            </label>
+
             <label class="event-form-field is-wide" for="{{ event_form.location.id_for_label }}">
                 <span>{{ event_form.location.label }}</span>
                 {{ event_form.location }}
@@ -325,8 +375,8 @@
 
 {% block page_js %}
 {% if calendar_event_creation_enabled %}
-<script src="{% static 'js/calendar.js' %}?v=event-create-1"></script>
+<script src="{% static 'js/calendar.js' %}?v=event-repeat-1"></script>
 {% else %}
-<script src="{% static 'js/calendar.js' %}?v=event-create-1"></script>
+<script src="{% static 'js/calendar.js' %}?v=event-repeat-1"></script>
 {% endif %}
 {% endblock %}

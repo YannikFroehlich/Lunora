@@ -4,7 +4,7 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 
 from app.forms import CalendarEventForm, CalendarReminderForm
-from app.models import CalendarEventAttendee, CalendarReminder, CalendarSource
+from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, CalendarSource
 from app.services.calendar_service import sync_calendar_sources
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.user_preferences import format_user_datetime
@@ -71,6 +71,31 @@ def calendar(request):
             event_form.save(user=request.user)
             django_messages.success(request, "Termin erstellt.")
             return redirect(request.get_full_path())
+
+    if request.method == "POST" and request.POST.get("form_name") == "calendar_event_delete":
+        if not calendar_event_creation_enabled:
+            return disabled_feature_response(request, "calendar_event_creation")
+        deleted_count, _details = CalendarEvent.objects.filter(
+            pk=request.POST.get("event_id"),
+            user=request.user,
+            source__isnull=True,
+        ).delete()
+        if deleted_count:
+            django_messages.success(request, "Termin gelöscht.")
+        return redirect(request.get_full_path())
+
+    if request.method == "POST" and request.POST.get("form_name") == "calendar_event_delete_series":
+        if not calendar_event_creation_enabled:
+            return disabled_feature_response(request, "calendar_event_creation")
+        recurrence_id = request.POST.get("recurrence_id")
+        if recurrence_id:
+            CalendarEvent.objects.filter(
+                recurrence_id=recurrence_id,
+                user=request.user,
+                source__isnull=True,
+            ).delete()
+            django_messages.success(request, "Terminserie gelöscht.")
+        return redirect(request.get_full_path())
 
     if request.method == "POST" and request.POST.get("form_name") == "event_rsvp":
         status = request.POST.get("status")

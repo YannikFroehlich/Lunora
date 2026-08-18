@@ -385,3 +385,31 @@ def _add_months(value, months):
     month = month_index % 12 + 1
     day = min(value.day, calendar.monthrange(year, month)[1])
     return value.replace(year=year, month=month, day=day)
+
+
+MANUAL_RECURRENCE_MAX_INSTANCES = 366
+
+
+def expand_manual_recurrence(start_at, frequency, until):
+    """Step start_at forward by frequency (DAILY/WEEKLY/MONTHLY/YEARLY) through until.
+
+    Capped at MANUAL_RECURRENCE_MAX_INSTANCES so a manually created series can't
+    generate an unbounded number of CalendarEvent rows.
+    """
+    occurrences = [start_at]
+    current = start_at
+    while len(occurrences) < MANUAL_RECURRENCE_MAX_INSTANCES:
+        if frequency == "DAILY":
+            current += timedelta(days=1)
+        elif frequency == "WEEKLY":
+            current += timedelta(weeks=1)
+        elif frequency == "MONTHLY":
+            current = _add_months(current, 1)
+        elif frequency == "YEARLY":
+            current = _add_months(current, 12)
+        else:
+            break
+        if current > until:
+            break
+        occurrences.append(current)
+    return occurrences

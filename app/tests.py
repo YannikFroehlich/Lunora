@@ -832,6 +832,185 @@ class SettingsProfileTests(TestCase):
         self.assertContains(response, 'data-has-errors="true"')
         self.assertFalse(CalendarEvent.objects.filter(user=user).exists())
 
+    def test_recurring_calendar_event_creates_one_row_per_occurrence(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira", timezone_name="Europe/Berlin")
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.post(
+            "/calendar/?year=2099&month=8",
+            {
+                "form_name": "calendar_event_add",
+                "title": "Müll rausbringen",
+                "event_date": "2099-08-04",
+                "start_time": "08:00",
+                "end_time": "08:15",
+                "repeat": "WEEKLY",
+                "repeat_until": "2099-08-18",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        events = list(CalendarEvent.objects.filter(user=user, title="Müll rausbringen").order_by("start_at"))
+        self.assertEqual(len(events), 3)
+        self.assertEqual(
+            [timezone.localtime(event.start_at).date().isoformat() for event in events],
+            ["2099-08-04", "2099-08-11", "2099-08-18"],
+        )
+        recurrence_ids = {event.recurrence_id for event in events}
+        self.assertEqual(len(recurrence_ids), 1)
+        self.assertIsNotNone(events[0].recurrence_id)
+        self.assertTrue(all(event.recurrence_rule == "WEEKLY" for event in events))
+
+    def test_recurring_calendar_event_requires_repeat_until(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.post(
+            "/calendar/?year=2099&month=8",
+            {
+                "form_name": "calendar_event_add",
+                "title": "Ohne Enddatum",
+                "event_date": "2099-08-04",
+                "start_time": "08:00",
+                "repeat": "DAILY",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Bitte gib ein Enddatum für die Wiederholung an.")
+        self.assertFalse(CalendarEvent.objects.filter(user=user).exists())
+
+    def test_recurring_calendar_event_rejects_repeat_until_before_start(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.post(
+            "/calendar/?year=2099&month=8",
+            {
+                "form_name": "calendar_event_add",
+                "title": "Rückwärts",
+                "event_date": "2099-08-10",
+                "start_time": "08:00",
+                "repeat": "DAILY",
+                "repeat_until": "2099-08-01",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Das Enddatum muss nach dem Startdatum liegen.")
+        self.assertFalse(CalendarEvent.objects.filter(user=user).exists())
+
+    def test_recurring_calendar_event_rejects_repeat_until_too_far_out(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.post(
+            "/calendar/?year=2099&month=8",
+            {
+                "form_name": "calendar_event_add",
+                "title": "Zu weit weg",
+                "event_date": "2099-08-10",
+                "start_time": "08:00",
+                "repeat": "YEARLY",
+                "repeat_until": "2199-08-10",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Die Wiederholung darf höchstens 5 Jahre umfassen.")
+        self.assertFalse(CalendarEvent.objects.filter(user=user).exists())
+
+    def test_calendar_event_delete_removes_single_occurrence(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        event = CalendarEvent.objects.create(
+            user=user,
+            title="Einzeltermin",
+            start_at=timezone.now() + timedelta(days=1),
+            end_at=timezone.now() + timedelta(days=1, hours=1),
+        )
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.post(
+            "/calendar/",
+            {"form_name": "calendar_event_delete", "event_id": str(event.id)},
+        )
+
+        self.assertRedirects(response, "/calendar/")
+        self.assertFalse(CalendarEvent.objects.filter(pk=event.id).exists())
+
+    def test_calendar_event_delete_series_removes_all_occurrences(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira", timezone_name="Europe/Berlin")
+        self.client.login(username="mira@example.com", password="secret-12345")
+        self.client.post(
+            "/calendar/?year=2099&month=8",
+            {
+                "form_name": "calendar_event_add",
+                "title": "Serie",
+                "event_date": "2099-08-04",
+                "start_time": "08:00",
+                "repeat": "WEEKLY",
+                "repeat_until": "2099-08-18",
+            },
+        )
+        events = list(CalendarEvent.objects.filter(user=user, title="Serie"))
+        self.assertEqual(len(events), 3)
+        recurrence_id = events[0].recurrence_id
+
+        response = self.client.post(
+            "/calendar/",
+            {"form_name": "calendar_event_delete_series", "recurrence_id": str(recurrence_id)},
+        )
+
+        self.assertRedirects(response, "/calendar/")
+        self.assertFalse(CalendarEvent.objects.filter(recurrence_id=recurrence_id).exists())
+
+    def test_calendar_event_delete_cannot_target_another_users_event(self):
+        owner = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        outsider = User.objects.create_user(username="anna@example.com", email="anna@example.com", password="secret-12345")
+        for user in (owner, outsider):
+            Profile.objects.create(user=user, display_name=user.first_name or user.username)
+        event = CalendarEvent.objects.create(
+            user=owner,
+            title="Fremder Termin",
+            start_at=timezone.now() + timedelta(days=1),
+            end_at=timezone.now() + timedelta(days=1, hours=1),
+        )
+        self.client.login(username="anna@example.com", password="secret-12345")
+
+        self.client.post(
+            "/calendar/",
+            {"form_name": "calendar_event_delete", "event_id": str(event.id)},
+        )
+
+        self.assertTrue(CalendarEvent.objects.filter(pk=event.id).exists())
+
+    def test_calendar_event_delete_ignores_synced_events(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        source = CalendarSource.objects.create(user=user, name="Google Kalender", ical_url="https://example.com/cal.ics")
+        event = CalendarEvent.objects.create(
+            user=user,
+            source=source,
+            external_id="synced-1",
+            title="Synchronisierter Termin",
+            start_at=timezone.now() + timedelta(days=1),
+            end_at=timezone.now() + timedelta(days=1, hours=1),
+        )
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        self.client.post(
+            "/calendar/",
+            {"form_name": "calendar_event_delete", "event_id": str(event.id)},
+        )
+
+        self.assertTrue(CalendarEvent.objects.filter(pk=event.id).exists())
+
     def test_calendar_sync_result_is_visible(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
         Profile.objects.create(user=user, display_name="Mira")
@@ -2312,6 +2491,91 @@ class MessageLiveUpdateTests(TestCase):
         self.assertIn("overview_html", response.json())
 
 
+class GlobalSearchTests(TestCase):
+    def setUp(self):
+        self.mira = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        self.lukas = User.objects.create_user(username="lukas@example.com", email="lukas@example.com", password="secret-12345")
+        Profile.objects.create(user=self.mira, display_name="Mira")
+        Profile.objects.create(user=self.lukas, display_name="Lukas")
+
+    def test_global_search_requires_login(self):
+        response = self.client.get("/search/?q=Rakete")
+        self.assertRedirects(response, "/login/?next=/search/%3Fq%3DRakete")
+
+    def test_global_search_returns_matches_across_all_three_categories(self):
+        Note.objects.create(owner=self.mira, title="Raketenstart planen", plain_text="Zündfolge prüfen")
+        conversation = Conversation.objects.create(created_by=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.lukas)
+        ChatMessage.objects.create(conversation=conversation, sender=self.lukas, body="Rakete ist startklar")
+        CalendarEvent.objects.create(
+            user=self.mira,
+            title="Raketenstart",
+            start_at=timezone.now() + timedelta(days=5),
+            end_at=timezone.now() + timedelta(days=5, hours=1),
+        )
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get("/search/?q=Rakete")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Raketenstart planen")
+        self.assertContains(response, "Rakete ist startklar")
+        self.assertContains(response, "Raketenstart")
+
+    def test_global_search_empty_query_shows_no_results(self):
+        Note.objects.create(owner=self.mira, title="Irgendeine Notiz")
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get("/search/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Wonach suchst du?")
+        self.assertNotContains(response, "Irgendeine Notiz")
+
+    def test_global_search_does_not_leak_other_users_private_data(self):
+        Note.objects.create(owner=self.lukas, title="Raketengeheimnis")
+        conversation = Conversation.objects.create(created_by=self.lukas)
+        other_user = User.objects.create_user(username="anna@example.com", email="anna@example.com", password="secret-12345")
+        Profile.objects.create(user=other_user, display_name="Anna")
+        ConversationMember.objects.create(conversation=conversation, user=self.lukas)
+        ConversationMember.objects.create(conversation=conversation, user=other_user)
+        ChatMessage.objects.create(conversation=conversation, sender=self.lukas, body="Rakete geheime Unterhaltung")
+        CalendarEvent.objects.create(
+            user=self.lukas,
+            title="Rakete privater Termin",
+            start_at=timezone.now() + timedelta(days=5),
+            end_at=timezone.now() + timedelta(days=5, hours=1),
+        )
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get("/search/?q=Rakete")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Raketengeheimnis")
+        self.assertNotContains(response, "Rakete geheime Unterhaltung")
+        self.assertNotContains(response, "Rakete privater Termin")
+
+    def test_global_search_hides_disabled_sections(self):
+        SystemSettings.objects.create(notes_enabled=False, messages_enabled=False)
+        Note.objects.create(owner=self.mira, title="Raketenidee")
+        CalendarEvent.objects.create(
+            user=self.mira,
+            title="Raketenstart",
+            start_at=timezone.now() + timedelta(days=5),
+            end_at=timezone.now() + timedelta(days=5, hours=1),
+        )
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get("/search/?q=Rakete")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Notizen deaktiviert")
+        self.assertContains(response, "Nachrichten deaktiviert")
+        self.assertNotContains(response, "Raketenidee")
+        self.assertContains(response, "Raketenstart")
+
+
 @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
 class AdministrationFeatureFlagTests(TestCase):
     def setUp(self):
@@ -2429,6 +2693,24 @@ class AdministrationFeatureFlagTests(TestCase):
 
         self.assertEqual(response.status_code, 503)
         self.assertFalse(CalendarEvent.objects.filter(title="Blockierter Termin").exists())
+
+    def test_disabled_calendar_event_creation_blocks_delete(self):
+        event = CalendarEvent.objects.create(
+            user=self.user,
+            title="Bleibt bestehen",
+            start_at=timezone.now() + timedelta(days=1),
+            end_at=timezone.now() + timedelta(days=1, hours=1),
+        )
+        SystemSettings.objects.create(calendar_event_creation_enabled=False)
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.post(
+            "/calendar/",
+            {"form_name": "calendar_event_delete", "event_id": str(event.id)},
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertTrue(CalendarEvent.objects.filter(pk=event.id).exists())
 
     def test_disabled_reminders_block_direct_post(self):
         SystemSettings.objects.create(calendar_reminders_enabled=False)

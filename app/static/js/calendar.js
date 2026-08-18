@@ -22,6 +22,8 @@ if (eventDialog) {
   const titleInput = eventForm?.querySelector("input[name='title']");
   const allDayInput = eventForm?.querySelector("input[name='is_all_day']");
   const timeFields = eventForm?.querySelectorAll("[data-event-time-field]") || [];
+  const repeatSelect = eventForm?.querySelector("select[name='repeat']");
+  const repeatFields = eventForm?.querySelectorAll("[data-event-repeat-field]") || [];
 
   const syncTimeFields = () => {
     const isAllDay = Boolean(allDayInput?.checked);
@@ -31,6 +33,18 @@ if (eventDialog) {
       field.classList.toggle("is-disabled", isAllDay);
       if (input) {
         input.disabled = isAllDay;
+      }
+    });
+  };
+
+  const syncRepeatFields = () => {
+    const isRepeating = Boolean(repeatSelect?.value) && repeatSelect.value !== "none";
+
+    repeatFields.forEach((field) => {
+      const input = field.querySelector("input");
+      field.classList.toggle("is-disabled", !isRepeating);
+      if (input) {
+        input.disabled = !isRepeating;
       }
     });
   };
@@ -67,6 +81,9 @@ if (eventDialog) {
 
   allDayInput?.addEventListener("change", syncTimeFields);
   syncTimeFields();
+
+  repeatSelect?.addEventListener("change", syncRepeatFields);
+  syncRepeatFields();
 
   if (eventDialog.dataset.hasErrors === "true") {
     openEventDialog();

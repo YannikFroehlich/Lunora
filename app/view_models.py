@@ -272,6 +272,7 @@ def get_calendar_context(user, *, year=None, month=None):
             "icon": "fa-calendar-day",
             "tone": _calendar_event_tone(event),
             "is_invited": event.user_id != user.id,
+            **_calendar_event_manage_fields(event, user),
         }
         for event in events_by_date.get(now.date(), [])
     ]
@@ -340,6 +341,14 @@ def _calendar_event_tone(event):
     return event.source.color if event.source_id else "sand"
 
 
+def _calendar_event_manage_fields(event, user):
+    return {
+        "event_id": event.id,
+        "recurrence_id": event.recurrence_id,
+        "can_delete": event.user_id == user.id and event.source_id is None,
+    }
+
+
 def _upcoming_calendar_events(user, now):
     events = (
         _calendar_visible_events_query(user)
@@ -355,6 +364,7 @@ def _upcoming_calendar_events(user, now):
             "icon": "fa-calendar-day",
             "tone": _calendar_event_tone(event),
             "is_invited": event.user_id != user.id,
+            **_calendar_event_manage_fields(event, user),
         }
         for event in events
     ]

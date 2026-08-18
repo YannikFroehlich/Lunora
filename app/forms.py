@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, time, timedelta
 
 from django import forms
@@ -8,6 +9,7 @@ from django.core.files.storage import default_storage
 from django.db.models import Q
 
 from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, CalendarSource, ChatMessage, Profile, SystemSettings
+from app.services.calendar_service import expand_manual_recurrence
 from app.services.chat_files import infer_attachment_kind, validate_note_upload
 from app.services.image_uploads import PROFILE_IMAGE_ACCEPT, validate_profile_image_file
 from app.services.user_preferences import get_user_zoneinfo, localtime_for_user
@@ -494,6 +496,24 @@ class CalendarEventForm(forms.Form):
         required=False,
         widget=forms.TextInput(attrs={"placeholder": "Optional", "autocomplete": "off"}),
     )
+    repeat = forms.ChoiceField(
+        label="Wiederholung",
+        choices=[
+            ("none", "Keine"),
+            ("DAILY", "Täglich"),
+            ("WEEKLY", "Wöchentlich"),
+            ("MONTHLY", "Monatlich"),
+            ("YEARLY", "Jährlich"),
+        ],
+        required=False,
+        initial="none",
+    )
+    repeat_until = forms.DateField(
+        label="Wiederholen bis",
+        required=False,
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        input_formats=["%Y-%m-%d"],
+    )
     attendees = forms.ModelMultipleChoiceField(
         label="Teilnehmer einladen",
         queryset=User.objects.none(),
@@ -557,20 +577,54 @@ class CalendarEventForm(forms.Form):
 
         cleaned_data["start_at"] = start_at
         cleaned_data["end_at"] = end_at
+
+        repeat = cleaned_data.get("repeat") or "none"
+        if repeat != "none":
+            repeat_until = cleaned_data.get("repeat_until")
+            if not repeat_until:
+                self.add_error("repeat_until", "Bitte gib ein Enddatum für die Wiederholung an.")
+                return cleaned_data
+            if repeat_until < event_date:
+                self.add_error("repeat_until", "Das Enddatum muss nach dem Startdatum liegen.")
+                return cleaned_data
+            if (repeat_until - event_date).days > 1825:
+                self.add_error("repeat_until", "Die Wiederholung darf höchstens 5 Jahre umfassen.")
+                return cleaned_data
+            cleaned_data["repeat_until_at"] = datetime.combine(repeat_until, time.max, tzinfo=user_timezone)
+
         return cleaned_data
 
     def save(self, *, user):
         if not self.is_valid():
             raise ValueError("Ein ungültiges Terminformular kann nicht gespeichert werden.")
 
-        event = CalendarEvent.objects.create(
-            user=user,
-            source=None,
-            title=self.cleaned_data["title"],
-            location=self.cleaned_data["location"],
-            start_at=self.cleaned_data["start_at"],
-            end_at=self.cleaned_data["end_at"],
-            is_all_day=self.cleaned_data["is_all_day"],
+        start_at = self.cleaned_data["start_at"]
+        end_at = self.cleaned_data["end_at"]
+        duration = end_at - start_at
+        repeat = self.cleaned_data.get("repeat") or "none"
+
+        if repeat == "none":
+            occurrence_starts = [start_at]
+            recurrence_id = None
+        else:
+            occurrence_starts = expand_manual_recurrence(start_at, repeat, self.cleaned_data["repeat_until_at"])
+            recurrence_id = uuid.uuid4()
+
+        events = CalendarEvent.objects.bulk_create(
+            [
+                CalendarEvent(
+                    user=user,
+                    source=None,
+                    title=self.cleaned_data["title"],
+                    location=self.cleaned_data["location"],
+                    start_at=occurrence_start,
+                    end_at=occurrence_start + duration,
+                    is_all_day=self.cleaned_data["is_all_day"],
+                    recurrence_id=recurrence_id,
+                    recurrence_rule="" if repeat == "none" else repeat,
+                )
+                for occurrence_start in occurrence_starts
+            ]
         )
 
         attendees = self.cleaned_data.get("attendees")
@@ -578,8 +632,9 @@ class CalendarEventForm(forms.Form):
             CalendarEventAttendee.objects.bulk_create(
                 [
                     CalendarEventAttendee(event=event, user=attendee, invited_by=user)
+                    for event in events
                     for attendee in attendees
                 ]
             )
 
-        return event
+        return events[0] if events else None
