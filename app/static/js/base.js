@@ -46,19 +46,43 @@ function restoreScrollPosition() {
     return;
   }
 
-  // Wait until the browser has laid out the newly rendered page before scrolling.
-  window.requestAnimationFrame(() => {
-    window.requestAnimationFrame(() => {
-      window.scrollTo({
-        left: savedPosition.left,
-        top: savedPosition.top,
-        behavior: "auto",
-      });
+  const applyScroll = () => {
+    window.scrollTo({
+      left: savedPosition.left,
+      top: savedPosition.top,
+      behavior: "auto",
     });
-  });
+  };
+
+  // The script runs at the end of <body>, so the DOM is already parsed and
+  // laid out - but pages with images/fonts can still grow after that, so the
+  // scroll is re-applied once everything has finished loading. This avoids
+  // requestAnimationFrame, which browsers throttle or never fire for
+  // background/non-composited tabs.
+  applyScroll();
+  if (document.readyState !== "complete") {
+    window.addEventListener("load", applyScroll, { once: true });
+  }
+}
+
+let scrollSaveTimeoutId = null;
+
+function scheduleScrollSave() {
+  if (scrollSaveTimeoutId !== null) {
+    return;
+  }
+  scrollSaveTimeoutId = window.setTimeout(() => {
+    scrollSaveTimeoutId = null;
+    saveScrollPosition();
+  }, 200);
 }
 
 restoreScrollPosition();
+// pagehide/beforeunload timing around redirects (e.g. a form save that
+// bounces back to the same page) isn't reliable across browsers, so the
+// position is kept fresh continuously rather than only at the last moment.
+window.addEventListener("scroll", scheduleScrollSave, { passive: true });
+document.addEventListener("submit", saveScrollPosition, { capture: true });
 window.addEventListener("pagehide", saveScrollPosition);
 
 function getInitialTheme() {

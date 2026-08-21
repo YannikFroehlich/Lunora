@@ -1,0 +1,476 @@
+.vacation-shell {
+    display: grid;
+    gap: 0.85rem;
+}
+
+.vacation-hero {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+}
+
+.year-config-panel,
+.metric-card,
+.donut-card,
+.vacation-editor,
+.vacation-list-panel,
+.calendar-panel,
+.holiday-panel {
+    padding: 18px 20px;
+}
+
+.year-switcher,
+.month-actions,
+.year-config-form,
+.form-row {
+    align-items: center;
+    display: flex;
+    gap: 0.7rem;
+}
+
+.year-switcher select,
+.year-config-form input,
+.year-config-form select,
+.vacation-form input,
+.vacation-form select,
+.vacation-form textarea,
+.holiday-form input,
+.holiday-panel input,
+.holiday-panel select,
+.holiday-panel textarea {
+    background: rgba(255, 255, 255, 0.64);
+    border: 1px solid rgba(75, 63, 48, 0.14);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font: inherit;
+    min-height: 42px;
+    padding: 0.65rem 0.75rem;
+    width: 100%;
+}
+
+[data-theme="dark"] .year-switcher select,
+[data-theme="dark"] .year-config-form input,
+[data-theme="dark"] .year-config-form select,
+[data-theme="dark"] .vacation-form input,
+[data-theme="dark"] .vacation-form select,
+[data-theme="dark"] .vacation-form textarea,
+[data-theme="dark"] .holiday-form input,
+[data-theme="dark"] .holiday-panel input,
+[data-theme="dark"] .holiday-panel select,
+[data-theme="dark"] .holiday-panel textarea {
+    background: rgba(25, 25, 25, 0.6);
+    border-color: rgba(255, 255, 255, 0.14);
+}
+
+.year-config-form label,
+.vacation-form label {
+    display: grid;
+    flex: 1;
+    gap: 0.35rem;
+}
+
+.year-config-form .primary-button {
+    align-self: flex-end;
+}
+
+.year-config-form label span,
+.vacation-form label span {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.summary-grid {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.metric-card,
+.donut-card {
+    min-height: 92px;
+}
+
+.metric-card span,
+.donut-card span {
+    color: var(--text-muted);
+    font-size: 0.86rem;
+    font-weight: 700;
+}
+
+.metric-card strong,
+.donut-card strong {
+    display: block;
+    font-size: clamp(1.3rem, 1.8vw, 1.8rem);
+    line-height: 1;
+    margin: 0.5rem 0 0.2rem;
+}
+
+.metric-card small {
+    color: var(--text-soft);
+}
+
+.metric-card.is-danger strong,
+.donut-card.is-danger strong {
+    color: #a64d3d;
+}
+
+.donut-card {
+    align-items: center;
+    display: flex;
+    gap: 0.75rem;
+}
+
+.vacation-donut {
+    aspect-ratio: 1;
+    background:
+        radial-gradient(circle, var(--panel-bg, rgba(255,255,255,0.78)) 0 55%, transparent 56%),
+        conic-gradient(var(--color-accent-strong) calc(var(--usage) * 1%), rgba(124, 112, 92, 0.18) 0);
+    border-radius: 50%;
+    flex: 0 0 68px;
+}
+
+.planner-grid {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: minmax(320px, 0.85fr) minmax(360px, 1.15fr);
+}
+
+.vacation-form,
+.holiday-form,
+.compact-form,
+.holiday-panel details form {
+    display: grid;
+    gap: 0.8rem;
+}
+
+.holiday-form {
+    margin-bottom: 0.75rem;
+}
+
+.live-preview {
+    background: rgba(127, 145, 107, 0.12);
+    border: 1px solid rgba(127, 145, 107, 0.25);
+    border-radius: 8px;
+    display: grid;
+    gap: 0.25rem;
+    padding: 0.65rem;
+}
+
+.live-preview strong {
+    font-size: 1.35rem;
+}
+
+.live-preview small {
+    color: var(--text-muted);
+}
+
+.vacation-list,
+.holiday-list {
+    display: grid;
+    gap: 0.6rem;
+}
+
+.vacation-item,
+.holiday-list article {
+    background: rgba(255, 255, 255, 0.38);
+    border: 1px solid rgba(75, 63, 48, 0.12);
+    border-radius: 8px;
+    padding: 0.75rem;
+}
+
+[data-theme="dark"] .vacation-item,
+[data-theme="dark"] .holiday-list article {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+.vacation-item-head,
+.holiday-list article {
+    align-items: flex-start;
+    display: flex;
+    gap: 0.8rem;
+    justify-content: space-between;
+}
+
+.vacation-item-head span,
+.holiday-list small {
+    color: var(--text-muted);
+    display: block;
+    font-size: 0.82rem;
+    margin-top: 0.2rem;
+}
+
+.state-pill {
+    background: rgba(158, 177, 182, 0.22);
+    border-radius: 999px;
+    color: var(--text-primary);
+    font-size: 0.76rem;
+    font-weight: 800;
+    padding: 0.25rem 0.6rem;
+    white-space: nowrap;
+}
+
+.state-pill.is-warning {
+    background: rgba(194, 162, 118, 0.22);
+}
+
+.status-current .state-pill {
+    background: rgba(127, 145, 107, 0.22);
+}
+
+.status-taken .state-pill {
+    background: rgba(124, 112, 92, 0.16);
+}
+
+.vacation-facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin-top: 0.75rem;
+}
+
+.vacation-facts span,
+.day-chip {
+    border-radius: 999px;
+    font-size: 0.68rem;
+    font-weight: 750;
+    padding: 0.16rem 0.42rem;
+}
+
+.vacation-facts span {
+    background: rgba(158, 177, 182, 0.18);
+}
+
+.overlap-note {
+    color: #a64d3d;
+    font-weight: 700;
+}
+
+.calendar-panel {
+    overflow: hidden;
+}
+
+.calendar-body {
+    align-items: start;
+    display: grid;
+    gap: 20px;
+    grid-template-columns: minmax(180px, 260px) 720px;
+    justify-content: center;
+}
+
+.calendar-month-stats {
+    display: grid;
+    gap: 10px;
+}
+
+.month-stat {
+    background: rgba(255, 255, 255, 0.38);
+    border: 1px solid rgba(75, 63, 48, 0.12);
+    border-radius: 8px;
+    padding: 12px 14px;
+}
+
+[data-theme="dark"] .month-stat {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+.month-stat span {
+    color: var(--text-muted);
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+.month-stat strong {
+    display: block;
+    font-size: 1.4rem;
+    margin-top: 4px;
+}
+
+.vacation-calendar {
+    display: grid;
+    gap: 0.25rem;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    margin: 0 auto;
+    max-width: 720px;
+    width: 100%;
+}
+
+.weekday-label {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    font-weight: 800;
+    text-align: center;
+}
+
+.calendar-day {
+    background: rgba(255, 255, 255, 0.38);
+    border: 1px solid rgba(75, 63, 48, 0.1);
+    border-radius: 8px;
+    display: grid;
+    gap: 0.2rem;
+    min-height: 68px;
+    padding: 0.4rem;
+}
+
+[data-theme="dark"] .calendar-day {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+.calendar-day.is-muted {
+    opacity: 0.48;
+}
+
+.calendar-day.is-weekend {
+    background: rgba(158, 177, 182, 0.12);
+}
+
+.calendar-day.is-today {
+    background: var(--surface-selected);
+    border-color: var(--color-accent-strong);
+    box-shadow: inset 0 0 0 2px var(--color-accent-strong);
+}
+
+.calendar-day.is-today strong {
+    align-items: center;
+    background: var(--color-accent-strong);
+    border-radius: 999px;
+    color: #fffaf3;
+    display: inline-flex;
+    font-size: 0.8rem;
+    height: 22px;
+    justify-content: center;
+    width: 22px;
+}
+
+.holiday-chip {
+    background: #8a5049;
+    color: #fdf3f1;
+}
+
+.vacation-chip {
+    background: #4f6140;
+    color: #f1f6ec;
+}
+
+.muted-chip {
+    background: #5c5445;
+    color: #f3f0ea;
+}
+
+.check-line {
+    align-items: center;
+    color: var(--text-muted);
+    display: flex;
+    font-weight: 700;
+    gap: 0.45rem;
+}
+
+.check-line input {
+    min-height: auto;
+    width: auto;
+}
+
+.text-danger-button {
+    background: transparent;
+    border: 0;
+    color: #a64d3d;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 800;
+    padding: 0.4rem 0;
+}
+
+.vacation-item summary,
+.holiday-list summary {
+    align-items: center;
+    color: var(--color-accent-strong);
+    cursor: pointer;
+    display: flex;
+    font-weight: 700;
+    gap: 8px;
+    list-style: none;
+    margin-top: 10px;
+}
+
+.vacation-item summary::-webkit-details-marker,
+.holiday-list summary::-webkit-details-marker {
+    display: none;
+}
+
+.vacation-item details form,
+.holiday-list details form {
+    margin-top: 12px;
+}
+
+.empty-state {
+    color: var(--text-muted);
+    margin: 0;
+}
+
+.official-list article.is-disabled {
+    opacity: 0.55;
+}
+
+@media (max-width: 1180px) {
+    .calendar-body {
+        grid-template-columns: 1fr;
+        justify-content: stretch;
+    }
+
+    .calendar-month-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 980px) {
+    .vacation-hero,
+    .year-config-form,
+    .planner-grid {
+        align-items: stretch;
+        grid-template-columns: 1fr;
+    }
+
+    .vacation-hero,
+    .year-config-form {
+        flex-direction: column;
+    }
+
+    .summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 640px) {
+    .year-config-panel,
+    .metric-card,
+    .donut-card,
+    .vacation-editor,
+    .vacation-list-panel,
+    .calendar-panel,
+    .holiday-panel {
+        padding: 14px;
+    }
+
+    .summary-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .vacation-calendar {
+        gap: 0.2rem;
+    }
+
+    .calendar-day {
+        min-height: 56px;
+        padding: 0.3rem;
+    }
+
+    .day-chip {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+}

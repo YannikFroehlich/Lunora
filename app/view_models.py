@@ -108,6 +108,8 @@ def _dashboard_nav_tiles(user, unread_messages_total, new_note_shares, flags):
                 "badge_count": new_note_shares,
             },
         )
+    if flags["vacation_planner"]:
+        tiles.insert(-1, {"label": "Urlaubsplaner", "icon": "fa-umbrella-beach", "url_name": "vacation_planner"})
     if user and getattr(user, "is_superuser", False):
         tiles.append({"label": "Administration", "icon": "fa-shield-halved", "url_name": "administration"})
     return tiles
@@ -129,6 +131,8 @@ def _dashboard_tool_shortcuts(upcoming_events, unread_messages_total, dashboard_
     if flags["notes"]:
         note_subtitle = f"{new_note_shares} neue Freigabe(n)" if new_note_shares else "Notizen öffnen"
         tools.insert(-1, {"title": "Notizen", "subtitle": note_subtitle, "icon": "fa-note-sticky", "url_name": "notes"})
+    if flags["vacation_planner"]:
+        tools.insert(-1, {"title": "Urlaubsplaner", "subtitle": "Tage & Feiertage", "icon": "fa-umbrella-beach", "url_name": "vacation_planner"})
     return tools
 
 

@@ -1,0 +1,337 @@
+{% extends 'app/base.html' %}
+{% load static %}
+
+{% block title %}Urlaubsplaner | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% static 'css/vacation_planner.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell vacation-shell" data-vacation-preview-url="{% url 'vacation_preview' %}">
+    <header class="page-hero vacation-hero">
+        <div>
+            <span class="eyebrow"><i class="fa-solid fa-umbrella-beach" aria-hidden="true"></i> Urlaubsplaner</span>
+            <h1>{{ selected_year }}</h1>
+            <p>Urlaubstage, Feiertage und Jahresauslastung getrennt pro Benutzer verwalten.</p>
+        </div>
+        <nav class="year-switcher" aria-label="Jahr wechseln">
+            <a class="icon-button" href="{% url 'vacation_planner' %}?year={{ prev_year }}&month={{ selected_month }}" aria-label="Vorheriges Jahr">
+                <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+            </a>
+            <form method="get">
+                <select name="year" aria-label="Jahr" onchange="this.form.submit()">
+                    {% for option in year_options %}
+                    <option value="{{ option }}" {% if option == selected_year %}selected{% endif %}>{{ option }}</option>
+                    {% endfor %}
+                </select>
+                <input type="hidden" name="month" value="{{ selected_month }}">
+            </form>
+            <a class="icon-button" href="{% url 'vacation_planner' %}?year={{ next_year }}&month={{ selected_month }}" aria-label="Nächstes Jahr">
+                <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+            </a>
+        </nav>
+    </header>
+
+    <section class="glass-panel year-config-panel">
+        <div class="panel-title panel-title-between">
+            <span><i class="fa-solid fa-sliders" aria-hidden="true"></i> Jahresdaten</span>
+            {% if not year_context.vacation_year %}<span class="state-pill is-warning">Noch nicht bestätigt</span>{% endif %}
+        </div>
+        <form class="year-config-form" method="post" action="{% url 'vacation_year_save' %}">
+            {% csrf_token %}
+            <input type="hidden" name="year" value="{{ selected_year }}">
+            <input type="hidden" name="month" value="{{ selected_month }}">
+            <label>
+                <span>Urlaubstage</span>
+                {{ year_form.allowance_days }}
+            </label>
+            <label>
+                <span>Bundesland</span>
+                {{ year_form.subdivision }}
+            </label>
+            <button class="primary-button" type="submit">
+                <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+                Jahr speichern
+            </button>
+        </form>
+    </section>
+
+    <section class="summary-grid" aria-label="Jahresübersicht">
+        <article class="glass-panel metric-card">
+            <span>Gesamturlaub</span>
+            <strong>{{ summary.allowance_label }}</strong>
+            <small>Tage im Jahr {{ selected_year }}</small>
+        </article>
+        <article class="glass-panel metric-card">
+            <span>Verplant</span>
+            <strong>{{ summary.planned_label }}</strong>
+            <small>Doppelte Urlaubstage werden einmal gezählt</small>
+        </article>
+        <article class="glass-panel metric-card {% if summary.is_overbooked %}is-danger{% endif %}">
+            <span>Verbleibend</span>
+            <strong>{{ summary.remaining_label }}</strong>
+            <small>{% if summary.is_overbooked %}Mehr Urlaub verplant als verfügbar{% else %}Noch verfügbar{% endif %}</small>
+        </article>
+        <article class="glass-panel donut-card {% if summary.is_overbooked %}is-danger{% endif %}">
+            <div class="vacation-donut" style="--usage: {{ summary.usage_capped }};"></div>
+            <div>
+                <strong>{{ summary.usage_percent }}%</strong>
+                <span>Auslastung</span>
+            </div>
+        </article>
+    </section>
+
+    <div class="planner-grid">
+        <section class="glass-panel vacation-editor">
+            <div class="panel-title">
+                <i class="fa-solid fa-plane-departure" aria-hidden="true"></i>
+                <h2>Urlaub anlegen</h2>
+            </div>
+            <form class="vacation-form" method="post" action="{% url 'vacation_period_save' %}" data-preview-form>
+                {% csrf_token %}
+                <input type="hidden" name="year" value="{{ selected_year }}">
+                <input type="hidden" name="month" value="{{ selected_month }}">
+                <label>
+                    <span>Urlaubsart</span>
+                    {{ period_form.name }}
+                </label>
+                <div class="form-row">
+                    <label>
+                        <span>Start</span>
+                        {{ period_form.start_date }}
+                    </label>
+                    <label>
+                        <span>Ende</span>
+                        {{ period_form.end_date }}
+                    </label>
+                </div>
+                <label>
+                    <span>Hinweise</span>
+                    {{ period_form.notes }}
+                </label>
+                <div class="live-preview" data-preview-output>
+                    <span>Vorschau</span>
+                    <strong data-preview-required>-</strong>
+                    <small data-preview-details>Start- und Enddatum wählen</small>
+                </div>
+                <button class="primary-button" type="submit" {% if not year_context.vacation_year %}disabled{% endif %}>
+                    <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                    Urlaub speichern
+                </button>
+            </form>
+        </section>
+
+        <section class="glass-panel vacation-list-panel">
+            <div class="panel-title">
+                <i class="fa-solid fa-list-check" aria-hidden="true"></i>
+                <h2>Urlaube</h2>
+            </div>
+            <div class="vacation-list">
+                {% for item in period_items %}
+                <article class="vacation-item status-{{ item.status.key }}">
+                    <div class="vacation-item-head">
+                        <div>
+                            <strong>{{ item.period.get_name_display }}</strong>
+                            <span>{{ item.period.start_date }} bis {{ item.period.end_date }}</span>
+                        </div>
+                        <span class="state-pill">{{ item.status.label }}</span>
+                    </div>
+                    {% if item.period.notes %}<p>{{ item.period.notes }}</p>{% endif %}
+                    <div class="vacation-facts">
+                        <span>{{ item.calculation.required_days_label }} Urlaubstage</span>
+                        <span>{{ item.calculation.calendar_days }} Kalendertage</span>
+                        <span>{{ item.calculation.weekend_days }} Wochenendtage</span>
+                        <span>{{ item.calculation.holiday_count }} Feiertage</span>
+                    </div>
+                    {% if item.calculation.overlaps %}
+                    <p class="overlap-note"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Überschneidung mit {% for overlap in item.calculation.overlaps %}{{ overlap.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</p>
+                    {% endif %}
+                    <details>
+                        <summary><i class="fa-solid fa-pen" aria-hidden="true"></i> Bearbeiten</summary>
+                        <form class="vacation-form compact-form" method="post" action="{% url 'vacation_period_save' %}" data-preview-form>
+                            {% csrf_token %}
+                            <input type="hidden" name="year" value="{{ selected_year }}">
+                            <input type="hidden" name="month" value="{{ selected_month }}">
+                            <input type="hidden" name="period_id" value="{{ item.period.id }}">
+                            <select name="name" required>
+                                <option value="tarifurlaub" {% if item.period.name == "tarifurlaub" %}selected{% endif %}>Tarifurlaub</option>
+                                <option value="sonderurlaub" {% if item.period.name == "sonderurlaub" %}selected{% endif %}>Sonderurlaub</option>
+                                <option value="ueberstundenabbau" {% if item.period.name == "ueberstundenabbau" %}selected{% endif %}>Überstundenabbau</option>
+                            </select>
+                            <div class="form-row">
+                                <input type="date" name="start_date" value="{{ item.period.start_date|date:'Y-m-d' }}" required>
+                                <input type="date" name="end_date" value="{{ item.period.end_date|date:'Y-m-d' }}" required>
+                            </div>
+                            <textarea name="notes" rows="2">{{ item.period.notes }}</textarea>
+                            <div class="live-preview" data-preview-output>
+                                <span>Vorschau</span>
+                                <strong data-preview-required>{{ item.calculation.required_days_label }} Tage</strong>
+                                <small data-preview-details>{{ item.calculation.calendar_days }} Kalender · {{ item.calculation.weekend_days }} Wochenende · {{ item.calculation.holiday_count }} Feiertage</small>
+                            </div>
+                            <button class="ghost-button" type="submit"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Speichern</button>
+                        </form>
+                        <form method="post" action="{% url 'vacation_period_delete' %}" onsubmit="return confirm('Urlaub wirklich löschen?');">
+                            {% csrf_token %}
+                            <input type="hidden" name="year" value="{{ selected_year }}">
+                            <input type="hidden" name="month" value="{{ selected_month }}">
+                            <input type="hidden" name="period_id" value="{{ item.period.id }}">
+                            <button class="text-danger-button" type="submit"><i class="fa-solid fa-trash" aria-hidden="true"></i> Löschen</button>
+                        </form>
+                    </details>
+                </article>
+                {% empty %}
+                <p class="empty-state">Noch keine Urlaube für dieses Jahr geplant.</p>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+
+    <section class="glass-panel calendar-panel">
+        <div class="panel-title panel-title-between">
+            <span><i class="fa-regular fa-calendar-days" aria-hidden="true"></i> {{ calendar_model.month_label }}</span>
+            <nav class="month-actions" aria-label="Monat wechseln">
+                <a class="icon-button" href="{% url 'vacation_planner' %}?year={{ calendar_model.prev_month.year }}&month={{ calendar_model.prev_month.month }}" aria-label="Vorheriger Monat"><i class="fa-solid fa-chevron-left"></i></a>
+                <a class="ghost-button" href="{% url 'vacation_planner' %}?year={{ today_year }}&month={{ today_month }}">Heute</a>
+                <a class="icon-button" href="{% url 'vacation_planner' %}?year={{ calendar_model.next_month.year }}&month={{ calendar_model.next_month.month }}" aria-label="Nächster Monat"><i class="fa-solid fa-chevron-right"></i></a>
+            </nav>
+        </div>
+        <div class="calendar-body">
+            <aside class="calendar-month-stats">
+                <div class="month-stat">
+                    <span>Geplante Urlaube</span>
+                    <strong>{{ month_summary.period_count }}</strong>
+                </div>
+                <div class="month-stat">
+                    <span>Urlaubstage</span>
+                    <strong>{{ month_summary.planned_label }}</strong>
+                </div>
+                <div class="month-stat">
+                    <span>Feiertage</span>
+                    <strong>{{ month_summary.holiday_count }}</strong>
+                </div>
+                <div class="month-stat">
+                    <span>Wochenendtage</span>
+                    <strong>{{ month_summary.weekend_days }}</strong>
+                </div>
+            </aside>
+            <div class="vacation-calendar">
+                {% for weekday in calendar_model.weekday_labels %}
+                <span class="weekday-label">{{ weekday }}</span>
+                {% endfor %}
+                {% for week in calendar_model.rows %}
+                {% for day in week %}
+                <article class="calendar-day {% if day.muted %}is-muted{% endif %} {% if day.weekend %}is-weekend{% endif %} {% if day.today %}is-today{% endif %}">
+                    <strong>{{ day.number }}</strong>
+                    {% if day.holiday %}
+                    <span class="day-chip holiday-chip">{{ day.holiday.names|join:', ' }}</span>
+                    {% endif %}
+                    {% for vacation in day.vacations %}
+                    <span class="day-chip vacation-chip">{{ vacation.get_name_display }}</span>
+                    {% endfor %}
+                    {% if day.overflow %}<span class="day-chip muted-chip">+{{ day.overflow }}</span>{% endif %}
+                </article>
+                {% endfor %}
+                {% endfor %}
+            </div>
+        </div>
+    </section>
+
+    <div class="planner-grid">
+        <section class="glass-panel holiday-panel">
+            <div class="panel-title">
+                <i class="fa-solid fa-star-half-stroke" aria-hidden="true"></i>
+                <h2>Eigene Feiertage</h2>
+            </div>
+            <form class="holiday-form" method="post" action="{% url 'custom_holiday_save' %}">
+                {% csrf_token %}
+                <input type="hidden" name="year" value="{{ selected_year }}">
+                <input type="hidden" name="month" value="{{ selected_month }}">
+                <div class="form-row">
+                    {{ custom_holiday_form.date }}
+                    {{ custom_holiday_form.name }}
+                </div>
+                <label class="check-line">{{ custom_holiday_form.is_half_day }} <span>Halber Feiertag</span></label>
+                <button class="ghost-button" type="submit" {% if not year_context.vacation_year %}disabled{% endif %}>
+                    <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                    Hinzufügen
+                </button>
+            </form>
+            <div class="holiday-list">
+                {% for holiday in holiday_items.custom %}
+                <article>
+                    <span><strong>{{ holiday.name }}</strong><small>{{ holiday.date }} · {{ holiday.day_value|floatformat:1 }} Tag(e)</small></span>
+                    <details>
+                        <summary><i class="fa-solid fa-pen" aria-hidden="true"></i> Bearbeiten</summary>
+                        <form method="post" action="{% url 'custom_holiday_save' %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="year" value="{{ selected_year }}">
+                            <input type="hidden" name="month" value="{{ selected_month }}">
+                            <input type="hidden" name="holiday_id" value="{{ holiday.id }}">
+                            <input type="date" name="date" value="{{ holiday.date|date:'Y-m-d' }}" required>
+                            <input type="text" name="name" value="{{ holiday.name }}" required maxlength="160">
+                            <label class="check-line"><input type="checkbox" name="is_half_day" {% if holiday.day_value|stringformat:'s' == '0.5' %}checked{% endif %}> <span>Halber Feiertag</span></label>
+                            <button class="ghost-button" type="submit">Speichern</button>
+                        </form>
+                        <form method="post" action="{% url 'custom_holiday_delete' %}" onsubmit="return confirm('Feiertag wirklich löschen?');">
+                            {% csrf_token %}
+                            <input type="hidden" name="year" value="{{ selected_year }}">
+                            <input type="hidden" name="month" value="{{ selected_month }}">
+                            <input type="hidden" name="holiday_id" value="{{ holiday.id }}">
+                            <button class="text-danger-button" type="submit">Löschen</button>
+                        </form>
+                    </details>
+                </article>
+                {% empty %}
+                <p class="empty-state">Keine eigenen Feiertage hinterlegt.</p>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="glass-panel holiday-panel">
+            <div class="panel-title">
+                <i class="fa-solid fa-landmark" aria-hidden="true"></i>
+                <h2>Offizielle Feiertage</h2>
+            </div>
+            <div class="holiday-list official-list">
+                {% for item in holiday_items.official %}
+                <article class="{% if item.is_disabled %}is-disabled{% endif %}">
+                    <span><strong>{{ item.name }}</strong><small>{{ item.holiday.date }} · {{ item.day_value|floatformat:1 }} Tag(e)</small></span>
+                    <details>
+                        <summary><i class="fa-solid fa-pen" aria-hidden="true"></i> Anpassen</summary>
+                        <form method="post" action="{% url 'official_holiday_override_save' %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="year" value="{{ selected_year }}">
+                            <input type="hidden" name="month" value="{{ selected_month }}">
+                            <input type="hidden" name="official_holiday_id" value="{{ item.holiday.id }}">
+                            <input type="text" name="name" value="{% if item.override %}{{ item.override.name }}{% endif %}" placeholder="Optionaler eigener Name" maxlength="160">
+                            <select name="day_value">
+                                <option value="1.0" {% if item.day_value|stringformat:'s' == '1.0' %}selected{% endif %}>Ganzer Feiertag</option>
+                                <option value="0.5" {% if item.day_value|stringformat:'s' == '0.5' %}selected{% endif %}>Halber Feiertag</option>
+                                <option value="0.0" {% if item.is_disabled %}selected{% endif %}>Deaktiviert</option>
+                            </select>
+                            <button class="ghost-button" type="submit">Speichern</button>
+                        </form>
+                        {% if item.override %}
+                        <form method="post" action="{% url 'official_holiday_override_reset' %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="year" value="{{ selected_year }}">
+                            <input type="hidden" name="month" value="{{ selected_month }}">
+                            <input type="hidden" name="official_holiday_id" value="{{ item.holiday.id }}">
+                            <button class="text-danger-button" type="submit">Zurücksetzen</button>
+                        </form>
+                        {% endif %}
+                    </details>
+                </article>
+                {% empty %}
+                <p class="empty-state">Speichere zuerst ein Urlaubsjahr, um Feiertage zu sehen.</p>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+</section>
+{% endblock %}
+
+{% block page_js %}
+<script src="{% static 'js/vacation_planner.js' %}?v=1"></script>
+{% endblock %}

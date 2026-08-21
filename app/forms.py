@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, time, timedelta
+from decimal import Decimal
 
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm, UsernameField
@@ -8,7 +9,19 @@ from django.core.cache import cache
 from django.core.files.storage import default_storage
 from django.db.models import Q
 
-from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, CalendarSource, ChatMessage, Profile, SystemSettings
+from app.models import (
+    CalendarEvent,
+    CalendarEventAttendee,
+    CalendarReminder,
+    CalendarSource,
+    ChatMessage,
+    CustomHoliday,
+    HolidayOverride,
+    Profile,
+    SystemSettings,
+    VacationPeriod,
+    VacationYear,
+)
 from app.services.calendar_service import expand_manual_recurrence
 from app.services.chat_files import infer_attachment_kind, validate_note_upload
 from app.services.image_uploads import PROFILE_IMAGE_ACCEPT, validate_profile_image_file
@@ -100,6 +113,7 @@ class SystemSettingsForm(forms.ModelForm):
             "calendar_sync_enabled",
             "messages_enabled",
             "notes_enabled",
+            "vacation_planner_enabled",
             "weather_enabled",
         ]
         labels = {
@@ -109,6 +123,7 @@ class SystemSettingsForm(forms.ModelForm):
             "calendar_sync_enabled": "Kalender: Synchronisierung und Quellen",
             "messages_enabled": "Nachrichten",
             "notes_enabled": "Notizen",
+            "vacation_planner_enabled": "Urlaubsplaner",
             "weather_enabled": "Wetter",
         }
         widgets = {
@@ -118,8 +133,125 @@ class SystemSettingsForm(forms.ModelForm):
             "calendar_sync_enabled": forms.CheckboxInput(),
             "messages_enabled": forms.CheckboxInput(),
             "notes_enabled": forms.CheckboxInput(),
+            "vacation_planner_enabled": forms.CheckboxInput(),
             "weather_enabled": forms.CheckboxInput(),
         }
+
+
+def _clean_half_step_days(value, *, field_label):
+    if value is None:
+        return value
+    decimal_value = Decimal(value)
+    if decimal_value < 0:
+        raise forms.ValidationError(f"{field_label} darf nicht negativ sein.")
+    if decimal_value * 2 != int(decimal_value * 2):
+        raise forms.ValidationError(f"{field_label} darf nur ganze oder halbe Tage enthalten.")
+    return decimal_value
+
+
+class VacationYearForm(forms.ModelForm):
+    class Meta:
+        model = VacationYear
+        fields = ["allowance_days", "subdivision"]
+        labels = {
+            "allowance_days": "Urlaubstage pro Jahr",
+            "subdivision": "Bundesland",
+        }
+        widgets = {
+            "allowance_days": forms.NumberInput(attrs={"min": "0", "step": "0.5", "inputmode": "decimal"}),
+            "subdivision": forms.Select(),
+        }
+
+    def clean_allowance_days(self):
+        return _clean_half_step_days(self.cleaned_data.get("allowance_days"), field_label="Urlaubstage")
+
+
+class VacationPeriodForm(forms.ModelForm):
+    class Meta:
+        model = VacationPeriod
+        fields = ["name", "start_date", "end_date", "notes"]
+        labels = {
+            "name": "Urlaubsart",
+            "start_date": "Startdatum",
+            "end_date": "Enddatum",
+            "notes": "Hinweise",
+        }
+        widgets = {
+            "name": forms.Select(),
+            "start_date": forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+            "end_date": forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+            "notes": forms.Textarea(attrs={"placeholder": "Optional", "rows": 3}),
+        }
+
+    def __init__(self, *args, user=None, **kwargs):
+        self.user = user
+        super().__init__(*args, **kwargs)
+
+    def clean_notes(self):
+        return self.cleaned_data.get("notes", "").strip()
+
+    def clean(self):
+        cleaned_data = super().clean()
+        start_date = cleaned_data.get("start_date")
+        end_date = cleaned_data.get("end_date")
+        if start_date and end_date and end_date < start_date:
+            self.add_error("end_date", "Das Enddatum muss am oder nach dem Startdatum liegen.")
+        if start_date and end_date and (end_date - start_date).days > 730:
+            self.add_error("end_date", "Ein Urlaub darf höchstens zwei Jahre umfassen.")
+        return cleaned_data
+
+
+class CustomHolidayForm(forms.ModelForm):
+    is_half_day = forms.BooleanField(label="Halber Feiertag", required=False)
+
+    class Meta:
+        model = CustomHoliday
+        fields = ["date", "name", "is_half_day"]
+        labels = {
+            "date": "Datum",
+            "name": "Name",
+        }
+        widgets = {
+            "date": forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+            "name": forms.TextInput(attrs={"placeholder": "z. B. Betriebsruhe", "autocomplete": "off"}),
+        }
+
+    def clean_name(self):
+        return self.cleaned_data["name"].strip()
+
+    def save(self, commit=True):
+        holiday = super().save(commit=False)
+        holiday.day_value = Decimal("0.5") if self.cleaned_data.get("is_half_day") else Decimal("1.0")
+        if commit:
+            holiday.save()
+        return holiday
+
+
+class HolidayOverrideForm(forms.ModelForm):
+    day_value = forms.ChoiceField(
+        label="Wertung",
+        choices=[
+            ("1.0", "Ganzer Feiertag"),
+            ("0.5", "Halber Feiertag"),
+            ("0.0", "Deaktiviert"),
+        ],
+    )
+
+    class Meta:
+        model = HolidayOverride
+        fields = ["name", "day_value"]
+        labels = {
+            "name": "Name",
+        }
+        widgets = {
+            "name": forms.TextInput(attrs={"placeholder": "Optionaler eigener Name", "autocomplete": "off"}),
+        }
+
+    def clean_name(self):
+        return self.cleaned_data.get("name", "").strip()
+
+    def clean_day_value(self):
+        return Decimal(self.cleaned_data["day_value"])
 
 
 class RegistrationForm(UserCreationForm):

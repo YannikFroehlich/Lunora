@@ -30,6 +30,17 @@ from .note_views import (
     notes,
 )
 from .search_views import global_search
+from .vacation_planner_views import (
+    custom_holiday_delete,
+    custom_holiday_save,
+    official_holiday_override_reset,
+    official_holiday_override_save,
+    vacation_period_delete,
+    vacation_period_save,
+    vacation_planner,
+    vacation_preview,
+    vacation_year_save,
+)
 from .weather_views import weather, weather_map_tile, weather_point, weather_suggestions
 
 __all__ = [
@@ -58,6 +69,15 @@ __all__ = [
     "note_version_restore_api",
     "note_shortcuts_api",
     "global_search",
+    "vacation_planner",
+    "vacation_year_save",
+    "vacation_period_save",
+    "vacation_period_delete",
+    "vacation_preview",
+    "custom_holiday_save",
+    "custom_holiday_delete",
+    "official_holiday_override_save",
+    "official_holiday_override_reset",
     "LunoraLoginView",
     "LunoraPasswordResetView",
     "LunoraPasswordResetDoneView",

@@ -18,6 +18,7 @@ class SystemSettings(models.Model):
     calendar_sync_enabled = models.BooleanField(default=True)
     messages_enabled = models.BooleanField(default=True)
     notes_enabled = models.BooleanField(default=True)
+    vacation_planner_enabled = models.BooleanField(default=True)
     weather_enabled = models.BooleanField(default=True)
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -464,6 +465,126 @@ class WeeklySummaryDelivery(models.Model):
 
     def __str__(self):
         return f"{self.user} – Woche ab {self.week_start:%d.%m.%Y}"
+
+
+class VacationYear(models.Model):
+    SUBDIVISION_CHOICES = [
+        ("BB", "Brandenburg"),
+        ("BE", "Berlin"),
+        ("BW", "Baden-Württemberg"),
+        ("BY", "Bayern"),
+        ("HB", "Bremen"),
+        ("HE", "Hessen"),
+        ("HH", "Hamburg"),
+        ("MV", "Mecklenburg-Vorpommern"),
+        ("NI", "Niedersachsen"),
+        ("NW", "Nordrhein-Westfalen"),
+        ("RP", "Rheinland-Pfalz"),
+        ("SH", "Schleswig-Holstein"),
+        ("SL", "Saarland"),
+        ("SN", "Sachsen"),
+        ("ST", "Sachsen-Anhalt"),
+        ("TH", "Thüringen"),
+    ]
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="vacation_years")
+    year = models.PositiveSmallIntegerField()
+    allowance_days = models.DecimalField(max_digits=5, decimal_places=1)
+    subdivision = models.CharField(max_length=2, choices=SUBDIVISION_CHOICES, default="NW")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-year"]
+        constraints = [
+            models.UniqueConstraint(fields=["user", "year"], name="unique_vacation_year_per_user"),
+        ]
+
+    def __str__(self):
+        return f"{self.user} – Urlaub {self.year}"
+
+
+class VacationPeriod(models.Model):
+    TARIFURLAUB = "tarifurlaub"
+    SONDERURLAUB = "sonderurlaub"
+    UEBERSTUNDENABBAU = "ueberstundenabbau"
+    TYPE_CHOICES = [
+        (TARIFURLAUB, "Tarifurlaub"),
+        (SONDERURLAUB, "Sonderurlaub"),
+        (UEBERSTUNDENABBAU, "Überstundenabbau"),
+    ]
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="vacation_periods")
+    name = models.CharField(max_length=160, choices=TYPE_CHOICES, default=TARIFURLAUB)
+    start_date = models.DateField()
+    end_date = models.DateField()
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["start_date", "name", "id"]
+        indexes = [
+            models.Index(fields=["user", "start_date", "end_date"], name="app_vacperiod_user_range_idx"),
+        ]
+
+    def __str__(self):
+        return self.get_name_display()
+
+
+class OfficialHoliday(models.Model):
+    subdivision = models.CharField(max_length=2, choices=VacationYear.SUBDIVISION_CHOICES)
+    date = models.DateField()
+    name = models.CharField(max_length=160)
+    day_value = models.DecimalField(max_digits=2, decimal_places=1, default=1)
+    active = models.BooleanField(default=True)
+    source = models.CharField(max_length=80, default="holidays")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["date", "name"]
+        constraints = [
+            models.UniqueConstraint(fields=["subdivision", "date", "name"], name="unique_official_holiday"),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.subdivision}, {self.date:%d.%m.%Y})"
+
+
+class CustomHoliday(models.Model):
+    vacation_year = models.ForeignKey(VacationYear, on_delete=models.CASCADE, related_name="custom_holidays")
+    date = models.DateField()
+    name = models.CharField(max_length=160)
+    day_value = models.DecimalField(max_digits=2, decimal_places=1, default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["date", "name"]
+        constraints = [
+            models.UniqueConstraint(fields=["vacation_year", "date", "name"], name="unique_custom_holiday"),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class HolidayOverride(models.Model):
+    vacation_year = models.ForeignKey(VacationYear, on_delete=models.CASCADE, related_name="holiday_overrides")
+    official_holiday = models.ForeignKey(OfficialHoliday, on_delete=models.CASCADE, related_name="user_overrides")
+    name = models.CharField(max_length=160, blank=True)
+    day_value = models.DecimalField(max_digits=2, decimal_places=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["official_holiday__date", "official_holiday__name"]
+        constraints = [
+            models.UniqueConstraint(fields=["vacation_year", "official_holiday"], name="unique_holiday_override"),
+        ]
+
+    def __str__(self):
+        return self.name or self.official_holiday.name
 
 
 class Note(models.Model):

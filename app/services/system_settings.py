@@ -15,6 +15,7 @@ FEATURE_FIELDS = {
     "calendar_sync": "calendar_sync_enabled",
     "messages": "messages_enabled",
     "notes": "notes_enabled",
+    "vacation_planner": "vacation_planner_enabled",
     "weather": "weather_enabled",
 }
 
@@ -25,6 +26,7 @@ FEATURE_LABELS = {
     "calendar_sync": "Kalendersynchronisierung",
     "messages": "Nachrichten",
     "notes": "Notizen",
+    "vacation_planner": "Urlaubsplaner",
     "weather": "Wetter",
 }
 
@@ -37,6 +39,7 @@ class DefaultSystemSettings:
     calendar_sync_enabled: bool = True
     messages_enabled: bool = True
     notes_enabled: bool = True
+    vacation_planner_enabled: bool = True
     weather_enabled: bool = True
     updated_by: object = None
     updated_at: object = None

@@ -1,7 +1,8 @@
 import json
 import re
 import uuid
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from decimal import Decimal
 from email.message import Message
 from io import StringIO
 from tempfile import TemporaryDirectory
@@ -19,7 +20,7 @@ from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 
 from app.forms import CalendarSourceForm, ProfileForm
-from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, CalendarSource, ChatMessage, ChatMessageAttachment, ChatMessageReaction, Conversation, ConversationMember, Note, NoteActivityNotification, NoteAttachment, NoteCommentThread, NoteShare, NoteUserState, NoteVersion, Profile, SystemSettings, WeeklySummaryDelivery
+from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, CalendarSource, ChatMessage, ChatMessageAttachment, ChatMessageReaction, Conversation, ConversationMember, CustomHoliday, Note, NoteActivityNotification, NoteAttachment, NoteCommentThread, NoteShare, NoteUserState, NoteVersion, OfficialHoliday, Profile, SystemSettings, VacationPeriod, VacationYear, WeeklySummaryDelivery
 from app.services.calendar_service import fetch_ical, parse_ical_events, sync_calendar_sources
 from app.services.image_uploads import PROFILE_IMAGE_MAX_BYTES
 from app.services.notifications import (
@@ -37,6 +38,7 @@ from app.services.weather_service import (
     get_weather_context,
 )
 from app.services.notes import prune_note_versions, purge_expired_notes
+from app.services.vacation_planner import annual_summary, calculate_period
 from app.views.message_views import _build_inbox_items
 
 
@@ -3442,3 +3444,102 @@ class NotesTests(TestCase):
         self.assertEqual(response.status_code, 201, response.content)
         duplicate = Note.objects.get(pk=response.json()["note"]["id"])
         self.assertNotIn("commentThread", json.dumps(duplicate.document))
+
+
+class VacationPlannerTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="planner@example.com", email="planner@example.com", password="secret-12345")
+        Profile.objects.create(user=self.user, display_name="Planner")
+        self.other = User.objects.create_user(username="other-planner@example.com", email="other-planner@example.com", password="secret-12345")
+        Profile.objects.create(user=self.other, display_name="Other")
+        self.client.login(username="planner@example.com", password="secret-12345")
+        self.vacation_year = VacationYear.objects.create(
+            user=self.user,
+            year=2026,
+            allowance_days=Decimal("3.0"),
+            subdivision="NW",
+        )
+
+    def test_half_holiday_reduces_required_vacation_days(self):
+        CustomHoliday.objects.create(
+            vacation_year=self.vacation_year,
+            date=date(2026, 1, 6),
+            name="Halber Testfeiertag",
+            day_value=Decimal("0.5"),
+        )
+
+        calculation = calculate_period(self.user, date(2026, 1, 5), date(2026, 1, 7))
+
+        self.assertEqual(calculation["calendar_days"], 3)
+        self.assertEqual(calculation["weekend_days"], 0)
+        self.assertEqual(calculation["holiday_count"], 1)
+        self.assertEqual(calculation["required_days"], Decimal("2.5"))
+
+    def test_annual_summary_counts_overlapping_vacation_dates_once(self):
+        CustomHoliday.objects.create(
+            vacation_year=self.vacation_year,
+            date=date(2026, 1, 6),
+            name="Halber Testfeiertag",
+            day_value=Decimal("0.5"),
+        )
+        VacationPeriod.objects.create(user=self.user, name=VacationPeriod.TARIFURLAUB, start_date=date(2026, 1, 5), end_date=date(2026, 1, 7))
+        VacationPeriod.objects.create(user=self.user, name=VacationPeriod.SONDERURLAUB, start_date=date(2026, 1, 6), end_date=date(2026, 1, 8))
+
+        summary = annual_summary(self.user, 2026)
+
+        self.assertEqual(summary["planned_days"], Decimal("3.5"))
+        self.assertEqual(summary["remaining_days"], Decimal("-0.5"))
+        self.assertTrue(summary["is_overbooked"])
+
+    def test_preview_reports_overlaps_and_missing_years(self):
+        VacationPeriod.objects.create(user=self.user, name=VacationPeriod.TARIFURLAUB, start_date=date(2026, 1, 6), end_date=date(2026, 1, 8))
+
+        response = self.client.post(
+            "/vacation-planner/preview/",
+            data=json.dumps({"start_date": "2026-01-05", "end_date": "2027-01-03"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["missing_years"], [2027])
+        self.assertEqual(data["overlaps"][0]["name"], "Tarifurlaub")
+
+    def test_page_requires_login_and_feature_flag(self):
+        self.client.logout()
+        response = self.client.get("/vacation-planner/")
+        self.assertEqual(response.status_code, 302)
+
+        self.client.login(username="planner@example.com", password="secret-12345")
+        SystemSettings.objects.create(vacation_planner_enabled=False)
+        response = self.client.get("/vacation-planner/?year=2026")
+        self.assertEqual(response.status_code, 503)
+
+    def test_periods_are_filtered_per_user(self):
+        VacationPeriod.objects.create(user=self.user, name=VacationPeriod.TARIFURLAUB, start_date=date(2026, 2, 2), end_date=date(2026, 2, 3), notes="Eigener Hinweis")
+        VacationPeriod.objects.create(user=self.other, name=VacationPeriod.TARIFURLAUB, start_date=date(2026, 2, 2), end_date=date(2026, 2, 3), notes="Fremder Hinweis")
+
+        response = self.client.get("/vacation-planner/?year=2026&month=2")
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertContains(response, "Eigener Hinweis")
+        self.assertNotContains(response, "Fremder Hinweis")
+
+    def test_public_holiday_import_command_is_idempotent(self):
+        stale = OfficialHoliday.objects.create(
+            subdivision="NW",
+            date=date(2026, 6, 1),
+            name="Alter Feiertag",
+            day_value=Decimal("1.0"),
+            active=True,
+        )
+        output = StringIO()
+        call_command("import_public_holidays", from_year=2026, to_year=2026, subdivision="NW", stdout=output)
+        first_count = OfficialHoliday.objects.filter(subdivision="NW", date__year=2026).count()
+        call_command("import_public_holidays", from_year=2026, to_year=2026, subdivision="NW", stdout=StringIO())
+
+        stale.refresh_from_db()
+        self.assertGreater(first_count, 0)
+        self.assertFalse(stale.active)
+        self.assertEqual(OfficialHoliday.objects.filter(subdivision="NW", date__year=2026).count(), first_count)

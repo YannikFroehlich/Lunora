@@ -14,8 +14,13 @@ from app.models import (
     NoteTag,
     NoteUserState,
     NoteVersion,
+    CustomHoliday,
+    HolidayOverride,
+    OfficialHoliday,
     Profile,
     SystemSettings,
+    VacationPeriod,
+    VacationYear,
     WeeklySummaryDelivery,
 )
 
@@ -36,6 +41,7 @@ class SystemSettingsAdmin(admin.ModelAdmin):
         "calendar_sync_enabled",
         "messages_enabled",
         "notes_enabled",
+        "vacation_planner_enabled",
         "weather_enabled",
         "updated_at",
     )
@@ -129,3 +135,42 @@ admin.site.register(NoteTag)
 admin.site.register(NoteUserState)
 admin.site.register(NoteAttachment)
 admin.site.register(NoteVersion)
+
+
+@admin.register(VacationYear)
+class VacationYearAdmin(admin.ModelAdmin):
+    list_display = ("user", "year", "allowance_days", "subdivision", "updated_at")
+    list_filter = ("year", "subdivision")
+    search_fields = ("user__username", "user__email")
+    autocomplete_fields = ("user",)
+
+
+@admin.register(VacationPeriod)
+class VacationPeriodAdmin(admin.ModelAdmin):
+    list_display = ("name", "user", "start_date", "end_date", "updated_at")
+    list_filter = ("start_date", "end_date")
+    search_fields = ("name", "notes", "user__username", "user__email")
+    autocomplete_fields = ("user",)
+
+
+@admin.register(OfficialHoliday)
+class OfficialHolidayAdmin(admin.ModelAdmin):
+    list_display = ("name", "subdivision", "date", "day_value", "active", "source")
+    list_filter = ("subdivision", "date", "active", "source")
+    search_fields = ("name",)
+
+
+@admin.register(CustomHoliday)
+class CustomHolidayAdmin(admin.ModelAdmin):
+    list_display = ("name", "vacation_year", "date", "day_value")
+    list_filter = ("date", "day_value")
+    search_fields = ("name", "vacation_year__user__username", "vacation_year__user__email")
+    autocomplete_fields = ("vacation_year",)
+
+
+@admin.register(HolidayOverride)
+class HolidayOverrideAdmin(admin.ModelAdmin):
+    list_display = ("vacation_year", "official_holiday", "name", "day_value")
+    list_filter = ("day_value",)
+    search_fields = ("name", "official_holiday__name", "vacation_year__user__username")
+    autocomplete_fields = ("vacation_year", "official_holiday")

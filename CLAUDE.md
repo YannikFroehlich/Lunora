@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Lunora is a Django 5.2 workspace dashboard (dashboard, weather, calendar, reminders, direct messages, rich-text notes) with a single Django app (`app/`) and a small Vite-built notes editor bundle. Only three third-party Python packages are used (Django, Pillow, reportlab) — HTTP calls, iCal parsing, and env loading are all hand-rolled on the stdlib. Keep it that way unless asked otherwise.
+Lunora is a Django 6.0 workspace dashboard (dashboard, weather, calendar, reminders, direct messages, rich-text notes) with a single Django app (`app/`) and a small Vite-built notes editor bundle. Only three third-party Python packages are used (Django, Pillow, reportlab) — HTTP calls, iCal parsing, and env loading are all hand-rolled on the stdlib. Keep it that way unless asked otherwise.
 
 ## Commands
 

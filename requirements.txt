@@ -1,3 +1,4 @@
-Django==5.2.9
-Pillow==12.2.0
-reportlab==4.4.9
+Django==6.0.6
+holidays==0.102
+Pillow==12.3.0
+reportlab==5.0.0
