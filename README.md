@@ -73,7 +73,13 @@ Automatische Kalender-Synchronisierung, fällige Erinnerungs-E-Mails und Wochenb
 python manage.py run_automations --loop
 ```
 
-Pro Deployment darf nur ein dauerhafter Automatikprozess laufen, damit externe Kalender und E-Mail-Anbieter nicht doppelt angesprochen werden. Desktop-Hinweise werden bei erteilter Browserfreigabe zugestellt, solange mindestens ein Lunora-Tab geöffnet ist.
+Kalender-Aktionen in der Website merken eine Synchronisierung nur in der Datenbank vor;
+der Web-Request selbst lädt keine externen iCal-Dateien. Deshalb muss dieser Prozess im
+Deployment dauerhaft, beispielsweise als eigener systemd-Service, laufen. Atomare
+Markierungen verhindern doppelte Kalender-Syncs, falls sich zwei Durchläufe überschneiden.
+Fehlgeschlagene Quellen werden frühestens nach ihrem konfigurierten Sync-Intervall erneut
+versucht. Desktop-Hinweise werden bei erteilter Browserfreigabe zugestellt, solange
+mindestens ein Lunora-Tab geöffnet ist.
 
 Für einen einzelnen Durchlauf, beispielsweise über die Windows-Aufgabenplanung oder Cron, genügt:
 
@@ -99,6 +105,8 @@ PROFILE_IMAGE_MAX_BYTES=2097152
 PROFILE_IMAGE_MAX_WIDTH=4096
 PROFILE_IMAGE_MAX_HEIGHT=4096
 DJANGO_PRIVATE_MEDIA_ROOT=private_media
+DJANGO_DATABASE_ENGINE=sqlite
+DJANGO_SQLITE_PATH=db.sqlite3
 
 DJANGO_SECURE_SSL_REDIRECT=false
 DJANGO_SESSION_COOKIE_SECURE=false
@@ -117,6 +125,11 @@ Wichtige Variablen:
 - `DJANGO_ALLOWED_HOSTS`: kommagetrennte Hostliste
 - `DJANGO_CSRF_TRUSTED_ORIGINS`: kommagetrennte HTTPS-Urspruenge fuer CSRF, z. B. `https://lunora.example.com`
 - `DJANGO_STATIC_ROOT`: Zielordner fuer `collectstatic`, standardmaessig `staticfiles`
+- `DJANGO_DATABASE_ENGINE`: lokal `sqlite`; auf dem Server bei `DJANGO_DEBUG=false` zwingend `postgresql`
+- `DJANGO_SQLITE_PATH`: Pfad zur lokalen SQLite-Datei, standardmäßig `db.sqlite3`
+- `DJANGO_DB_NAME`, `DJANGO_DB_USER`, `DJANGO_DB_PASSWORD`, `DJANGO_DB_HOST` und `DJANGO_DB_PORT`: PostgreSQL-Zugangsdaten
+- `DJANGO_DB_CONN_MAX_AGE` und `DJANGO_DB_CONNECT_TIMEOUT`: Lebensdauer persistenter Verbindungen und Verbindungs-Timeout in Sekunden
+- `DJANGO_DB_SSLMODE`: optionaler PostgreSQL-SSL-Modus; bei entfernten Datenbankdiensten üblicherweise `require` oder `verify-full`
 - `PROFILE_IMAGE_MAX_BYTES`, `PROFILE_IMAGE_MAX_WIDTH`, `PROFILE_IMAGE_MAX_HEIGHT`: Upload-Limits fuer Profilbilder
 - `DJANGO_PRIVATE_MEDIA_ROOT`: nicht öffentlich ausgelieferter Speicherort für private Notizanhänge
 - `DJANGO_SECURE_SSL_REDIRECT`: HTTPS-Weiterleitung, standardmaessig aktiv wenn `DJANGO_DEBUG=false`
@@ -136,6 +149,35 @@ Wichtige Variablen:
 - `LUNORA_WEEKLY_SUMMARY_HOUR`: lokale Montagstunde, ab der ein Wochenbericht versendet wird
 
 Ohne Wetter-API-Key zeigt Lunora Demo-Wetterdaten und eine Radar-Vorschau.
+
+### Datenbank lokal und auf dem Ubuntu-Server
+
+Lokal bleibt SQLite der Standard. Solange `DJANGO_DEBUG=true` ist, genügt:
+
+```env
+DJANGO_DATABASE_ENGINE=sqlite
+DJANGO_SQLITE_PATH=db.sqlite3
+```
+
+Auf dem Ubuntu-Server wird PostgreSQL verwendet. Die produktive `.env` enthält beispielsweise:
+
+```env
+DJANGO_DEBUG=false
+DJANGO_DATABASE_ENGINE=postgresql
+DJANGO_DB_NAME=lunora
+DJANGO_DB_USER=lunora
+DJANGO_DB_PASSWORD=ein-langes-zufaelliges-passwort
+DJANGO_DB_HOST=127.0.0.1
+DJANGO_DB_PORT=5432
+DJANGO_DB_CONN_MAX_AGE=60
+DJANGO_DB_CONNECT_TIMEOUT=10
+```
+
+Bei einer PostgreSQL-Datenbank auf einem anderen Server sollte zusätzlich ein geeigneter
+`DJANGO_DB_SSLMODE` wie `require` oder `verify-full` gesetzt werden. SQLite wird bei
+`DJANGO_DEBUG=false` absichtlich abgelehnt, damit eine Produktionsinstallation nicht
+versehentlich mit der lokalen Datei startet. Nach dem Anlegen der Datenbank werden die
+Migrationen auf dem Ubuntu-Server mit `python manage.py migrate` angewendet.
 
 ## Tests und Checks
 

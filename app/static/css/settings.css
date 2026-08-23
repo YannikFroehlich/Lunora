@@ -444,6 +444,10 @@
   color: #a64d3d;
 }
 
+.source-status.is-pending {
+  color: var(--color-accent-strong);
+}
+
 .calendar-source-delete-form {
   margin-top: 10px;
 }

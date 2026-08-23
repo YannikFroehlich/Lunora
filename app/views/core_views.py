@@ -8,7 +8,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 
 from app.forms import AppearanceForm, CalendarSourceForm, ProfileForm, ProfilePreferencesForm
 from app.models import CalendarSource, Profile
-from app.services.calendar_service import sync_calendar_source, sync_calendar_sources
+from app.services.calendar_sync_queue import queue_calendar_sources
 from app.services.system_settings import feature_enabled
 from app.services.user_preferences import format_user_datetime
 from app.view_models import get_dashboard_context, get_settings_context
@@ -59,6 +59,8 @@ def get_or_create_profile(user):
 
 
 def _calendar_source_status(source, user):
+    if source.sync_requested_at:
+        return {"label": "Synchronisierung vorgemerkt", "kind": "pending"}
     if source.last_error:
         return {"label": source.last_error, "kind": "error"}
     if source.last_synced_at:
@@ -124,11 +126,14 @@ def settings(request):
             calendar_source = calendar_add_form.save(commit=False)
             calendar_source.user = request.user
             calendar_source.save()
-            sync_result = sync_calendar_source(calendar_source, force=True)
-            if sync_result.get("synced"):
-                django_messages.success(request, f"{calendar_source.name} gespeichert und synchronisiert.")
+            queue_result = queue_calendar_sources([calendar_source])
+            if queue_result.get("queued"):
+                django_messages.success(
+                    request,
+                    f"{calendar_source.name} gespeichert. Synchronisierung wurde im Hintergrund vorgemerkt.",
+                )
             else:
-                django_messages.warning(request, f"{calendar_source.name} gespeichert: {sync_result.get('message')}")
+                django_messages.success(request, f"{calendar_source.name} gespeichert. Sync ist deaktiviert.")
             return redirect(return_to)
     elif request.method == "POST" and request.POST.get("form_name") == "calendar_source_update":
         if not calendar_sync_enabled:
@@ -143,6 +148,7 @@ def settings(request):
             return redirect(return_to)
         bound_calendar_source_id = calendar_source.id
         old_ical_url = calendar_source.ical_url
+        was_enabled = calendar_source.enabled
         bound_calendar_form = CalendarSourceForm(
             request.POST,
             instance=calendar_source,
@@ -153,13 +159,27 @@ def settings(request):
             calendar_source = bound_calendar_form.save(commit=False)
             calendar_source.user = request.user
             calendar_source.save()
+            if not calendar_source.enabled:
+                CalendarSource.objects.filter(pk=calendar_source.pk).update(sync_requested_at=None)
+                calendar_source.sync_requested_at = None
             if calendar_source.ical_url != old_ical_url:
                 calendar_source.events.all().delete()
-                sync_result = sync_calendar_source(calendar_source, force=True)
-                if sync_result.get("synced"):
-                    django_messages.success(request, f"{calendar_source.name} gespeichert und neu synchronisiert.")
+                if calendar_source.enabled:
+                    queue_calendar_sources([calendar_source])
+                    django_messages.success(
+                        request,
+                        f"{calendar_source.name} gespeichert. Neue Synchronisierung wurde vorgemerkt.",
+                    )
                 else:
-                    django_messages.warning(request, f"{calendar_source.name} gespeichert: {sync_result.get('message')}")
+                    django_messages.success(request, f"{calendar_source.name} gespeichert. Sync ist deaktiviert.")
+            elif calendar_source.enabled and not was_enabled:
+                queue_calendar_sources([calendar_source])
+                django_messages.success(
+                    request,
+                    f"{calendar_source.name} aktiviert. Synchronisierung wurde vorgemerkt.",
+                )
+            elif not calendar_source.enabled:
+                django_messages.success(request, f"{calendar_source.name} gespeichert. Sync ist deaktiviert.")
             else:
                 django_messages.success(request, f"{calendar_source.name} gespeichert.")
             return redirect(return_to)
@@ -178,12 +198,11 @@ def settings(request):
         if not calendar_sync_enabled:
             django_messages.warning(request, "Kalendersynchronisierung ist voruebergehend deaktiviert.")
             return redirect(return_to)
-        sync_result = sync_calendar_sources(
+        sync_result = queue_calendar_sources(
             CalendarSource.objects.filter(user=request.user).order_by("name", "id"),
-            force=True,
         )
-        if sync_result.get("synced"):
-            django_messages.success(request, sync_result.get("message", "Kalender synchronisiert."))
+        if sync_result.get("queued"):
+            django_messages.success(request, sync_result.get("message", "Synchronisierung vorgemerkt."))
         else:
             django_messages.info(request, sync_result.get("message", "Kalender ist aktuell."))
         return redirect(return_to)

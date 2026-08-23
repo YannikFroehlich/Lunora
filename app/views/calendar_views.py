@@ -5,7 +5,7 @@ from django.utils import timezone
 
 from app.forms import CalendarEventForm, CalendarReminderForm
 from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, CalendarSource
-from app.services.calendar_service import sync_calendar_sources
+from app.services.calendar_sync_queue import queue_calendar_sources
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.user_preferences import format_user_datetime
 from app.view_models import get_calendar_context
@@ -14,7 +14,10 @@ from app.view_models import get_calendar_context
 def _calendar_source_items(sources, user):
     items = []
     for source in sources:
-        if source.last_error:
+        if source.sync_requested_at:
+            status_label = "Synchronisierung vorgemerkt"
+            status_kind = "pending"
+        elif source.last_error:
             status_label = source.last_error
             status_kind = "error"
         elif source.last_synced_at:
@@ -43,9 +46,9 @@ def calendar(request):
         if not calendar_sync_enabled:
             django_messages.warning(request, "Kalendersynchronisierung ist voruebergehend deaktiviert.")
             return redirect(request.get_full_path())
-        sync_result = sync_calendar_sources(sources, force=True)
-        if sync_result.get("synced"):
-            django_messages.success(request, sync_result.get("message", "Kalender synchronisiert."))
+        sync_result = queue_calendar_sources(sources)
+        if sync_result.get("queued"):
+            django_messages.success(request, sync_result.get("message", "Synchronisierung vorgemerkt."))
         else:
             django_messages.info(request, sync_result.get("message", "Kalender ist aktuell."))
         return redirect(request.get_full_path())

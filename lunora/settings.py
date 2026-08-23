@@ -57,6 +57,64 @@ def env_admins(name, default=""):
     return admins
 
 
+def database_config(debug):
+    """Build the database configuration for local and production environments."""
+    engine = os.getenv("DJANGO_DATABASE_ENGINE", "sqlite").strip().lower()
+
+    if engine in {"sqlite", "sqlite3"}:
+        if not debug:
+            raise ImproperlyConfigured(
+                "DJANGO_DATABASE_ENGINE muss bei DJANGO_DEBUG=false auf postgresql gesetzt sein."
+            )
+
+        sqlite_path = os.getenv("DJANGO_SQLITE_PATH", "db.sqlite3").strip()
+        if not sqlite_path:
+            raise ImproperlyConfigured("DJANGO_SQLITE_PATH darf nicht leer sein.")
+
+        return {
+            "default": {
+                "ENGINE": "django.db.backends.sqlite3",
+                "NAME": BASE_DIR / sqlite_path,
+            }
+        }
+
+    if engine in {"postgres", "postgresql"}:
+        required_values = {
+            "DJANGO_DB_NAME": os.getenv("DJANGO_DB_NAME", "").strip(),
+            "DJANGO_DB_USER": os.getenv("DJANGO_DB_USER", "").strip(),
+        }
+        missing = [name for name, value in required_values.items() if not value]
+        if missing:
+            raise ImproperlyConfigured(
+                f"{', '.join(missing)} muss für PostgreSQL gesetzt sein."
+            )
+
+        options = {
+            "connect_timeout": env_int("DJANGO_DB_CONNECT_TIMEOUT", 10),
+        }
+        ssl_mode = os.getenv("DJANGO_DB_SSLMODE", "").strip()
+        if ssl_mode:
+            options["sslmode"] = ssl_mode
+
+        return {
+            "default": {
+                "ENGINE": "django.db.backends.postgresql",
+                "NAME": required_values["DJANGO_DB_NAME"],
+                "USER": required_values["DJANGO_DB_USER"],
+                "PASSWORD": os.getenv("DJANGO_DB_PASSWORD", ""),
+                "HOST": os.getenv("DJANGO_DB_HOST", "127.0.0.1").strip(),
+                "PORT": os.getenv("DJANGO_DB_PORT", "5432").strip(),
+                "CONN_MAX_AGE": env_int("DJANGO_DB_CONN_MAX_AGE", 60),
+                "CONN_HEALTH_CHECKS": True,
+                "OPTIONS": options,
+            }
+        }
+
+    raise ImproperlyConfigured(
+        "DJANGO_DATABASE_ENGINE muss sqlite oder postgresql sein."
+    )
+
+
 load_env_file(BASE_DIR / ".env")
 
 DEBUG = env_bool("DJANGO_DEBUG", True)
@@ -116,12 +174,7 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "lunora.wsgi.application"
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
-    }
-}
+DATABASES = database_config(DEBUG)
 
 AUTH_PASSWORD_VALIDATORS = [
     {
