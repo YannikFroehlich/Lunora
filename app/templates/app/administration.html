@@ -1,0 +1,87 @@
+{% extends 'app/base.html' %}
+{% load static %}
+
+{% block title %}Administration | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% static 'css/administration.css' %}?v=switches-1">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell administration-shell">
+    <header class="page-hero">
+        <div>
+            <h1>Administration</h1>
+            <p>Betriebsmodus, Feature-Schalter und aktive Sitzungen steuern.</p>
+        </div>
+        <i class="hero-branch fa-solid fa-shield-halved" aria-hidden="true"></i>
+    </header>
+
+    <div class="administration-grid">
+        <form class="glass-panel admin-settings-panel" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="system_settings">
+            <div class="panel-title">
+                <i class="fa-solid fa-sliders" aria-hidden="true"></i>
+                <h2>Schalter</h2>
+            </div>
+
+            {% for field in form %}
+            <div class="setting-line">
+                <span>
+                    <strong>{{ field.label }}</strong>
+                    <small>{% if field.value %}Aktiv{% else %}Deaktiviert{% endif %}</small>
+                </span>
+                <label class="switch {% if field.value %}is-on{% endif %}" for="{{ field.id_for_label }}" aria-label="{{ field.label }}">
+                    {{ field }}
+                </label>
+            </div>
+            {{ field.errors }}
+            {% endfor %}
+
+            <button class="primary-button admin-submit" type="submit">
+                <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+                Speichern
+            </button>
+        </form>
+
+        <aside class="admin-side-stack">
+            <section class="glass-panel admin-status-panel">
+                <div class="panel-title">
+                    <i class="fa-solid fa-signal" aria-hidden="true"></i>
+                    <h2>Status</h2>
+                </div>
+                <div class="admin-metric-grid">
+                    <article>
+                        <strong>{{ session_stats.authenticated_users }}</strong>
+                        <span>aktive Nutzer</span>
+                    </article>
+                    <article>
+                        <strong>{{ session_stats.authenticated_sessions }}</strong>
+                        <span>aktive Sitzungen</span>
+                    </article>
+                </div>
+                {% if system_settings.updated_at %}
+                <p class="admin-muted">Zuletzt gespeichert: {{ system_settings.updated_at }}</p>
+                {% endif %}
+            </section>
+
+            <section class="glass-panel admin-danger-panel">
+                <div class="panel-title">
+                    <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+                    <h2>Sitzungen beenden</h2>
+                </div>
+                <p>Loggt alle aktuell angemeldeten Nutzer und Geraete aus. Deine aktuelle Admin-Sitzung bleibt aktiv.</p>
+                <form method="post" onsubmit="return confirm('Alle anderen aktiven Sitzungen wirklich ausloggen?');">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="force_logout_all">
+                    <button class="ghost-button danger-button" type="submit">
+                        <i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i>
+                        Alle anderen ausloggen
+                    </button>
+                </form>
+            </section>
+        </aside>
+    </div>
+</section>
+{% endblock %}

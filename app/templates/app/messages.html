@@ -1,0 +1,220 @@
+{% extends 'app/base.html' %}
+{% load static %}
+
+{% block title %}Nachrichten | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% static 'css/messages.css' %}?v=responsive-1">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell messages-shell">
+    <header class="page-hero">
+        <div>
+            <h1>Nachrichten</h1>
+            <p>Schreibe mit anderen Accounts auf Lunora und behalte neue Antworten im Blick.</p>
+        </div>
+        <i class="hero-branch fa-solid fa-comments" aria-hidden="true"></i>
+    </header>
+
+    <div class="messages-layout">
+        <aside class="glass-panel inbox-panel">
+            <form class="message-search" method="get" action="{% url 'messages' %}">
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                <input type="search" name="q" value="{{ query }}" placeholder="Unterhaltungen suchen" autocomplete="off" aria-label="Unterhaltungen suchen">
+                <input type="hidden" name="filter" value="{{ current_filter }}">
+                <button type="submit" aria-label="Suchen"><i class="fa-solid fa-arrow-right"></i></button>
+            </form>
+
+            <div class="filter-row" role="list" aria-label="Unterhaltungsfilter">
+                <a role="listitem" class="{% if current_filter == 'all' %}is-active{% endif %}" href="{% url 'messages' %}{% if query %}?q={{ query|urlencode }}{% endif %}" {% if current_filter == 'all' %}aria-current="page"{% endif %}>Alle</a>
+                <a role="listitem" class="{% if current_filter == 'unread' %}is-active{% endif %}" href="{% url 'messages' %}?filter=unread{% if query %}&q={{ query|urlencode }}{% endif %}" {% if current_filter == 'unread' %}aria-current="page"{% endif %}>Ungelesen{% if unread_total %}<span aria-label="{{ unread_total }} ungelesene Nachrichten">{{ unread_total }}</span>{% endif %}</a>
+                <a role="listitem" class="{% if current_filter == 'groups' %}is-active{% endif %}" href="{% url 'messages' %}?filter=groups{% if query %}&q={{ query|urlencode }}{% endif %}" {% if current_filter == 'groups' %}aria-current="page"{% endif %}>Gruppen</a>
+            </div>
+
+            <details class="new-chat-card" {% if start_form.errors %}open{% endif %}>
+                <summary><i class="fa-solid fa-pen-to-square"></i> Neue Unterhaltung</summary>
+                <form method="post" action="{% url 'messages' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="start_conversation">
+                    <label>
+                        Kontakt(e)
+                        <span class="field-hint">Mehrere ausgewählte Kontakte starten eine Gruppe.</span>
+                        <div class="recipient-checkbox-list">{{ start_form.recipient }}</div>
+                    </label>
+                    {% if start_form.recipient.errors %}<small class="form-error">{{ start_form.recipient.errors|striptags }}</small>{% endif %}
+                    <label>
+                        Gruppenname (optional)
+                        {{ start_form.title }}
+                    </label>
+                    <label>
+                        Erste Nachricht
+                        {{ start_form.body }}
+                    </label>
+                    {% if start_form.body.errors %}<small class="form-error">{{ start_form.body.errors|striptags }}</small>{% endif %}
+                    <button class="start-chat-button" type="submit">Chat starten</button>
+                </form>
+            </details>
+
+            {% include "app/partials/messages_contact_list.html" %}
+        </aside>
+
+        <section class="glass-panel chat-panel" data-messages-live-url="{% if selected_conversation %}{% url 'messages_live_detail_updates' selected_conversation.id %}{% else %}{% url 'messages_live_updates' %}{% endif %}" {% if selected_conversation %}data-messages-typing-url="{% url 'messages_typing_ping' selected_conversation.id %}"{% endif %}>
+            {% if selected_conversation %}
+            <header class="chat-header">
+                <span class="avatar">
+                    {% if selected_avatar_url %}
+                    <img src="{{ selected_avatar_url }}" alt="Profilbild von {{ selected_title }}">
+                    {% else %}
+                    {{ selected_avatar }}
+                    {% endif %}
+                </span>
+                <div>
+                    <h2>{{ selected_title }}</h2>
+                    <p><span class="status-dot"></span>{{ selected_members|length }} Mitglied{% if selected_members|length != 1 %}er{% endif %}</p>
+                </div>
+            </header>
+
+            <div id="pinned-messages-region">{% include "app/partials/messages_pinned.html" %}</div>
+
+            <div class="message-stream" id="message-stream" aria-live="polite" aria-label="Nachrichtenverlauf">
+                {% include "app/partials/messages_stream.html" %}
+            </div>
+
+            <div class="message-context-menu" id="message-context-menu" role="menu" aria-label="Nachrichtenaktionen" hidden>
+                <div class="context-reactions" data-context-reactions role="group" aria-label="Reaktionen">
+                    {% for emoji in reaction_emojis %}
+                    <button type="button" role="menuitem" data-menu-action="reaction" data-emoji="{{ emoji }}" aria-label="Mit {{ emoji }} reagieren">{{ emoji }}</button>
+                    {% endfor %}
+                </div>
+                <button type="button" role="menuitem" data-menu-action="reply"><i class="fa-solid fa-reply"></i> Antworten</button>
+                <button type="button" role="menuitem" data-menu-action="pin"><i class="fa-solid fa-thumbtack"></i><span data-menu-pin-label>Anpinnen</span></button>
+                <button class="is-danger" type="button" role="menuitem" data-menu-action="delete"><i class="fa-solid fa-trash"></i> Löschen</button>
+            </div>
+
+            <form class="message-action-form" id="message-action-form" method="post" action="{% url 'messages_detail' selected_conversation.id %}">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="message_action">
+                <input type="hidden" name="conversation_id" value="{{ selected_conversation.id }}">
+                <input type="hidden" name="message_id" value="">
+                <input type="hidden" name="action" value="">
+                <input type="hidden" name="emoji" value="">
+            </form>
+
+            <div class="typing-indicator" id="typing-indicator" aria-live="polite"></div>
+
+            <div id="message-compose-region" data-compose-blocked="{% if current_member_state.is_blocked or current_member_state.blocked_by_recipient %}true{% else %}false{% endif %}">
+                {% include "app/partials/messages_compose.html" %}
+            </div>
+            {% else %}
+            {% include "app/partials/messages_overview.html" %}
+            {% endif %}
+        </section>
+
+        <aside class="glass-panel details-panel">
+            {% if selected_conversation %}
+            <div class="details-head">
+                <h2>Details</h2>
+                <span><i class="fa-regular fa-star"></i></span>
+            </div>
+            <div class="profile-mini">
+                <span class="avatar">
+                    {% if selected_avatar_url %}
+                    <img src="{{ selected_avatar_url }}" alt="Profilbild von {{ selected_title }}">
+                    {% else %}
+                    {{ selected_avatar }}
+                    {% endif %}
+                </span>
+                <div>
+                    <h3>{{ selected_title }}</h3>
+                    <p>{% if selected_conversation.is_group %}Gruppenchat{% else %}Direktnachricht{% endif %}</p>
+                </div>
+            </div>
+            <section class="detail-section chat-management-section">
+                <h3>Chat verwalten</h3>
+                <div class="management-status-list">
+                    {% if current_member_state.is_muted %}
+                    <span class="management-status"><i class="fa-solid fa-bell-slash"></i> Stumm bis {{ current_member_state.muted_until_label }}</span>
+                    {% else %}
+                    <span class="management-status"><i class="fa-regular fa-bell"></i> Benachrichtigungen aktiv</span>
+                    {% endif %}
+                    {% if current_member_state.is_blocked %}
+                    <span class="management-status is-danger"><i class="fa-solid fa-ban"></i> Blockiert</span>
+                    {% endif %}
+                </div>
+                <form class="chat-management-form" method="post" action="{% url 'messages_detail' selected_conversation.id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="member_action">
+                    <input type="hidden" name="conversation_id" value="{{ selected_conversation.id }}">
+                    <span class="management-label">Stummschalten</span>
+                    <div class="management-button-grid">
+                        <button type="submit" name="action" value="mute_8h"><i class="fa-solid fa-clock"></i> 8 Std.</button>
+                        <button type="submit" name="action" value="mute_1w"><i class="fa-regular fa-calendar"></i> 1 Woche</button>
+                        <button type="submit" name="action" value="mute_1y"><i class="fa-solid fa-calendar-days"></i> 1 Jahr</button>
+                    </div>
+                    {% if current_member_state.is_muted %}
+                    <button class="management-wide-button" type="submit" name="action" value="unmute"><i class="fa-solid fa-bell"></i> Stummschaltung aufheben</button>
+                    {% endif %}
+                    <span class="management-label">Kontakt</span>
+                    {% if current_member_state.is_blocked %}
+                    <button class="management-wide-button" type="submit" name="action" value="unblock"><i class="fa-solid fa-unlock"></i> Blockierung aufheben</button>
+                    {% else %}
+                    <button class="management-wide-button is-danger" type="submit" name="action" value="block"><i class="fa-solid fa-ban"></i> Blockieren</button>
+                    {% endif %}
+                </form>
+                <p class="management-note">Blockierte Chats können von dir erst wieder beschrieben werden, wenn du die Blockierung aufhebst.</p>
+            </section>
+            <section class="detail-section">
+                <h3>Mitglieder ({{ selected_members|length }})</h3>
+                {% for member in selected_members %}
+                <div class="member-row">
+                    <span class="avatar small">
+                        {% if member.avatar_url %}
+                        <img src="{{ member.avatar_url }}" alt="Profilbild von {{ member.name }}">
+                        {% else %}
+                        {{ member.avatar }}
+                        {% endif %}
+                    </span>
+                    <span><strong>{{ member.name }}</strong><small>{{ member.status }}</small></span>
+                </div>
+                {% endfor %}
+                {% if selected_conversation.is_group %}
+                {% if available_recipients %}
+                <form class="add-member-form" method="post" action="{% url 'messages_detail' selected_conversation.id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="member_action">
+                    <input type="hidden" name="conversation_id" value="{{ selected_conversation.id }}">
+                    <input type="hidden" name="action" value="add_member">
+                    <select name="new_member" aria-label="Mitglied hinzufügen" required>
+                        <option value="" selected disabled>Mitglied hinzufügen ...</option>
+                        {% for candidate in available_recipients %}
+                        <option value="{{ candidate.id }}">{{ candidate.get_full_name|default:candidate.email }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" aria-label="Hinzufügen"><i class="fa-solid fa-user-plus"></i></button>
+                </form>
+                {% endif %}
+                <form method="post" action="{% url 'messages_detail' selected_conversation.id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="member_action">
+                    <input type="hidden" name="conversation_id" value="{{ selected_conversation.id }}">
+                    <input type="hidden" name="action" value="leave_group">
+                    <button class="management-wide-button is-danger" type="submit"><i class="fa-solid fa-right-from-bracket"></i> Gruppe verlassen</button>
+                </form>
+                {% endif %}
+            </section>
+            {% else %}
+            <div class="empty-card details-empty">
+                <i class="fa-solid fa-circle-info"></i>
+                <strong>Keine Details</strong>
+                <p>Sobald du einen Chat auswählst, siehst du hier die Mitglieder.</p>
+            </div>
+            {% endif %}
+        </aside>
+    </div>
+</section>
+{% endblock %}
+
+{% block page_js %}
+<script src="{% static 'js/messages.js' %}"></script>
+{% endblock %}

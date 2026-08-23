@@ -1,0 +1,70 @@
+# Django 5.2-compatible message action fields.
+
+import django.db.models.deletion
+from django.conf import settings
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('app', '0008_repair_partial_chat_tables'),
+        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+    ]
+
+    operations = [
+        migrations.CreateModel(
+            name='ChatMessageReaction',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('emoji', models.CharField(choices=[('👍', '👍'), ('❤️', '❤️'), ('😂', '😂'), ('😮', '😮'), ('😢', '😢'), ('🙏', '🙏')], max_length=8)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+            ],
+            options={
+                'ordering': ['created_at', 'id'],
+            },
+        ),
+        migrations.AddField(
+            model_name='chatmessage',
+            name='deleted_at',
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name='chatmessage',
+            name='is_deleted',
+            field=models.BooleanField(default=False),
+        ),
+        migrations.AddField(
+            model_name='chatmessage',
+            name='is_pinned',
+            field=models.BooleanField(default=False),
+        ),
+        migrations.AddField(
+            model_name='chatmessage',
+            name='pinned_at',
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name='chatmessage',
+            name='pinned_by',
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='pinned_chat_messages', to=settings.AUTH_USER_MODEL),
+        ),
+        migrations.AddIndex(
+            model_name='chatmessage',
+            index=models.Index(fields=['conversation', 'is_pinned', 'pinned_at'], name='app_chatmes_pin_idx'),
+        ),
+        migrations.AddField(
+            model_name='chatmessagereaction',
+            name='message',
+            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='reactions', to='app.chatmessage'),
+        ),
+        migrations.AddField(
+            model_name='chatmessagereaction',
+            name='user',
+            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='chat_message_reactions', to=settings.AUTH_USER_MODEL),
+        ),
+        migrations.AddConstraint(
+            model_name='chatmessagereaction',
+            constraint=models.UniqueConstraint(fields=('message', 'user'), name='unique_chat_reaction_per_user'),
+        ),
+    ]

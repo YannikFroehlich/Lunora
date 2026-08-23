@@ -1,10 +1,132 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends 'app/base.html' %}
+{% load static %}
 
-</body>
-</html>
+{% block title %}Dashboard | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% static 'css/home.css' %}?v=brand-logo-2">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell dashboard-shell">
+    <div class="dashboard-grid">
+        <section class="glass-panel welcome-panel">
+            <div class="eyebrow"><i class="fa-solid fa-wand-magic-sparkles"></i> Guten Morgen</div>
+            <h1>Willkommen zurück</h1>
+            <p class="brand-line"><img class="brand-logo" src="{% static 'img/lunora_logo.png' %}?v=brand-3" alt="" aria-hidden="true">Lunora</p>
+            <img class="hero-logo" src="{% static 'img/lunora_logo.png' %}?v=brand-3" alt="" aria-hidden="true">
+        </section>
+
+        <aside class="glass-panel clock-panel"
+               data-home-clock
+               data-clock-timezone="{{ clock.timezone }}"
+               data-clock-time-format="{{ clock.time_format }}">
+            <div class="panel-title panel-title-between">
+                <span><i class="fa-regular fa-clock"></i> Jetzt</span>
+                <span class="clock-zone">{{ clock.timezone }}</span>
+            </div>
+            <div class="clock-face">
+                <strong data-clock-time>{{ clock.time }}</strong>
+                <span data-clock-weekday>{{ clock.weekday }}</span>
+            </div>
+            <div class="date-strip">
+                <span class="date-number" data-clock-day>{{ clock.day }}</span>
+                <div class="date-block">
+                    <strong data-clock-month>{{ clock.month }}</strong>
+                    <span data-clock-year>{{ clock.year }}</span>
+                </div>
+            </div>
+            <div class="clock-details">
+                <span><i class="fa-regular fa-calendar"></i> {{ today_label }}</span>
+                <span><i class="fa-regular fa-sun"></i> Ruhiger Start</span>
+            </div>
+        </aside>
+
+        <section class="glass-panel quick-actions" aria-label="Schnellzugriff" {% if dashboard_messages_enabled %}data-home-messages-live-url="{% url 'messages_live_updates' %}"{% endif %}>
+            {% for tile in nav_tiles %}
+            <a class="action-tile" href="{% url tile.url_name %}">
+                {% if tile.badge_key == "messages_unread" %}
+                <span class="action-badge {% if not tile.badge_count %}is-hidden{% endif %}"
+                      data-home-messages-badge
+                      aria-label="{{ tile.badge_count }} ungelesene Nachrichten">{{ tile.badge_count }}</span>
+                {% endif %}
+                {% if tile.badge_key == "notes_new" %}
+                <span class="action-badge {% if not tile.badge_count %}is-hidden{% endif %}"
+                      aria-label="{{ tile.badge_count }} neue Notizfreigaben">{{ tile.badge_count }}</span>
+                {% endif %}
+                <i class="fa-solid {{ tile.icon }}" aria-hidden="true"></i>
+                <span>{{ tile.label }}</span>
+            </a>
+            {% endfor %}
+        </section>
+
+        <section class="glass-panel recent-panel">
+            <div class="panel-title">
+                <i class="fa-regular fa-clock"></i>
+                <h2>Letzte Tools</h2>
+            </div>
+            <div class="tool-grid">
+                {% for tool in recent_tools %}
+                {% if tool.url_name %}
+                <a class="tool-tile" href="{% url tool.url_name %}">
+                    <i class="fa-solid {{ tool.icon }}" aria-hidden="true"></i>
+                    <strong>{{ tool.title }}</strong>
+                    <span>{{ tool.subtitle }}</span>
+                </a>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="glass-panel notes-panel">
+            <div class="panel-title panel-title-between">
+                <span><i class="fa-regular fa-calendar"></i> Nächste Termine</span>
+                <a class="icon-button" href="{% url 'calendar' %}" aria-label="Kalender öffnen">
+                    <i class="fa-solid fa-arrow-right"></i>
+                </a>
+            </div>
+            <ul class="event-list">
+                {% if upcoming_dashboard_events %}
+                {% for event in upcoming_dashboard_events %}
+                <li>
+                    <span class="event-dot tone-{{ event.tone }}"></span>
+                    <span>
+                        <strong>{{ event.title }}</strong>
+                        <small>{{ event.date }} · {{ event.time }}</small>
+                    </span>
+                </li>
+                {% endfor %}
+                {% else %}
+                <li class="empty-events">Keine kommenden Termine synchronisiert.</li>
+                {% endif %}
+            </ul>
+            <a class="panel-link" href="{% url 'calendar' %}">Kalender ansehen <i class="fa-solid fa-chevron-right"></i></a>
+        </section>
+
+        {% if dashboard_weather_enabled %}
+        <section class="glass-panel today-panel weather-overview-panel">
+            <article class="weather-overview-card">
+                <span class="panel-kicker"><i class="fa-regular fa-sun"></i> Heute</span>
+                <div class="weather-row">
+                    <i class="fa-solid {{ dashboard_weather.today.icon }} weather-icon"></i>
+                    <strong>{{ dashboard_weather.today.temperature }}°</strong>
+                    <span>{{ dashboard_weather.today.description }}<br><small>Gefühlt {{ dashboard_weather.today.feels_like }}°</small></span>
+                </div>
+            </article>
+            <article class="weather-forecast-block">
+                <span class="panel-kicker"><i class="fa-solid fa-seedling"></i> Morgen</span>
+                <div class="weather-row weather-row-compact">
+                    <i class="fa-solid {{ dashboard_weather.tomorrow.icon }} weather-icon"></i>
+                    <strong>{{ dashboard_weather.tomorrow.high }}°</strong>
+                    <span>{{ dashboard_weather.tomorrow.description }}<br><small>{{ dashboard_weather.tomorrow.low }}° nachts · {{ dashboard_weather.tomorrow.rain }} % Regen</small></span>
+                </div>
+            </article>
+        </section>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}
+
+{% block page_js %}
+<script src="{% static 'js/home.js' %}"></script>
+{% endblock %}

@@ -1,0 +1,298 @@
+{% extends 'app/base.html' %}
+{% load static %}
+
+{% block title %}Notizen | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% static 'css/notes.css' %}?v=notes-1">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell notes-shell" data-notes-app>
+    <aside class="glass-panel notes-sidebar {% if selected_note_data %}has-selection{% endif %}" data-notes-sidebar>
+        <header class="notes-sidebar-header">
+            <div>
+                <span class="eyebrow"><i class="fa-solid fa-note-sticky"></i> Lunora Notes</span>
+                <h1>Notizen</h1>
+            </div>
+            <button class="primary-button notes-new-button" type="button" data-command="newNote" aria-label="Neue Notiz">
+                <i class="fa-solid fa-plus"></i><span>Neu</span>
+            </button>
+        </header>
+
+        <form class="notes-filter-form" method="get" action="{% url 'notes' %}">
+            <label class="notes-search">
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                <input type="search" name="q" value="{{ query }}" placeholder="Notizen durchsuchen" data-notes-search>
+            </label>
+            <div class="notes-filter-tabs" aria-label="Notizstatus">
+                <button class="{% if current_status == 'all' %}is-active{% endif %}" name="status" value="all">Alle</button>
+                <button class="{% if current_status == 'pinned' %}is-active{% endif %}" name="status" value="pinned"><i class="fa-solid fa-thumbtack"></i> Pins</button>
+                <button class="{% if current_status == 'archived' %}is-active{% endif %}" name="status" value="archived">Archiv</button>
+                <button class="{% if current_status == 'trash' %}is-active{% endif %}" name="status" value="trash">Papierkorb</button>
+            </div>
+            <div class="notes-filter-row">
+                <select name="scope" aria-label="Besitzfilter" onchange="this.form.submit()">
+                    <option value="all" {% if current_scope == 'all' %}selected{% endif %}>Alle Notizen</option>
+                    <option value="owned" {% if current_scope == 'owned' %}selected{% endif %}>Meine Notizen</option>
+                    <option value="shared" {% if current_scope == 'shared' %}selected{% endif %}>Mit mir geteilt</option>
+                </select>
+                <select name="sort" aria-label="Sortierung" onchange="this.form.submit()">
+                    <option value="updated" {% if current_sort == 'updated' %}selected{% endif %}>Zuletzt bearbeitet</option>
+                    <option value="created" {% if current_sort == 'created' %}selected{% endif %}>Neu erstellt</option>
+                    <option value="title" {% if current_sort == 'title' %}selected{% endif %}>Titel A–Z</option>
+                </select>
+            </div>
+            {% if available_tags %}
+            <div class="notes-tag-filter soft-scrollbar" aria-label="Hashtags">
+                <a class="{% if not current_tag %}is-active{% endif %}" href="?status={{ current_status }}&scope={{ current_scope }}&sort={{ current_sort }}{% if query %}&q={{ query|urlencode }}{% endif %}">Alle Tags</a>
+                {% for tag in available_tags %}
+                <a class="{% if current_tag == tag|lower %}is-active{% endif %}" href="?status={{ current_status }}&scope={{ current_scope }}&sort={{ current_sort }}&tag={{ tag|urlencode }}{% if query %}&q={{ query|urlencode }}{% endif %}">#{{ tag }}</a>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </form>
+
+        <div class="notes-list soft-scrollbar" data-notes-list>
+            {% for item in note_items %}
+            <a class="note-list-card {% if selected_note_data.id == item.id %}is-active{% endif %}" data-note-card="{{ item.id }}" href="{% url 'note_detail' item.id %}?status={{ current_status }}&scope={{ current_scope }}&sort={{ current_sort }}{% if query %}&q={{ query|urlencode }}{% endif %}{% if current_tag %}&tag={{ current_tag|urlencode }}{% endif %}">
+                <span class="note-card-topline">
+                    <strong data-note-card-title>{{ item.title }}</strong>
+                    <span class="note-card-icons">
+                        {% if item.is_pinned %}<i class="fa-solid fa-thumbtack" title="Angepinnt"></i>{% endif %}
+                        {% if item.permission != 'owner' %}<i class="fa-solid fa-user-group" title="Geteilt"></i>{% endif %}
+                    </span>
+                </span>
+                <span class="note-card-preview" data-note-card-preview>{{ item.preview|default:'Noch kein Inhalt' }}</span>
+                <span class="note-card-meta">
+                    <time datetime="{{ item.updated_at }}" data-note-card-updated>{{ item.updated_at|slice:':10' }}</time>
+                    {% if item.has_unseen_share %}<em>Neu</em>{% endif %}
+                </span>
+                <span class="note-card-tags" data-note-card-tags {% if not item.tags %}hidden{% endif %}>
+                    {% for tag in item.tags|slice:':3' %}<small>#{{ tag }}</small>{% endfor %}
+                </span>
+            </a>
+            {% empty %}
+            <div class="empty-state-card is-compact">
+                <i class="fa-regular fa-note-sticky"></i>
+                <strong>Keine Notizen gefunden</strong>
+                <p>Erstelle eine neue Notiz oder passe die Filter an.</p>
+            </div>
+            {% endfor %}
+        </div>
+    </aside>
+
+    <main class="glass-panel note-workspace {% if not selected_note_data %}is-empty{% endif %}" data-note-workspace>
+        {% if selected_note_data %}
+        <header class="note-document-header">
+            <a class="notes-mobile-back" href="{% url 'notes' %}" aria-label="Zur Notizübersicht">
+                <i class="fa-solid fa-arrow-left"></i>
+            </a>
+            <div class="note-title-wrap">
+                <input class="note-title-input" type="text" maxlength="200" value="{{ selected_note_data.title }}" aria-label="Notiztitel" data-note-title {% if not selected_note_data.can_edit or selected_note_data.is_deleted %}readonly{% endif %}>
+                <div class="note-meta-line">
+                    <span data-save-status>Gespeichert</span>
+                    <span>Bearbeitet von {{ selected_note_data.updated_by }}</span>
+                    <span data-word-count>0 Wörter · 0 Zeichen</span>
+                    {% if selected_note_data.permission != 'owner' %}<span class="shared-role">{{ selected_note_data.permission|capfirst }}</span>{% endif %}
+                </div>
+            </div>
+            <div class="note-header-actions">
+                <button type="button" data-command="pin" aria-label="{% if selected_note_data.is_pinned %}Loslösen{% else %}Anpinnen{% endif %}" aria-pressed="{{ selected_note_data.is_pinned|yesno:'true,false' }}">
+                    <i class="fa-solid fa-thumbtack"></i>
+                </button>
+                <button type="button" data-command="archive" aria-label="{% if selected_note_data.is_archived %}Aus Archiv holen{% else %}Archivieren{% endif %}">
+                    <i class="fa-solid fa-box-archive"></i>
+                </button>
+                <button type="button" data-command="comments" aria-label="Kommentare"><i class="fa-regular fa-comment"></i></button>
+                <button type="button" data-command="versions" aria-label="Versionsverlauf"><i class="fa-solid fa-clock-rotate-left"></i></button>
+                {% if selected_note_data.can_manage %}<button type="button" data-command="share" aria-label="Teilen"><i class="fa-solid fa-user-plus"></i></button>{% endif %}
+                <button type="button" data-command="duplicate" aria-label="Duplizieren"><i class="fa-regular fa-copy"></i></button>
+                <button type="button" data-command="exportPdf" aria-label="Als PDF exportieren"><i class="fa-solid fa-file-pdf"></i></button>
+                {% if selected_note_data.can_manage %}<button class="is-danger" type="button" data-command="trash" aria-label="{% if selected_note_data.is_deleted %}Endgültig löschen{% else %}In Papierkorb verschieben{% endif %}"><i class="fa-solid fa-trash"></i></button>{% endif %}
+                <button type="button" data-command="shortcutSettings" aria-label="Hotkeys"><i class="fa-solid fa-keyboard"></i></button>
+            </div>
+        </header>
+
+        {% if selected_note_data.is_deleted %}
+        <div class="note-trash-banner">
+            <span><i class="fa-solid fa-trash-can"></i> Diese Notiz liegt im Papierkorb.</span>
+            <button class="ghost-button" type="button" data-trash-restore>Wiederherstellen</button>
+        </div>
+        {% endif %}
+
+        <div class="note-editor-shell">
+            <div class="note-toolbar soft-scrollbar" role="toolbar" aria-label="Textformatierung" data-note-toolbar {% if not selected_note_data.can_edit or selected_note_data.is_deleted %}hidden{% endif %}>
+                <div class="toolbar-group">
+                    <button type="button" data-command="undo" aria-label="Rückgängig"><i class="fa-solid fa-rotate-left"></i></button>
+                    <button type="button" data-command="redo" aria-label="Wiederholen"><i class="fa-solid fa-rotate-right"></i></button>
+                    <button type="button" data-command="save" aria-label="Speichern"><i class="fa-solid fa-floppy-disk"></i></button>
+                </div>
+                <div class="toolbar-group toolbar-selects">
+                    <select data-format="block" aria-label="Absatzformat">
+                        <option value="paragraph">Absatz</option><option value="heading1">Überschrift 1</option><option value="heading2">Überschrift 2</option><option value="heading3">Überschrift 3</option>
+                    </select>
+                    <select data-format="fontFamily" aria-label="Schriftart">
+                        <option>Inter</option><option>Arial</option><option>Georgia</option><option>Times New Roman</option><option>Courier New</option>
+                    </select>
+                    <select data-format="fontSize" aria-label="Schriftgröße">
+                        <option value="10px">10</option><option value="12px">12</option><option value="14px">14</option><option value="16px" selected>16</option><option value="18px">18</option><option value="24px">24</option><option value="32px">32</option><option value="48px">48</option>
+                    </select>
+                    <select data-format="lineHeight" aria-label="Zeilenabstand">
+                        <option value="1">1,0</option><option value="1.15">1,15</option><option value="1.5" selected>1,5</option><option value="2">2,0</option>
+                    </select>
+                </div>
+                <div class="toolbar-group">
+                    <button type="button" data-command="bold" aria-label="Fett"><strong>B</strong></button>
+                    <button type="button" data-command="italic" aria-label="Kursiv"><em>I</em></button>
+                    <button type="button" data-command="underline" aria-label="Unterstrichen"><u>U</u></button>
+                    <button type="button" data-command="strike" aria-label="Durchgestrichen"><s>S</s></button>
+                    <label class="toolbar-color" aria-label="Textfarbe"><i class="fa-solid fa-font"></i><input type="color" value="#40372f" data-format="textColor"></label>
+                    <label class="toolbar-color" aria-label="Markierfarbe"><i class="fa-solid fa-highlighter"></i><input type="color" value="#f1d99e" data-format="highlight"></label>
+                </div>
+                <div class="toolbar-group">
+                    <button type="button" data-command="alignLeft" aria-label="Linksbündig"><i class="fa-solid fa-align-left"></i></button>
+                    <button type="button" data-command="alignCenter" aria-label="Zentriert"><i class="fa-solid fa-align-center"></i></button>
+                    <button type="button" data-command="alignRight" aria-label="Rechtsbündig"><i class="fa-solid fa-align-right"></i></button>
+                    <button type="button" data-command="alignJustify" aria-label="Blocksatz"><i class="fa-solid fa-align-justify"></i></button>
+                </div>
+                <div class="toolbar-group">
+                    <button type="button" data-command="bulletList" aria-label="Aufzählung"><i class="fa-solid fa-list-ul"></i></button>
+                    <button type="button" data-command="orderedList" aria-label="Nummerierung"><i class="fa-solid fa-list-ol"></i></button>
+                    <button type="button" data-command="taskList" aria-label="Checkliste"><i class="fa-solid fa-list-check"></i></button>
+                    <button type="button" data-command="outdent" aria-label="Einzug verkleinern"><i class="fa-solid fa-outdent"></i></button>
+                    <button type="button" data-command="indent" aria-label="Einzug vergrößern"><i class="fa-solid fa-indent"></i></button>
+                </div>
+                <div class="toolbar-group">
+                    <button type="button" data-command="link" aria-label="Link"><i class="fa-solid fa-link"></i></button>
+                    <button type="button" data-command="horizontalRule" aria-label="Trennlinie"><i class="fa-solid fa-minus"></i></button>
+                    <button type="button" data-command="image" aria-label="Bild"><i class="fa-regular fa-image"></i></button>
+                    <button type="button" data-command="attachment" aria-label="Datei"><i class="fa-solid fa-paperclip"></i></button>
+                    <button type="button" data-command="codeBlock" aria-label="Codeblock"><i class="fa-solid fa-code"></i></button>
+                    <button type="button" data-command="addComment" aria-label="Kommentar zur Auswahl hinzufügen"><i class="fa-solid fa-comment-medical"></i></button>
+                    <button type="button" data-command="clearFormat" aria-label="Formatierung entfernen"><i class="fa-solid fa-eraser"></i></button>
+                </div>
+                <div class="toolbar-group" data-code-language-group hidden>
+                    <select data-format="codeLanguage" aria-label="Programmiersprache">
+                        <option value="">Sprache</option>
+                        <option value="plaintext">Text</option>
+                        <option value="javascript">JavaScript</option>
+                        <option value="typescript">TypeScript</option>
+                        <option value="python">Python</option>
+                        <option value="bash">Bash</option>
+                        <option value="json">JSON</option>
+                        <option value="css">CSS</option>
+                        <option value="xml">HTML/XML</option>
+                        <option value="sql">SQL</option>
+                        <option value="java">Java</option>
+                        <option value="csharp">C#</option>
+                        <option value="cpp">C++</option>
+                        <option value="c">C</option>
+                        <option value="go">Go</option>
+                        <option value="rust">Rust</option>
+                        <option value="ruby">Ruby</option>
+                        <option value="php">PHP</option>
+                        <option value="yaml">YAML</option>
+                        <option value="markdown">Markdown</option>
+                        <option value="diff">Diff</option>
+                    </select>
+                </div>
+                <button type="button" data-table-dialog-open aria-label="Tabellenwerkzeuge öffnen" aria-haspopup="dialog" title="Tabellenwerkzeuge">
+                    <i class="fa-solid fa-table-cells"></i>
+                </button>
+            </div>
+            <div class="note-editor-scroll soft-scrollbar">
+                <div class="note-editor-page" data-note-editor></div>
+            </div>
+            <footer class="note-tag-editor">
+                <i class="fa-solid fa-hashtag"></i>
+                <input type="text" value="{{ selected_note_data.tags|join:', ' }}" placeholder="projekt, ideen, wichtig" aria-label="Hashtags, durch Komma getrennt" data-note-tags {% if not selected_note_data.can_edit or selected_note_data.is_deleted %}readonly{% endif %}>
+            </footer>
+        </div>
+        <input type="file" accept="{{ note_image_accept }}" hidden data-image-input>
+        <input type="file" accept="{{ note_file_accept }}" hidden data-file-input>
+        {% else %}
+        <div class="empty-chat-state note-empty-state">
+            <i class="fa-regular fa-note-sticky"></i>
+            <h2>Dein Platz für Gedanken</h2>
+            <p>Erstelle deine erste Notiz und formatiere sie wie ein Dokument.</p>
+            <button class="primary-button" type="button" data-command="newNote"><i class="fa-solid fa-plus"></i> Neue Notiz</button>
+        </div>
+        {% endif %}
+    </main>
+</section>
+
+<dialog class="notes-dialog table-operations-dialog" data-table-dialog>
+    <form method="dialog" class="dialog-card">
+        <header>
+            <div><span class="eyebrow">Formatierung</span><h2>Tabellenwerkzeuge</h2></div>
+            <button value="cancel" aria-label="Schließen"><i class="fa-solid fa-xmark"></i></button>
+        </header>
+        <p class="table-dialog-hint">Füge eine neue Tabelle ein oder bearbeite die Zelle, in der sich der Cursor befindet.</p>
+        <div class="table-operation-grid">
+            <button type="button" data-command="insertTable"><i class="fa-solid fa-table-cells-large"></i><span>Tabelle einfügen…</span></button>
+            <button type="button" data-command="addRowBefore"><i class="fa-solid fa-arrow-up"></i><span>Zeile darüber</span></button>
+            <button type="button" data-command="addRowAfter"><i class="fa-solid fa-arrow-down"></i><span>Zeile darunter</span></button>
+            <button type="button" data-command="addColumnBefore"><i class="fa-solid fa-arrow-left"></i><span>Spalte links</span></button>
+            <button type="button" data-command="addColumnAfter"><i class="fa-solid fa-arrow-right"></i><span>Spalte rechts</span></button>
+            <button type="button" data-command="mergeCells"><i class="fa-solid fa-object-group"></i><span>Zellen verbinden</span></button>
+            <button type="button" data-command="splitCell"><i class="fa-solid fa-border-all"></i><span>Zelle trennen</span></button>
+            <button type="button" data-command="deleteRow"><i class="fa-solid fa-table-rows"></i><span>Zeile löschen</span></button>
+            <button type="button" data-command="deleteColumn"><i class="fa-solid fa-table-columns"></i><span>Spalte löschen</span></button>
+            <button class="is-danger" type="button" data-command="deleteTable"><i class="fa-solid fa-trash"></i><span>Tabelle löschen</span></button>
+        </div>
+    </form>
+</dialog>
+
+<dialog class="notes-dialog" data-share-dialog>
+    <form method="dialog" class="dialog-card">
+        <header><div><span class="eyebrow">Freigaben</span><h2>Notiz teilen</h2></div><button value="cancel" aria-label="Schließen"><i class="fa-solid fa-xmark"></i></button></header>
+        <label class="dialog-search"><span>Person suchen</span><input type="search" placeholder="Name oder E-Mail" data-share-search></label>
+        <div class="share-candidates" data-share-candidates></div>
+        <div class="share-list" data-share-list></div>
+    </form>
+</dialog>
+
+<dialog class="notes-dialog" data-versions-dialog>
+    <form method="dialog" class="dialog-card">
+        <header><div><span class="eyebrow">Sicherheit</span><h2>Versionsverlauf</h2></div><button value="cancel" aria-label="Schließen"><i class="fa-solid fa-xmark"></i></button></header>
+        <div class="version-list" data-version-list></div>
+    </form>
+</dialog>
+
+<dialog class="notes-dialog shortcut-dialog" data-shortcut-dialog>
+    <form method="dialog" class="dialog-card">
+        <header><div><span class="eyebrow">Tastatur</span><h2>Hotkeys anpassen</h2></div><button value="cancel" aria-label="Schließen"><i class="fa-solid fa-xmark"></i></button></header>
+        <p class="dialog-hint">Klicke in ein Feld und drücke die gewünschte Tastenkombination. Leeren entfernt die Belegung.</p>
+        <div class="shortcut-list soft-scrollbar" data-shortcut-list></div>
+        <footer><button class="ghost-button" type="button" data-shortcuts-reset>Alle zurücksetzen</button><button class="primary-button" type="button" data-shortcuts-save>Hotkeys speichern</button></footer>
+    </form>
+</dialog>
+
+<dialog class="notes-dialog" data-comments-dialog>
+    <form method="dialog" class="dialog-card">
+        <header><div><span class="eyebrow">Diskussion</span><h2>Kommentare</h2></div><button value="cancel" aria-label="Schließen"><i class="fa-solid fa-xmark"></i></button></header>
+        <div class="comment-thread-list" data-comment-thread-list></div>
+    </form>
+</dialog>
+
+<dialog class="notes-dialog" data-conflict-dialog>
+    <div class="dialog-card conflict-card">
+        <header><div><span class="eyebrow">Speicherkonflikt</span><h2>Die Notiz wurde woanders geändert</h2></div></header>
+        <p>Wähle, welche Fassung du behalten möchtest. Deine lokale Fassung bleibt bis zur Entscheidung gesichert.</p>
+        <div class="conflict-actions">
+            <button class="ghost-button" type="button" data-conflict-load>Serverstand laden</button>
+            <button class="ghost-button" type="button" data-conflict-copy>Meine Fassung kopieren</button>
+            <button class="primary-button" type="button" data-conflict-overwrite>Meine Fassung überschreibt</button>
+        </div>
+    </div>
+</dialog>
+
+{% csrf_token %}
+{{ selected_note_data|json_script:"note-initial-data" }}
+{{ shortcut_overrides|json_script:"note-shortcut-overrides" }}
+{% endblock %}
+
+{% block page_js %}
+<script src="{% static 'js/bundles/notes.js' %}?v=notes-1" defer></script>
+{% endblock %}

@@ -1,0 +1,73 @@
+{% if has_older_messages and oldest_message_id %}
+<a class="older-messages-link" href="{% url 'messages_detail' selected_conversation.id %}?before={{ oldest_message_id }}{% if query %}&q={{ query|urlencode }}{% endif %}{% if current_filter != 'all' %}&filter={{ current_filter }}{% endif %}">
+    <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
+    <span>&Auml;ltere Nachrichten laden</span>
+</a>
+{% endif %}
+
+{% for item in message_items %}
+    {% if item.date_label %}<div class="chat-date">{{ item.date_label }}</div>{% endif %}
+    <article id="message-{{ item.message.id }}" class="bubble is-{{ item.side }}{% if item.is_deleted %} is-deleted{% endif %}{% if item.is_pinned %} is-pinned{% endif %}"
+             tabindex="{% if item.can_delete or item.can_react %}0{% else %}-1{% endif %}"
+             aria-label="Nachricht von {{ item.sender_name }} um {{ item.time }}"
+             data-message-id="{{ item.message.id }}"
+             data-can-delete="{% if item.can_delete %}true{% else %}false{% endif %}"
+             data-can-react="{% if item.can_react %}true{% else %}false{% endif %}"
+             data-is-pinned="{% if item.is_pinned %}true{% else %}false{% endif %}"
+             data-is-deleted="{% if item.is_deleted %}true{% else %}false{% endif %}"
+             data-can-reply="{% if not item.is_deleted %}true{% else %}false{% endif %}"
+             data-sender-name="{{ item.sender_name }}"
+             data-preview="{{ item.preview_text }}">
+        {% if item.side == 'in' %}<span class="avatar small" title="{{ item.sender_name }}">{% if item.sender_avatar_url %}<img src="{{ item.sender_avatar_url }}" alt="Profilbild von {{ item.sender_name }}">{% else %}{{ item.sender_avatar }}{% endif %}</span>{% endif %}
+        <div class="bubble-content">
+            {% if selected_conversation.is_group and item.side == 'in' %}<strong class="bubble-sender">{{ item.sender_name }}</strong>{% endif %}
+            {% if item.reply_preview %}
+            <a class="reply-quote" href="#message-{{ item.reply_preview.message_id }}" data-reply-jump="{{ item.reply_preview.message_id }}">
+                <strong>{{ item.reply_preview.sender_name }}</strong>
+                <span>{{ item.reply_preview.text }}</span>
+            </a>
+            {% endif %}
+            {% if item.attachment %}
+            <div class="message-attachment {% if item.attachment.kind == 'image' %}is-image{% endif %}">
+                {% if item.attachment.kind == 'image' %}
+                <a href="{{ item.attachment.inline_url }}" target="_blank" rel="noopener">
+                    <img src="{{ item.attachment.inline_url }}" alt="{{ item.attachment.name }}" loading="lazy">
+                </a>
+                {% else %}
+                <a class="attachment-chip" href="{{ item.attachment.download_url }}">
+                    <i class="fa-solid fa-file"></i>
+                    <span>{{ item.attachment.name }}</span>
+                    <small>{{ item.attachment.size_label }}</small>
+                </a>
+                {% endif %}
+            </div>
+            {% endif %}
+            {% if item.display_body %}<p class="{% if item.is_deleted %}deleted-message{% endif %}">{{ item.display_body|linebreaksbr }}</p>{% endif %}
+            <span class="bubble-meta">
+                {% if item.is_pinned %}<span class="pin-indicator"><i class="fa-solid fa-thumbtack"></i></span>{% endif %}
+                <time>{{ item.time }}</time>
+                {% if item.read_receipt %}
+                <span class="read-receipt {% if item.read_receipt_is_read %}is-read{% endif %}" title="{{ item.read_receipt }}">
+                    <i class="fa-solid fa-check-double"></i>
+                    <span>{{ item.read_receipt }}</span>
+                </span>
+                {% endif %}
+            </span>
+            {% if item.reactions %}
+            <div class="reaction-row" aria-label="Reaktionen">
+                {% for reaction in item.reactions %}
+                <button class="reaction-pill {% if reaction.is_own %}is-own{% endif %}" type="button" title="{{ reaction.title }}" data-message-id="{{ item.message.id }}" data-emoji="{{ reaction.emoji }}">
+                    <span>{{ reaction.emoji }}</span><strong>{{ reaction.count }}</strong>
+                </button>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </article>
+{% empty %}
+<div class="empty-chat-state">
+    <i class="fa-regular fa-paper-plane"></i>
+    <h2>Noch keine Nachrichten</h2>
+    <p>Schreibe unten die erste Nachricht in dieser Unterhaltung.</p>
+</div>
+{% endfor %}

@@ -1,0 +1,119 @@
+{% extends 'app/base.html' %}
+{% load static %}
+
+{% block title %}Suche | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% static 'css/search.css' %}?v=search-1">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell search-shell">
+    <header class="page-hero">
+        <div>
+            <h1>Suche</h1>
+            <p>Finde Notizen, Nachrichten und Termine an einem Ort.</p>
+        </div>
+        <i class="hero-branch fa-solid fa-seedling" aria-hidden="true"></i>
+    </header>
+
+    <form class="glass-panel search-form" method="get" action="{% url 'global_search' %}">
+        <label class="search-input-field">
+            <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+            <input type="search" name="q" value="{{ query }}" placeholder="Notizen, Nachrichten, Termine durchsuchen" autofocus>
+        </label>
+        <button class="primary-button" type="submit">Suchen</button>
+    </form>
+
+    {% if query %}
+    <div class="search-results-grid">
+        <section class="glass-panel search-result-panel">
+            <div class="panel-title panel-title-between">
+                <span><i class="fa-regular fa-note-sticky"></i> Notizen</span>
+                {% if notes_results %}<small>{{ notes_results|length }} Treffer</small>{% endif %}
+            </div>
+            {% if not notes_enabled %}
+            <div class="empty-state-card is-compact">
+                <i class="fa-regular fa-circle-pause" aria-hidden="true"></i>
+                <div><strong>Notizen deaktiviert</strong><p>Diese Funktion ist aktuell nicht verfügbar.</p></div>
+            </div>
+            {% elif notes_results %}
+            {% for note in notes_results %}
+            <a class="search-result-row" href="{% url 'note_detail' note.id %}">
+                <i class="fa-regular fa-note-sticky" aria-hidden="true"></i>
+                <span>
+                    <strong>{{ note.title|default:"Unbenannte Notiz" }}</strong>
+                    <small>{{ note.plain_text|default:"Kein Inhalt"|truncatechars:120 }}</small>
+                </span>
+            </a>
+            {% endfor %}
+            {% else %}
+            <div class="empty-state-card is-compact">
+                <i class="fa-regular fa-note-sticky" aria-hidden="true"></i>
+                <div><strong>Keine Treffer</strong><p>Keine Notiz passt zu &bdquo;{{ query }}&ldquo;.</p></div>
+            </div>
+            {% endif %}
+        </section>
+
+        <section class="glass-panel search-result-panel">
+            <div class="panel-title panel-title-between">
+                <span><i class="fa-regular fa-comments"></i> Nachrichten</span>
+                {% if message_results %}<small>{{ message_results|length }} Treffer</small>{% endif %}
+            </div>
+            {% if not messages_enabled %}
+            <div class="empty-state-card is-compact">
+                <i class="fa-regular fa-circle-pause" aria-hidden="true"></i>
+                <div><strong>Nachrichten deaktiviert</strong><p>Diese Funktion ist aktuell nicht verfügbar.</p></div>
+            </div>
+            {% elif message_results %}
+            {% for item in message_results %}
+            <a class="search-result-row" href="{% url 'messages_detail' item.conversation.id %}">
+                <i class="fa-solid {% if item.is_group %}fa-user-group{% else %}fa-comment{% endif %}" aria-hidden="true"></i>
+                <span>
+                    <strong>{{ item.title }}</strong>
+                    <small>{{ item.preview|default:item.last_message_body|truncatechars:120 }}</small>
+                </span>
+            </a>
+            {% endfor %}
+            {% else %}
+            <div class="empty-state-card is-compact">
+                <i class="fa-regular fa-comments" aria-hidden="true"></i>
+                <div><strong>Keine Treffer</strong><p>Keine Unterhaltung passt zu &bdquo;{{ query }}&ldquo;.</p></div>
+            </div>
+            {% endif %}
+        </section>
+
+        <section class="glass-panel search-result-panel">
+            <div class="panel-title panel-title-between">
+                <span><i class="fa-regular fa-calendar"></i> Termine</span>
+                {% if event_results %}<small>{{ event_results|length }} Treffer</small>{% endif %}
+            </div>
+            {% if event_results %}
+            {% for event in event_results %}
+            <a class="search-result-row" href="{% url 'calendar' %}?year={{ event.year }}&month={{ event.month }}">
+                <i class="fa-regular fa-calendar-days" aria-hidden="true"></i>
+                <span>
+                    <strong>{{ event.title }}</strong>
+                    <small>{{ event.date }} · {{ event.time }}{% if event.location %} · {{ event.location }}{% endif %}</small>
+                </span>
+            </a>
+            {% endfor %}
+            {% else %}
+            <div class="empty-state-card is-compact">
+                <i class="fa-regular fa-calendar" aria-hidden="true"></i>
+                <div><strong>Keine Treffer</strong><p>Kein Termin passt zu &bdquo;{{ query }}&ldquo;.</p></div>
+            </div>
+            {% endif %}
+        </section>
+    </div>
+    {% else %}
+    <div class="empty-state-card">
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+        <div>
+            <strong>Wonach suchst du?</strong>
+            <p>Gib einen Suchbegriff ein, um Notizen, Nachrichten und Termine gleichzeitig zu durchsuchen.</p>
+        </div>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

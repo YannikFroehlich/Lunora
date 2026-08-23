@@ -1,0 +1,264 @@
+{% extends 'app/base.html' %}
+{% load static %}
+
+{% block title %}Wetter | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% static 'css/weather.css' %}?v=weather-map-5">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell weather-shell">
+    <header class="page-hero">
+        <div>
+            <h1>Wetter</h1>
+            <p>Dein ruhiger Überblick für heute und die nächsten Stunden.</p>
+        </div>
+        <i class="hero-branch fa-solid fa-seedling" aria-hidden="true"></i>
+    </header>
+
+    {% if api_notice %}
+    <p class="api-notice" role="status">{{ api_notice }}</p>
+    {% endif %}
+
+    {% if not weather_map.available %}
+    <section class="empty-state-card weather-key-state" aria-labelledby="weather-key-title">
+        <i class="fa-solid fa-key" aria-hidden="true"></i>
+        <div>
+            <strong id="weather-key-title">Live-Wetter ist noch nicht verbunden</strong>
+            <p>Aktuell zeigt Lunora Demo-Werte und eine verschiebbare Basiskarte. Sobald die Wetterverbindung aktiv ist, lassen sich Temperatur, Niederschlag, Wolken, Wind und Luftdruck einblenden.</p>
+        </div>
+    </section>
+    {% endif %}
+
+    <form class="weather-toolbar glass-panel" method="get" action="{% url 'weather' %}" data-weather-search data-suggest-url="{% url 'weather_suggestions' %}">
+        <div class="weather-search-wrap">
+            <label class="search-field">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="search" name="q" value="{{ search_query }}" placeholder="Ort suchen" autocomplete="off" aria-label="Ort suchen" aria-autocomplete="list" aria-expanded="false" aria-controls="weather-suggestions">
+            </label>
+            <input type="hidden" name="lat" data-weather-lat>
+            <input type="hidden" name="lon" data-weather-lon>
+            <input type="hidden" name="name" data-weather-name>
+            <input type="hidden" name="details" data-weather-details>
+            <input type="hidden" name="label" data-weather-label>
+            <div class="suggestion-list" id="weather-suggestions" role="listbox" aria-label="Ortsvorschläge" aria-live="polite" hidden></div>
+        </div>
+        <button class="ghost-button" type="button" data-current-location><i class="fa-solid fa-location-dot"></i> Mein Standort</button>
+    </form>
+
+    <div class="weather-grid">
+        <section class="glass-panel current-weather">
+            <div class="current-place">
+                <span class="panel-kicker">Aktueller Standort</span>
+                <h2 title="{{ current.city }}">{{ current.city }}</h2>
+                {% if current.detail %}
+                <span class="location-detail" title="{{ current.detail }}">{{ current.detail }}</span>
+                {% endif %}
+                <span class="soft-pill"><i class="fa-solid fa-location-arrow"></i> {{ current.label }}</span>
+                <form class="weather-default-form" method="post" action="{% url 'weather' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="weather_default">
+                    <input type="hidden" name="weather_default_city" value="{{ current.city }}">
+                    <button class="ghost-button" type="submit">
+                        <i class="fa-solid fa-house-signal" aria-hidden="true"></i>
+                        Als Standard
+                    </button>
+                </form>
+            </div>
+            <i class="fa-solid {{ current.icon }} main-weather-icon"></i>
+            <div class="temperature-block">
+                <strong>{{ current.temperature }}°</strong>
+                <span>{{ current.description }}</span>
+            </div>
+            <div class="weather-meta">
+                <span class="meta-item"><small>Gefühlt</small><strong>{{ current.feels_like }}°</strong></span>
+                <span class="meta-item"><small>Höchstwert</small><strong>{{ current.high }}°</strong></span>
+                <span class="meta-item"><small>Tiefstwert</small><strong>{{ current.low }}°</strong></span>
+                <span class="meta-item updated-line"><small><i class="fa-regular fa-clock"></i> Aktualisiert</small><strong>{{ current.updated }}</strong></span>
+            </div>
+        </section>
+
+        <section class="glass-panel day-summary">
+            <h2>Tagesübersicht</h2>
+            <div class="summary-grid">
+                {% for item in summary %}
+                <article>
+                    <i class="fa-solid {{ item.icon }}"></i>
+                    <span>{{ item.label }}</span>
+                    <strong>{{ item.value }}</strong>
+                    <small>{{ item.hint }}</small>
+                </article>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="glass-panel hourly-panel">
+            <h2>Stundenübersicht</h2>
+            <div class="hourly-scroll">
+                {% for item in hourly_forecast %}
+                <article class="hour-card">
+                    <span>{{ item.time }}</span>
+                    <i class="fa-solid {{ item.icon }}"></i>
+                    <strong>{{ item.temperature }}°</strong>
+                    <small><i class="fa-solid fa-droplet"></i> {{ item.rain }} %</small>
+                </article>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="glass-panel days-panel">
+            <h2>Nächste Tage</h2>
+            <div class="forecast-list">
+                {% for day in daily_forecast %}
+                <div class="forecast-row">
+                    <strong>{{ day.day }}</strong>
+                    <i class="fa-solid {{ day.icon }}"></i>
+                    <span>{{ day.description }}</span>
+                    <span>{{ day.high }}° / {{ day.low }}°</span>
+                    <small><i class="fa-solid fa-droplet"></i> {{ day.rain }} %</small>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="forecast-summary">
+                <article>
+                    <span>Ø Hoch</span>
+                    <strong>{{ forecast_summary.average_high }}</strong>
+                </article>
+                <article>
+                    <span>Regentage</span>
+                    <strong>{{ forecast_summary.rain_days }}</strong>
+                </article>
+                <article>
+                    <span>Trend</span>
+                    <strong>{{ forecast_summary.trend }}</strong>
+                </article>
+            </div>
+        </section>
+
+        <section class="glass-panel air-panel">
+            <div class="panel-title panel-title-between">
+                <span><i class="fa-solid fa-wind"></i> Luftqualität</span>
+                <span class="quality-badge">{{ air_quality.label }}</span>
+            </div>
+            <div class="air-content">
+                <div class="air-score"><strong>{{ air_quality.score }}</strong><span>{{ air_quality.label }}</span></div>
+                <div class="air-copy">
+                    <p>Die Luftqualität ist gut und stellt kein Risiko dar.</p>
+                    <div class="quality-scale" aria-label="Luftqualität Skala">
+                        <span></span><span></span><span></span>
+                    </div>
+                    <small>Ideal für einen Spaziergang oder kurzes Lüften.</small>
+                </div>
+            </div>
+        </section>
+
+        <section class="glass-panel weather-map-panel">
+            <div class="panel-title panel-title-between">
+                <span><i class="fa-solid fa-map-location-dot"></i> Wetterkarte</span>
+                <small>{{ weather_map.status }}</small>
+            </div>
+
+            <div class="weather-map-layer-picker" role="group" aria-label="Wetterebene auswählen">
+                {% for layer in weather_map.layers %}
+                <button type="button"
+                        class="weather-map-layer-button {% if layer.id == weather_map.default_layer %}is-active{% endif %}"
+                        data-weather-map-layer="{{ layer.id }}"
+                        data-weather-map-label="{{ layer.label }}"
+                        data-weather-map-unit="{{ layer.unit }}"
+                        data-weather-map-legend-start="{{ layer.legend_start }}"
+                        data-weather-map-legend-end="{{ layer.legend_end }}"
+                        data-weather-map-legend-class="{{ layer.legend_class }}"
+                        data-weather-map-hint="{{ layer.hint }}"
+                        data-weather-map-opacity="{{ layer.opacity }}"
+                        data-weather-map-tile-url="{% url 'weather_map_tile' layer.id 0 0 0 %}"
+                        aria-pressed="{% if layer.id == weather_map.default_layer %}true{% else %}false{% endif %}"
+                        {% if not weather_map.available %}disabled aria-disabled="true"{% endif %}>
+                    <i class="fa-solid {{ layer.icon }}" aria-hidden="true"></i>
+                    <span>{{ layer.label }}</span>
+                </button>
+                {% endfor %}
+            </div>
+
+            <p class="weather-map-click-hint">
+                <i class="fa-solid fa-location-dot" aria-hidden="true"></i>
+                {% if weather_map.available %}
+                Klicke auf einen Ort, um dort die aktuelle Temperatur zu sehen.
+                {% else %}
+                Mit verbundenem Wetterdienst kannst du per Klick die Temperatur eines Ortes abrufen.
+                {% endif %}
+            </p>
+
+            <div class="weather-map-shell {% if not weather_map.available %}is-unavailable{% endif %}"
+                 role="region"
+                 aria-label="Interaktive Wetterkarte für {{ weather_map.location }}"
+                 data-weather-map
+                 data-weather-map-lat="{{ weather_map.center_lat }}"
+                 data-weather-map-lon="{{ weather_map.center_lon }}"
+                 data-weather-map-zoom="{{ weather_map.zoom }}"
+                  data-weather-map-location="{{ weather_map.location }}"
+                  data-weather-map-available="{{ weather_map.available|yesno:'true,false' }}"
+                  data-weather-map-point-url="{% url 'weather_point' %}"
+                  data-weather-map-default-layer="{{ weather_map.default_layer }}">
+                <div class="weather-map-canvas"
+                     data-weather-map-canvas
+                     aria-label="Weltkarte. Mit Pfeiltasten, Maus oder Berührung verschieben."></div>
+
+                <div class="weather-map-actions" aria-label="Kartensteuerung">
+                    <button type="button" data-weather-map-reset aria-label="Zurück zu {{ weather_map.location }}">
+                        <i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i>
+                        <span>Zurück zu {{ weather_map.location }}</span>
+                    </button>
+                    <button type="button" data-weather-map-fullscreen aria-label="Wetterkarte im Vollbild anzeigen">
+                        <i class="fa-solid fa-up-right-and-down-left-from-center" aria-hidden="true"></i>
+                    </button>
+                </div>
+
+                <div class="weather-map-legend" data-weather-map-legend aria-label="Legende für Temperatur">
+                    <div class="weather-map-legend-heading">
+                        <strong data-weather-map-legend-title>Temperatur</strong>
+                        <span data-weather-map-legend-unit>°C</span>
+                    </div>
+                    <span class="weather-map-legend-scale is-temperature" data-weather-map-legend-scale aria-hidden="true"></span>
+                    <div class="weather-map-legend-labels">
+                        <span data-weather-map-legend-start>Kälter</span>
+                        <span data-weather-map-legend-end>Wärmer</span>
+                    </div>
+                    <small data-weather-map-legend-hint>Die Farben zeigen die aktuelle Lufttemperatur.</small>
+                </div>
+
+                <p class="weather-map-status" data-weather-map-status role="status" aria-live="polite">
+                    {% if weather_map.available %}
+                    Temperatur wird geladen …
+                    {% else %}
+                    Wetterebenen benötigen einen verbundenen OpenWeather-Schlüssel.
+                    {% endif %}
+                </p>
+            </div>
+        </section>
+
+        <section class="glass-panel hint-panel">
+            <div class="hint-icon">
+                <i class="fa-solid {{ weather_tip.icon }}"></i>
+            </div>
+            <div class="hint-content">
+                <span>{{ weather_tip.kicker }}</span>
+                <h2>{{ weather_tip.title }}</h2>
+                <p>{{ weather_tip.text }}</p>
+                <div class="hint-chips">
+                    {% for chip in weather_tip.chips %}
+                    <small><i class="fa-solid {{ chip.icon }}"></i> {{ chip.label }}</small>
+                    {% endfor %}
+                </div>
+            </div>
+        </section>
+    </div>
+</section>
+{% endblock %}
+
+{% block page_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""></script>
+<script src="{% static 'js/weather.js' %}?v=weather-map-4"></script>
+{% endblock %}

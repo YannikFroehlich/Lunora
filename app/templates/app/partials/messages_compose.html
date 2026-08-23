@@ -1,0 +1,38 @@
+{% if current_member_state.is_blocked %}
+<div class="compose-disabled-card">
+    <i class="fa-solid fa-ban"></i>
+    <span>Du hast diesen Chat blockiert. Hebe die Blockierung rechts auf, um wieder Nachrichten zu senden.</span>
+</div>
+{% elif current_member_state.blocked_by_recipient %}
+<div class="compose-disabled-card">
+    <i class="fa-solid fa-ban"></i>
+    <span>Diese Nachricht kann derzeit nicht gesendet werden.</span>
+</div>
+{% else %}
+<div class="reply-preview-strip" id="reply-preview-strip" hidden>
+    <div>
+        <strong data-reply-sender></strong>
+        <span data-reply-text></span>
+    </div>
+    <button type="button" id="cancel-reply-button" aria-label="Antwort abbrechen"><i class="fa-solid fa-xmark"></i></button>
+</div>
+<div class="attachment-preview-chip" id="attachment-preview-chip" hidden>
+    <i class="fa-solid fa-paperclip"></i>
+    <span data-attachment-preview-name></span>
+    <button type="button" id="cancel-attachment-button" aria-label="Anhang entfernen"><i class="fa-solid fa-xmark"></i></button>
+</div>
+<form class="compose-bar" method="post" action="{% url 'messages_detail' selected_conversation.id %}" enctype="multipart/form-data">
+    {% csrf_token %}
+    <input type="hidden" name="form_name" value="message">
+    <input type="hidden" name="conversation_id" value="{{ selected_conversation.id }}">
+    <input type="hidden" name="reply_to_id" id="compose-reply-to-id" value="">
+    <label class="attach-button" aria-label="Datei anhängen">
+        <i class="fa-solid fa-paperclip"></i>
+        <input type="file" name="attachment" id="compose-attachment-input" hidden>
+    </label>
+    {{ message_form.body }}
+    <button class="send-button" type="submit" aria-label="Senden"><i class="fa-solid fa-paper-plane"></i></button>
+</form>
+{% if message_form.body.errors %}<small class="compose-error">{{ message_form.body.errors|striptags }}</small>{% endif %}
+{% if message_form.attachment.errors %}<small class="compose-error">{{ message_form.attachment.errors|striptags }}</small>{% endif %}
+{% endif %}

@@ -1,0 +1,402 @@
+{% extends 'app/base.html' %}
+{% load static %}
+
+{% block title %}Einstellungen | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% static 'css/settings.css' %}?v=multi-calendar-4">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell settings-shell">
+    <header class="page-hero">
+        <div>
+            <h1>Einstellungen</h1>
+            <p>Personalisiere deinen ruhigen Workspace.</p>
+        </div>
+        <i class="hero-branch fa-solid fa-seedling" aria-hidden="true"></i>
+    </header>
+
+    <div class="settings-grid">
+        <form id="preferences-form" class="settings-hidden-form" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="preferences">
+            <input type="hidden" name="return_to" value="{{ return_to }}">
+        </form>
+
+        <div class="settings-column">
+            <form id="appearance-form" class="glass-panel appearance-panel" method="post">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="appearance">
+                <input type="hidden" name="return_to" value="{{ return_to }}">
+                <div class="panel-title"><i class="fa-solid fa-wand-magic-sparkles"></i><h2>Darstellung</h2></div>
+                {% if appearance_form.non_field_errors %}
+                <div class="form-errors">{{ appearance_form.non_field_errors }}</div>
+                {% endif %}
+
+                <label class="field-label">Theme</label>
+                <div class="theme-options">
+                    <label class="choice-card {% if appearance_form.theme.value == 'light' %}is-active{% endif %}" data-theme-choice="light">
+                        <input type="radio" name="{{ appearance_form.theme.html_name }}" value="light" {% if appearance_form.theme.value == 'light' %}checked{% endif %}>
+                        <i class="fa-regular fa-sun"></i>
+                        Heller Modus
+                    </label>
+                    <label class="choice-card {% if appearance_form.theme.value == 'dark' %}is-active{% endif %}" data-theme-choice="dark">
+                        <input type="radio" name="{{ appearance_form.theme.html_name }}" value="dark" {% if appearance_form.theme.value == 'dark' %}checked{% endif %}>
+                        <i class="fa-regular fa-moon"></i>
+                        Dunkler Modus
+                    </label>
+                </div>
+                {{ appearance_form.theme.errors }}
+
+                <label class="field-label">Akzentfarbe</label>
+                <div class="color-row">
+                    {% for color, label in appearance_form.accent_color.field.choices %}
+                    <label class="color-dot {% if appearance_form.accent_color.value == color %}is-active{% endif %}" style="--dot-color: {{ color }}" aria-label="Akzentfarbe {{ label }}" title="{{ label }}">
+                        <input type="radio" name="{{ appearance_form.accent_color.html_name }}" value="{{ color }}" {% if appearance_form.accent_color.value == color %}checked{% endif %}>
+                    </label>
+                    {% endfor %}
+                </div>
+                {{ appearance_form.accent_color.errors }}
+
+                <label class="field-label">Hintergrund-Weichheit</label>
+                {{ appearance_form.background_softness }}
+                <div class="slider-labels"><span>Subtil</span><span>Ausgeglichen</span><span>Reich</span></div>
+                {{ appearance_form.background_softness.errors }}
+
+                <label class="field-label">Kompaktheit</label>
+                <div class="segmented-control">
+                    {% for value, label in appearance_form.density.field.choices %}
+                    <label class="{% if appearance_form.density.value == value %}is-active{% endif %}">
+                        <input type="radio" name="{{ appearance_form.density.html_name }}" value="{{ value }}" {% if appearance_form.density.value == value %}checked{% endif %}>
+                        <span>{{ label }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+                {{ appearance_form.density.errors }}
+            </form>
+
+            {% if calendar_sync_enabled %}
+            <section class="glass-panel calendar-settings-panel">
+                <div class="panel-title panel-title-between">
+                    <span><i class="fa-brands fa-google"></i><h2>Google Kalender</h2></span>
+                    {% if calendar_source_forms %}
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="form_name" value="calendar_sync_all">
+                        <input type="hidden" name="return_to" value="{{ return_to }}">
+                        <button class="icon-button" type="submit" aria-label="Alle Kalender synchronisieren">
+                            <i class="fa-solid fa-rotate"></i>
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+                <p class="panel-description">Private iCal-Links speichern, umbenennen und mit eigenen Farben anzeigen.</p>
+
+                <form class="calendar-source-form settings-calendar-form calendar-source-add-form" method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="calendar_source_add">
+                    <input type="hidden" name="return_to" value="{{ return_to }}">
+
+                    {% if calendar_source_form.non_field_errors %}
+                    <div class="form-errors">{{ calendar_source_form.non_field_errors }}</div>
+                    {% endif %}
+
+                    <div class="calendar-form-grid">
+                        <label>
+                            <span class="field-label">{{ calendar_source_form.name.label }}</span>
+                            {{ calendar_source_form.name }}
+                            {{ calendar_source_form.name.errors }}
+                        </label>
+                        <label>
+                            <span class="field-label">{{ calendar_source_form.ical_url.label }}</span>
+                            {{ calendar_source_form.ical_url }}
+                            {{ calendar_source_form.ical_url.errors }}
+                        </label>
+                    </div>
+                    <small class="field-hint">{{ calendar_source_form.ical_url.help_text }}</small>
+
+                    <div class="calendar-form-actions">
+                        <fieldset class="source-color-options">
+                            <legend>{{ calendar_source_form.color.label }}</legend>
+                            {% for value, label in calendar_source_form.color.field.choices %}
+                            <label class="source-color-choice tone-{{ value }}" title="{{ label }}">
+                                <input type="radio" name="{{ calendar_source_form.color.html_name }}" value="{{ value }}" {% if calendar_source_form.color.value == value %}checked{% endif %}>
+                                <span></span>
+                            </label>
+                            {% endfor %}
+                        </fieldset>
+                        <label class="source-toggle">
+                            {{ calendar_source_form.enabled }}
+                            <span>{{ calendar_source_form.enabled.label }}</span>
+                        </label>
+                        <button class="primary-button source-submit" type="submit">
+                            <i class="fa-solid fa-plus"></i>
+                            Hinzufügen
+                        </button>
+                    </div>
+                    {{ calendar_source_form.color.errors }}
+                    {{ calendar_source_form.enabled.errors }}
+                </form>
+
+                <div class="calendar-source-list">
+                    {% if calendar_source_forms %}
+                    {% for item in calendar_source_forms %}
+                    <article class="calendar-source-card tone-{{ item.source.color }}">
+                        <form class="calendar-source-edit-form" method="post">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_name" value="calendar_source_update">
+                            <input type="hidden" name="source_id" value="{{ item.source.id }}">
+                            <input type="hidden" name="return_to" value="{{ return_to }}">
+
+                            <div class="calendar-source-card-header">
+                                <span class="source-color-dot" aria-hidden="true"></span>
+                                <span>
+                                    <strong>{{ item.source.name }}</strong>
+                                    <small class="source-status is-{{ item.status.kind }}">{{ item.status.label }}</small>
+                                </span>
+                            </div>
+
+                            {% if item.form.non_field_errors %}
+                            <div class="form-errors">{{ item.form.non_field_errors }}</div>
+                            {% endif %}
+
+                            <div class="calendar-form-grid">
+                                <label>
+                                    <span class="field-label">{{ item.form.name.label }}</span>
+                                    {{ item.form.name }}
+                                    {{ item.form.name.errors }}
+                                </label>
+                                <label>
+                                    <span class="field-label">{{ item.form.ical_url.label }}</span>
+                                    {{ item.form.ical_url }}
+                                    {{ item.form.ical_url.errors }}
+                                </label>
+                            </div>
+
+                            <div class="calendar-form-actions">
+                                <fieldset class="source-color-options">
+                                    <legend>{{ item.form.color.label }}</legend>
+                                    {% for value, label in item.form.color.field.choices %}
+                                    <label class="source-color-choice tone-{{ value }}" title="{{ label }}">
+                                        <input type="radio" name="{{ item.form.color.html_name }}" value="{{ value }}" {% if item.form.color.value == value %}checked{% endif %}>
+                                        <span></span>
+                                    </label>
+                                    {% endfor %}
+                                </fieldset>
+                                <label class="source-toggle">
+                                    {{ item.form.enabled }}
+                                    <span>{{ item.form.enabled.label }}</span>
+                                </label>
+                                <button class="primary-button source-submit" type="submit">
+                                    <i class="fa-solid fa-floppy-disk"></i>
+                                    Speichern
+                                </button>
+                            </div>
+                            {{ item.form.color.errors }}
+                            {{ item.form.enabled.errors }}
+                        </form>
+                        <form class="calendar-source-delete-form" method="post" onsubmit="return confirm('Diesen Kalender wirklich löschen?');">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_name" value="calendar_source_delete">
+                            <input type="hidden" name="source_id" value="{{ item.source.id }}">
+                            <input type="hidden" name="return_to" value="{{ return_to }}">
+                            <button class="ghost-button danger-button" type="submit">
+                                <i class="fa-solid fa-trash"></i>
+                                Löschen
+                            </button>
+                        </form>
+                    </article>
+                    {% endfor %}
+                    {% else %}
+                    <div class="empty-state-card is-compact">
+                        <i class="fa-regular fa-calendar-plus" aria-hidden="true"></i>
+                        <div>
+                            <strong>Noch kein Kalender</strong>
+                            <p>Füge oben deinen ersten privaten iCal-Link hinzu.</p>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </section>
+
+            {% else %}
+            <section class="glass-panel calendar-settings-panel">
+                <div class="panel-title">
+                    <i class="fa-brands fa-google"></i>
+                    <h2>Google Kalender</h2>
+                </div>
+                <div class="empty-state-card is-compact">
+                    <i class="fa-solid fa-pause" aria-hidden="true"></i>
+                    <div>
+                        <strong>Kalendersynchronisierung pausiert</strong>
+                        <p>Quellen verwalten und Synchronisieren ist voruebergehend deaktiviert.</p>
+                    </div>
+                </div>
+            </section>
+            {% endif %}
+
+            <section class="glass-panel notifications-panel">
+                <div class="panel-title"><i class="fa-regular fa-bell"></i><h2>Benachrichtigungen</h2></div>
+                {% if preferences_form.non_field_errors %}
+                <div class="form-errors">{{ preferences_form.non_field_errors }}</div>
+                {% endif %}
+                {% for row in notification_rows %}
+                <div class="setting-line">
+                    <span><strong>{{ row.label }}</strong><small>{{ row.hint }}</small></span>
+                    <label class="switch {% if row.field.value %}is-on{% endif %}" aria-label="{{ row.label }}" for="{{ row.field.id_for_label }}">
+                        <input type="checkbox" name="{{ row.field.html_name }}" id="{{ row.field.id_for_label }}" form="preferences-form" {% if row.field.value %}checked{% endif %}>
+                    </label>
+                </div>
+                {% endfor %}
+                <p class="notification-permission-status" role="status" data-desktop-notification-status></p>
+                <button class="ghost-button notification-permission-button" type="button" data-request-notification-permission>
+                    <i class="fa-regular fa-bell" aria-hidden="true"></i>
+                    Browserfreigabe erteilen
+                </button>
+                <button class="primary-button preference-submit" type="submit" form="preferences-form">
+                    <i class="fa-solid fa-floppy-disk"></i>
+                    Benachrichtigungen speichern
+                </button>
+            </section>
+        </div>
+
+        <div class="settings-column">
+            <section class="glass-panel profile-panel">
+                <div class="panel-title"><i class="fa-regular fa-user"></i><h2>Profil</h2></div>
+                <div class="profile-row">
+                    <div class="profile-avatar">
+                        {% if profile.profile_image %}
+                        <img src="{{ profile.profile_image.url }}" alt="Profilbild von {{ profile.name }}">
+                        {% else %}
+                        <i class="fa-solid fa-seedling"></i>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <h3>{{ profile.name }}</h3>
+                        <p>{{ request.user.email }}</p>
+                    </div>
+                </div>
+                <form class="profile-form" method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="profile">
+                    <input type="hidden" name="return_to" value="{{ return_to }}">
+
+                    {% if profile_form.non_field_errors %}
+                    <div class="form-errors">{{ profile_form.non_field_errors }}</div>
+                    {% endif %}
+
+                    <label class="field-label" for="{{ profile_form.display_name.id_for_label }}">{{ profile_form.display_name.label }}</label>
+                    {{ profile_form.display_name }}
+                    {{ profile_form.display_name.errors }}
+
+                    <label class="field-label" for="{{ profile_form.profile_image.id_for_label }}">{{ profile_form.profile_image.label }}</label>
+                    <div class="profile-image-control">
+                        <div class="profile-image-summary">
+                            {% if profile.profile_image %}
+                            <span class="profile-image-eyebrow">Aktuelles Bild</span>
+                            <a class="profile-image-name" href="{{ profile.profile_image.url }}" target="_blank" rel="noopener">
+                                <i class="fa-regular fa-image" aria-hidden="true"></i>
+                                {{ profile.profile_image.name|cut:"profiles/" }}
+                            </a>
+                            {% else %}
+                            <span class="profile-image-eyebrow">Noch kein Bild</span>
+                            <strong class="profile-image-name">
+                                <i class="fa-regular fa-image" aria-hidden="true"></i>
+                                Profilbild hinzufügen
+                            </strong>
+                            {% endif %}
+                        </div>
+
+                        <div class="profile-image-actions">
+                            <label class="upload-button" for="{{ profile_form.profile_image.id_for_label }}">
+                                <i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i>
+                                <span>Bild auswählen</span>
+                                <input class="profile-image-upload-input" type="file" name="{{ profile_form.profile_image.html_name }}" accept="{{ profile_form.profile_image.field.widget.attrs.accept }}" id="{{ profile_form.profile_image.id_for_label }}" data-file-input>
+                            </label>
+                            <span class="selected-file-name" data-file-name-for="{{ profile_form.profile_image.id_for_label }}">Keine neue Datei ausgewählt</span>
+                        </div>
+
+                        {% if profile.profile_image %}
+                        <label class="clear-image-toggle" for="profile_image-clear_id">
+                            <input type="checkbox" name="profile_image-clear" id="profile_image-clear_id">
+                            <span>Profilbild zurücksetzen</span>
+                        </label>
+                        {% endif %}
+                    </div>
+                    {{ profile_form.profile_image.errors }}
+
+                    <button class="primary-button profile-submit" type="submit">
+                        <i class="fa-solid fa-floppy-disk"></i>
+                        Profil speichern
+                    </button>
+                </form>
+            </section>
+
+            <section class="glass-panel region-panel">
+                <div class="panel-title"><i class="fa-solid fa-globe"></i><h2>Sprache & Region</h2></div>
+                <div class="region-form-fields">
+                    <label class="region-field" for="{{ appearance_form.date_format.id_for_label }}">
+                        <span><strong>{{ appearance_form.date_format.label }}</strong></span>
+                        <select class="region-select" name="{{ appearance_form.date_format.html_name }}" id="{{ appearance_form.date_format.id_for_label }}" form="appearance-form">
+                            {% for value, label in appearance_form.date_format.field.choices %}
+                            <option value="{{ value }}" {% if appearance_form.date_format.value == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    {{ appearance_form.date_format.errors }}
+
+                    <label class="region-field" for="{{ appearance_form.time_format.id_for_label }}">
+                        <span><strong>{{ appearance_form.time_format.label }}</strong></span>
+                        <select class="region-select" name="{{ appearance_form.time_format.html_name }}" id="{{ appearance_form.time_format.id_for_label }}" form="appearance-form">
+                            {% for value, label in appearance_form.time_format.field.choices %}
+                            <option value="{{ value }}" {% if appearance_form.time_format.value == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    {{ appearance_form.time_format.errors }}
+
+                    <label class="region-field" for="{{ appearance_form.timezone_name.id_for_label }}">
+                        <span><strong>{{ appearance_form.timezone_name.label }}</strong></span>
+                        <select class="region-select" name="{{ appearance_form.timezone_name.html_name }}" id="{{ appearance_form.timezone_name.id_for_label }}" form="appearance-form">
+                            {% for value, label in appearance_form.timezone_name.field.choices %}
+                            <option value="{{ value }}" {% if appearance_form.timezone_name.value == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    {{ appearance_form.timezone_name.errors }}
+                </div>
+            </section>
+
+            <section class="glass-panel weather-preferences-panel">
+                <div class="panel-title"><i class="fa-solid fa-cloud-sun"></i><h2>Wetter</h2></div>
+                <div class="preference-field">
+                    <label class="field-label" for="{{ preferences_form.weather_default_city.id_for_label }}">{{ preferences_form.weather_default_city.label }}</label>
+                    <input type="text"
+                           name="{{ preferences_form.weather_default_city.html_name }}"
+                           id="{{ preferences_form.weather_default_city.id_for_label }}"
+                           value="{{ preferences_form.weather_default_city.value|default_if_none:'' }}"
+                           placeholder="{{ preferences_form.weather_default_city.field.widget.attrs.placeholder }}"
+                           autocomplete="{{ preferences_form.weather_default_city.field.widget.attrs.autocomplete }}"
+                           form="preferences-form">
+                    <small class="field-hint">Wird für Dashboard und Wetterseite genutzt, wenn keine Suche aktiv ist.</small>
+                    {{ preferences_form.weather_default_city.errors }}
+                </div>
+                <button class="primary-button preference-submit" type="submit" form="preferences-form">
+                    <i class="fa-solid fa-floppy-disk"></i>
+                    Präferenzen speichern
+                </button>
+            </section>
+        </div>
+    </div>
+
+    <footer class="settings-footer glass-panel">
+        <a class="ghost-button" href="{{ return_to }}">Abbrechen</a>
+        <button class="primary-button" type="submit" form="appearance-form">Darstellung speichern</button>
+    </footer>
+</section>
+{% endblock %}
+
+{% block page_js %}
+<script src="{% static 'js/settings.js' %}?v=notifications-1"></script>
+{% endblock %}

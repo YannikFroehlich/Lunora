@@ -1,0 +1,382 @@
+{% extends 'app/base.html' %}
+{% load static %}
+
+{% block title %}Kalender | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% static 'css/calendar.css' %}?v=event-repeat-1">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell calendar-shell">
+    <header class="page-hero">
+        <div>
+            <h1>Kalender</h1>
+            <p>Behalte Termine, Aufgaben und wichtige Tage im Blick.</p>
+        </div>
+        <i class="hero-branch fa-solid fa-seedling" aria-hidden="true"></i>
+    </header>
+
+    <div class="calendar-layout">
+        <section class="glass-panel month-panel" aria-labelledby="calendar-month-title">
+            <div class="month-toolbar">
+                <a class="icon-button" href="{% url 'calendar' %}?year={{ prev_month.year }}&month={{ prev_month.month }}" aria-label="Vorheriger Monat"><i class="fa-solid fa-chevron-left"></i></a>
+                <h2 id="calendar-month-title">{{ month_label }}</h2>
+                <a class="icon-button" href="{% url 'calendar' %}?year={{ next_month.year }}&month={{ next_month.month }}" aria-label="Nächster Monat"><i class="fa-solid fa-chevron-right"></i></a>
+                <span class="toolbar-spacer"></span>
+                {% if calendar_event_creation_enabled %}
+                <button class="ghost-button" type="button" data-event-dialog-open>
+                    <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                    Termin
+                </button>
+                {% endif %}
+                <a class="ghost-button" href="{% url 'calendar' %}"><i class="fa-regular fa-calendar"></i> Heute</a>
+                {% if calendar_sources and calendar_sync_enabled %}
+                <form method="post" class="inline-form">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="calendar_sync_all">
+                    <button class="primary-button" type="submit"><i class="fa-solid fa-rotate"></i> Alle synchronisieren</button>
+                </form>
+                {% endif %}
+            </div>
+
+            <div class="weekday-row">
+                <span>Mo</span><span>Di</span><span>Mi</span><span>Do</span><span>Fr</span><span>Sa</span><span>So</span>
+            </div>
+            <div class="calendar-matrix">
+                {% for week in calendar_rows %}
+                    {% for day in week %}
+                    <article class="calendar-day {% if day.muted %}is-muted{% endif %} {% if day.today %}is-today{% endif %}">
+                        {% if calendar_event_creation_enabled %}
+                        <button class="calendar-day-number" type="button" data-event-date="{{ day.date_input }}" aria-label="Termin am {{ day.date_label }} anlegen">
+                            <strong>{{ day.number }}</strong>
+                        </button>
+                        {% else %}
+                        <span class="calendar-day-number">
+                            <strong>{{ day.number }}</strong>
+                        </span>
+                        {% endif %}
+                        {% for event in day.events %}
+                        <span class="event-chip tone-{{ event.tone }} {% if event.is_invited %}is-invited{% endif %}" title="{{ event.time }} · {{ event.label }}">{% if event.is_invited %}<i class="fa-solid fa-user-group" aria-hidden="true"></i>{% endif %}{{ event.label }}</span>
+                        {% endfor %}
+                        {% if day.overflow %}
+                        <span class="event-more">+{{ day.overflow }} weitere</span>
+                        {% endif %}
+                    </article>
+                    {% endfor %}
+                {% endfor %}
+            </div>
+        </section>
+
+        <aside class="side-stack">
+            <section class="glass-panel calendar-filter-panel">
+                <div class="panel-title panel-title-between">
+                    <div><h2>Meine Kalender</h2><p>{{ visible_calendar_count }} sichtbar</p></div>
+                    {% if calendar_sync_enabled %}
+                    <a class="icon-button" href="{% url 'settings' %}?next={{ request.get_full_path|urlencode }}" aria-label="Kalender verwalten">
+                        <i class="fa-solid fa-gear"></i>
+                    </a>
+                    {% endif %}
+                </div>
+                {% if calendar_sources %}
+                <form class="calendar-visibility-form" method="post" data-calendar-visibility-form>
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="calendar_visibility">
+                    {% for item in calendar_sources %}
+                    <label class="calendar-source-row tone-{{ item.source.color }}">
+                        <input type="checkbox" name="visible_source_ids" value="{{ item.source.id }}" {% if item.source.is_visible %}checked{% endif %}>
+                        <span class="source-color-dot" aria-hidden="true"></span>
+                        <span class="source-copy">
+                            <strong>{{ item.source.name }}</strong>
+                            <small class="source-status is-{{ item.status_kind }}">{{ item.status_label }}</small>
+                        </span>
+                    </label>
+                    {% endfor %}
+                    <button class="ghost-button calendar-visibility-submit" type="submit">
+                        <i class="fa-regular fa-eye"></i>
+                        Ansicht aktualisieren
+                    </button>
+                </form>
+                {% else %}
+                <div class="empty-state-card is-compact">
+                    <i class="fa-regular fa-calendar-plus" aria-hidden="true"></i>
+                    <div>
+                        <strong>Noch kein Kalender</strong>
+                        <p>Füge deine privaten iCal-Links in den Einstellungen hinzu.</p>
+                    </div>
+                </div>
+                {% endif %}
+            </section>
+
+            <section class="glass-panel today-events">
+                <div class="panel-title panel-title-between">
+                    <div><h2>Heute</h2><p>{{ today_label }}</p></div>
+                    <i class="fa-regular fa-calendar"></i>
+                </div>
+                {% if today_events %}
+                {% for event in today_events %}
+                <div class="timeline-row">
+                    <time>{{ event.time }}</time>
+                    <span class="timeline-dot tone-{{ event.tone }}"></span>
+                    <strong>{{ event.title }}</strong>
+                    {% if event.recurrence_id %}<i class="fa-solid fa-repeat" title="Wiederkehrender Termin"></i>{% endif %}
+                    {% if event.is_invited %}<i class="fa-solid fa-user-group" title="Einladung"></i>{% endif %}
+                    <i class="fa-solid {{ event.icon }}"></i>
+                    {% if event.can_delete %}
+                    <span class="event-row-actions">
+                        <form method="post">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_name" value="calendar_event_delete">
+                            <input type="hidden" name="event_id" value="{{ event.event_id }}">
+                            <button class="icon-button" type="submit" aria-label="Termin löschen"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
+                        </form>
+                        {% if event.recurrence_id %}
+                        <form method="post">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_name" value="calendar_event_delete_series">
+                            <input type="hidden" name="recurrence_id" value="{{ event.recurrence_id }}">
+                            <button class="icon-button" type="submit" aria-label="Serie löschen"><i class="fa-solid fa-layer-group" aria-hidden="true"></i></button>
+                        </form>
+                        {% endif %}
+                    </span>
+                    {% endif %}
+                </div>
+                {% endfor %}
+                {% else %}
+                <div class="empty-state-card is-compact">
+                    <i class="fa-regular fa-calendar-check" aria-hidden="true"></i>
+                    <div>
+                        {% if calendar_sources and visible_calendar_count == 0 %}
+                        <strong>Alle Kalender ausgeblendet</strong>
+                        <p>Aktiviere mindestens eine Checkbox, um Termine zu sehen.</p>
+                        {% else %}
+                        <strong>Heute ist frei</strong>
+                        <p>Für heute stehen keine Termine an.</p>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+            </section>
+
+            <section class="glass-panel upcoming-panel">
+                <h2>Nächste Termine</h2>
+                {% if upcoming_events %}
+                {% for event in upcoming_events %}
+                <div class="upcoming-row tone-{{ event.tone }}">
+                    <span class="upcoming-dot" aria-hidden="true"></span>
+                    <span>{{ event.date }}</span>
+                    <strong>{{ event.title }}</strong>
+                    <small>{{ event.category }}</small>
+                    {% if event.recurrence_id %}<i class="fa-solid fa-repeat" title="Wiederkehrender Termin"></i>{% endif %}
+                    {% if event.is_invited %}<i class="fa-solid fa-user-group" title="Einladung"></i>{% endif %}
+                    <i class="fa-solid {{ event.icon }}"></i>
+                    {% if event.can_delete %}
+                    <span class="event-row-actions">
+                        <form method="post">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_name" value="calendar_event_delete">
+                            <input type="hidden" name="event_id" value="{{ event.event_id }}">
+                            <button class="icon-button" type="submit" aria-label="Termin löschen"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
+                        </form>
+                        {% if event.recurrence_id %}
+                        <form method="post">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_name" value="calendar_event_delete_series">
+                            <input type="hidden" name="recurrence_id" value="{{ event.recurrence_id }}">
+                            <button class="icon-button" type="submit" aria-label="Serie löschen"><i class="fa-solid fa-layer-group" aria-hidden="true"></i></button>
+                        </form>
+                        {% endif %}
+                    </span>
+                    {% endif %}
+                </div>
+                {% endfor %}
+                {% else %}
+                <div class="empty-state-card is-compact">
+                    <i class="fa-regular fa-calendar-plus" aria-hidden="true"></i>
+                    <div>
+                        {% if calendar_sources and visible_calendar_count == 0 %}
+                        <strong>Alle Kalender ausgeblendet</strong>
+                        <p>Aktiviere mindestens eine Checkbox, um kommende Termine zu sehen.</p>
+                        {% else %}
+                        <strong>Keine kommenden Termine</strong>
+                        <p>Hinterlege deine Kalender-Links in den Einstellungen, um die nächsten Termine hier zu sehen.</p>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+            </section>
+
+            {% if pending_invitations %}
+            <section class="glass-panel invitations-panel">
+                <div class="panel-title panel-title-between">
+                    <h2>Einladungen</h2>
+                    <i class="fa-solid fa-user-group"></i>
+                </div>
+                {% for invitation in pending_invitations %}
+                <div class="invitation-row">
+                    <span>
+                        <strong>{{ invitation.event_title }}</strong>
+                        <small>{{ invitation.organizer_name }} · {{ invitation.when }}</small>
+                    </span>
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="form_name" value="event_rsvp">
+                        <input type="hidden" name="attendee_id" value="{{ invitation.attendee_id }}">
+                        <button class="invitation-accept" type="submit" name="status" value="accepted" aria-label="Annehmen"><i class="fa-solid fa-check"></i></button>
+                        <button class="invitation-decline" type="submit" name="status" value="declined" aria-label="Ablehnen"><i class="fa-solid fa-xmark"></i></button>
+                    </form>
+                </div>
+                {% endfor %}
+            </section>
+            {% endif %}
+
+            {% if calendar_reminders_enabled %}
+            <section class="glass-panel reminder-panel">
+                <div class="panel-title panel-title-between">
+                    <h2>Erinnerungen</h2>
+                    <button class="icon-button" type="submit" form="reminder-add-form" aria-label="Erinnerung hinzufügen"><i class="fa-solid fa-plus"></i></button>
+                </div>
+                <form id="reminder-add-form" class="reminder-add-form" method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="reminder_add">
+                    {{ reminder_form.title }}
+                    {{ reminder_form.title.errors }}
+                    <label class="reminder-date-field" for="{{ reminder_form.due_at.id_for_label }}">
+                        <i class="fa-regular fa-calendar" aria-hidden="true"></i>
+                        <span>Fällig</span>
+                        {{ reminder_form.due_at }}
+                    </label>
+                    {{ reminder_form.due_at.errors }}
+                </form>
+                {% if reminders %}
+                {% for item in reminders %}
+                <form class="reminder-row {{ item.due_state }} {% if item.is_done %}is-done{% endif %}" method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="reminder_toggle">
+                    <input type="hidden" name="reminder_id" value="{{ item.reminder.id }}">
+                    <input type="checkbox" name="is_done" {% if item.is_done %}checked{% endif %} onchange="this.form.submit()">
+                    <span>{{ item.title }}<small>{{ item.due_label }}</small></span>
+                    <button class="reminder-delete-button" type="submit" name="form_name" value="reminder_delete" aria-label="Erinnerung löschen">
+                        <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                    </button>
+                </form>
+                {% endfor %}
+                {% else %}
+                <div class="empty-state-card is-compact">
+                    <i class="fa-regular fa-bell" aria-hidden="true"></i>
+                    <div>
+                        <strong>Keine Erinnerungen</strong>
+                        <p>Neue Erinnerungen erscheinen hier und lassen sich direkt abhaken.</p>
+                    </div>
+                </div>
+                {% endif %}
+            </section>
+            {% endif %}
+        </aside>
+
+        <section class="glass-panel month-stats">
+            <article><i class="fa-regular fa-calendar"></i><strong>{{ month_stats.events }}</strong><span>Termine</span><small>in {{ month_label }}</small></article>
+            <article><i class="fa-regular fa-sun"></i><strong>{{ month_stats.free_days }}</strong><span>Freie Tage</span><small>ohne Termine</small></article>
+            <article><i class="fa-regular fa-circle-check"></i><strong>{{ month_stats.synced_days }}</strong><span>Aktive Tage</span><small>mit Terminen</small></article>
+            <article class="mini-chart">
+                {% for bar in month_stats.chart_bars %}
+                <span style="--bar-height: {{ bar.height }}px" title="{{ bar.count }} Termine"></span>
+                {% endfor %}
+            </article>
+        </section>
+    </div>
+</section>
+
+{% if calendar_event_creation_enabled %}
+<dialog class="calendar-event-dialog" data-event-dialog data-has-errors="{{ event_form.errors|yesno:'true,false' }}" aria-labelledby="calendar-event-dialog-title">
+    <section class="glass-panel event-dialog-card">
+        <header class="event-dialog-header">
+            <div>
+                <span class="panel-kicker"><i class="fa-regular fa-calendar-plus" aria-hidden="true"></i> Eigener Kalender</span>
+                <h2 id="calendar-event-dialog-title">Termin anlegen</h2>
+            </div>
+            <button class="icon-button" type="button" data-event-dialog-close aria-label="Dialog schließen">
+                <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+            </button>
+        </header>
+
+        <form class="event-create-form" method="post" data-event-create-form>
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="calendar_event_add">
+            {% if event_form.non_field_errors %}
+            <div class="form-errors is-wide">{{ event_form.non_field_errors }}</div>
+            {% endif %}
+
+            <label class="event-form-field is-wide" for="{{ event_form.title.id_for_label }}">
+                <span>{{ event_form.title.label }}</span>
+                {{ event_form.title }}
+                {{ event_form.title.errors }}
+            </label>
+
+            <label class="event-form-field is-wide" for="{{ event_form.event_date.id_for_label }}">
+                <span>{{ event_form.event_date.label }}</span>
+                {{ event_form.event_date }}
+                {{ event_form.event_date.errors }}
+            </label>
+
+            <label class="event-form-field" data-event-time-field for="{{ event_form.start_time.id_for_label }}">
+                <span>{{ event_form.start_time.label }}</span>
+                {{ event_form.start_time }}
+                {{ event_form.start_time.errors }}
+            </label>
+
+            <label class="event-form-field" data-event-time-field for="{{ event_form.end_time.id_for_label }}">
+                <span>{{ event_form.end_time.label }} <small>optional</small></span>
+                {{ event_form.end_time }}
+                {{ event_form.end_time.errors }}
+            </label>
+
+            <label class="event-all-day is-wide" for="{{ event_form.is_all_day.id_for_label }}">
+                {{ event_form.is_all_day }}
+                <span>{{ event_form.is_all_day.label }}</span>
+            </label>
+
+            <label class="event-form-field" for="{{ event_form.repeat.id_for_label }}">
+                <span>{{ event_form.repeat.label }}</span>
+                {{ event_form.repeat }}
+                {{ event_form.repeat.errors }}
+            </label>
+
+            <label class="event-form-field" data-event-repeat-field for="{{ event_form.repeat_until.id_for_label }}">
+                <span>{{ event_form.repeat_until.label }}</span>
+                {{ event_form.repeat_until }}
+                {{ event_form.repeat_until.errors }}
+            </label>
+
+            <label class="event-form-field is-wide" for="{{ event_form.location.id_for_label }}">
+                <span>{{ event_form.location.label }}</span>
+                {{ event_form.location }}
+                {{ event_form.location.errors }}
+            </label>
+
+            <label class="event-form-field is-wide">
+                <span>{{ event_form.attendees.label }}</span>
+                <div class="recipient-checkbox-list">{{ event_form.attendees }}</div>
+                {{ event_form.attendees.errors }}
+            </label>
+
+            <div class="event-form-actions is-wide">
+                <button class="ghost-button" type="button" data-event-dialog-close>Abbrechen</button>
+                <button class="primary-button" type="submit">
+                    <i class="fa-solid fa-check" aria-hidden="true"></i>
+                    Termin speichern
+                </button>
+            </div>
+        </form>
+    </section>
+</dialog>
+{% endif %}
+{% endblock %}
+
+{% block page_js %}
+{% if calendar_event_creation_enabled %}
+<script src="{% static 'js/calendar.js' %}?v=event-repeat-1"></script>
+{% else %}
+<script src="{% static 'js/calendar.js' %}?v=event-repeat-1"></script>
+{% endif %}
+{% endblock %}
