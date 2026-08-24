@@ -27,8 +27,26 @@ git fetch --prune origin main
 git switch main
 git merge --ff-only origin/main
 
-install -d -m 2770 -g lunora media private_media
-install -d -m 2750 -g lunora staticfiles
+ensure_deployment_directory() {
+    local path="$1"
+    local mode="$2"
+
+    if [[ -e "${path}" && ! -d "${path}" ]]; then
+        echo "Abbruch: ${path} existiert, ist aber kein Verzeichnis." >&2
+        exit 1
+    fi
+
+    if [[ ! -d "${path}" ]]; then
+        install -d -m "${mode}" -g lunora "${path}"
+    elif [[ ! -w "${path}" ]]; then
+        echo "Abbruch: ${path} ist für den Deployment-Benutzer nicht beschreibbar." >&2
+        exit 1
+    fi
+}
+
+ensure_deployment_directory media 2770
+ensure_deployment_directory private_media 2770
+ensure_deployment_directory staticfiles 2750
 
 if [[ ! -x "${VENV_DIR}/bin/python" ]]; then
     python3 -m venv "${VENV_DIR}"
