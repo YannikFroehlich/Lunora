@@ -261,6 +261,7 @@ def get_calendar_context(user, *, year=None, month=None):
                             "tone": _calendar_event_tone(event),
                             "time": _calendar_event_time_label(event, user),
                             "is_invited": event.user_id != user.id,
+                            **_calendar_event_manage_fields(event, user),
                         }
                         for event in day_events[:3]
                     ],
@@ -346,11 +347,29 @@ def _calendar_event_tone(event):
 
 
 def _calendar_event_manage_fields(event, user):
-    return {
+    can_manage = event.user_id == user.id and event.source_id is None
+    fields = {
         "event_id": event.id,
         "recurrence_id": event.recurrence_id,
-        "can_delete": event.user_id == user.id and event.source_id is None,
+        "can_delete": can_manage,
     }
+    if can_manage:
+        event_start = localtime_for_user(event.start_at, user)
+        event_end = localtime_for_user(event.end_at, user)
+        fields.update(
+            {
+                "edit_title": event.title,
+                "edit_date": event_start.date().isoformat(),
+                "edit_start_time": event_start.strftime("%H:%M"),
+                "edit_end_time": event_end.strftime("%H:%M"),
+                "edit_is_all_day": event.is_all_day,
+                "edit_location": event.location,
+                "edit_attendee_ids": ",".join(
+                    str(user_id) for user_id in event.attendees.values_list("user_id", flat=True)
+                ),
+            }
+        )
+    return fields
 
 
 def _upcoming_calendar_events(user, now):

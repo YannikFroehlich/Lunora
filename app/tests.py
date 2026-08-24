@@ -1013,6 +1013,122 @@ class SettingsProfileTests(TestCase):
 
         self.assertTrue(CalendarEvent.objects.filter(pk=event.id).exists())
 
+    def test_calendar_event_edit_updates_fields_and_attendees(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        invitee = User.objects.create_user(username="anna@example.com", email="anna@example.com", password="secret-12345")
+        for account in (user, invitee):
+            Profile.objects.create(user=account, display_name=account.first_name or account.username)
+        event = CalendarEvent.objects.create(
+            user=user,
+            title="Altbezeichnung",
+            location="Altes Büro",
+            start_at=timezone.now() + timedelta(days=1),
+            end_at=timezone.now() + timedelta(days=1, hours=1),
+        )
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.post(
+            "/calendar/",
+            {
+                "form_name": "calendar_event_edit",
+                "event_id": str(event.id),
+                "title": "Neuer Titel",
+                "event_date": "2099-09-01",
+                "start_time": "09:00",
+                "end_time": "10:00",
+                "location": "Neues Büro",
+                "attendees": [str(invitee.id)],
+            },
+        )
+
+        self.assertRedirects(response, "/calendar/")
+        event.refresh_from_db()
+        self.assertEqual(event.title, "Neuer Titel")
+        self.assertEqual(event.location, "Neues Büro")
+        self.assertTrue(CalendarEventAttendee.objects.filter(event=event, user=invitee).exists())
+
+    def test_calendar_event_edit_cannot_target_another_users_event(self):
+        owner = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        outsider = User.objects.create_user(username="anna@example.com", email="anna@example.com", password="secret-12345")
+        for account in (owner, outsider):
+            Profile.objects.create(user=account, display_name=account.first_name or account.username)
+        event = CalendarEvent.objects.create(
+            user=owner,
+            title="Fremder Termin",
+            start_at=timezone.now() + timedelta(days=1),
+            end_at=timezone.now() + timedelta(days=1, hours=1),
+        )
+        self.client.login(username="anna@example.com", password="secret-12345")
+
+        self.client.post(
+            "/calendar/",
+            {
+                "form_name": "calendar_event_edit",
+                "event_id": str(event.id),
+                "title": "Manipuliert",
+                "event_date": "2099-09-01",
+                "start_time": "09:00",
+            },
+        )
+
+        event.refresh_from_db()
+        self.assertEqual(event.title, "Fremder Termin")
+
+    def test_calendar_event_edit_ignores_synced_events(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        source = CalendarSource.objects.create(user=user, name="Google Kalender", ical_url="https://example.com/cal.ics")
+        event = CalendarEvent.objects.create(
+            user=user,
+            source=source,
+            external_id="synced-1",
+            title="Synchronisierter Termin",
+            start_at=timezone.now() + timedelta(days=1),
+            end_at=timezone.now() + timedelta(days=1, hours=1),
+        )
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        self.client.post(
+            "/calendar/",
+            {
+                "form_name": "calendar_event_edit",
+                "event_id": str(event.id),
+                "title": "Manipuliert",
+                "event_date": "2099-09-01",
+                "start_time": "09:00",
+            },
+        )
+
+        event.refresh_from_db()
+        self.assertEqual(event.title, "Synchronisierter Termin")
+
+    def test_calendar_event_edit_rejects_an_end_before_its_start(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        event = CalendarEvent.objects.create(
+            user=user,
+            title="Termin",
+            start_at=timezone.now() + timedelta(days=1),
+            end_at=timezone.now() + timedelta(days=1, hours=1),
+        )
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.post(
+            "/calendar/",
+            {
+                "form_name": "calendar_event_edit",
+                "event_id": str(event.id),
+                "title": "Termin",
+                "event_date": "2099-09-01",
+                "start_time": "10:00",
+                "end_time": "09:00",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        event.refresh_from_db()
+        self.assertEqual(event.title, "Termin")
+
     def test_calendar_sync_result_is_visible(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
         Profile.objects.create(user=user, display_name="Mira")

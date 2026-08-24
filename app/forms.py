@@ -592,7 +592,7 @@ class CalendarReminderForm(forms.ModelForm):
         return self.cleaned_data["title"].strip()
 
 
-class CalendarEventForm(forms.Form):
+class _CalendarEventDateTimeForm(forms.Form):
     title = forms.CharField(
         label="Titel",
         max_length=255,
@@ -628,24 +628,6 @@ class CalendarEventForm(forms.Form):
         required=False,
         widget=forms.TextInput(attrs={"placeholder": "Optional", "autocomplete": "off"}),
     )
-    repeat = forms.ChoiceField(
-        label="Wiederholung",
-        choices=[
-            ("none", "Keine"),
-            ("DAILY", "Täglich"),
-            ("WEEKLY", "Wöchentlich"),
-            ("MONTHLY", "Monatlich"),
-            ("YEARLY", "Jährlich"),
-        ],
-        required=False,
-        initial="none",
-    )
-    repeat_until = forms.DateField(
-        label="Wiederholen bis",
-        required=False,
-        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-        input_formats=["%Y-%m-%d"],
-    )
     attendees = forms.ModelMultipleChoiceField(
         label="Teilnehmer einladen",
         queryset=User.objects.none(),
@@ -661,17 +643,6 @@ class CalendarEventForm(forms.Form):
             .exclude(pk=getattr(user, "pk", None))
             .order_by("first_name", "email", "username")
         )
-
-        if not self.is_bound:
-            now = localtime_for_user(profile_or_user=user)
-            start_at = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
-            self.initial.update(
-                {
-                    "event_date": start_at.date(),
-                    "start_time": start_at.time(),
-                    "end_time": (start_at + timedelta(hours=1)).time(),
-                }
-            )
 
     def clean_title(self):
         return self.cleaned_data["title"].strip()
@@ -709,7 +680,49 @@ class CalendarEventForm(forms.Form):
 
         cleaned_data["start_at"] = start_at
         cleaned_data["end_at"] = end_at
+        return cleaned_data
 
+
+class CalendarEventForm(_CalendarEventDateTimeForm):
+    repeat = forms.ChoiceField(
+        label="Wiederholung",
+        choices=[
+            ("none", "Keine"),
+            ("DAILY", "Täglich"),
+            ("WEEKLY", "Wöchentlich"),
+            ("MONTHLY", "Monatlich"),
+            ("YEARLY", "Jährlich"),
+        ],
+        required=False,
+        initial="none",
+    )
+    repeat_until = forms.DateField(
+        label="Wiederholen bis",
+        required=False,
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        input_formats=["%Y-%m-%d"],
+    )
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, user=user, **kwargs)
+        if not self.is_bound:
+            now = localtime_for_user(profile_or_user=user)
+            start_at = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+            self.initial.update(
+                {
+                    "event_date": start_at.date(),
+                    "start_time": start_at.time(),
+                    "end_time": (start_at + timedelta(hours=1)).time(),
+                }
+            )
+
+    def clean(self):
+        cleaned_data = super().clean()
+        event_date = cleaned_data.get("event_date")
+        if not event_date or "start_at" not in cleaned_data:
+            return cleaned_data
+
+        user_timezone = get_user_zoneinfo(self.user)
         repeat = cleaned_data.get("repeat") or "none"
         if repeat != "none":
             repeat_until = cleaned_data.get("repeat_until")
@@ -770,3 +783,50 @@ class CalendarEventForm(forms.Form):
             )
 
         return events[0] if events else None
+
+
+class CalendarEventEditForm(_CalendarEventDateTimeForm):
+    def __init__(self, *args, user=None, instance=None, **kwargs):
+        self.instance = instance
+        super().__init__(*args, user=user, **kwargs)
+        if instance is not None and not self.is_bound:
+            instance_start = localtime_for_user(instance.start_at, user)
+            instance_end = localtime_for_user(instance.end_at, user)
+            self.initial.update(
+                {
+                    "title": instance.title,
+                    "event_date": instance_start.date(),
+                    "start_time": instance_start.time(),
+                    "end_time": instance_end.time(),
+                    "is_all_day": instance.is_all_day,
+                    "location": instance.location,
+                    "attendees": list(instance.attendees.values_list("user_id", flat=True)),
+                }
+            )
+
+    def save(self):
+        event = self.instance
+        event.title = self.cleaned_data["title"]
+        event.location = self.cleaned_data["location"]
+        event.start_at = self.cleaned_data["start_at"]
+        event.end_at = self.cleaned_data["end_at"]
+        event.is_all_day = self.cleaned_data["is_all_day"]
+        event.save(update_fields=["title", "location", "start_at", "end_at", "is_all_day", "updated_at"])
+
+        new_attendee_ids = {attendee.id for attendee in self.cleaned_data.get("attendees") or []}
+        existing_attendee_ids = set(event.attendees.values_list("user_id", flat=True))
+
+        to_remove = existing_attendee_ids - new_attendee_ids
+        if to_remove:
+            event.attendees.filter(user_id__in=to_remove).delete()
+
+        to_add = new_attendee_ids - existing_attendee_ids
+        if to_add:
+            CalendarEventAttendee.objects.bulk_create(
+                [
+                    CalendarEventAttendee(event=event, user_id=user_id, invited_by=self.user)
+                    for user_id in to_add
+                ]
+            )
+
+        return event

@@ -4,7 +4,7 @@
 {% block title %}Kalender | Lunora{% endblock %}
 
 {% block page_css %}
-<link rel="stylesheet" href="{% static 'css/calendar.css' %}?v=event-repeat-1">
+<link rel="stylesheet" href="{% static 'css/calendar.css' %}?v=event-edit-1">
 {% endblock %}
 
 {% block content %}
@@ -57,7 +57,19 @@
                         </span>
                         {% endif %}
                         {% for event in day.events %}
+                        {% if event.can_delete %}
+                        <button type="button" class="event-chip tone-{{ event.tone }}" title="{{ event.time }} · {{ event.label }} (bearbeiten)" data-event-edit-open
+                            data-event-id="{{ event.event_id }}"
+                            data-edit-title="{{ event.edit_title }}"
+                            data-edit-date="{{ event.edit_date }}"
+                            data-edit-start="{{ event.edit_start_time }}"
+                            data-edit-end="{{ event.edit_end_time }}"
+                            data-edit-all-day="{{ event.edit_is_all_day|yesno:'true,false' }}"
+                            data-edit-location="{{ event.edit_location }}"
+                            data-edit-attendees="{{ event.edit_attendee_ids }}">{{ event.label }}</button>
+                        {% else %}
                         <span class="event-chip tone-{{ event.tone }} {% if event.is_invited %}is-invited{% endif %}" title="{{ event.time }} · {{ event.label }}">{% if event.is_invited %}<i class="fa-solid fa-user-group" aria-hidden="true"></i>{% endif %}{{ event.label }}</span>
+                        {% endif %}
                         {% endfor %}
                         {% if day.overflow %}
                         <span class="event-more">+{{ day.overflow }} weitere</span>
@@ -124,6 +136,15 @@
                     <i class="fa-solid {{ event.icon }}"></i>
                     {% if event.can_delete %}
                     <span class="event-row-actions">
+                        <button class="icon-button" type="button" aria-label="Termin bearbeiten" data-event-edit-open
+                            data-event-id="{{ event.event_id }}"
+                            data-edit-title="{{ event.edit_title }}"
+                            data-edit-date="{{ event.edit_date }}"
+                            data-edit-start="{{ event.edit_start_time }}"
+                            data-edit-end="{{ event.edit_end_time }}"
+                            data-edit-all-day="{{ event.edit_is_all_day|yesno:'true,false' }}"
+                            data-edit-location="{{ event.edit_location }}"
+                            data-edit-attendees="{{ event.edit_attendee_ids }}"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>
                         <form method="post">
                             {% csrf_token %}
                             <input type="hidden" name="form_name" value="calendar_event_delete">
@@ -172,6 +193,15 @@
                     <i class="fa-solid {{ event.icon }}"></i>
                     {% if event.can_delete %}
                     <span class="event-row-actions">
+                        <button class="icon-button" type="button" aria-label="Termin bearbeiten" data-event-edit-open
+                            data-event-id="{{ event.event_id }}"
+                            data-edit-title="{{ event.edit_title }}"
+                            data-edit-date="{{ event.edit_date }}"
+                            data-edit-start="{{ event.edit_start_time }}"
+                            data-edit-end="{{ event.edit_end_time }}"
+                            data-edit-all-day="{{ event.edit_is_all_day|yesno:'true,false' }}"
+                            data-edit-location="{{ event.edit_location }}"
+                            data-edit-attendees="{{ event.edit_attendee_ids }}"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>
                         <form method="post">
                             {% csrf_token %}
                             <input type="hidden" name="form_name" value="calendar_event_delete">
@@ -370,13 +400,85 @@
         </form>
     </section>
 </dialog>
+
+<dialog class="calendar-event-dialog" data-event-edit-dialog data-has-errors="{{ edit_form.errors|yesno:'true,false' }}" aria-labelledby="calendar-event-edit-dialog-title">
+    <section class="glass-panel event-dialog-card">
+        <header class="event-dialog-header">
+            <div>
+                <span class="panel-kicker"><i class="fa-solid fa-pen" aria-hidden="true"></i> Eigener Kalender</span>
+                <h2 id="calendar-event-edit-dialog-title">Termin bearbeiten</h2>
+            </div>
+            <button class="icon-button" type="button" data-event-edit-dialog-close aria-label="Dialog schließen">
+                <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+            </button>
+        </header>
+
+        <form class="event-create-form" method="post" data-event-edit-form>
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="calendar_event_edit">
+            <input type="hidden" name="event_id" value="{{ editing_event_id|default:'' }}" data-event-edit-id-input>
+            {% if edit_form.non_field_errors %}
+            <div class="form-errors is-wide">{{ edit_form.non_field_errors }}</div>
+            {% endif %}
+
+            <label class="event-form-field is-wide" for="{{ edit_form.title.id_for_label }}">
+                <span>{{ edit_form.title.label }}</span>
+                {{ edit_form.title }}
+                {{ edit_form.title.errors }}
+            </label>
+
+            <label class="event-form-field is-wide" for="{{ edit_form.event_date.id_for_label }}">
+                <span>{{ edit_form.event_date.label }}</span>
+                {{ edit_form.event_date }}
+                {{ edit_form.event_date.errors }}
+            </label>
+
+            <label class="event-form-field" data-event-edit-time-field for="{{ edit_form.start_time.id_for_label }}">
+                <span>{{ edit_form.start_time.label }}</span>
+                {{ edit_form.start_time }}
+                {{ edit_form.start_time.errors }}
+            </label>
+
+            <label class="event-form-field" data-event-edit-time-field for="{{ edit_form.end_time.id_for_label }}">
+                <span>{{ edit_form.end_time.label }} <small>optional</small></span>
+                {{ edit_form.end_time }}
+                {{ edit_form.end_time.errors }}
+            </label>
+
+            <label class="event-all-day is-wide" for="{{ edit_form.is_all_day.id_for_label }}">
+                {{ edit_form.is_all_day }}
+                <span>{{ edit_form.is_all_day.label }}</span>
+            </label>
+
+            <label class="event-form-field is-wide" for="{{ edit_form.location.id_for_label }}">
+                <span>{{ edit_form.location.label }}</span>
+                {{ edit_form.location }}
+                {{ edit_form.location.errors }}
+            </label>
+
+            <label class="event-form-field is-wide">
+                <span>{{ edit_form.attendees.label }}</span>
+                <div class="recipient-checkbox-list">{{ edit_form.attendees }}</div>
+                {{ edit_form.attendees.errors }}
+            </label>
+
+            <div class="event-form-actions is-wide">
+                <button class="ghost-button" type="button" data-event-edit-dialog-close>Abbrechen</button>
+                <button class="primary-button" type="submit">
+                    <i class="fa-solid fa-check" aria-hidden="true"></i>
+                    Änderungen speichern
+                </button>
+            </div>
+        </form>
+    </section>
+</dialog>
 {% endif %}
 {% endblock %}
 
 {% block page_js %}
 {% if calendar_event_creation_enabled %}
-<script src="{% static 'js/calendar.js' %}?v=event-repeat-1"></script>
+<script src="{% static 'js/calendar.js' %}?v=event-edit-1"></script>
 {% else %}
-<script src="{% static 'js/calendar.js' %}?v=event-repeat-1"></script>
+<script src="{% static 'js/calendar.js' %}?v=event-edit-1"></script>
 {% endif %}
 {% endblock %}

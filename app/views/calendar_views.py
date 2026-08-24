@@ -3,7 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
 from django.utils import timezone
 
-from app.forms import CalendarEventForm, CalendarReminderForm
+from app.forms import CalendarEventEditForm, CalendarEventForm, CalendarReminderForm
 from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, CalendarSource
 from app.services.calendar_service import sync_calendar_sources
 from app.services.system_settings import disabled_feature_response, feature_enabled
@@ -38,6 +38,8 @@ def calendar(request):
     calendar_event_creation_enabled = feature_enabled("calendar_event_creation")
     calendar_reminders_enabled = feature_enabled("calendar_reminders")
     event_form = CalendarEventForm(user=request.user) if calendar_event_creation_enabled else None
+    edit_form = None
+    editing_event_id = None
 
     if request.method == "POST" and request.POST.get("form_name") == "calendar_sync_all":
         if not calendar_sync_enabled:
@@ -70,6 +72,24 @@ def calendar(request):
         if event_form.is_valid():
             event_form.save(user=request.user)
             django_messages.success(request, "Termin erstellt.")
+            return redirect(request.get_full_path())
+
+    if request.method == "POST" and request.POST.get("form_name") == "calendar_event_edit":
+        if not calendar_event_creation_enabled:
+            return disabled_feature_response(request, "calendar_event_creation")
+        editing_event_id = request.POST.get("event_id")
+        event = CalendarEvent.objects.filter(
+            pk=editing_event_id,
+            user=request.user,
+            source__isnull=True,
+        ).first()
+        if event is None:
+            django_messages.error(request, "Termin konnte nicht bearbeitet werden.")
+            return redirect(request.get_full_path())
+        edit_form = CalendarEventEditForm(request.POST, user=request.user, instance=event)
+        if edit_form.is_valid():
+            edit_form.save()
+            django_messages.success(request, "Termin aktualisiert.")
             return redirect(request.get_full_path())
 
     if request.method == "POST" and request.POST.get("form_name") == "calendar_event_delete":
@@ -149,6 +169,8 @@ def calendar(request):
             "calendar_sources": _calendar_source_items(sources, request.user),
             "visible_calendar_count": sum(1 for source in sources if source.is_visible),
             "event_form": event_form,
+            "edit_form": edit_form or (CalendarEventEditForm(user=request.user) if calendar_event_creation_enabled else None),
+            "editing_event_id": editing_event_id,
             "reminder_form": reminder_form,
             "sync_result": sync_result,
             "calendar_sync_enabled": calendar_sync_enabled,
