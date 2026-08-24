@@ -52,11 +52,30 @@ def sync_due_calendars(*, now=None):
     skipped = 0
     sources = CalendarSource.objects.filter(enabled=True).select_related("user").order_by("id")
     for source in sources.iterator():
-        if source.last_synced_at:
-            next_sync_at = source.last_synced_at + timedelta(minutes=source.sync_interval_minutes)
+        manually_requested = source.sync_requested_at is not None
+        last_activity_at = source.last_sync_attempt_at or source.last_synced_at
+        if not manually_requested and last_activity_at:
+            next_sync_at = last_activity_at + timedelta(minutes=source.sync_interval_minutes)
             if next_sync_at > current_time:
                 skipped += 1
                 continue
+
+        claimed = CalendarSource.objects.filter(
+            pk=source.pk,
+            enabled=True,
+            sync_requested_at=source.sync_requested_at,
+            last_sync_attempt_at=source.last_sync_attempt_at,
+        ).update(
+            sync_requested_at=None,
+            last_sync_attempt_at=current_time,
+            updated_at=current_time,
+        )
+        if not claimed:
+            skipped += 1
+            continue
+
+        source.sync_requested_at = None
+        source.last_sync_attempt_at = current_time
         try:
             result = sync_calendar_source(source, force=True)
         except Exception:

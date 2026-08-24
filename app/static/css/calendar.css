@@ -332,6 +332,10 @@ button.event-chip {
   color: #a64d3d;
 }
 
+.source-status.is-pending {
+  color: var(--color-accent-strong);
+}
+
 .calendar-visibility-submit {
   width: 100%;
   margin-top: 8px;

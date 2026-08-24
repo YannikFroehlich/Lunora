@@ -346,6 +346,8 @@ class CalendarSource(models.Model):
     is_visible = models.BooleanField(default=True)
     enabled = models.BooleanField(default=True)
     sync_interval_minutes = models.PositiveSmallIntegerField(default=15)
+    sync_requested_at = models.DateTimeField(blank=True, null=True)
+    last_sync_attempt_at = models.DateTimeField(blank=True, null=True)
     last_synced_at = models.DateTimeField(blank=True, null=True)
     last_error = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

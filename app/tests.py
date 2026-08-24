@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import uuid
 from datetime import date, datetime, timedelta
@@ -13,15 +14,17 @@ from zoneinfo import ZoneInfo
 from django.contrib.auth.models import User
 from django.core import mail
 from django.core.cache import cache
+from django.core.exceptions import ImproperlyConfigured
 from django.core.management import call_command
 from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import Client, TestCase, override_settings
+from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
 from app.forms import CalendarSourceForm, ProfileForm
 from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, CalendarSource, ChatMessage, ChatMessageAttachment, ChatMessageReaction, Conversation, ConversationMember, CustomHoliday, Note, NoteActivityNotification, NoteAttachment, NoteCommentThread, NoteShare, NoteUserState, NoteVersion, OfficialHoliday, Profile, SystemSettings, VacationPeriod, VacationYear, WeeklySummaryDelivery
-from app.services.calendar_service import fetch_ical, parse_ical_events, sync_calendar_sources
+from app.services.calendar_service import fetch_ical, parse_ical_events
+from app.services.calendar_sync_queue import queue_calendar_sources
 from app.services.image_uploads import PROFILE_IMAGE_MAX_BYTES
 from app.services.notifications import (
     send_due_reminder_emails,
@@ -40,6 +43,7 @@ from app.services.weather_service import (
 from app.services.notes import prune_note_versions, purge_expired_notes
 from app.services.vacation_planner import annual_summary, calculate_period
 from app.views.message_views import _build_inbox_items
+from lunora.settings import BASE_DIR, database_config
 
 
 PNG_1X1_BYTES = (
@@ -64,6 +68,77 @@ def note_document(text="Gedanke"):
             }
         ],
     }
+
+
+class DatabaseConfigurationTests(SimpleTestCase):
+    def test_local_development_uses_sqlite(self):
+        with patch.dict(
+            os.environ,
+            {
+                "DJANGO_DATABASE_ENGINE": "sqlite",
+                "DJANGO_SQLITE_PATH": "local.sqlite3",
+            },
+            clear=True,
+        ):
+            config = database_config(debug=True)["default"]
+
+        self.assertEqual(config["ENGINE"], "django.db.backends.sqlite3")
+        self.assertEqual(config["NAME"], BASE_DIR / "local.sqlite3")
+
+    def test_production_rejects_sqlite(self):
+        with patch.dict(
+            os.environ,
+            {"DJANGO_DATABASE_ENGINE": "sqlite"},
+            clear=True,
+        ):
+            with self.assertRaisesMessage(
+                ImproperlyConfigured,
+                "DJANGO_DATABASE_ENGINE muss bei DJANGO_DEBUG=false auf postgresql gesetzt sein.",
+            ):
+                database_config(debug=False)
+
+    def test_postgresql_uses_server_connection_settings(self):
+        with patch.dict(
+            os.environ,
+            {
+                "DJANGO_DATABASE_ENGINE": "postgresql",
+                "DJANGO_DB_NAME": "lunora",
+                "DJANGO_DB_USER": "lunora_user",
+                "DJANGO_DB_PASSWORD": "secret",
+                "DJANGO_DB_HOST": "db.internal",
+                "DJANGO_DB_PORT": "5433",
+                "DJANGO_DB_CONN_MAX_AGE": "120",
+                "DJANGO_DB_CONNECT_TIMEOUT": "7",
+                "DJANGO_DB_SSLMODE": "require",
+            },
+            clear=True,
+        ):
+            config = database_config(debug=False)["default"]
+
+        self.assertEqual(config["ENGINE"], "django.db.backends.postgresql")
+        self.assertEqual(config["NAME"], "lunora")
+        self.assertEqual(config["USER"], "lunora_user")
+        self.assertEqual(config["PASSWORD"], "secret")
+        self.assertEqual(config["HOST"], "db.internal")
+        self.assertEqual(config["PORT"], "5433")
+        self.assertEqual(config["CONN_MAX_AGE"], 120)
+        self.assertTrue(config["CONN_HEALTH_CHECKS"])
+        self.assertEqual(
+            config["OPTIONS"],
+            {"connect_timeout": 7, "sslmode": "require"},
+        )
+
+    def test_postgresql_requires_database_name_and_user(self):
+        with patch.dict(
+            os.environ,
+            {"DJANGO_DATABASE_ENGINE": "postgresql"},
+            clear=True,
+        ):
+            with self.assertRaisesMessage(
+                ImproperlyConfigured,
+                "DJANGO_DB_NAME, DJANGO_DB_USER muss für PostgreSQL gesetzt sein.",
+            ):
+                database_config(debug=False)
 
 
 
@@ -419,12 +494,12 @@ class SettingsProfileTests(TestCase):
 
         self.assertContains(response, "Präferenzen gespeichert.")
 
-    def test_calendar_source_can_be_added_from_settings(self):
+    def test_calendar_source_can_be_added_and_queued_from_settings(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
         Profile.objects.create(user=user, display_name="Mira")
         self.client.login(username="mira@example.com", password="secret-12345")
 
-        with patch("app.views.core_views.sync_calendar_source", return_value={"synced": True, "message": "1 Termine synchronisiert."}) as sync_source:
+        with patch("app.services.calendar_service.fetch_ical") as fetch_calendar:
             response = self.client.post(
                 "/settings/",
                 {
@@ -443,27 +518,28 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(source.color, "green")
         self.assertTrue(source.is_visible)
         self.assertTrue(source.enabled)
-        sync_source.assert_called_once_with(source, force=True)
+        self.assertIsNotNone(source.sync_requested_at)
+        fetch_calendar.assert_not_called()
 
-    def test_calendar_source_failed_first_sync_is_kept(self):
+    def test_calendar_source_is_kept_while_first_sync_is_queued(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
         Profile.objects.create(user=user, display_name="Mira")
         self.client.login(username="mira@example.com", password="secret-12345")
 
-        with patch("app.views.core_views.sync_calendar_source", return_value={"synced": False, "message": "Link nicht erreichbar."}):
-            response = self.client.post(
-                "/settings/",
-                {
-                    "form_name": "calendar_source_add",
-                    "new-name": "Familie",
-                    "new-ical_url": "https://calendar.google.com/calendar/ical/family/private/basic.ics",
-                    "new-color": "violet",
-                    "new-enabled": "on",
-                },
-            )
+        response = self.client.post(
+            "/settings/",
+            {
+                "form_name": "calendar_source_add",
+                "new-name": "Familie",
+                "new-ical_url": "https://calendar.google.com/calendar/ical/family/private/basic.ics",
+                "new-color": "violet",
+                "new-enabled": "on",
+            },
+        )
 
         self.assertRedirects(response, "/home/")
-        self.assertTrue(CalendarSource.objects.filter(user=user, name="Familie").exists())
+        source = CalendarSource.objects.get(user=user, name="Familie")
+        self.assertIsNotNone(source.sync_requested_at)
 
     def test_calendar_source_form_normalizes_webcal_urls(self):
         form = CalendarSourceForm(
@@ -532,17 +608,16 @@ class SettingsProfileTests(TestCase):
         self.assertContains(response, 'name="form_name" value="calendar_source_add"')
         self.assertNotContains(response, private_url)
 
-        with patch("app.views.core_views.sync_calendar_source", return_value={"synced": True, "message": "1 Termine synchronisiert."}):
-            response = self.client.post(
-                "/settings/",
-                {
-                    "form_name": "calendar_source_add",
-                    "new-name": "Lukas Kalender",
-                    "new-ical_url": "https://calendar.google.com/calendar/ical/lukas/private/basic.ics",
-                    "new-color": "sand",
-                    "new-enabled": "on",
-                },
-            )
+        response = self.client.post(
+            "/settings/",
+            {
+                "form_name": "calendar_source_add",
+                "new-name": "Lukas Kalender",
+                "new-ical_url": "https://calendar.google.com/calendar/ical/lukas/private/basic.ics",
+                "new-color": "sand",
+                "new-enabled": "on",
+            },
+        )
 
         self.assertRedirects(response, "/home/")
         self.assertEqual(CalendarSource.objects.get(user=mira).ical_url, private_url)
@@ -570,7 +645,7 @@ class SettingsProfileTests(TestCase):
         )
         self.client.login(username="mira@example.com", password="secret-12345")
 
-        with patch("app.views.core_views.sync_calendar_source", return_value={"synced": True, "message": "1 Termine synchronisiert."}) as sync_source:
+        with patch("app.services.calendar_service.fetch_ical") as fetch_calendar:
             response = self.client.post(
                 "/settings/",
                 {
@@ -589,7 +664,37 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(source.color, "red")
         self.assertEqual(source.ical_url, "https://calendar.google.com/calendar/ical/new/private/basic.ics")
         self.assertFalse(CalendarEvent.objects.filter(source=source, external_id="old-event").exists())
-        sync_source.assert_called_once_with(source, force=True)
+        self.assertIsNotNone(source.sync_requested_at)
+        fetch_calendar.assert_not_called()
+
+    def test_disabling_calendar_source_clears_pending_sync(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        source = CalendarSource.objects.create(
+            user=user,
+            name="Privat",
+            ical_url="https://calendar.google.com/calendar/ical/private/basic.ics",
+            sync_requested_at=timezone.now(),
+        )
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.post(
+            "/settings/",
+            {
+                "form_name": "calendar_source_update",
+                "source_id": str(source.id),
+                f"source-{source.id}-name": "Privat",
+                f"source-{source.id}-ical_url": source.ical_url,
+                f"source-{source.id}-color": "blue",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Sync ist deaktiviert.")
+        source.refresh_from_db()
+        self.assertFalse(source.enabled)
+        self.assertIsNone(source.sync_requested_at)
 
     def test_calendar_source_delete_removes_events(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
@@ -643,11 +748,11 @@ class SettingsProfileTests(TestCase):
         )
         self.client.login(username="mira@example.com", password="secret-12345")
 
-        with patch("app.views.calendar_views.sync_calendar_sources") as sync_calendar:
+        with patch("app.views.calendar_views.queue_calendar_sources") as queue_sync:
             response = self.client.get("/calendar/")
 
         self.assertEqual(response.status_code, 200)
-        sync_calendar.assert_not_called()
+        queue_sync.assert_not_called()
 
     def test_calendar_page_displays_saved_events(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
@@ -1129,7 +1234,7 @@ class SettingsProfileTests(TestCase):
         event.refresh_from_db()
         self.assertEqual(event.title, "Termin")
 
-    def test_calendar_sync_result_is_visible(self):
+    def test_calendar_sync_request_is_queued_and_visible(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
         Profile.objects.create(user=user, display_name="Mira")
         CalendarSource.objects.create(
@@ -1138,15 +1243,16 @@ class SettingsProfileTests(TestCase):
         )
         self.client.login(username="mira@example.com", password="secret-12345")
 
-        with patch("app.views.calendar_views.sync_calendar_sources", return_value={"synced": True, "message": "2 Kalender synchronisiert."}):
-            response = self.client.post(
-                "/calendar/",
-                {"form_name": "calendar_sync_all"},
-                follow=True,
-            )
+        response = self.client.post(
+            "/calendar/",
+            {"form_name": "calendar_sync_all"},
+            follow=True,
+        )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "2 Kalender synchronisiert.")
+        self.assertContains(response, "Kalendersynchronisierung wurde im Hintergrund vorgemerkt.")
+        source = CalendarSource.objects.get(user=user)
+        self.assertIsNotNone(source.sync_requested_at)
 
     def test_calendar_visibility_filters_calendar_and_dashboard(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
@@ -1240,7 +1346,7 @@ class SettingsProfileTests(TestCase):
         self.assertTrue(mira_source.is_visible)
         self.assertFalse(lukas_source.is_visible)
 
-    def test_sync_all_processes_hidden_sources_and_skips_disabled_sources(self):
+    def test_sync_queue_processes_hidden_sources_and_skips_disabled_sources(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
         hidden_source = CalendarSource.objects.create(
             user=user,
@@ -1255,11 +1361,13 @@ class SettingsProfileTests(TestCase):
             ical_url="https://calendar.google.com/calendar/ical/disabled/private/basic.ics",
         )
 
-        with patch("app.services.calendar_service.sync_calendar_source", return_value={"synced": True, "message": "1 Termine synchronisiert."}) as sync_source:
-            result = sync_calendar_sources([hidden_source, disabled_source], force=True)
+        result = queue_calendar_sources([hidden_source, disabled_source])
 
-        self.assertTrue(result["synced"])
-        sync_source.assert_called_once_with(hidden_source, force=True)
+        self.assertEqual(result["queued"], 1)
+        hidden_source.refresh_from_db()
+        disabled_source.refresh_from_db()
+        self.assertIsNotNone(hidden_source.sync_requested_at)
+        self.assertIsNone(disabled_source.sync_requested_at)
 
     def test_home_page_shows_upcoming_calendar_events(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
@@ -1544,6 +1652,53 @@ class ScheduledAutomationTests(TestCase):
 
         self.assertEqual(result, {"synced": 1, "failed": 0, "skipped": 1})
         sync_source.assert_called_once_with(due_source, force=True)
+        due_source.refresh_from_db()
+        self.assertEqual(due_source.last_sync_attempt_at, now)
+
+    def test_manual_sync_request_bypasses_regular_interval(self):
+        now = timezone.now()
+        source = CalendarSource.objects.create(
+            user=self.user,
+            name="Manuell",
+            ical_url="https://calendar.google.com/calendar/ical/manual/private/basic.ics",
+            last_synced_at=now - timedelta(minutes=2),
+            last_sync_attempt_at=now - timedelta(minutes=2),
+            sync_requested_at=now - timedelta(seconds=5),
+            sync_interval_minutes=15,
+        )
+
+        with patch(
+            "app.services.scheduled_tasks.sync_calendar_source",
+            return_value={"synced": True, "message": "Aktualisiert."},
+        ) as sync_source:
+            result = sync_due_calendars(now=now)
+
+        self.assertEqual(result, {"synced": 1, "failed": 0, "skipped": 0})
+        sync_source.assert_called_once_with(source, force=True)
+        source.refresh_from_db()
+        self.assertIsNone(source.sync_requested_at)
+        self.assertEqual(source.last_sync_attempt_at, now)
+
+    def test_failed_sync_is_not_retried_before_interval(self):
+        now = timezone.now()
+        source = CalendarSource.objects.create(
+            user=self.user,
+            name="Fehlerhaft",
+            ical_url="https://calendar.google.com/calendar/ical/failing/private/basic.ics",
+            sync_requested_at=now - timedelta(seconds=5),
+            sync_interval_minutes=15,
+        )
+
+        with patch(
+            "app.services.scheduled_tasks.sync_calendar_source",
+            return_value={"synced": False, "message": "Nicht erreichbar."},
+        ) as sync_source:
+            first_result = sync_due_calendars(now=now)
+            second_result = sync_due_calendars(now=now + timedelta(minutes=1))
+
+        self.assertEqual(first_result, {"synced": 0, "failed": 1, "skipped": 0})
+        self.assertEqual(second_result, {"synced": 0, "failed": 0, "skipped": 1})
+        sync_source.assert_called_once_with(source, force=True)
 
     def test_due_reminder_email_is_sent_only_once(self):
         reminder = CalendarReminder.objects.create(

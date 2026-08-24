@@ -70,30 +70,6 @@ def sync_calendar_source(source, *, force=False):
     return {"synced": True, "message": f"{saved_count} Termine synchronisiert."}
 
 
-def sync_calendar_sources(sources, *, force=False):
-    source_list = list(sources)
-    enabled_sources = [source for source in source_list if source.enabled]
-    if not source_list:
-        return {"synced": False, "message": "Noch kein Kalender gespeichert."}
-    if not enabled_sources:
-        return {"synced": False, "message": "Keine aktiven Kalender zum Synchronisieren."}
-
-    results = [(source, sync_calendar_source(source, force=force)) for source in enabled_sources]
-    if len(results) == 1:
-        return results[0][1]
-
-    synced_count = sum(1 for _source, result in results if result.get("synced"))
-    failed_count = len(results) - synced_count
-    if failed_count and synced_count:
-        message = f"{synced_count} Kalender synchronisiert, {failed_count} mit Fehler."
-    elif failed_count:
-        message = f"{failed_count} Kalender konnten nicht synchronisiert werden."
-    else:
-        message = f"{synced_count} Kalender synchronisiert."
-
-    return {"synced": bool(synced_count), "message": message, "results": results}
-
-
 def fetch_ical(url):
     current_url = validate_calendar_url(url, resolve_dns=True)
 
