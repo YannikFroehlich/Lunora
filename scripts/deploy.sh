@@ -4,9 +4,15 @@ set -Eeuo pipefail
 APP_DIR="/srv/lunora/app"
 VENV_DIR="/srv/lunora/venv"
 ENV_FILE="/etc/lunora/lunora.env"
+RESTART_SERVICES="${LUNORA_RESTART_SERVICES:-true}"
 
 if [[ ${EUID} -eq 0 ]]; then
     echo "Das Deployment darf nicht als root ausgeführt werden." >&2
+    exit 1
+fi
+
+if [[ "${RESTART_SERVICES}" != "true" && "${RESTART_SERVICES}" != "false" ]]; then
+    echo "LUNORA_RESTART_SERVICES muss true oder false sein." >&2
     exit 1
 fi
 
@@ -38,6 +44,10 @@ set +a
 "${VENV_DIR}/bin/python" manage.py migrate --noinput
 "${VENV_DIR}/bin/python" manage.py collectstatic --noinput
 
-sudo systemctl restart lunora-web.service
-sudo systemctl restart lunora-automations.service
-sudo systemctl --no-pager --full status lunora-web.service
+if [[ "${RESTART_SERVICES}" == "true" ]]; then
+    sudo systemctl restart lunora-web.service
+    sudo systemctl restart lunora-automations.service
+    systemctl --no-pager --full status lunora-web.service
+else
+    echo "Dienstneustart wird vom übergeordneten Deployment-Dienst ausgeführt."
+fi

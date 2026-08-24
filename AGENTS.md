@@ -58,3 +58,142 @@ Recent commits use short, imperative summaries, for example `Add notification au
 Local configuration is loaded from `.env` in `lunora/settings.py`; `.env.example` documents every supported variable. Real environment variables take precedence over `.env`. With `DJANGO_DEBUG=false`, a missing `DJANGO_SECRET_KEY` or `DJANGO_ALLOWED_HOSTS` raises `ImproperlyConfigured` and the HTTPS, HSTS, and secure-cookie settings default to enabled.
 
 Do not commit real secrets, API keys, uploaded media, private note attachments, or `db.sqlite3`. Weather configuration is read from `OPENWEATHER_API_KEY`, `WEATHER_API_KEY`, and related base URL variables; keys stay server-side and map tiles are proxied so browser code never sees them. Calendar sources store private iCal URLs, so avoid logging full URLs or exposing them in templates beyond the owning user's settings; fetches are restricted to public hosts by `app/services/url_safety.py` and must not follow redirects. Note attachments are addressed by UUID and may only be delivered through the permission-checked download view.
+
+## Production Operations Runbook
+
+The production baseline below was verified on 24 August 2026. Treat it as operational
+context, not as a substitute for checking current state before a deployment. When
+guiding the operator interactively, label every instruction with its execution
+location: `Windows PC (PowerShell)`, `Ubuntu server`, or `Cloudflare dashboard`.
+
+### Production Topology and Access
+
+- Public application: `https://lunora.yfserver.de`; `/login/`, `/register/`, and
+  `/admin/` are the main entry points.
+- Production runs on Ubuntu host `yfserv1`. SSH uses user `yunnik`, port `22`, key-only
+  authentication, and is allowed by UFW only from `192.168.178.0/24`. The server's
+  current LAN address is `192.168.178.175`. Keep the private SSH key outside this
+  repository and use the local SSH agent; never record the key, passphrase, or tunnel
+  token in project files.
+- The GitHub repository is public. `develop` is the integration branch and `main` is
+  the production branch. Deploy only committed, pushed, reviewed changes from `main`;
+  leave the local development checkout on `develop` after a release.
+- The production checkout is `/srv/lunora/app`, the virtual environment is
+  `/srv/lunora/venv`, and the service account is `lunora`.
+- Requests follow Cloudflare Tunnel -> Nginx on `127.0.0.1:8080` -> Gunicorn on
+  `/run/lunora/gunicorn.sock` -> Django. Do not expose Nginx, Gunicorn, PostgreSQL, or
+  Redis directly to the LAN or Internet and do not open ports `80`, `443`, `5432`, or
+  `6379` in UFW for this deployment.
+- Production uses PostgreSQL database and role `lunora` plus Redis database `1` at
+  `127.0.0.1:6379`. SQLite remains the local-development database only.
+
+### Secrets and External Services
+
+- Production environment variables live only in `/etc/lunora/lunora.env`, owned by
+  `root:lunora` with mode `0640`. Secret values are stored in the operator's password
+  manager. Never print, copy into chat, log, commit, or include them in diagnostics.
+- Required secrets include `DJANGO_SECRET_KEY`, `DJANGO_DB_PASSWORD`,
+  `DJANGO_EMAIL_HOST_PASSWORD`, `CLOUDFLARE_TURNSTILE_SITE_KEY`, and
+  `CLOUDFLARE_TURNSTILE_SECRET_KEY`. `OPENWEATHER_API_KEY` is expected to be present;
+  verify only whether it is non-empty and never display its value. The application can
+  fall back to keyless demo weather if it is absent.
+- SMTP uses `smtp.strato.de:465` with SSL, user and sender
+  `webmaster@yfserver.de`, default/server sender `Lunora <webmaster@yfserver.de>`, and
+  Django admin address `webmaster@yfserver.de`. The SMTP password is environment-only.
+- The initial Django superuser is username `yannik`, e-mail
+  `webmaster@yfserver.de`; its password remains only in the password manager.
+- Cloudflare Tunnel `lunora-yfserv1` publishes `lunora.yfserver.de` to
+  `http://localhost:8080`. Public registration is intentional, so do not place
+  Cloudflare Access in front of the whole site. Turnstile must remain required for the
+  registration hostname. Scoped WAF or rate-limit rules for login, registration, and
+  password reset are optional hardening and must not affect other `yfserver.de` apps.
+- The remotely managed Cloudflare tunnel token is stored in
+  `/etc/cloudflared/token`, owned by root with mode `0600`. The systemd drop-in
+  `/etc/systemd/system/cloudflared.service.d/override.conf` starts cloudflared with
+  `--token-file`; never output the token or replace this with an inline `--token`.
+
+### Services, Storage, and Network Baseline
+
+- Required enabled services are `lunora-web`, `lunora-automations`, `nginx`,
+  `postgresql`, `redis-server`, and `cloudflared`. Only one
+  `lunora-automations` process may run.
+- Required enabled timers are `lunora-backup.timer`, `lunora-purge.timer`, and
+  `lunora-auto-deploy.timer`.
+  Backups run nightly around 02:30 Europe/Berlin with a randomized delay; note-trash
+  purging runs around 03:20 with a randomized delay.
+- Local backups are stored below `/srv/lunora/backups` with 14-day retention and
+  contain a PostgreSQL custom-format dump, uploads archive, and SHA-256 manifest.
+  Local backups do not protect against server or disk loss; an encrypted off-site copy
+  remains recommended.
+- Public uploads live in `/srv/lunora/app/media`; private note attachments live in
+  `/srv/lunora/app/private_media`; collected static files live in
+  `/srv/lunora/app/staticfiles`. Preserve ownership, setgid directory modes, and the
+  distinction between public and private media.
+- The server currently reaches the network through Wi-Fi interface `wlp19s0`. Netplan
+  overlay `/etc/netplan/99-lunora-network-online.yaml` marks unused Ethernet interface
+  `enp7s0` optional and Wi-Fi required, avoiding a two-minute boot timeout when no LAN
+  cable is connected. Connecting Ethernet later is still allowed.
+- HSTS is enabled for one year. `includeSubDomains` and preload intentionally remain
+  disabled, so those two `manage.py check --deploy` warnings are expected unless the
+  entire parent domain has first been audited for HSTS compatibility.
+
+### Normal Release Procedure
+
+Before production deployment, run the full Django test suite locally and run frontend
+tests plus a bundle build whenever `frontend/` changed. Merge or fast-forward the tested
+commit to `main` and push it. GitHub branch protection should reject direct pushes and
+require the `Tests` check from `.github/workflows/ci.yml` before merging because every
+new `main` commit is production eligible. CI uses GitHub-hosted isolated runners; never
+change the production workflow to a persistent self-hosted runner while the repository
+is public.
+
+`lunora-auto-deploy.timer` checks `origin/main` from the server roughly every minute;
+it does not require inbound SSH or a GitHub token. For a new Fast-Forward commit it
+creates one pre-deployment backup, runs the application deployment as `yunnik`, restarts
+services as root, performs an internal health check, and only then records the successful
+commit in `/var/lib/lunora-auto-deploy`. A failure leaves the previous success marker in
+place and is retried. The root-owned installed driver `/usr/local/sbin/lunora-auto-deploy`
+must only be updated manually from `scripts/auto-deploy.sh`; never execute repository
+code directly as root.
+
+The manual fallback remains available on the Ubuntu server and must run as `yunnik`,
+never as root:
+
+```bash
+cd /srv/lunora/app
+./scripts/deploy.sh
+```
+
+The deployment script refuses a dirty production checkout, fast-forwards from `origin/main`,
+installs pinned Python requirements, runs Django deployment checks, migrations and
+`collectstatic`, then restarts the web and single automation services. If environment
+variables or systemd unit files changed, install the updated files as described in
+`DEPLOYMENT.md`, reload systemd, and restart only the affected services. Make a fresh
+backup before risky schema or storage changes.
+
+### Safe Post-Deployment Checks
+
+Never include environment contents, database URLs, SMTP credentials, Turnstile secrets,
+Cloudflare tokens, private calendar URLs, or sensitive logs in diagnostic output. Use
+status-only checks such as:
+
+```bash
+systemctl is-active lunora-web lunora-automations nginx postgresql redis-server cloudflared lunora-backup.timer lunora-purge.timer
+systemctl is-enabled lunora-web lunora-automations nginx postgresql redis-server cloudflared lunora-backup.timer lunora-purge.timer lunora-auto-deploy.timer
+systemctl list-timers lunora-auto-deploy.timer --no-pager
+systemctl --failed --no-legend
+curl --fail --silent --show-error --output /dev/null --write-out '%{http_code}\n' \
+  --header 'Host: lunora.yfserver.de' --header 'X-Forwarded-Proto: https' \
+  http://127.0.0.1:8080/login/
+curl --fail --silent --show-error --output /dev/null --write-out '%{http_code}\n' \
+  https://lunora.yfserver.de/login/
+curl --fail --silent --show-error --output /dev/null --write-out '%{http_code}\n' \
+  https://lunora.yfserver.de/register/
+```
+
+After infrastructure changes, also test a real login, public registration with
+Turnstile, password reset/e-mail delivery, authorized private-attachment access, one
+automation cycle, a new backup, and a full server reboot. Validate a backup without
+restoring over production by checking `SHA256SUMS`, `pg_restore --list database.dump`,
+and `tar -tzf uploads.tar.gz`. The baseline deployment passed these checks, including
+external HTTPS and reboot recovery, but they must be repeated after relevant changes.

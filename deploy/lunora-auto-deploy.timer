@@ -1,0 +1,12 @@
+[Unit]
+Description=Check GitHub main for a new Lunora release
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=1min
+AccuracySec=15s
+RandomizedDelaySec=15s
+Unit=lunora-auto-deploy.service
+
+[Install]
+WantedBy=timers.target
