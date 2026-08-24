@@ -126,7 +126,9 @@ set +a
 systemctl --no-pager --full status lunora-web lunora-automations nginx redis-server postgresql cloudflared
 systemctl list-timers --all | grep lunora
 systemctl is-enabled lunora-auto-deploy.timer
-curl --fail --header 'Host: lunora.yfserver.de' http://127.0.0.1:8080/login/
+curl --fail --silent --show-error --output /dev/null --write-out '%{http_code}\n' \
+  --header 'Host: lunora.yfserver.de' --header 'X-Forwarded-Proto: https' \
+  http://127.0.0.1:8080/login/
 sudo systemctl start lunora-backup.service
 sudo journalctl -u lunora-backup.service --no-pager -n 50
 ```
