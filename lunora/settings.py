@@ -83,7 +83,15 @@ def database_config(debug):
             "DJANGO_DB_NAME": os.getenv("DJANGO_DB_NAME", "").strip(),
             "DJANGO_DB_USER": os.getenv("DJANGO_DB_USER", "").strip(),
         }
-        missing = [name for name, value in required_values.items() if not value]
+        if not debug:
+            required_values["DJANGO_DB_PASSWORD"] = os.getenv(
+                "DJANGO_DB_PASSWORD", ""
+            ).strip()
+        missing = [
+            name
+            for name, value in required_values.items()
+            if not value or (not debug and value == "change-me")
+        ]
         if missing:
             raise ImproperlyConfigured(
                 f"{', '.join(missing)} muss für PostgreSQL gesetzt sein."
@@ -120,7 +128,7 @@ load_env_file(BASE_DIR / ".env")
 DEBUG = env_bool("DJANGO_DEBUG", True)
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "")
-if not SECRET_KEY:
+if not SECRET_KEY or (not DEBUG and SECRET_KEY == "change-me"):
     if DEBUG:
         SECRET_KEY = "django-insecure-lunora-local-dev-key-change-me"
     else:
@@ -175,6 +183,28 @@ TEMPLATES = [
 WSGI_APPLICATION = "lunora.wsgi.application"
 
 DATABASES = database_config(DEBUG)
+
+CACHE_URL = os.getenv("DJANGO_CACHE_URL", "").strip()
+if CACHE_URL:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": CACHE_URL,
+            "KEY_PREFIX": "lunora",
+            "TIMEOUT": 300,
+        }
+    }
+elif DEBUG:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "lunora-local",
+        }
+    }
+else:
+    raise ImproperlyConfigured(
+        "DJANGO_CACHE_URL muss gesetzt sein, wenn DJANGO_DEBUG=false ist."
+    )
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -233,12 +263,61 @@ EMAIL_USE_SSL = env_bool("DJANGO_EMAIL_USE_SSL", False)
 EMAIL_TIMEOUT = env_int("DJANGO_EMAIL_TIMEOUT", 10)
 DEFAULT_FROM_EMAIL = os.getenv("DJANGO_DEFAULT_FROM_EMAIL", "Lunora <noreply@localhost>")
 
+if EMAIL_USE_SSL and EMAIL_USE_TLS:
+    raise ImproperlyConfigured(
+        "DJANGO_EMAIL_USE_SSL und DJANGO_EMAIL_USE_TLS dürfen nicht gleichzeitig aktiv sein."
+    )
+
+if not DEBUG and EMAIL_BACKEND == "django.core.mail.backends.smtp.EmailBackend":
+    missing_email_settings = [
+        name
+        for name, value in {
+            "DJANGO_EMAIL_HOST": EMAIL_HOST,
+            "DJANGO_EMAIL_HOST_USER": EMAIL_HOST_USER,
+            "DJANGO_EMAIL_HOST_PASSWORD": EMAIL_HOST_PASSWORD,
+        }.items()
+        if not value or value == "change-me"
+    ]
+    if missing_email_settings:
+        raise ImproperlyConfigured(
+            f"{', '.join(missing_email_settings)} muss für SMTP in Produktion gesetzt sein."
+        )
+
 # Empty by default: harmless while running locally with DEBUG=true. Set DJANGO_ADMINS
 # once this is deployed with DEBUG=false and a real e-mail backend, and Django emails
 # these addresses automatically on unhandled server errors.
 ADMINS = env_admins("DJANGO_ADMINS")
 MANAGERS = ADMINS
 SERVER_EMAIL = os.getenv("DJANGO_SERVER_EMAIL", DEFAULT_FROM_EMAIL)
+
+CLOUDFLARE_TURNSTILE_REQUIRED = env_bool(
+    "CLOUDFLARE_TURNSTILE_REQUIRED", not DEBUG
+)
+CLOUDFLARE_TURNSTILE_SITE_KEY = os.getenv(
+    "CLOUDFLARE_TURNSTILE_SITE_KEY", ""
+).strip()
+CLOUDFLARE_TURNSTILE_SECRET_KEY = os.getenv(
+    "CLOUDFLARE_TURNSTILE_SECRET_KEY", ""
+).strip()
+CLOUDFLARE_TURNSTILE_EXPECTED_HOSTNAME = os.getenv(
+    "CLOUDFLARE_TURNSTILE_EXPECTED_HOSTNAME", ""
+).strip()
+CLOUDFLARE_TURNSTILE_TIMEOUT = env_int("CLOUDFLARE_TURNSTILE_TIMEOUT", 5)
+
+if CLOUDFLARE_TURNSTILE_REQUIRED:
+    missing_turnstile_settings = [
+        name
+        for name, value in {
+            "CLOUDFLARE_TURNSTILE_SITE_KEY": CLOUDFLARE_TURNSTILE_SITE_KEY,
+            "CLOUDFLARE_TURNSTILE_SECRET_KEY": CLOUDFLARE_TURNSTILE_SECRET_KEY,
+            "CLOUDFLARE_TURNSTILE_EXPECTED_HOSTNAME": CLOUDFLARE_TURNSTILE_EXPECTED_HOSTNAME,
+        }.items()
+        if not value or value == "change-me"
+    ]
+    if missing_turnstile_settings:
+        raise ImproperlyConfigured(
+            f"{', '.join(missing_turnstile_settings)} muss für die geschützte Registrierung gesetzt sein."
+        )
 
 def _skip_disabled_feature_response(record):
     # 503 in this app only ever means "feature disabled" (see disabled_feature_response) -

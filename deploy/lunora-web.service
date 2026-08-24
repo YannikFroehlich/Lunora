@@ -1,0 +1,43 @@
+[Unit]
+Description=Lunora Gunicorn web application
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=notify
+NotifyAccess=main
+User=lunora
+Group=lunora
+WorkingDirectory=/srv/lunora/app
+EnvironmentFile=/etc/lunora/lunora.env
+RuntimeDirectory=lunora
+RuntimeDirectoryMode=0750
+UMask=0007
+ExecStart=/srv/lunora/venv/bin/gunicorn --workers 3 --threads 2 --timeout 60 --graceful-timeout 30 --max-requests 1000 --max-requests-jitter 100 --access-logfile - --error-logfile - --bind unix:/run/lunora/gunicorn.sock lunora.wsgi:application
+ExecReload=/bin/kill -s HUP $MAINPID
+KillSignal=SIGQUIT
+TimeoutStopSec=45
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadWritePaths=/srv/lunora/app/media /srv/lunora/app/private_media
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

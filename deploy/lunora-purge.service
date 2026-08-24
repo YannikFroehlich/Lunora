@@ -1,0 +1,25 @@
+[Unit]
+Description=Purge Lunora notes that have expired in trash
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=lunora
+Group=lunora
+WorkingDirectory=/srv/lunora/app
+EnvironmentFile=/etc/lunora/lunora.env
+UMask=0007
+ExecStart=/srv/lunora/venv/bin/python manage.py purge_expired_notes
+
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/srv/lunora/app/private_media
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=

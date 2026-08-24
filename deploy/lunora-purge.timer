@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Lunora note retention cleanup daily
+
+[Timer]
+OnCalendar=*-*-* 03:20:00 Europe/Berlin
+Persistent=true
+RandomizedDelaySec=10m
+Unit=lunora-purge.service
+
+[Install]
+WantedBy=timers.target

@@ -1,4 +1,5 @@
 from django.contrib.auth import login
+from django.conf import settings
 from django.contrib.auth.views import (
     LoginView,
     PasswordResetCompleteView,
@@ -11,6 +12,7 @@ from django.urls import reverse_lazy
 
 from app.forms import EmailLoginForm, RegistrationForm
 from app.services.system_settings import normal_user_login_enabled
+from app.services.turnstile import verify_registration_token
 
 
 class LunoraLoginView(LoginView):
@@ -58,11 +60,31 @@ def register(request):
 
     if request.method == "POST":
         form = RegistrationForm(request.POST)
-        if form.is_valid():
+        form_is_valid = form.is_valid()
+        turnstile_is_valid = verify_registration_token(
+            request.POST.get("cf-turnstile-response")
+        )
+        if not turnstile_is_valid:
+            form.add_error(
+                None,
+                "Die Sicherheitsprüfung ist fehlgeschlagen. Bitte versuche es erneut.",
+            )
+        if form_is_valid and turnstile_is_valid:
             user = form.save()
             login(request, user)
             return redirect("home")
     else:
         form = RegistrationForm()
 
-    return render(request, "app/register.html", {"form": form})
+    return render(
+        request,
+        "app/register.html",
+        {
+            "form": form,
+            "turnstile_site_key": (
+                settings.CLOUDFLARE_TURNSTILE_SITE_KEY
+                if settings.CLOUDFLARE_TURNSTILE_REQUIRED
+                else ""
+            ),
+        },
+    )

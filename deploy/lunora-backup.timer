@@ -1,0 +1,11 @@
+[Unit]
+Description=Create a local Lunora backup every night
+
+[Timer]
+OnCalendar=*-*-* 02:30:00 Europe/Berlin
+Persistent=true
+RandomizedDelaySec=10m
+Unit=lunora-backup.service
+
+[Install]
+WantedBy=timers.target

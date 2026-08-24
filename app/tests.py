@@ -8,7 +8,7 @@ from email.message import Message
 from io import StringIO
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from zoneinfo import ZoneInfo
 
 from django.contrib.auth.models import User
@@ -136,9 +136,83 @@ class DatabaseConfigurationTests(SimpleTestCase):
         ):
             with self.assertRaisesMessage(
                 ImproperlyConfigured,
-                "DJANGO_DB_NAME, DJANGO_DB_USER muss für PostgreSQL gesetzt sein.",
+                "DJANGO_DB_NAME, DJANGO_DB_USER, DJANGO_DB_PASSWORD muss für PostgreSQL gesetzt sein.",
             ):
                 database_config(debug=False)
+
+    def test_production_rejects_placeholder_database_password(self):
+        with patch.dict(
+            os.environ,
+            {
+                "DJANGO_DATABASE_ENGINE": "postgresql",
+                "DJANGO_DB_NAME": "lunora",
+                "DJANGO_DB_USER": "lunora",
+                "DJANGO_DB_PASSWORD": "change-me",
+            },
+            clear=True,
+        ):
+            with self.assertRaisesMessage(
+                ImproperlyConfigured,
+                "DJANGO_DB_PASSWORD muss für PostgreSQL gesetzt sein.",
+            ):
+                database_config(debug=False)
+
+
+class FakeJsonResponse:
+    def __init__(self, payload):
+        self.payload = json.dumps(payload).encode("utf-8")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return False
+
+    def read(self, _size=-1):
+        return self.payload
+
+
+@override_settings(
+    CLOUDFLARE_TURNSTILE_REQUIRED=True,
+    CLOUDFLARE_TURNSTILE_SITE_KEY="test-site-key",
+    CLOUDFLARE_TURNSTILE_SECRET_KEY="test-secret-key",
+    CLOUDFLARE_TURNSTILE_EXPECTED_HOSTNAME="lunora.yfserver.de",
+    CLOUDFLARE_TURNSTILE_TIMEOUT=5,
+)
+class TurnstileValidationTests(SimpleTestCase):
+    @patch("app.services.turnstile.urlopen")
+    def test_accepts_expected_hostname_and_action(self, mocked_urlopen):
+        from app.services.turnstile import verify_registration_token
+
+        mocked_urlopen.return_value = FakeJsonResponse(
+            {
+                "success": True,
+                "hostname": "lunora.yfserver.de",
+                "action": "register",
+            }
+        )
+
+        self.assertTrue(verify_registration_token("valid-token"))
+
+    @patch("app.services.turnstile.urlopen")
+    def test_rejects_wrong_hostname(self, mocked_urlopen):
+        from app.services.turnstile import verify_registration_token
+
+        mocked_urlopen.return_value = FakeJsonResponse(
+            {
+                "success": True,
+                "hostname": "attacker.example",
+                "action": "register",
+            }
+        )
+
+        self.assertFalse(verify_registration_token("valid-token"))
+
+    @patch("app.services.turnstile.urlopen", side_effect=URLError("offline"))
+    def test_fails_closed_when_siteverify_is_unavailable(self, _mocked_urlopen):
+        from app.services.turnstile import verify_registration_token
+
+        self.assertFalse(verify_registration_token("valid-token"))
 
 
 
@@ -236,6 +310,53 @@ class SettingsProfileTests(TestCase):
         user = User.objects.get(username="mira@example.com")
         self.assertTrue(user.check_password("sicheres-passwort-42"))
         self.assertEqual(user.profile.display_name, "Mira Beispiel")
+
+    @override_settings(
+        CLOUDFLARE_TURNSTILE_REQUIRED=True,
+        CLOUDFLARE_TURNSTILE_SITE_KEY="test-site-key",
+        CLOUDFLARE_TURNSTILE_SECRET_KEY="test-secret-key",
+        CLOUDFLARE_TURNSTILE_EXPECTED_HOSTNAME="lunora.yfserver.de",
+    )
+    @patch("app.views.auth_views.verify_registration_token", return_value=False)
+    def test_registration_rejects_invalid_turnstile_token(self, mocked_verify):
+        response = self.client.post(
+            "/register/",
+            {
+                "name": "Bot Beispiel",
+                "email": "bot@example.com",
+                "password1": "sicheres-passwort-42",
+                "password2": "sicheres-passwort-42",
+                "cf-turnstile-response": "invalid-token",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Sicherheitsprüfung ist fehlgeschlagen")
+        self.assertFalse(User.objects.filter(email="bot@example.com").exists())
+        mocked_verify.assert_called_once_with("invalid-token")
+
+    @override_settings(
+        CLOUDFLARE_TURNSTILE_REQUIRED=True,
+        CLOUDFLARE_TURNSTILE_SITE_KEY="test-site-key",
+        CLOUDFLARE_TURNSTILE_SECRET_KEY="test-secret-key",
+        CLOUDFLARE_TURNSTILE_EXPECTED_HOSTNAME="lunora.yfserver.de",
+    )
+    @patch("app.views.auth_views.verify_registration_token", return_value=True)
+    def test_registration_accepts_valid_turnstile_token(self, mocked_verify):
+        response = self.client.post(
+            "/register/",
+            {
+                "name": "Mira Beispiel",
+                "email": "mira-turnstile@example.com",
+                "password1": "sicheres-passwort-42",
+                "password2": "sicheres-passwort-42",
+                "cf-turnstile-response": "valid-token",
+            },
+        )
+
+        self.assertRedirects(response, "/home/")
+        self.assertTrue(User.objects.filter(email="mira-turnstile@example.com").exists())
+        mocked_verify.assert_called_once_with("valid-token")
 
     def test_password_reset_flow_updates_password_and_allows_login(self):
         user = User.objects.create_user(

@@ -16,7 +16,7 @@ Lunora ist ein kleines Django-basiertes Workspace-Dashboard mit ruhiger Glas-UI.
 ## Tech Stack
 
 - Python
-- Django 5.2.9
+- Django 6.0.8
 - SQLite für lokale Entwicklung
 - Django Templates
 - Vanilla CSS und JavaScript
@@ -130,6 +130,7 @@ Wichtige Variablen:
 - `DJANGO_DB_NAME`, `DJANGO_DB_USER`, `DJANGO_DB_PASSWORD`, `DJANGO_DB_HOST` und `DJANGO_DB_PORT`: PostgreSQL-Zugangsdaten
 - `DJANGO_DB_CONN_MAX_AGE` und `DJANGO_DB_CONNECT_TIMEOUT`: Lebensdauer persistenter Verbindungen und Verbindungs-Timeout in Sekunden
 - `DJANGO_DB_SSLMODE`: optionaler PostgreSQL-SSL-Modus; bei entfernten Datenbankdiensten üblicherweise `require` oder `verify-full`
+- `DJANGO_CACHE_URL`: gemeinsamer Redis-Cache; in Produktion erforderlich, damit Login-Limits workerübergreifend gelten
 - `PROFILE_IMAGE_MAX_BYTES`, `PROFILE_IMAGE_MAX_WIDTH`, `PROFILE_IMAGE_MAX_HEIGHT`: Upload-Limits fuer Profilbilder
 - `DJANGO_PRIVATE_MEDIA_ROOT`: nicht öffentlich ausgelieferter Speicherort für private Notizanhänge
 - `DJANGO_SECURE_SSL_REDIRECT`: HTTPS-Weiterleitung, standardmaessig aktiv wenn `DJANGO_DEBUG=false`
@@ -145,6 +146,7 @@ Wichtige Variablen:
 - `DJANGO_EMAIL_BACKEND` und die `DJANGO_EMAIL_*`-Variablen: E-Mail-Zustellung für Erinnerungen und Wochenberichte
 - `DJANGO_ADMINS`: kommagetrennte `Name:email`-Liste, die bei unbehandelten Serverfehlern benachrichtigt wird, sobald `DJANGO_DEBUG=false` ist; leer und wirkungslos im lokalen Betrieb
 - `DJANGO_SERVER_EMAIL`: Absenderadresse für diese Fehlerbenachrichtigungen
+- `CLOUDFLARE_TURNSTILE_REQUIRED` und die `CLOUDFLARE_TURNSTILE_*`-Variablen: serverseitig validierter Bot-Schutz für die öffentliche Registrierung
 - `LUNORA_AUTOMATION_INTERVAL_SECONDS`: Intervall des dauerhaft laufenden Automatikprozesses
 - `LUNORA_WEEKLY_SUMMARY_HOUR`: lokale Montagstunde, ab der ein Wochenbericht versendet wird
 
@@ -178,6 +180,9 @@ Bei einer PostgreSQL-Datenbank auf einem anderen Server sollte zusätzlich ein g
 `DJANGO_DEBUG=false` absichtlich abgelehnt, damit eine Produktionsinstallation nicht
 versehentlich mit der lokalen Datei startet. Nach dem Anlegen der Datenbank werden die
 Migrationen auf dem Ubuntu-Server mit `python manage.py migrate` angewendet.
+
+Die vollständige Ubuntu-, Gunicorn-, Nginx- und Cloudflare-Reihenfolge steht in
+[`DEPLOYMENT.md`](DEPLOYMENT.md).
 
 ## Tests und Checks
 

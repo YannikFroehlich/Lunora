@@ -1,5 +1,7 @@
 Django==6.0.8
+gunicorn==26.0.0
 holidays==0.102
 Pillow==12.3.0
 psycopg[binary]==3.3.4
+redis==8.1.0
 reportlab==5.0.0
