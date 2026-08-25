@@ -96,6 +96,14 @@
   white-space: nowrap;
 }
 
+.search-result-row .search-hit {
+  border-radius: 3px;
+  background: rgba(181, 150, 104, 0.28);
+  padding: 0 2px;
+  color: var(--color-heading);
+  font-weight: 600;
+}
+
 @media (max-width: 1000px) {
   .search-results-grid {
     grid-template-columns: 1fr;

@@ -4,7 +4,7 @@
 {% block title %}Suche | Lunora{% endblock %}
 
 {% block page_css %}
-<link rel="stylesheet" href="{% static 'css/search.css' %}?v=search-1">
+<link rel="stylesheet" href="{% static 'css/search.css' %}?v=search-2">
 {% endblock %}
 
 {% block content %}
@@ -42,8 +42,8 @@
             <a class="search-result-row" href="{% url 'note_detail' note.id %}">
                 <i class="fa-regular fa-note-sticky" aria-hidden="true"></i>
                 <span>
-                    <strong>{{ note.title|default:"Unbenannte Notiz" }}</strong>
-                    <small>{{ note.plain_text|default:"Kein Inhalt"|truncatechars:120 }}</small>
+                    <strong>{% for part in note.title_segments %}{% if part.match %}<mark class="search-hit">{{ part.text }}</mark>{% else %}{{ part.text }}{% endif %}{% endfor %}</strong>
+                    <small>{% for part in note.snippet %}{% if part.match %}<mark class="search-hit">{{ part.text }}</mark>{% else %}{{ part.text }}{% endif %}{% empty %}Kein Inhalt{% endfor %}</small>
                 </span>
             </a>
             {% endfor %}

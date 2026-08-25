@@ -48,7 +48,8 @@ from app.services.weather_service import (
     set_default_weather_location,
 )
 from app.services.note_content import NOTE_TEMPLATES, empty_note_document, validate_note_document
-from app.services.notes import prune_note_versions, purge_expired_notes
+from app.services.note_search import build_snippet, highlight_text, parse_search_query, search_notes
+from app.services.notes import accessible_notes, prune_note_versions, purge_expired_notes
 from app.services.vacation_planner import annual_summary, calculate_period
 from app.views.message_views import _build_inbox_items
 from lunora.settings import BASE_DIR, database_config
@@ -3058,6 +3059,11 @@ class GlobalSearchTests(TestCase):
         Profile.objects.create(user=self.mira, display_name="Mira")
         Profile.objects.create(user=self.lukas, display_name="Lukas")
 
+    @staticmethod
+    def rendered_title(result):
+        """Reassemble a note title from its highlight segments."""
+        return "".join(part["text"] for part in result["title_segments"])
+
     def test_global_search_requires_login(self):
         response = self.client.get("/search/?q=Rakete")
         self.assertRedirects(response, "/login/?next=/search/%3Fq%3DRakete")
@@ -3079,7 +3085,11 @@ class GlobalSearchTests(TestCase):
         response = self.client.get("/search/?q=Rakete")
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Raketenstart planen")
+        # The matching part of a note title is wrapped in a highlight, so assert on
+        # the context rather than on a contiguous title string.
+        self.assertEqual(
+            [self.rendered_title(item) for item in response.context["notes_results"]], ["Raketenstart planen"]
+        )
         self.assertContains(response, "Rakete ist startklar")
         self.assertContains(response, "Raketenstart")
 
@@ -3112,7 +3122,9 @@ class GlobalSearchTests(TestCase):
         response = self.client.get("/search/?q=Rakete")
 
         self.assertEqual(response.status_code, 200)
-        self.assertNotContains(response, "Raketengeheimnis")
+        # Highlighting splits a title mid-string, so a plain assertNotContains on the
+        # title would pass even if the note leaked. Assert on the context instead.
+        self.assertEqual(response.context["notes_results"], [])
         self.assertNotContains(response, "Rakete geheime Unterhaltung")
         self.assertNotContains(response, "Rakete privater Termin")
 
@@ -3132,8 +3144,288 @@ class GlobalSearchTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Notizen deaktiviert")
         self.assertContains(response, "Nachrichten deaktiviert")
-        self.assertNotContains(response, "Raketenidee")
+        self.assertEqual(response.context["notes_results"], [])
         self.assertContains(response, "Raketenstart")
+
+
+class NoteSearchQueryParserTests(SimpleTestCase):
+    def test_bare_words_become_required_terms(self):
+        parsed = parse_search_query("Rakete Zündung")
+        self.assertEqual(parsed.terms, ("Rakete", "Zündung"))
+        self.assertEqual(parsed.phrases, ())
+        self.assertEqual(parsed.exclusions, ())
+
+    def test_quoted_input_becomes_a_phrase_and_dash_prefix_excludes(self):
+        parsed = parse_search_query('"kalter Start" rakete -geheim')
+        self.assertEqual(parsed.terms, ("rakete",))
+        self.assertEqual(parsed.phrases, ("kalter Start",))
+        self.assertEqual(parsed.exclusions, ("geheim",))
+
+    def test_punctuation_splits_a_token_into_separate_terms(self):
+        self.assertEqual(parse_search_query("start,zündung;test").terms, ("start", "zündung", "test"))
+
+    def test_single_quoted_word_stays_a_term_rather_than_a_phrase(self):
+        parsed = parse_search_query('"rakete"')
+        self.assertEqual(parsed.terms, ("rakete",))
+        self.assertEqual(parsed.phrases, ())
+
+    def test_duplicate_terms_are_collapsed_and_term_count_is_capped(self):
+        self.assertEqual(parse_search_query("rakete rakete").terms, ("rakete",))
+        parsed = parse_search_query(" ".join(f"wort{index}" for index in range(30)))
+        self.assertEqual(len(parsed.terms), 12)
+
+    def test_blank_query_is_falsy_and_exclusion_only_query_has_no_terms(self):
+        self.assertFalse(parse_search_query("   "))
+        parsed = parse_search_query("-geheim")
+        self.assertFalse(parsed)
+        self.assertEqual(parsed.exclusions, ("geheim",))
+
+
+class NoteSearchSnippetTests(SimpleTestCase):
+    def test_snippet_marks_every_match_and_keeps_surrounding_text(self):
+        parsed = parse_search_query("Zündung")
+        segments = build_snippet("Vor dem Start muss die Zündung geprüft werden.", parsed)
+        self.assertEqual([part["text"] for part in segments if part["match"]], ["Zündung"])
+        self.assertEqual("".join(part["text"] for part in segments), "Vor dem Start muss die Zündung geprüft werden.")
+
+    def test_snippet_matches_case_insensitively_and_inside_compounds(self):
+        parsed = parse_search_query("rakete")
+        segments = build_snippet("Der Raketenstart ist geplant.", parsed)
+        self.assertEqual([part["text"] for part in segments if part["match"]], ["Rakete"])
+
+    def test_snippet_without_a_match_falls_back_to_truncated_text(self):
+        segments = build_snippet("Kein Treffer hier drin", parse_search_query("rakete"))
+        self.assertEqual(segments, [{"text": "Kein Treffer hier drin", "match": False}])
+
+    def test_snippet_windows_around_a_late_match_instead_of_the_text_start(self):
+        body = ("Fülltext " * 60) + "Zündschlüssel am Ende"
+        segments = build_snippet("Anfangswort " + body, parse_search_query("Zündschlüssel"))
+        rendered = "".join(part["text"] for part in segments)
+        self.assertTrue(rendered.startswith("… "))
+        self.assertIn("Zündschlüssel", rendered)
+        self.assertNotIn("Anfangswort", rendered)
+
+    def test_empty_text_yields_no_segments(self):
+        self.assertEqual(build_snippet("", parse_search_query("rakete")), [])
+
+    def test_highlight_text_marks_a_match_without_windowing(self):
+        segments = highlight_text("Raketenstart planen", parse_search_query("rakete"))
+        self.assertEqual(
+            segments,
+            [{"text": "Rakete", "match": True}, {"text": "nstart planen", "match": False}],
+        )
+
+    def test_highlight_text_keeps_a_long_title_intact(self):
+        title = "Ein sehr langer Titel " * 8 + "mit Rakete am Ende"
+        rendered = "".join(part["text"] for part in highlight_text(title, parse_search_query("rakete")))
+        self.assertEqual(rendered, title)
+        self.assertNotIn("…", rendered)
+
+    def test_highlight_text_without_a_match_returns_one_plain_segment(self):
+        self.assertEqual(
+            highlight_text("Einkaufsliste", parse_search_query("rakete")),
+            [{"text": "Einkaufsliste", "match": False}],
+        )
+
+
+class NoteSearchRankingTests(TestCase):
+    def setUp(self):
+        self.mira = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=self.mira, display_name="Mira")
+
+    def search(self, query):
+        return list(
+            search_notes(accessible_notes(self.mira), query).order_by("-search_rank", "-updated_at", "-id")
+        )
+
+    def test_multiple_terms_are_combined_with_and(self):
+        both = Note.objects.create(owner=self.mira, title="Start", plain_text="Rakete und Zündung geprüft")
+        Note.objects.create(owner=self.mira, title="Nur Rakete", plain_text="ohne das zweite Wort")
+
+        self.assertEqual(self.search("Rakete Zündung"), [both])
+
+    def test_title_match_ranks_above_body_only_match(self):
+        body_hit = Note.objects.create(owner=self.mira, title="Wochenplan", plain_text="Die Rakete ist fertig")
+        title_hit = Note.objects.create(owner=self.mira, title="Rakete", plain_text="ohne Treffer im Text")
+
+        self.assertEqual(self.search("Rakete"), [title_hit, body_hit])
+
+    def test_phrase_requires_adjacent_words(self):
+        adjacent = Note.objects.create(owner=self.mira, title="Ablauf", plain_text="Ein kalter Start am Morgen")
+        Note.objects.create(owner=self.mira, title="Ablauf B", plain_text="Start war kalter als erwartet")
+
+        self.assertEqual(self.search('"kalter Start"'), [adjacent])
+
+    def test_excluded_term_removes_a_matching_note(self):
+        keep = Note.objects.create(owner=self.mira, title="Rakete", plain_text="öffentlich")
+        Note.objects.create(owner=self.mira, title="Rakete", plain_text="streng geheim")
+
+        self.assertEqual(self.search("Rakete -geheim"), [keep])
+
+    def test_german_compounds_match_as_prefix_and_infix(self):
+        note = Note.objects.create(owner=self.mira, title="Raketenstart planen", plain_text="Zündfolge prüfen")
+
+        self.assertEqual(self.search("Rakete"), [note])
+        self.assertEqual(self.search("start"), [note])
+
+    def test_search_does_not_return_notes_the_user_cannot_access(self):
+        other = User.objects.create_user(username="lukas@example.com", email="lukas@example.com", password="secret-12345")
+        Note.objects.create(owner=other, title="Raketengeheimnis", plain_text="privat")
+
+        self.assertEqual(self.search("Rakete"), [])
+
+    def test_empty_query_annotates_a_neutral_rank_without_filtering(self):
+        Note.objects.create(owner=self.mira, title="Irgendeine Notiz")
+
+        results = search_notes(accessible_notes(self.mira), "")
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].search_rank, 0.0)
+
+
+class NotePostgresSearchSqlTests(SimpleTestCase):
+    """Compile the production search path without needing a PostgreSQL server.
+
+    The suite runs on SQLite, so ``search_notes`` normally never takes its
+    PostgreSQL branch. Building the SQL against a real PostgreSQL backend proves
+    the tsquery/tsvector expressions are constructed correctly.
+    """
+
+    def compile_search(self, query):
+        from django.db.backends.postgresql.base import DatabaseWrapper
+
+        connection = DatabaseWrapper(
+            {
+                "ENGINE": "django.db.backends.postgresql",
+                "NAME": "lunora",
+                "USER": "lunora",
+                "PASSWORD": "",
+                "HOST": "127.0.0.1",
+                "PORT": "5432",
+                "OPTIONS": {},
+                "CONN_MAX_AGE": 0,
+                "CONN_HEALTH_CHECKS": False,
+                "AUTOCOMMIT": True,
+                "ATOMIC_REQUESTS": False,
+                "TIME_ZONE": None,
+                "TEST": {"CHARSET": None, "COLLATION": None, "NAME": None, "MIRROR": None},
+            },
+            "postgres-sql-check",
+        )
+        self.assertEqual(connection.vendor, "postgresql")
+        with patch("app.services.note_search.connection", connection):
+            queryset = search_notes(accessible_notes(User(pk=1, username="mira@example.com")), query)
+        sql, params = queryset.query.get_compiler(connection=connection).as_sql()
+        return sql, [value for value in params if isinstance(value, str)]
+
+    def test_terms_compile_to_a_prefix_tsquery_ranked_with_ts_rank(self):
+        sql, params = self.compile_search("rakete")
+
+        self.assertIn("to_tsquery", sql)
+        self.assertIn("ts_rank", sql)
+        self.assertIn("rakete:*", params)
+        self.assertIn("german", params)
+
+    def test_phrases_compile_to_phraseto_tsquery(self):
+        sql, params = self.compile_search('"kalter Start"')
+
+        self.assertIn("phraseto_tsquery", sql)
+        self.assertIn("kalter Start", params)
+
+    def test_substring_fallback_is_kept_alongside_the_tsquery(self):
+        _sql, params = self.compile_search("rakete")
+
+        self.assertIn("%rakete%", params)
+
+    def test_terms_that_are_not_bare_words_are_dropped_from_the_raw_tsquery(self):
+        # search_type="raw" is handed to to_tsquery(); a stray operator would be a
+        # database error at query time, so the parser must never emit one.
+        _sql, params = self.compile_search("rakete & !start")
+
+        self.assertNotIn("&", "".join(value for value in params if ":*" in value))
+        self.assertIn("rakete:*", params)
+        self.assertIn("start:*", params)
+
+
+@override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
+class NoteSearchViewTests(TestCase):
+    def setUp(self):
+        self.mira = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=self.mira, display_name="Mira")
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+    def test_notes_page_ranks_by_relevance_when_searching(self):
+        body_hit = Note.objects.create(owner=self.mira, title="Wochenplan", plain_text="Die Rakete ist fertig")
+        title_hit = Note.objects.create(owner=self.mira, title="Rakete", plain_text="ohne Treffer im Text")
+
+        response = self.client.get("/notes/?q=Rakete")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["current_sort"], "relevance")
+        self.assertEqual([item["id"] for item in response.context["note_items"]], [title_hit.id, body_hit.id])
+
+    def test_notes_page_keeps_custom_order_without_a_query(self):
+        Note.objects.create(owner=self.mira, title="Wochenplan")
+
+        response = self.client.get("/notes/")
+
+        self.assertEqual(response.context["current_sort"], "custom")
+
+    def test_notes_page_honours_an_explicit_sort_while_searching(self):
+        Note.objects.create(owner=self.mira, title="Bravo Rakete")
+        Note.objects.create(owner=self.mira, title="Alpha Rakete")
+
+        response = self.client.get("/notes/?q=Rakete&sort=title")
+
+        self.assertEqual(response.context["current_sort"], "title")
+        self.assertEqual(
+            [item["title"] for item in response.context["note_items"]], ["Alpha Rakete", "Bravo Rakete"]
+        )
+
+    def test_notes_page_falls_back_to_custom_order_for_relevance_without_a_query(self):
+        Note.objects.create(owner=self.mira, title="Wochenplan")
+
+        response = self.client.get("/notes/?sort=relevance")
+
+        self.assertEqual(response.context["current_sort"], "custom")
+
+    def test_notes_page_applies_multi_term_and_search(self):
+        Note.objects.create(owner=self.mira, title="Start", plain_text="Rakete und Zündung geprüft")
+        Note.objects.create(owner=self.mira, title="Nur Rakete", plain_text="ohne das zweite Wort")
+
+        response = self.client.get("/notes/?q=Rakete+Z%C3%BCndung")
+
+        self.assertEqual([item["title"] for item in response.context["note_items"]], ["Start"])
+
+    def test_global_search_highlights_the_matching_fragment(self):
+        Note.objects.create(owner=self.mira, title="Wochenplan", plain_text="Vor dem Start muss die Zündung geprüft werden")
+
+        response = self.client.get("/search/?q=Z%C3%BCndung")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '<mark class="search-hit">Zündung</mark>', html=False)
+
+    def test_global_search_highlights_the_matching_part_of_the_title(self):
+        Note.objects.create(owner=self.mira, title="Raketenstart planen", plain_text="Zündfolge prüfen")
+
+        response = self.client.get("/search/?q=Rakete")
+
+        self.assertContains(response, '<mark class="search-hit">Rakete</mark>nstart planen', html=False)
+
+    def test_global_search_falls_back_to_a_placeholder_title(self):
+        Note.objects.create(owner=self.mira, title="", plain_text="Rakete im Text")
+
+        response = self.client.get("/search/?q=Rakete")
+
+        self.assertContains(response, "Unbenannte Notiz")
+
+    def test_global_search_escapes_note_content_in_the_snippet(self):
+        Note.objects.create(owner=self.mira, title="Wochenplan", plain_text="<script>alert(1)</script> Zündung")
+
+        response = self.client.get("/search/?q=Z%C3%BCndung")
+
+        self.assertNotContains(response, "<script>alert(1)</script>")
+        self.assertContains(response, "&lt;script&gt;")
 
 
 @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
@@ -3418,13 +3710,56 @@ class NotesTests(TestCase):
         response = self.client.get("/notes/")
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.context["selected_note_data"])
-        self.assertContains(response, "Dein Platz für Gedanken")
+        # Notes exist but none is selected, so the prompt is "pick one" rather
+        # than "create your first note" — see test_notes_overview_empty_state_*.
+        self.assertContains(response, "Wähle eine Notiz aus")
         self.assertContains(response, '<a class="notes-mobile-back" href="/notes/"', count=0)
 
         detail = self.client.get(f"/notes/{note.id}/")
         self.assertEqual(detail.status_code, 200)
         self.assertEqual(detail.context["selected_note_data"]["id"], note.id)
         self.assertContains(detail, '<a class="notes-mobile-back" href="/notes/"')
+
+    def test_notes_overview_empty_state_invites_first_note_when_none_exist(self):
+        response = self.client.get("/notes/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Dein Platz für Gedanken")
+        self.assertNotContains(response, "Wähle eine Notiz aus")
+
+    def test_notes_overview_empty_state_reflects_the_current_filter_not_the_whole_account(self):
+        self.create_note()
+
+        response = self.client.get("/notes/?status=pinned")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["note_items"], [])
+        # The account isn't empty, but nothing matches "Pins", so note_items is
+        # empty here too — the main pane falls back to the create-a-note prompt.
+        # The sidebar's own "Keine Notizen gefunden" card is what actually
+        # communicates "no match" for this case.
+        self.assertContains(response, "Dein Platz für Gedanken")
+
+    def test_notes_filter_form_action_points_at_the_open_note_so_search_keeps_it_selected(self):
+        note = self.create_note()
+
+        response = self.client.get(f"/notes/{note.id}/?status=archived")
+
+        self.assertContains(response, f'action="/notes/{note.id}/"')
+
+    def test_notes_filter_form_action_points_at_the_overview_without_a_selected_note(self):
+        response = self.client.get("/notes/")
+
+        self.assertContains(response, 'action="/notes/"')
+
+    def test_notes_filter_form_carries_a_hidden_status_field_for_implicit_submission(self):
+        # Pressing Enter in the search field implicitly submits via the form's first
+        # submit control. Without a hidden field holding the current status, that
+        # control used to be the "Alle" tab button, silently resetting any other
+        # active status filter whenever a search was submitted this way.
+        response = self.client.get("/notes/?status=archived")
+
+        self.assertContains(response, '<input type="hidden" name="status" value="archived">')
 
     def test_note_save_derives_plain_text_and_search(self):
         note = self.create_note()

@@ -58,6 +58,19 @@
   margin-top: 20px;
 }
 
+/* Invisible but still a valid implicit-submit target — see the comment on this
+   button in notes.html for why it needs to exist at all. */
+.notes-filter-default-submit {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
 .notes-search {
   min-height: 44px;
   display: flex;
