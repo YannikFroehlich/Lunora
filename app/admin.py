@@ -11,7 +11,6 @@ from app.models import (
     Note,
     NoteAttachment,
     NoteShare,
-    NoteTag,
     NoteUserState,
     NoteVersion,
     CustomHoliday,
@@ -127,11 +126,9 @@ class NoteAdmin(admin.ModelAdmin):
     list_filter = ("deleted_at", "created_at", "updated_at")
     search_fields = ("title", "plain_text", "owner__username", "owner__email")
     autocomplete_fields = ("owner", "last_edited_by")
-    filter_horizontal = ("tags",)
     inlines = (NoteShareInline,)
 
 
-admin.site.register(NoteTag)
 admin.site.register(NoteUserState)
 admin.site.register(NoteAttachment)
 admin.site.register(NoteVersion)

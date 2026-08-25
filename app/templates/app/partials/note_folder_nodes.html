@@ -1,0 +1,39 @@
+{% for item in items %}
+{% if item.kind == "note" %}
+{% include "app/partials/note_list_card.html" with item=item %}
+{% else %}
+<details class="note-folder notes-tree-item {% if item.contains_selected %}contains-selected{% endif %}"
+         data-tree-item
+         data-item-type="folder"
+         data-item-id="{{ item.id }}"
+         data-parent-id="{{ item.parent_id|default_if_none:'' }}"
+         data-item-position="{{ item.position }}"
+         data-note-folder="{{ item.id }}"
+         data-folder-name="{{ item.name }}"
+         data-tree-draggable="true"
+         {% if item.contains_selected %}open{% endif %}>
+    <summary>
+        <span class="note-folder-chevron" aria-hidden="true"><i class="fa-solid fa-chevron-right"></i></span>
+        <span class="note-folder-label"><i class="fa-regular fa-folder"></i><strong>{{ item.name }}</strong></span>
+        <span class="note-folder-actions">
+            <button type="button" draggable="false" data-folder-action="new-note" data-folder-id="{{ item.id }}" aria-label="Notiz in {{ item.name }} erstellen" title="Neue Notiz">
+                <i class="fa-regular fa-note-sticky"></i><i class="fa-solid fa-plus"></i>
+            </button>
+            <button type="button" draggable="false" data-folder-action="create" data-parent-id="{{ item.id }}" aria-label="Unterordner in {{ item.name }} erstellen" title="Neuer Unterordner">
+                <i class="fa-regular fa-folder"></i><i class="fa-solid fa-plus"></i>
+            </button>
+            <button type="button" draggable="false" data-folder-action="rename" data-folder-id="{{ item.id }}" aria-label="{{ item.name }} umbenennen" title="Umbenennen">
+                <i class="fa-solid fa-pen"></i>
+            </button>
+            <button type="button" draggable="false" data-folder-action="delete" data-folder-id="{{ item.id }}" aria-label="{{ item.name }} löschen" title="Ordner löschen">
+                <i class="fa-solid fa-trash-can"></i>
+            </button>
+        </span>
+    </summary>
+    <div class="note-folder-contents" data-folder-drop-zone="{{ item.id }}">
+        {% include "app/partials/note_folder_nodes.html" with items=item.items %}
+        {% if not item.items %}<span class="note-folder-empty">Leerer Ordner</span>{% endif %}
+    </div>
+</details>
+{% endif %}
+{% endfor %}

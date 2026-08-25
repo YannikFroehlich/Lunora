@@ -1,0 +1,22 @@
+<div class="note-list-card notes-tree-item {% if selected_note_data.id == item.id %}is-active{% endif %}"
+     data-tree-item
+     data-item-type="note"
+     data-item-id="{{ item.id }}"
+     data-parent-id="{{ item.folder_id|default_if_none:'' }}"
+     data-item-position="{{ item.position|default_if_none:0 }}"
+     data-note-card="{{ item.id }}"
+     data-note-card-name="{{ item.title }}"
+     data-note-folder-id="{{ item.folder_id|default_if_none:'' }}"
+     data-note-can-edit="{{ item.can_edit|yesno:'true,false' }}"
+     data-note-can-manage="{{ item.can_manage|yesno:'true,false' }}"
+     data-note-pinned="{{ item.is_pinned|yesno:'true,false' }}"
+     data-note-archived="{{ item.is_archived|yesno:'true,false' }}"
+     data-note-deleted="{{ item.is_deleted|yesno:'true,false' }}"
+     {% if not item.is_deleted %}data-tree-draggable="true"{% endif %}>
+    <a class="note-list-card-link"
+       draggable="false"
+       href="{% url 'note_detail' item.id %}?status={{ current_status }}&scope={{ current_scope }}&sort={{ current_sort }}{% if query %}&q={{ query|urlencode }}{% endif %}">
+        {% if item.is_pinned %}<i class="fa-solid fa-thumbtack note-card-pin-icon" aria-hidden="true"></i>{% endif %}
+        <strong data-note-card-title>{{ item.title }}</strong>
+    </a>
+</div>

@@ -9,8 +9,6 @@ MAX_DOCUMENT_BYTES = 2 * 1024 * 1024
 MAX_TEXT_CHARACTERS = 500_000
 MAX_DOCUMENT_DEPTH = 40
 MAX_DOCUMENT_NODES = 50_000
-MAX_TAGS = 20
-MAX_TAG_LENGTH = 30
 
 ALLOWED_NODE_TYPES = {
     "doc",
@@ -33,8 +31,11 @@ ALLOWED_NODE_TYPES = {
     "noteImage",
     "noteAttachment",
     "mention",
+    "noteLink",
+    "mathInline",
+    "mathBlock",
 }
-ALLOWED_MARK_TYPES = {"bold", "italic", "underline", "strike", "code", "link", "textStyle", "highlight", "commentThread"}
+ALLOWED_MARK_TYPES = {"bold", "italic", "underline", "strike", "superscript", "subscript", "code", "link", "textStyle", "highlight", "commentThread"}
 THREAD_ID_RE = re.compile(r"^[0-9a-fA-F-]{36}$")
 ALLOWED_CODE_LANGUAGES = {
     "plaintext",
@@ -64,7 +65,7 @@ ALLOWED_LINE_HEIGHTS = {"1", "1.15", "1.5", "2"}
 ALLOWED_ALIGNMENTS = {"left", "center", "right", "justify", None}
 HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 ATTACHMENT_ID_RE = re.compile(r"^[0-9a-fA-F-]{36}$")
-TAG_RE = re.compile(r"^[\w-]+$", re.UNICODE)
+MAX_LATEX_LENGTH = 4000
 
 
 EMPTY_DOCUMENT = {"type": "doc", "content": [{"type": "paragraph"}]}
@@ -72,6 +73,56 @@ EMPTY_DOCUMENT = {"type": "doc", "content": [{"type": "paragraph"}]}
 
 def empty_note_document():
     return {"type": "doc", "content": [{"type": "paragraph"}]}
+
+
+def _heading(text, level=2):
+    return {"type": "heading", "attrs": {"level": level}, "content": [{"type": "text", "text": text}]}
+
+
+def _bullet_item(text=""):
+    content = [{"type": "text", "text": text}] if text else []
+    return {"type": "listItem", "content": [{"type": "paragraph", "content": content}]}
+
+
+def _task_item(text=""):
+    content = [{"type": "text", "text": text}] if text else []
+    return {"type": "taskItem", "attrs": {"checked": False}, "content": [{"type": "paragraph", "content": content}]}
+
+
+def _meeting_note_document():
+    return {
+        "type": "doc",
+        "content": [
+            _heading("Teilnehmer"),
+            {"type": "paragraph"},
+            _heading("Agenda"),
+            {"type": "bulletList", "content": [_bullet_item()]},
+            _heading("Notizen"),
+            {"type": "paragraph"},
+            _heading("Aufgaben"),
+            {"type": "taskList", "content": [_task_item()]},
+        ],
+    }
+
+
+def _checklist_document():
+    return {
+        "type": "doc",
+        "content": [{"type": "taskList", "content": [_task_item(), _task_item(), _task_item()]}],
+    }
+
+
+NOTE_TEMPLATES = {
+    "blank": empty_note_document,
+    "meeting": _meeting_note_document,
+    "checklist": _checklist_document,
+}
+
+NOTE_TEMPLATE_LABELS = {
+    "blank": "Leer",
+    "meeting": "Meeting-Notiz",
+    "checklist": "Checkliste",
+}
 
 
 def validate_note_document(document):
@@ -84,7 +135,14 @@ def validate_note_document(document):
     if len(encoded) > MAX_DOCUMENT_BYTES:
         raise ValidationError("Die Notiz ist zu groß.")
 
-    state = {"nodes": 0, "characters": 0, "attachments": set(), "mentions": set(), "comment_threads": set()}
+    state = {
+        "nodes": 0,
+        "characters": 0,
+        "attachments": set(),
+        "mentions": set(),
+        "comment_threads": set(),
+        "note_links": set(),
+    }
     _validate_node(document, depth=0, state=state)
     if state["characters"] > MAX_TEXT_CHARACTERS:
         raise ValidationError("Die Notiz enthält zu viel Text.")
@@ -92,6 +150,7 @@ def validate_note_document(document):
         "attachments": state["attachments"],
         "mentions": state["mentions"],
         "comment_threads": state["comment_threads"],
+        "note_links": state["note_links"],
     }
 
 
@@ -150,6 +209,9 @@ def _validate_node_attrs(node_type, attrs, state):
         "noteImage": {"attachmentId", "alt", "title", "width"},
         "noteAttachment": {"attachmentId", "name", "size"},
         "mention": {"userId", "label"},
+        "noteLink": {"noteId", "label"},
+        "mathInline": {"latex"},
+        "mathBlock": {"latex"},
     }.get(node_type, set())
     if set(attrs) - allowed:
         raise ValidationError(f"Das Element „{node_type}“ enthält unerlaubte Attribute.")
@@ -192,6 +254,17 @@ def _validate_node_attrs(node_type, attrs, state):
         if not isinstance(attrs.get("label"), str) or not attrs["label"] or len(attrs["label"]) > 100:
             raise ValidationError("Der Erwähnungstext ist ungültig.")
         state["mentions"].add(user_id)
+    if node_type == "noteLink":
+        note_id = attrs.get("noteId")
+        if not isinstance(note_id, int) or note_id <= 0:
+            raise ValidationError("Der Notizverweis ist ungültig.")
+        if not isinstance(attrs.get("label"), str) or not attrs["label"] or len(attrs["label"]) > 200:
+            raise ValidationError("Der Notizverweis-Text ist ungültig.")
+        state["note_links"].add(note_id)
+    if node_type in {"mathInline", "mathBlock"}:
+        latex = attrs.get("latex")
+        if not isinstance(latex, str) or not latex.strip() or len(latex) > MAX_LATEX_LENGTH:
+            raise ValidationError("Die Formel ist ungültig.")
 
 
 def _validate_mark(mark, state):
@@ -261,6 +334,8 @@ def document_plain_text(document):
             parts.append(node.get("text", ""))
         elif node.get("type") == "mention":
             parts.append(f"@{(node.get('attrs') or {}).get('label', '')}")
+        elif node.get("type") == "noteLink":
+            parts.append(f"[[{(node.get('attrs') or {}).get('label', '')}]]")
         elif node.get("type") in {"hardBreak", "paragraph", "heading", "listItem", "taskItem", "tableRow"}:
             if parts and not parts[-1].endswith("\n"):
                 parts.append("\n")
@@ -289,19 +364,21 @@ def extract_mention_user_ids(document):
     return user_ids
 
 
-def normalize_tags(tags):
-    if not isinstance(tags, list):
-        raise ValidationError("Hashtags müssen als Liste gesendet werden.")
-    normalized = []
-    seen = set()
-    for raw_tag in tags:
-        display = str(raw_tag).strip().lstrip("#")
-        key = display.casefold()
-        if not display or len(display) > MAX_TAG_LENGTH or len(key) > MAX_TAG_LENGTH or not TAG_RE.fullmatch(display):
-            raise ValidationError("Hashtags dürfen nur Buchstaben, Zahlen, Unterstriche und Bindestriche enthalten.")
-        if key not in seen:
-            seen.add(key)
-            normalized.append((key, display))
-    if len(normalized) > MAX_TAGS:
-        raise ValidationError(f"Eine Notiz darf maximal {MAX_TAGS} Hashtags haben.")
-    return normalized
+def extract_note_link_ids(document):
+    """Collect noteLink noteIds from an already-trusted (previously validated) document tree."""
+    note_ids = set()
+
+    def visit(node):
+        if not isinstance(node, dict):
+            return
+        if node.get("type") == "noteLink":
+            note_id = (node.get("attrs") or {}).get("noteId")
+            if isinstance(note_id, int):
+                note_ids.add(note_id)
+        for child in node.get("content") or []:
+            visit(child)
+
+    visit(document)
+    return note_ids
+
+

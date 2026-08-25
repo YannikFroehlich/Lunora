@@ -8,10 +8,14 @@ from django.views.decorators.http import require_GET
 from app.models import Profile
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.weather_service import (
+    delete_weather_location,
     fetch_weather_map_tile,
     get_location_suggestions,
     get_weather_at_coordinates,
     get_weather_context,
+    list_weather_locations,
+    save_weather_location,
+    set_default_weather_location,
 )
 
 
@@ -32,7 +36,37 @@ def weather(request):
             django_messages.success(request, f"{default_city} als Standard-Wetterort gespeichert.")
         return redirect("weather")
 
-    return render(request, "app/weather.html", get_weather_context(request.GET, user=request.user))
+    if request.method == "POST" and request.POST.get("form_name") == "location_save":
+        name = request.POST.get("name", "").strip()
+        try:
+            _location, created = save_weather_location(
+                request.user,
+                name=name,
+                lat=request.POST.get("lat"),
+                lon=request.POST.get("lon"),
+                details=request.POST.get("details", "").strip(),
+                label=request.POST.get("label", "").strip(),
+            )
+        except ValueError as error:
+            django_messages.error(request, str(error))
+        else:
+            if created:
+                django_messages.success(request, f"{name or 'Ort'} wurde gespeichert.")
+            else:
+                django_messages.info(request, f"{name or 'Ort'} ist bereits gespeichert.")
+        return redirect("weather")
+
+    if request.method == "POST" and request.POST.get("form_name") == "location_delete":
+        delete_weather_location(request.user, request.POST.get("location_id"))
+        return redirect("weather")
+
+    if request.method == "POST" and request.POST.get("form_name") == "location_set_default":
+        set_default_weather_location(request.user, request.POST.get("location_id"))
+        return redirect("weather")
+
+    context = get_weather_context(request.GET, user=request.user)
+    context["weather_locations"] = list_weather_locations(request.user)
+    return render(request, "app/weather.html", context)
 
 
 @login_required

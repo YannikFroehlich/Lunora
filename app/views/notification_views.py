@@ -7,6 +7,7 @@ from app.services.notifications import (
     claim_due_desktop_reminders,
     claim_due_event_invitations,
     claim_due_note_activity,
+    claim_due_weather_alerts,
 )
 from app.services.system_settings import feature_enabled
 
@@ -29,5 +30,8 @@ def claim_desktop_notifications(request):
 
     if feature_enabled("notes"):
         notifications.extend(claim_due_note_activity(request.user))
+
+    if feature_enabled("weather"):
+        notifications.extend(claim_due_weather_alerts(request.user))
 
     return JsonResponse({"notifications": notifications})

@@ -1,5 +1,6 @@
 import json
 import re
+from io import BytesIO
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
@@ -10,29 +11,43 @@ from django.shortcuts import redirect, render
 from django.utils.http import content_disposition_header
 from django.views.decorators.http import require_http_methods
 
-from app.models import Note, NoteAttachment, NoteCommentThread, NoteShare, NoteVersion, Profile
+from app.models import Note, NoteAttachment, NoteCommentThread, NoteFolder, NoteShare, NoteTemplate, NoteVersion, Profile
+from app.services.note_content import NOTE_TEMPLATE_LABELS, NOTE_TEMPLATES
 from app.services.note_files import NOTE_FILE_ACCEPT, NOTE_IMAGE_ACCEPT
+from app.services.note_markdown import note_markdown_filename, render_note_markdown
 from app.services.note_pdf import note_pdf_filename, render_note_pdf
 from app.services.notes import (
     NoteConflictError,
     accessible_notes,
     add_comment_reply,
+    bulk_move_notes_to_folder,
+    bulk_set_notes_state,
     create_attachment,
     create_comment_thread,
     create_note,
+    create_note_folder,
+    create_note_template,
     delete_comment_thread,
+    delete_note_folder,
+    delete_note_template,
     display_name,
     duplicate_note,
     get_accessible_note,
     list_comment_threads,
+    list_note_templates,
     mark_shared_note_opened,
+    move_note_tree_item,
     note_accessible_user_ids,
     remove_note_share,
+    rename_note_folder,
     restore_note_version,
     save_note,
     serialize_note,
+    serialize_note_folder,
+    serialize_note_template,
     serialize_version,
     set_comment_thread_resolved,
+    set_note_folder,
     set_personal_state,
     set_trash_state,
     share_note,
@@ -45,10 +60,10 @@ SHORTCUT_ACTIONS = {
     "paragraph", "heading1", "heading2", "heading3", "alignLeft", "alignCenter",
     "alignRight", "alignJustify", "bulletList", "orderedList", "taskList", "indent",
     "outdent", "fontFamily", "fontSize", "textColor", "highlight", "lineHeight",
-    "image", "attachment", "horizontalRule", "insertTable", "addRowBefore", "addRowAfter",
+    "image", "attachment", "horizontalRule", "insertMath", "insertTable", "addRowBefore", "addRowAfter",
     "addColumnBefore", "addColumnAfter", "deleteRow", "deleteColumn", "deleteTable",
     "mergeCells", "splitCell", "clearFormat", "newNote", "focusSearch", "pin", "archive",
-    "duplicate", "trash", "share", "versions", "exportPdf", "shortcutSettings",
+    "duplicate", "trash", "share", "versions", "exportPdf", "exportMarkdown", "saveAsTemplate", "shortcutSettings",
 }
 RESERVED_SHORTCUTS = {"Mod+W", "Mod+T", "Mod+N", "Mod+L", "Mod+R", "Mod+Shift+N"}
 SHORTCUT_RE = re.compile(r"^(?=.{3,40}$)(?=.*(?:Mod|Ctrl|Alt|Shift)\+)[A-Za-z0-9+\[\]\\\-]+$")
@@ -75,6 +90,96 @@ def _feature_guard(request, *, json_response=False):
     return disabled_feature_response(request, "notes", json_response=json_response)
 
 
+def _optional_positive_int(value, label):
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        raise ValidationError(f"{label} ist ungültig.")
+    try:
+        result = int(value)
+    except (TypeError, ValueError) as error:
+        raise ValidationError(f"{label} ist ungültig.") from error
+    if result <= 0:
+        raise ValidationError(f"{label} ist ungültig.")
+    return result
+
+
+def _build_note_navigation(user, note_items, selected_folder_id=None, *, custom_order=True):
+    folders = list(NoteFolder.objects.filter(owner=user).values("id", "name", "parent_id", "position"))
+    nodes = {
+        item["id"]: {
+            "kind": "folder",
+            "id": item["id"],
+            "name": item["name"],
+            "parent_id": item["parent_id"],
+            "position": item["position"],
+            "items": [],
+            "child_folders": [],
+            "contains_selected": False,
+        }
+        for item in folders
+    }
+    tree_items = []
+    for node in nodes.values():
+        parent = nodes.get(node["parent_id"])
+        if parent and parent is not node:
+            parent["items"].append(node)
+            parent["child_folders"].append(node)
+        else:
+            tree_items.append(node)
+
+    for rank, note in enumerate(note_items):
+        note["kind"] = "note"
+        note["view_rank"] = rank
+        folder = nodes.get(note.get("folder_id"))
+        if folder:
+            folder["items"].append(note)
+        else:
+            tree_items.append(note)
+
+    def tree_sort_key(item):
+        if custom_order:
+            position = item.get("position")
+            return (position if position is not None else 2**31, 0 if item["kind"] == "note" else 1, item["id"])
+        if item["kind"] == "note":
+            return (0, item["view_rank"], item["id"])
+        return (1, item["name"].casefold(), item["id"])
+
+    tree_items.sort(key=tree_sort_key)
+    for node in nodes.values():
+        node["items"].sort(key=tree_sort_key)
+        node["child_folders"].sort(key=lambda item: (item["name"].casefold(), item["id"]))
+
+    current_id = selected_folder_id
+    visited = set()
+    while current_id in nodes and current_id not in visited:
+        visited.add(current_id)
+        nodes[current_id]["contains_selected"] = True
+        current_id = nodes[current_id]["parent_id"]
+
+    options = []
+    traversed = set()
+
+    def visit(node, depth):
+        if node["id"] in traversed:
+            return
+        traversed.add(node["id"])
+        options.append({"id": node["id"], "label": f"{'— ' * depth}{node['name']}"})
+        for child in node["child_folders"]:
+            visit(child, depth + 1)
+
+    root_folders = [item for item in tree_items if item["kind"] == "folder"]
+    root_folders.sort(key=lambda item: (item["name"].casefold(), item["id"]))
+    for root in root_folders:
+        visit(root, 0)
+    for node in nodes.values():
+        if node["id"] not in traversed:
+            if node not in tree_items:
+                tree_items.append(node)
+            visit(node, 0)
+    return tree_items, options
+
+
 @login_required
 def notes(request, note_id=None):
     disabled = _feature_guard(request)
@@ -84,8 +189,7 @@ def notes(request, note_id=None):
     query = request.GET.get("q", "").strip()
     status = request.GET.get("status", "all")
     scope = request.GET.get("scope", "all")
-    tag_filter = request.GET.get("tag", "").strip().casefold()
-    sort = request.GET.get("sort", "updated")
+    sort = request.GET.get("sort", "custom")
 
     queryset = accessible_notes(request.user, include_deleted=status == "trash")
     if status == "trash":
@@ -103,17 +207,14 @@ def notes(request, note_id=None):
     elif scope == "owned":
         queryset = queryset.filter(owner=request.user)
     if query:
-        queryset = queryset.filter(
-            Q(title__icontains=query) | Q(plain_text__icontains=query) | Q(tags__display_name__icontains=query)
-        ).distinct()
-    if tag_filter:
-        queryset = queryset.filter(tags__normalized_name=tag_filter)
+        queryset = queryset.filter(Q(title__icontains=query) | Q(plain_text__icontains=query)).distinct()
     order_map = {
+        "custom": ("state_position", "id"),
         "created": ("-created_at", "-id"),
         "title": ("title", "id"),
         "updated": ("-state_is_pinned", "-updated_at", "-id"),
     }
-    note_list = list(queryset.order_by(*order_map.get(sort, order_map["updated"]))[:200])
+    note_list = list(queryset.order_by(*order_map.get(sort, order_map["custom"]))[:200])
 
     selected_note = None
     if note_id:
@@ -128,23 +229,28 @@ def notes(request, note_id=None):
     if selected_note:
         mark_shared_note_opened(request.user, selected_note)
 
-    all_visible = accessible_notes(request.user).filter(deleted_at__isnull=True)
-    available_tags = sorted(
-        {tag.display_name for note in all_visible.prefetch_related("tags") for tag in note.tags.all()},
-        key=str.casefold,
+    note_items = [serialize_note(note, request.user, include_document=False) for note in note_list]
+    selected_note_data = serialize_note(selected_note, request.user) if selected_note else None
+    tree_items, folder_options = _build_note_navigation(
+        request.user,
+        note_items,
+        selected_note_data.get("folder_id") if selected_note_data else None,
+        custom_order=sort == "custom",
     )
     context = {
         "active_page": "notes",
-        "note_items": [serialize_note(note, request.user, include_document=False) for note in note_list],
-        "selected_note_data": serialize_note(selected_note, request.user) if selected_note else None,
+        "note_items": note_items,
+        "tree_items": tree_items,
+        "folder_options": folder_options,
+        "selected_note_data": selected_note_data,
         "query": query,
         "current_status": status,
         "current_scope": scope,
-        "current_tag": tag_filter,
         "current_sort": sort,
-        "available_tags": available_tags,
         "note_image_accept": NOTE_IMAGE_ACCEPT,
         "note_file_accept": NOTE_FILE_ACCEPT,
+        "note_templates": [{"key": key, "label": NOTE_TEMPLATE_LABELS[key]} for key in NOTE_TEMPLATES],
+        "custom_note_templates": [serialize_note_template(t) for t in list_note_templates(request.user)],
         "shortcut_overrides": getattr(getattr(request.user, "profile", None), "note_shortcuts", {}),
     }
     return render(request, "app/notes.html", context)
@@ -172,6 +278,27 @@ def note_pdf_export(request, note_id):
 
 
 @login_required
+@require_http_methods(["GET"])
+def note_markdown_export(request, note_id):
+    disabled = _feature_guard(request)
+    if disabled:
+        return disabled
+    try:
+        note = get_accessible_note(request.user, note_id, allow_deleted=True)
+    except Note.DoesNotExist:
+        raise Http404("Notiz nicht gefunden.")
+    response = FileResponse(
+        BytesIO(render_note_markdown(note).encode("utf-8")),
+        as_attachment=True,
+        filename=note_markdown_filename(note),
+        content_type="text/markdown; charset=utf-8",
+    )
+    response["Cache-Control"] = "private, no-store"
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+@login_required
 @require_http_methods(["POST"])
 def note_create_api(request):
     disabled = _feature_guard(request, json_response=True)
@@ -179,10 +306,155 @@ def note_create_api(request):
         return disabled
     try:
         payload = _json_body(request)
-        note = create_note(request.user, title=payload.get("title", "Unbenannte Notiz"))
+        folder_id = _optional_positive_int(payload.get("folder_id"), "Der Ordner")
+        custom_template_id = _optional_positive_int(payload.get("custom_template_id"), "Die Vorlage")
+        if custom_template_id is not None:
+            note = create_note(
+                request.user,
+                title=payload.get("title", "Unbenannte Notiz"),
+                custom_template_id=custom_template_id,
+                folder_id=folder_id,
+            )
+        else:
+            template = payload.get("template", "blank")
+            if template not in NOTE_TEMPLATES:
+                raise ValidationError("Unbekannte Vorlage.")
+            note = create_note(
+                request.user,
+                title=payload.get("title", "Unbenannte Notiz"),
+                template=template,
+                folder_id=folder_id,
+            )
         return JsonResponse({"ok": True, "note": serialize_note(note, request.user)}, status=201)
+    except NoteFolder.DoesNotExist:
+        return _error_response("Ordner nicht gefunden.", status=404)
+    except NoteTemplate.DoesNotExist:
+        return _error_response("Vorlage nicht gefunden.", status=404)
     except ValidationError as error:
         return _error_response(error)
+
+
+@login_required
+@require_http_methods(["POST"])
+def note_template_create_api(request):
+    disabled = _feature_guard(request, json_response=True)
+    if disabled:
+        return disabled
+    try:
+        payload = _json_body(request)
+        note_id = _optional_positive_int(payload.get("note_id"), "Die Notiz")
+        if note_id is None:
+            raise ValidationError("Es wurde keine Notiz angegeben.")
+        template = create_note_template(request.user, note_id, name=payload.get("name"))
+        return JsonResponse({"ok": True, "template": serialize_note_template(template)}, status=201)
+    except Note.DoesNotExist:
+        return _error_response("Notiz nicht gefunden.", status=404)
+    except ValidationError as error:
+        return _error_response(error)
+
+
+@login_required
+@require_http_methods(["DELETE"])
+def note_template_detail_api(request, template_id):
+    disabled = _feature_guard(request, json_response=True)
+    if disabled:
+        return disabled
+    try:
+        delete_note_template(request.user, template_id)
+        return JsonResponse({"ok": True})
+    except NoteTemplate.DoesNotExist:
+        return _error_response("Vorlage nicht gefunden.", status=404)
+
+
+@login_required
+@require_http_methods(["POST"])
+def note_folders_api(request):
+    disabled = _feature_guard(request, json_response=True)
+    if disabled:
+        return disabled
+    try:
+        payload = _json_body(request)
+        parent_id = _optional_positive_int(payload.get("parent_id"), "Der übergeordnete Ordner")
+        folder = create_note_folder(request.user, name=payload.get("name"), parent_id=parent_id)
+        return JsonResponse({"ok": True, "folder": serialize_note_folder(folder)}, status=201)
+    except NoteFolder.DoesNotExist:
+        return _error_response("Ordner nicht gefunden.", status=404)
+    except ValidationError as error:
+        return _error_response(error)
+
+
+@login_required
+@require_http_methods(["PATCH", "DELETE"])
+def note_folder_detail_api(request, folder_id):
+    disabled = _feature_guard(request, json_response=True)
+    if disabled:
+        return disabled
+    try:
+        if request.method == "DELETE":
+            delete_note_folder(request.user, folder_id)
+            return JsonResponse({"ok": True})
+        payload = _json_body(request)
+        folder = rename_note_folder(request.user, folder_id, name=payload.get("name"))
+        return JsonResponse({"ok": True, "folder": serialize_note_folder(folder)})
+    except NoteFolder.DoesNotExist:
+        return _error_response("Ordner nicht gefunden.", status=404)
+    except ValidationError as error:
+        return _error_response(error)
+
+
+@login_required
+@require_http_methods(["PATCH"])
+def note_folder_assignment_api(request, note_id):
+    disabled = _feature_guard(request, json_response=True)
+    if disabled:
+        return disabled
+    try:
+        payload = _json_body(request)
+        folder_id = _optional_positive_int(payload.get("folder_id"), "Der Ordner")
+        note = set_note_folder(request.user, note_id, folder_id)
+        return JsonResponse({"ok": True, "note": serialize_note(note, request.user)})
+    except Note.DoesNotExist:
+        return _error_response("Notiz nicht gefunden.", status=404)
+    except NoteFolder.DoesNotExist:
+        return _error_response("Ordner nicht gefunden.", status=404)
+    except ValidationError as error:
+        return _error_response(error)
+
+
+@login_required
+@require_http_methods(["PATCH"])
+def note_tree_move_api(request):
+    disabled = _feature_guard(request, json_response=True)
+    if disabled:
+        return disabled
+    try:
+        payload = _json_body(request)
+        item_type = payload.get("item_type")
+        target_type = payload.get("target_type")
+        item_id = _optional_positive_int(payload.get("item_id"), "Das Element")
+        target_id = _optional_positive_int(payload.get("target_id"), "Das Verschiebeziel")
+        if item_id is None:
+            raise ValidationError("Das Element ist ungültig.")
+        item = move_note_tree_item(
+            request.user,
+            item_type=item_type,
+            item_id=item_id,
+            placement=payload.get("placement"),
+            target_type=target_type,
+            target_id=target_id,
+        )
+        serialized = (
+            serialize_note(item, request.user)
+            if item_type == "note"
+            else serialize_note_folder(item)
+        )
+        return JsonResponse({"ok": True, "item_type": item_type, "item": serialized})
+    except Note.DoesNotExist:
+        return _error_response("Notiz nicht gefunden.", status=404)
+    except NoteFolder.DoesNotExist:
+        return _error_response("Ordner nicht gefunden.", status=404)
+    except (PermissionDenied, ValidationError) as error:
+        return _error_response(error, status=403 if isinstance(error, PermissionDenied) else 400)
 
 
 @login_required
@@ -201,7 +473,6 @@ def note_detail_api(request, note_id):
             note_id,
             title=payload.get("title"),
             document=payload.get("document"),
-            tags=payload.get("tags", []),
             base_revision=int(payload.get("base_revision", 0)),
             conflict_resolution=bool(payload.get("conflict_resolution")),
         )
@@ -240,7 +511,6 @@ def note_action_api(request, note_id):
                 note_id,
                 title=payload.get("title"),
                 document=payload.get("document"),
-                tags=payload.get("tags"),
             )
             return JsonResponse({"ok": True, "note": serialize_note(note, request.user)}, status=201)
         raise ValidationError("Unbekannte Notizaktion.")
@@ -248,6 +518,38 @@ def note_action_api(request, note_id):
         return _error_response("Notiz nicht gefunden.", status=404)
     except PermissionDenied as error:
         return _error_response(error, status=403)
+    except ValidationError as error:
+        return _error_response(error)
+
+
+@login_required
+@require_http_methods(["POST"])
+def note_bulk_action_api(request):
+    disabled = _feature_guard(request, json_response=True)
+    if disabled:
+        return disabled
+    try:
+        payload = _json_body(request)
+        raw_ids = payload.get("note_ids")
+        if not isinstance(raw_ids, list) or not raw_ids:
+            raise ValidationError("Es wurden keine Notizen ausgewählt.")
+        if len(raw_ids) > 200:
+            raise ValidationError("Es können höchstens 200 Notizen auf einmal bearbeitet werden.")
+        note_ids = [_optional_positive_int(value, "Die Notiz") for value in raw_ids]
+        if any(value is None for value in note_ids):
+            raise ValidationError("Ungültige Notiz-ID.")
+
+        action = payload.get("action")
+        if action == "move_folder":
+            folder_id = _optional_positive_int(payload.get("folder_id"), "Der Ordner")
+            updated_ids, skipped_ids = bulk_move_notes_to_folder(request.user, note_ids, folder_id)
+        elif action in {"pin", "unpin", "archive", "unarchive", "trash", "restore", "purge"}:
+            updated_ids, skipped_ids = bulk_set_notes_state(request.user, note_ids, action=action)
+        else:
+            raise ValidationError("Unbekannte Notizaktion.")
+        return JsonResponse({"ok": True, "updated_ids": updated_ids, "skipped_ids": skipped_ids})
+    except NoteFolder.DoesNotExist:
+        return _error_response("Ordner nicht gefunden.", status=404)
     except ValidationError as error:
         return _error_response(error)
 
@@ -336,6 +638,29 @@ def note_mention_candidates_api(request, note_id):
         {
             "ok": True,
             "users": [{"id": user.id, "name": display_name(user)} for user in users[:10]],
+        }
+    )
+
+
+@login_required
+@require_http_methods(["GET"])
+def note_link_candidates_api(request, note_id):
+    disabled = _feature_guard(request, json_response=True)
+    if disabled:
+        return disabled
+    try:
+        get_accessible_note(request.user, note_id)
+    except Note.DoesNotExist:
+        return _error_response("Notiz nicht gefunden.", status=404)
+
+    query = request.GET.get("q", "").strip()
+    notes_queryset = accessible_notes(request.user).filter(deleted_at__isnull=True).exclude(pk=note_id)
+    if query:
+        notes_queryset = notes_queryset.filter(title__icontains=query)
+    return JsonResponse(
+        {
+            "ok": True,
+            "notes": [{"id": note.id, "title": note.title} for note in notes_queryset.order_by("-updated_at")[:10]],
         }
     )
 

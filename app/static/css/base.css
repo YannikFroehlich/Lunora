@@ -789,3 +789,24 @@ button:disabled,
     padding: 28px 24px;
   }
 }
+
+@media print {
+  .floating-nav,
+  .flash-stack,
+  body::before {
+    display: none !important;
+  }
+
+  body {
+    background: #fff;
+  }
+
+  .site-main {
+    min-height: 0;
+    padding: 0;
+  }
+
+  .page-shell {
+    width: auto;
+  }
+}

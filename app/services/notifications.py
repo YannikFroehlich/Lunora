@@ -14,13 +14,17 @@ from app.models import (
     NoteActivityNotification,
     NoteShare,
     Profile,
+    WeatherLocation,
     WeeklySummaryDelivery,
 )
 from app.services.message_queries import unread_total_for_user
 from app.services.user_preferences import format_user_datetime, localtime_for_user
+from app.services.weather_service import get_weather_alert_for_location, weather_location_to_dict
 
 
 logger = logging.getLogger(__name__)
+
+WEATHER_ALERT_COOLDOWN = timedelta(hours=6)
 
 
 def claim_due_desktop_reminders(user, *, now=None, limit=5):
@@ -369,3 +373,47 @@ def _weekly_summary_text(user, current_time):
         ]
     )
     return "\n".join(lines)
+
+
+def claim_due_weather_alerts(user, *, now=None, limit=5):
+    """Check each saved weather location for a heuristic severe-weather alert, cooldown-gated."""
+    current_time = now or timezone.now()
+    try:
+        profile = user.profile
+    except Profile.DoesNotExist:
+        return []
+
+    if not profile.notify_desktop:
+        return []
+
+    notifications = []
+    locations = WeatherLocation.objects.filter(user=user).order_by("order", "id")[:limit]
+    for location in locations:
+        alert = get_weather_alert_for_location(weather_location_to_dict(location))
+
+        if not alert:
+            if location.last_alert_kind:
+                WeatherLocation.objects.filter(pk=location.pk).update(last_alert_kind="")
+            continue
+
+        already_notified_recently = (
+            location.last_alert_kind == alert["kind"]
+            and location.last_alert_notified_at is not None
+            and current_time - location.last_alert_notified_at < WEATHER_ALERT_COOLDOWN
+        )
+        if already_notified_recently:
+            continue
+
+        WeatherLocation.objects.filter(pk=location.pk).update(
+            last_alert_kind=alert["kind"], last_alert_notified_at=current_time
+        )
+        notifications.append(
+            {
+                "id": f"weather-alert-{location.pk}-{alert['kind']}",
+                "title": alert["title"],
+                "body": location.label or location.name,
+                "url": "/weather/",
+            }
+        )
+
+    return notifications

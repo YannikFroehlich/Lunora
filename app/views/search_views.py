@@ -22,11 +22,7 @@ def global_search(request):
     if query and flags["notes"]:
         notes_results = list(
             accessible_notes(request.user)
-            .filter(
-                Q(title__icontains=query)
-                | Q(plain_text__icontains=query)
-                | Q(tags__display_name__icontains=query)
-            )
+            .filter(Q(title__icontains=query) | Q(plain_text__icontains=query))
             .distinct()
             .order_by("-updated_at")[:SEARCH_RESULT_LIMIT]
         )
