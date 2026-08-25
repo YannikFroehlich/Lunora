@@ -10,6 +10,12 @@ from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
 
+from app.models import WeatherLocation
+
+
+MAX_WEATHER_LOCATIONS = 8
+_LOCATION_DEDUPE_PRECISION = 2
+
 
 def get_weather_context(params=None, user=None):
     """Return weather data for the requested place without exposing API keys."""
@@ -147,6 +153,10 @@ def _location_from_request(params, user=None):
     if query:
         return {"query": query, "label": query}
 
+    default_location = _default_weather_location_dict(user)
+    if default_location:
+        return default_location
+
     return {
         "query": _weather_default_city_for(user),
         "label": "Standardort",
@@ -163,6 +173,95 @@ def _weather_default_city_for(user=None):
         if default_city:
             return default_city
     return settings.WEATHER_DEFAULT_CITY
+
+
+def _default_weather_location_dict(user):
+    if not user or not getattr(user, "is_authenticated", False):
+        return None
+    location = WeatherLocation.objects.filter(user=user, is_default=True).first()
+    if not location:
+        return None
+    result = weather_location_to_dict(location)
+    result["is_default"] = True
+    return result
+
+
+def weather_location_to_dict(location):
+    result = {
+        "name": location.name,
+        "details": location.details,
+        "label": location.label or location.name or location.query,
+    }
+    if location.lat is not None and location.lon is not None:
+        result["lat"] = location.lat
+        result["lon"] = location.lon
+    elif location.query:
+        result["query"] = location.query
+    return result
+
+
+def list_weather_locations(user):
+    return list(WeatherLocation.objects.filter(user=user).order_by("order", "id"))
+
+
+def save_weather_location(user, *, name, lat, lon, details="", label=""):
+    lat = _coerce_float(lat)
+    lon = _coerce_float(lon)
+    existing = list(WeatherLocation.objects.filter(user=user).order_by("order", "id"))
+
+    if lat is not None and lon is not None:
+        for location in existing:
+            if (
+                location.lat is not None
+                and location.lon is not None
+                and round(location.lat, _LOCATION_DEDUPE_PRECISION) == round(lat, _LOCATION_DEDUPE_PRECISION)
+                and round(location.lon, _LOCATION_DEDUPE_PRECISION) == round(lon, _LOCATION_DEDUPE_PRECISION)
+            ):
+                return location, False
+
+    if len(existing) >= MAX_WEATHER_LOCATIONS:
+        raise ValueError(f"Es können höchstens {MAX_WEATHER_LOCATIONS} Orte gespeichert werden.")
+
+    location = WeatherLocation.objects.create(
+        user=user,
+        name=name or "",
+        lat=lat,
+        lon=lon,
+        details=details or "",
+        label=label or name or "",
+        order=len(existing),
+        is_default=not existing,
+    )
+    return location, True
+
+
+def delete_weather_location(user, location_id):
+    location_id = _coerce_location_id(location_id)
+    if location_id is None:
+        return
+    location = WeatherLocation.objects.filter(user=user, pk=location_id).first()
+    if not location:
+        return
+    was_default = location.is_default
+    location.delete()
+    if was_default:
+        next_location = WeatherLocation.objects.filter(user=user).order_by("order", "id").first()
+        if next_location:
+            next_location.is_default = True
+            next_location.save(update_fields=["is_default"])
+
+
+def set_default_weather_location(user, location_id):
+    location_id = _coerce_location_id(location_id)
+    if location_id is None:
+        return
+    location = WeatherLocation.objects.filter(user=user, pk=location_id).first()
+    if not location:
+        return
+    WeatherLocation.objects.filter(user=user).exclude(pk=location.pk).update(is_default=False)
+    if not location.is_default:
+        location.is_default = True
+        location.save(update_fields=["is_default"])
 
 
 def _geocode_first(query):
@@ -346,6 +445,9 @@ def _build_context_from_api(current, forecast, fallback, location):
         "low": round(main.get("temp_min", temperature - 4)),
         "updated": updated.strftime("heute, %H:%M Uhr"),
         "icon": _icon_for_weather(weather.get("main", "")),
+        "latitude": location.get("lat"),
+        "longitude": location.get("lon"),
+        "place_label": location.get("label") or city_name,
     }
     context["summary"] = [
         {
@@ -390,6 +492,7 @@ def _build_context_from_api(current, forecast, fallback, location):
     context["forecast_summary"] = _forecast_summary(context["daily_forecast"])
     context["weather_tip"] = _build_weather_tip(current, forecast, weather)
     context["weather_hint"] = context["weather_tip"]["text"]
+    context["weather_alert"] = _build_weather_alert(current, forecast, weather)
     context["weather_map"] = _weather_map_context_for_location(location, current, city_name)
     return context
 
@@ -481,7 +584,7 @@ def _forecast_summary(daily_forecast):
 def _fallback_for_location(fallback, location, search_query):
     context = deepcopy(fallback)
     selected_label = location.get("label") or search_query
-    display_label = location.get("query") if location.get("is_default") else selected_label
+    display_label = (location.get("query") or selected_label) if location.get("is_default") else selected_label
     context["search_query"] = search_query
 
     if display_label:
@@ -556,6 +659,13 @@ def _weather_map_context_for_location(location=None, current=None, city_name="")
 def _coerce_float(value):
     try:
         return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_location_id(value):
+    try:
+        return int(value)
     except (TypeError, ValueError):
         return None
 
@@ -707,6 +817,83 @@ def _build_weather_tip(current, forecast, weather):
     }
 
 
+def _build_weather_alert(current, forecast, weather):
+    """Derive a heuristic severe-weather warning from already-loaded current/forecast data.
+
+    Lunora has no access to official weather-warning feeds (that needs OpenWeather's
+    separately-subscribed One Call API), so this is Lunora's own assessment from the
+    current/forecast fields already fetched for the page, not an official warning.
+    """
+    condition = weather.get("main", "")
+    rain_chance = _precipitation_percent(forecast)
+    temperature = round(current.get("main", {}).get("temp", 24))
+    wind_speed = round(current.get("wind", {}).get("speed", 0) * 3.6)
+
+    if condition == "Thunderstorm":
+        return {
+            "kind": "storm",
+            "icon": "fa-bolt",
+            "title": "Gewitterwarnung",
+            "text": "Aktuell werden Gewitter gemeldet. Meide freie Flächen und suche wenn möglich Schutz.",
+        }
+
+    if wind_speed >= 60:
+        return {
+            "kind": "wind",
+            "icon": "fa-wind",
+            "title": "Sturmwarnung",
+            "text": f"Windgeschwindigkeiten von rund {wind_speed} km/h wurden gemeldet. Sichere loses Material und meide freie Flächen.",
+        }
+
+    if rain_chance >= 80:
+        return {
+            "kind": "rain",
+            "icon": "fa-cloud-showers-heavy",
+            "title": "Starkregenwarnung",
+            "text": f"Die Regenwahrscheinlichkeit liegt bei {rain_chance} %. Rechne mit kurzfristigen Überflutungen auf Straßen und Wegen.",
+        }
+
+    if temperature >= 35:
+        return {
+            "kind": "heat",
+            "icon": "fa-temperature-high",
+            "title": "Hitzewarnung",
+            "text": f"Bei rund {temperature}° besteht erhöhtes Risiko für Kreislaufbeschwerden. Trinke ausreichend und meide direkte Sonne.",
+        }
+
+    if temperature <= -10:
+        return {
+            "kind": "cold",
+            "icon": "fa-temperature-low",
+            "title": "Kältewarnung",
+            "text": f"Bei rund {temperature}° besteht Erfrierungsgefahr im Freien. Kleide dich entsprechend warm.",
+        }
+
+    return None
+
+
+def get_weather_alert_for_location(location):
+    """Fetch current/forecast data for a saved location and return a heuristic alert, or None."""
+    if not settings.WEATHER_API_KEY:
+        return None
+
+    resolved = location
+    if resolved.get("query") and not resolved.get("lat"):
+        resolved = _geocode_first(resolved["query"])
+        if not resolved:
+            return None
+
+    try:
+        params = _weather_api_params(resolved)
+        current = _fetch_json(f"{settings.WEATHER_API_BASE_URL}/weather", params)
+        forecast = _fetch_json(f"{settings.WEATHER_API_BASE_URL}/forecast", params)
+    except Exception:
+        return None
+
+    weather = (current.get("weather") or [{}])[0]
+    return _build_weather_alert(current, forecast, weather)
+
+
 def _fallback_weather_tip():
     period = _day_period(timezone.localtime().hour)
 
@@ -799,6 +986,9 @@ def _fallback_weather_context():
             "low": 16,
             "updated": "heute, 10:25 Uhr",
             "icon": "fa-cloud-sun",
+            "latitude": None,
+            "longitude": None,
+            "place_label": "",
         },
         "summary": [
             {"icon": "fa-droplet", "label": "Niederschlag", "value": "10 %", "hint": "Geringe Chance"},
@@ -825,5 +1015,6 @@ def _fallback_weather_context():
         "weather_map": _weather_map_context_for_location(city_name="Bünde"),
         "weather_tip": weather_tip,
         "weather_hint": weather_tip["text"],
+        "weather_alert": None,
         "api_notice": "",
     }

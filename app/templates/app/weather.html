@@ -1,10 +1,10 @@
 {% extends 'app/base.html' %}
-{% load static %}
+{% load static l10n %}
 
 {% block title %}Wetter | Lunora{% endblock %}
 
 {% block page_css %}
-<link rel="stylesheet" href="{% static 'css/weather.css' %}?v=weather-map-5">
+<link rel="stylesheet" href="{% static 'css/weather.css' %}?v=weather-map-7">
 {% endblock %}
 
 {% block content %}
@@ -19,6 +19,13 @@
 
     {% if api_notice %}
     <p class="api-notice" role="status">{{ api_notice }}</p>
+    {% endif %}
+
+    {% if weather_alert %}
+    <p class="weather-alert-banner" role="alert">
+        <i class="fa-solid {{ weather_alert.icon }}" aria-hidden="true"></i>
+        <span><strong>{{ weather_alert.title }}</strong> — {{ weather_alert.text }}</span>
+    </p>
     {% endif %}
 
     {% if not weather_map.available %}
@@ -47,6 +54,33 @@
         <button class="ghost-button" type="button" data-current-location><i class="fa-solid fa-location-dot"></i> Mein Standort</button>
     </form>
 
+    {% if weather_locations %}
+    <div class="weather-location-chips soft-scrollbar" aria-label="Gespeicherte Orte">
+        {% for location in weather_locations %}
+        <div class="weather-location-chip {% if location.is_default %}is-default{% endif %}">
+            <a href="{% url 'weather' %}?lat={{ location.lat|unlocalize|urlencode }}&lon={{ location.lon|unlocalize|urlencode }}&name={{ location.name|urlencode }}&details={{ location.details|urlencode }}&label={{ location.label|urlencode }}">
+                {% if location.is_default %}<i class="fa-solid fa-star" aria-hidden="true"></i>{% endif %}
+                {{ location.name|default:location.label }}
+            </a>
+            {% if not location.is_default %}
+            <form method="post" action="{% url 'weather' %}">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="location_set_default">
+                <input type="hidden" name="location_id" value="{{ location.id }}">
+                <button type="submit" aria-label="{{ location.name }} als Standard"><i class="fa-regular fa-star"></i></button>
+            </form>
+            {% endif %}
+            <form method="post" action="{% url 'weather' %}">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="location_delete">
+                <input type="hidden" name="location_id" value="{{ location.id }}">
+                <button type="submit" aria-label="{{ location.name }} entfernen"><i class="fa-solid fa-xmark"></i></button>
+            </form>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
     <div class="weather-grid">
         <section class="glass-panel current-weather">
             <div class="current-place">
@@ -56,15 +90,21 @@
                 <span class="location-detail" title="{{ current.detail }}">{{ current.detail }}</span>
                 {% endif %}
                 <span class="soft-pill"><i class="fa-solid fa-location-arrow"></i> {{ current.label }}</span>
+                {% if current.latitude %}
                 <form class="weather-default-form" method="post" action="{% url 'weather' %}">
                     {% csrf_token %}
-                    <input type="hidden" name="form_name" value="weather_default">
-                    <input type="hidden" name="weather_default_city" value="{{ current.city }}">
+                    <input type="hidden" name="form_name" value="location_save">
+                    <input type="hidden" name="name" value="{{ current.city }}">
+                    <input type="hidden" name="lat" value="{{ current.latitude|unlocalize }}">
+                    <input type="hidden" name="lon" value="{{ current.longitude|unlocalize }}">
+                    <input type="hidden" name="details" value="{{ current.detail }}">
+                    <input type="hidden" name="label" value="{{ current.place_label }}">
                     <button class="ghost-button" type="submit">
                         <i class="fa-solid fa-house-signal" aria-hidden="true"></i>
-                        Als Standard
+                        Ort merken
                     </button>
                 </form>
+                {% endif %}
             </div>
             <i class="fa-solid {{ current.icon }} main-weather-icon"></i>
             <div class="temperature-block">

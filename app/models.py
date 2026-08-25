@@ -112,6 +112,27 @@ class Profile(models.Model):
         return self.name
 
 
+class WeatherLocation(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="weather_locations")
+    query = models.CharField(max_length=120, blank=True)
+    lat = models.FloatField(blank=True, null=True)
+    lon = models.FloatField(blank=True, null=True)
+    name = models.CharField(max_length=120, blank=True)
+    details = models.CharField(max_length=120, blank=True)
+    label = models.CharField(max_length=200, blank=True)
+    is_default = models.BooleanField(default=False)
+    order = models.PositiveIntegerField(default=0)
+    last_alert_kind = models.CharField(max_length=40, blank=True)
+    last_alert_notified_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["order", "id"]
+
+    def __str__(self):
+        return self.label or self.name or self.query
+
+
 class Conversation(models.Model):
     title = models.CharField(max_length=140, blank=True)
     is_group = models.BooleanField(default=False)
@@ -602,7 +623,6 @@ class Note(models.Model):
         null=True,
         related_name="last_edited_notes",
     )
-    tags = models.ManyToManyField("NoteTag", blank=True, related_name="notes")
     deleted_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -617,20 +637,58 @@ class Note(models.Model):
         return self.title
 
 
-class NoteTag(models.Model):
-    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="note_tags")
-    normalized_name = models.CharField(max_length=30)
-    display_name = models.CharField(max_length=30)
+class NoteTemplate(models.Model):
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="note_templates")
+    name = models.CharField(max_length=100)
+    document = models.JSONField()
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ["normalized_name"]
+        ordering = ["name", "id"]
         constraints = [
-            models.UniqueConstraint(fields=["owner", "normalized_name"], name="unique_note_tag_per_owner"),
+            models.UniqueConstraint(fields=["owner", "name"], name="unique_note_template_name_per_owner"),
         ]
 
     def __str__(self):
-        return f"#{self.display_name}"
+        return self.name
+
+
+class NoteFolder(models.Model):
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="note_folders")
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,
+        blank=True,
+        null=True,
+        related_name="children",
+    )
+    name = models.CharField(max_length=100)
+    position = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name", "id"]
+        indexes = [
+            models.Index(fields=["owner", "parent", "name"], name="app_notefolder_tree_idx"),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class NoteLink(models.Model):
+    source_note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name="outgoing_links")
+    target_note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name="incoming_links")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["source_note", "target_note"], name="unique_note_link"),
+        ]
+
+    def __str__(self):
+        return f"{self.source_note_id} -> {self.target_note_id}"
 
 
 class NoteShare(models.Model):
@@ -656,6 +714,14 @@ class NoteShare(models.Model):
 class NoteUserState(models.Model):
     note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name="user_states")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="note_states")
+    folder = models.ForeignKey(
+        NoteFolder,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="note_states",
+    )
+    position = models.PositiveIntegerField(default=0)
     is_pinned = models.BooleanField(default=False)
     pinned_at = models.DateTimeField(blank=True, null=True)
     is_archived = models.BooleanField(default=False)
@@ -716,7 +782,6 @@ class NoteVersion(models.Model):
     source_revision = models.PositiveIntegerField()
     title = models.CharField(max_length=200)
     document = models.JSONField()
-    tags = models.JSONField(default=list)
     reason = models.CharField(max_length=12, choices=REASON_CHOICES, default=REASON_AUTOSAVE)
     created_at = models.DateTimeField(auto_now_add=True)
 

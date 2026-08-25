@@ -3,7 +3,6 @@ from __future__ import annotations
 from html import escape
 from io import BytesIO
 
-from django.utils import timezone
 from django.utils.text import slugify
 from PIL import Image as PillowImage
 from PIL import UnidentifiedImageError
@@ -19,7 +18,6 @@ from reportlab.platypus import (
     ListItem,
     Paragraph,
     SimpleDocTemplate,
-    Spacer,
     Table,
     TableStyle,
 )
@@ -71,7 +69,7 @@ def render_note_pdf(note):
         creator="Lunora Notes",
         allowSplitting=True,
     )
-    document.build(renderer.story(), onFirstPage=renderer.draw_page, onLaterPages=renderer.draw_page)
+    document.build(renderer.story())
     stream.seek(0)
     return stream
 
@@ -102,54 +100,10 @@ class NotePdfRenderer:
         )
 
     def story(self):
-        title_style = ParagraphStyle(
-            "NoteTitle",
-            parent=self.body_style,
-            fontName="Helvetica-Bold",
-            fontSize=22,
-            leading=27,
-            textColor=TEXT_COLOR,
-            spaceAfter=6,
-            keepWithNext=True,
-        )
-        meta_style = ParagraphStyle(
-            "NoteMeta",
-            parent=self.body_style,
-            fontSize=8.5,
-            leading=12,
-            textColor=MUTED_COLOR,
-            spaceAfter=4,
-            keepWithNext=True,
-        )
-        story = [Paragraph(escape(self.note.title), title_style)]
-        updated = timezone.localtime(self.note.updated_at).strftime("%d.%m.%Y, %H:%M")
-        story.append(Paragraph(f"Zuletzt bearbeitet am {updated} von {escape(self.editor_name)}", meta_style))
-        tags = [tag.display_name for tag in self.note.tags.all()]
-        if tags:
-            tag_text = " &nbsp; ".join(f'<font color="#9a6f47">#{escape(tag)}</font>' for tag in tags)
-            story.append(Paragraph(tag_text, meta_style))
-        story.extend(
-            [
-                Spacer(1, 5),
-                HRFlowable(width="100%", thickness=0.6, color=LIGHT_BORDER, spaceBefore=0, spaceAfter=15),
-            ]
-        )
         content_flowables = self.nodes(self.note.document.get("content") or [])
-        story.extend(content_flowables)
         if not content_flowables:
-            story.append(Paragraph("Noch kein Inhalt", self._style(textColor=MUTED_COLOR)))
-        return story
-
-    def draw_page(self, canvas, document):
-        canvas.saveState()
-        canvas.setStrokeColor(LIGHT_BORDER)
-        canvas.setLineWidth(0.5)
-        canvas.line(PAGE_MARGIN, 13 * mm, PAGE_WIDTH - PAGE_MARGIN, 13 * mm)
-        canvas.setFillColor(MUTED_COLOR)
-        canvas.setFont("Helvetica", 8)
-        canvas.drawString(PAGE_MARGIN, 8.5 * mm, "Lunora Notes")
-        canvas.drawRightString(PAGE_WIDTH - PAGE_MARGIN, 8.5 * mm, f"Seite {document.page}")
-        canvas.restoreState()
+            content_flowables = [Paragraph("Noch kein Inhalt", self._style(textColor=MUTED_COLOR))]
+        return content_flowables
 
     def nodes(self, nodes, *, compact=False, force_bold=False):
         flowables = []
@@ -175,6 +129,8 @@ class NotePdfRenderer:
                 flowables.extend(self.image(node))
             elif node_type == "noteAttachment":
                 flowables.append(self.attachment(node))
+            elif node_type == "mathBlock":
+                flowables.append(self.math_block(node))
         return flowables
 
     def paragraph(self, node, *, compact=False, prefix="", force_bold=False):
@@ -216,6 +172,10 @@ class NotePdfRenderer:
             if child.get("type") == "hardBreak":
                 parts.append("<br/>")
                 continue
+            if child.get("type") == "mathInline":
+                latex = escape((child.get("attrs") or {}).get("latex", ""))
+                parts.append(f'<font name="Courier" backColor="#f1ede7">{latex}</font>')
+                continue
             if child.get("type") != "text":
                 continue
             markup = escape(child.get("text", ""))
@@ -230,6 +190,10 @@ class NotePdfRenderer:
                     markup = f"<u>{markup}</u>"
                 elif mark_type == "strike":
                     markup = f"<strike>{markup}</strike>"
+                elif mark_type == "superscript":
+                    markup = f"<super>{markup}</super>"
+                elif mark_type == "subscript":
+                    markup = f"<sub>{markup}</sub>"
                 elif mark_type == "code":
                     markup = f'<font name="Courier" backColor="#f1ede7">{markup}</font>'
                 elif mark_type == "highlight" and attrs.get("color"):
@@ -317,6 +281,33 @@ class NotePdfRenderer:
                 ]
             )
         )
+        return table
+
+    def math_block(self, node):
+        latex = (node.get("attrs") or {}).get("latex", "")
+        style = self._style(
+            fontName="Courier",
+            fontSize=10,
+            leading=14,
+            alignment=TA_CENTER,
+            spaceAfter=0,
+        )
+        content = Paragraph(escape(latex) or "&#160;", style)
+        table = Table([[content]], colWidths=[CONTENT_WIDTH], hAlign="LEFT")
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), SOFT_BACKGROUND),
+                    ("BOX", (0, 0), (-1, -1), 0.5, LIGHT_BORDER),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 11),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 11),
+                    ("TOPPADDING", (0, 0), (-1, -1), 8),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                ]
+            )
+        )
+        table.spaceBefore = 6
+        table.spaceAfter = 10
         return table
 
     def table(self, node):

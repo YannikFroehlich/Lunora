@@ -63,13 +63,33 @@ urlpatterns = [
     path("messages/<int:conversation_id>/", view.messages, name="messages_detail"),
     path("notes/", view.notes, name="notes"),
     path("notes/<int:note_id>/export/pdf/", view.note_pdf_export, name="note_pdf_export"),
+    path("notes/<int:note_id>/export/markdown/", view.note_markdown_export, name="note_markdown_export"),
     path("notes/<int:note_id>/", view.notes, name="note_detail"),
     path("notes/api/create/", view.note_create_api, name="note_create_api"),
+    path("notes/api/templates/", view.note_template_create_api, name="note_template_create_api"),
+    path(
+        "notes/api/templates/<int:template_id>/",
+        view.note_template_detail_api,
+        name="note_template_detail_api",
+    ),
+    path("notes/api/folders/", view.note_folders_api, name="note_folders_api"),
+    path("notes/api/tree/move/", view.note_tree_move_api, name="note_tree_move_api"),
+    path("notes/api/bulk-action/", view.note_bulk_action_api, name="note_bulk_action_api"),
+    path(
+        "notes/api/folders/<int:folder_id>/",
+        view.note_folder_detail_api,
+        name="note_folder_detail_api",
+    ),
     path("notes/api/share-candidates/", view.note_share_candidates_api, name="note_share_candidates_api"),
     path(
         "notes/api/<int:note_id>/mention-candidates/",
         view.note_mention_candidates_api,
         name="note_mention_candidates_api",
+    ),
+    path(
+        "notes/api/<int:note_id>/link-candidates/",
+        view.note_link_candidates_api,
+        name="note_link_candidates_api",
     ),
     path("notes/api/<int:note_id>/comments/", view.note_comments_api, name="note_comments_api"),
     path(
@@ -80,6 +100,11 @@ urlpatterns = [
     path("notes/api/shortcuts/", view.note_shortcuts_api, name="note_shortcuts_api"),
     path("notes/api/<int:note_id>/", view.note_detail_api, name="note_detail_api"),
     path("notes/api/<int:note_id>/actions/", view.note_action_api, name="note_action_api"),
+    path(
+        "notes/api/<int:note_id>/folder/",
+        view.note_folder_assignment_api,
+        name="note_folder_assignment_api",
+    ),
     path("notes/api/<int:note_id>/shares/", view.note_shares_api, name="note_shares_api"),
     path(
         "notes/api/<int:note_id>/shares/<int:user_id>/",

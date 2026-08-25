@@ -22,11 +22,12 @@ from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
 from app.forms import CalendarSourceForm, ProfileForm
-from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, CalendarSource, ChatMessage, ChatMessageAttachment, ChatMessageReaction, Conversation, ConversationMember, CustomHoliday, Note, NoteActivityNotification, NoteAttachment, NoteCommentThread, NoteShare, NoteUserState, NoteVersion, OfficialHoliday, Profile, SystemSettings, VacationPeriod, VacationYear, WeeklySummaryDelivery
+from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, CalendarSource, ChatMessage, ChatMessageAttachment, ChatMessageReaction, Conversation, ConversationMember, CustomHoliday, Note, NoteActivityNotification, NoteAttachment, NoteCommentThread, NoteFolder, NoteLink, NoteShare, NoteTemplate, NoteUserState, NoteVersion, OfficialHoliday, Profile, SystemSettings, VacationPeriod, VacationYear, WeatherLocation, WeeklySummaryDelivery
 from app.services.calendar_service import fetch_ical, parse_ical_events
 from app.services.calendar_sync_queue import queue_calendar_sources
 from app.services.image_uploads import PROFILE_IMAGE_MAX_BYTES
 from app.services.notifications import (
+    claim_due_weather_alerts,
     send_due_reminder_emails,
     send_new_invitation_emails,
     send_note_activity_emails,
@@ -35,11 +36,18 @@ from app.services.notifications import (
 from app.services.scheduled_tasks import sync_due_calendars
 from app.services.weather_service import (
     WEATHER_MAP_LAYERS,
+    _build_weather_alert,
+    delete_weather_location,
     fetch_weather_map_tile,
     get_location_suggestions,
+    get_weather_alert_for_location,
     get_weather_at_coordinates,
     get_weather_context,
+    list_weather_locations,
+    save_weather_location,
+    set_default_weather_location,
 )
+from app.services.note_content import NOTE_TEMPLATES, empty_note_document, validate_note_document
 from app.services.notes import prune_note_versions, purge_expired_notes
 from app.services.vacation_planner import annual_summary, calculate_period
 from app.views.message_views import _build_inbox_items
@@ -1903,6 +1911,37 @@ class ScheduledAutomationTests(TestCase):
         self.assertEqual(first_response.json()["notifications"][0]["title"], "Anna hat dich erwähnt")
         self.assertEqual(second_response.json(), {"notifications": []})
 
+    @override_settings(WEATHER_API_KEY="test-key", WEATHER_CACHE_SECONDS=0)
+    def test_weather_alert_desktop_claim_respects_cooldown(self):
+        location = WeatherLocation.objects.create(
+            user=self.user, name="Berlin", lat=52.52, lon=13.405, label="Berlin, DE", is_default=True
+        )
+        current_payload = {
+            "weather": [{"main": "Thunderstorm", "description": "Gewitter"}],
+            "main": {"temp": 22, "feels_like": 22},
+            "wind": {"speed": 3},
+        }
+        forecast_payload = {"list": [{"pop": 0.2}]}
+        self.client.force_login(self.user)
+
+        with patch(
+            "app.services.weather_service.urlopen",
+            side_effect=[
+                FakeWeatherResponse(current_payload),
+                FakeWeatherResponse(forecast_payload),
+                FakeWeatherResponse(current_payload),
+                FakeWeatherResponse(forecast_payload),
+            ],
+        ):
+            first_response = self.client.post("/notifications/claim/")
+            second_response = self.client.post("/notifications/claim/")
+
+        self.assertEqual(first_response.json()["notifications"][0]["title"], "Gewitterwarnung")
+        self.assertEqual(second_response.json(), {"notifications": []})
+        location.refresh_from_db()
+        self.assertEqual(location.last_alert_kind, "storm")
+        self.assertIsNotNone(location.last_alert_notified_at)
+
     def test_weekly_summary_is_sent_once_on_monday(self):
         monday = timezone.make_aware(datetime(2026, 8, 10, 9, 0), ZoneInfo("Europe/Berlin"))
         CalendarEvent.objects.create(
@@ -2172,6 +2211,133 @@ class WeatherMapTests(TestCase):
         self.assertContains(response, "Regentage")
         self.assertContains(response, "Nass")
         self.assertNotContains(response, "31°")
+
+    def test_build_weather_alert_detects_severe_conditions(self):
+        base_current = {"main": {"temp": 20}, "wind": {"speed": 0}}
+        base_forecast = {"list": [{"pop": 0.1}]}
+
+        thunder = _build_weather_alert(base_current, base_forecast, {"main": "Thunderstorm"})
+        self.assertEqual(thunder["kind"], "storm")
+
+        windy = _build_weather_alert({"main": {"temp": 20}, "wind": {"speed": 20}}, base_forecast, {"main": "Clear"})
+        self.assertEqual(windy["kind"], "wind")
+
+        rainy = _build_weather_alert(base_current, {"list": [{"pop": 0.9}]}, {"main": "Rain"})
+        self.assertEqual(rainy["kind"], "rain")
+
+        hot = _build_weather_alert({"main": {"temp": 36}, "wind": {"speed": 0}}, base_forecast, {"main": "Clear"})
+        self.assertEqual(hot["kind"], "heat")
+
+        cold = _build_weather_alert({"main": {"temp": -12}, "wind": {"speed": 0}}, base_forecast, {"main": "Clear"})
+        self.assertEqual(cold["kind"], "cold")
+
+        self.assertIsNone(_build_weather_alert(base_current, base_forecast, {"main": "Clear"}))
+
+    @override_settings(WEATHER_API_KEY="")
+    def test_get_weather_alert_for_location_requires_api_key(self):
+        self.assertIsNone(get_weather_alert_for_location({"lat": 52.5, "lon": 13.4}))
+
+    @override_settings(WEATHER_API_KEY="test-key", WEATHER_CACHE_SECONDS=0)
+    def test_get_weather_alert_for_location_maps_provider_response(self):
+        current_payload = {
+            "weather": [{"main": "Thunderstorm", "description": "Gewitter"}],
+            "main": {"temp": 22, "feels_like": 22},
+            "wind": {"speed": 3},
+        }
+        forecast_payload = {"list": [{"pop": 0.2}]}
+
+        with patch(
+            "app.services.weather_service.urlopen",
+            side_effect=[FakeWeatherResponse(current_payload), FakeWeatherResponse(forecast_payload)],
+        ):
+            alert = get_weather_alert_for_location({"lat": 52.5, "lon": 13.4})
+
+        self.assertEqual(alert["kind"], "storm")
+
+    def test_save_weather_location_dedupes_and_sets_first_as_default(self):
+        location, created = save_weather_location(self.user, name="Berlin", lat=52.52, lon=13.405, details="DE", label="Berlin, DE")
+        self.assertTrue(created)
+        self.assertTrue(location.is_default)
+
+        duplicate, created_again = save_weather_location(self.user, name="Berlin", lat=52.5203, lon=13.4048, details="DE", label="Berlin, DE")
+        self.assertFalse(created_again)
+        self.assertEqual(duplicate.pk, location.pk)
+        self.assertEqual(list_weather_locations(self.user), [location])
+
+    def test_save_weather_location_enforces_cap(self):
+        for index in range(8):
+            save_weather_location(self.user, name=f"Ort {index}", lat=10 + index, lon=10 + index, details="", label="")
+
+        with self.assertRaises(ValueError):
+            save_weather_location(self.user, name="Ort 9", lat=50, lon=50, details="", label="")
+
+    def test_delete_weather_location_promotes_next_default(self):
+        first, _ = save_weather_location(self.user, name="Berlin", lat=52.52, lon=13.405, details="", label="Berlin")
+        second, _ = save_weather_location(self.user, name="Hamburg", lat=53.55, lon=9.99, details="", label="Hamburg")
+
+        delete_weather_location(self.user, first.pk)
+
+        second.refresh_from_db()
+        self.assertTrue(second.is_default)
+        self.assertEqual(list(WeatherLocation.objects.filter(user=self.user)), [second])
+
+    def test_set_default_weather_location_switches_default(self):
+        first, _ = save_weather_location(self.user, name="Berlin", lat=52.52, lon=13.405, details="", label="Berlin")
+        second, _ = save_weather_location(self.user, name="Hamburg", lat=53.55, lon=9.99, details="", label="Hamburg")
+
+        set_default_weather_location(self.user, second.pk)
+
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertFalse(first.is_default)
+        self.assertTrue(second.is_default)
+
+    @override_settings(WEATHER_API_KEY="")
+    def test_location_from_request_prefers_default_weather_location(self):
+        save_weather_location(self.user, name="Hamburg", lat=53.55, lon=9.99, details="DE", label="Hamburg, DE")
+
+        context = get_weather_context({}, user=self.user)
+
+        self.assertEqual(context["current"]["city"], "Hamburg")
+        self.assertEqual(context["current"]["label"], "Standardort")
+
+    def test_weather_page_can_save_and_manage_locations(self):
+        self.client.login(username="map@example.com", password="secret-12345")
+
+        save_response = self.client.post(
+            "/weather/",
+            {"form_name": "location_save", "name": "Berlin", "lat": "52.52", "lon": "13.405", "details": "DE", "label": "Berlin, DE"},
+        )
+        self.assertRedirects(save_response, "/weather/")
+        location = WeatherLocation.objects.get(user=self.user, name="Berlin")
+        self.assertTrue(location.is_default)
+
+        second_response = self.client.post(
+            "/weather/",
+            {"form_name": "location_save", "name": "Hamburg", "lat": "53.55", "lon": "9.99", "details": "DE", "label": "Hamburg, DE"},
+        )
+        self.assertRedirects(second_response, "/weather/")
+        second_location = WeatherLocation.objects.get(user=self.user, name="Hamburg")
+
+        set_default_response = self.client.post(
+            "/weather/",
+            {"form_name": "location_set_default", "location_id": second_location.pk},
+        )
+        self.assertRedirects(set_default_response, "/weather/")
+        location.refresh_from_db()
+        second_location.refresh_from_db()
+        self.assertFalse(location.is_default)
+        self.assertTrue(second_location.is_default)
+
+        delete_response = self.client.post(
+            "/weather/",
+            {"form_name": "location_delete", "location_id": location.pk},
+        )
+        self.assertRedirects(delete_response, "/weather/")
+        self.assertFalse(WeatherLocation.objects.filter(pk=location.pk).exists())
+
+        overview = self.client.get("/weather/")
+        self.assertContains(overview, "Hamburg")
 
 
 
@@ -3190,8 +3356,8 @@ class NotesTests(TestCase):
         Profile.objects.create(user=self.editor, display_name="Editor")
         self.client.login(username="owner@example.com", password="secret-12345")
 
-    def create_note(self, title="Projektidee"):
-        response = self.client.post(
+    def create_note(self, title="Projektidee", client=None):
+        response = (client or self.client).post(
             "/notes/api/create/",
             data=json.dumps({"title": title}),
             content_type="application/json",
@@ -3199,14 +3365,22 @@ class NotesTests(TestCase):
         self.assertEqual(response.status_code, 201, response.content)
         return Note.objects.get(pk=response.json()["note"]["id"])
 
-    def save_note(self, note, *, text="Erster Inhalt", tags=None, revision=None, client=None):
+    def create_folder(self, name="Projekte", parent=None, client=None):
+        response = (client or self.client).post(
+            "/notes/api/folders/",
+            data=json.dumps({"name": name, "parent_id": parent.id if parent else None}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        return NoteFolder.objects.get(pk=response.json()["folder"]["id"])
+
+    def save_note(self, note, *, text="Erster Inhalt", revision=None, client=None):
         return (client or self.client).patch(
             f"/notes/api/{note.id}/",
             data=json.dumps(
                 {
                     "title": note.title,
                     "document": note_document(text),
-                    "tags": tags or [],
                     "base_revision": revision or note.revision,
                 }
             ),
@@ -3228,9 +3402,16 @@ class NotesTests(TestCase):
         self.assertContains(response, "Tabellenwerkzeuge")
         self.assertContains(response, f'data-note-card="{note.id}"')
         self.assertContains(response, "data-note-card-title")
-        self.assertContains(response, "data-note-card-preview")
-        self.assertContains(response, "data-note-card-updated")
-        self.assertContains(response, "data-note-card-tags")
+        self.assertContains(response, "data-note-title", count=1)
+        self.assertContains(response, "data-note-card-name")
+        self.assertContains(response, 'class="note-list-card-link"')
+        self.assertNotContains(response, "data-note-card-preview")
+        self.assertNotContains(response, "data-note-card-updated")
+        self.assertNotContains(response, "data-note-card-tags")
+        self.assertContains(response, "data-note-context-menu")
+        self.assertContains(response, "data-folder-context-menu")
+        self.assertContains(response, "data-note-context-action=\"rename\"")
+        self.assertContains(response, "data-folder-context-action=\"create\"")
 
     def test_notes_overview_does_not_automatically_open_first_note(self):
         note = self.create_note()
@@ -3245,22 +3426,377 @@ class NotesTests(TestCase):
         self.assertEqual(detail.context["selected_note_data"]["id"], note.id)
         self.assertContains(detail, '<a class="notes-mobile-back" href="/notes/"')
 
-    def test_note_save_derives_plain_text_tags_and_search(self):
+    def test_note_save_derives_plain_text_and_search(self):
         note = self.create_note()
-        response = self.save_note(note, text="Mondlicht Planung", tags=["Projekt", "projekt", "Wichtig"])
+        response = self.save_note(note, text="Mondlicht Planung")
         self.assertEqual(response.status_code, 200, response.content)
         saved_note = response.json()["note"]
         self.assertEqual(saved_note["preview"], "Mondlicht Planung")
-        self.assertEqual(saved_note["tags"], ["Projekt", "Wichtig"])
         self.assertTrue(saved_note["updated_at"])
         note.refresh_from_db()
         self.assertEqual(note.plain_text, "Mondlicht Planung")
         self.assertEqual(note.revision, 2)
-        self.assertEqual(list(note.tags.values_list("normalized_name", flat=True)), ["projekt", "wichtig"])
         response = self.client.get("/notes/?q=Mondlicht")
         self.assertContains(response, "Projektidee")
-        response = self.client.get("/notes/?tag=projekt")
-        self.assertContains(response, "Projektidee")
+
+    def test_note_title_change_persists_when_note_is_reopened(self):
+        note = self.create_note()
+        response = self.client.patch(
+            f"/notes/api/{note.id}/",
+            data=json.dumps(
+                {
+                    "title": "Neuer dauerhafter Titel",
+                    "document": note_document("Titeltest"),
+                    "base_revision": note.revision,
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["note"]["title"], "Neuer dauerhafter Titel")
+
+        note.refresh_from_db()
+        self.assertEqual(note.title, "Neuer dauerhafter Titel")
+        reopened = self.client.get(f"/notes/{note.id}/")
+        self.assertEqual(reopened.context["selected_note_data"]["title"], "Neuer dauerhafter Titel")
+        self.assertContains(reopened, 'value="Neuer dauerhafter Titel"')
+
+    def test_note_templates_pass_document_validation(self):
+        for factory in NOTE_TEMPLATES.values():
+            validate_note_document(factory())
+
+    def test_create_note_with_template_populates_plain_text(self):
+        response = self.client.post(
+            "/notes/api/create/",
+            data=json.dumps({"title": "Sprint-Meeting", "template": "meeting"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        note = Note.objects.get(pk=response.json()["note"]["id"])
+        self.assertIn("Teilnehmer", note.plain_text)
+        self.assertIn("Agenda", note.plain_text)
+        self.assertIn("Aufgaben", note.plain_text)
+
+    def test_create_note_with_unknown_template_is_rejected(self):
+        response = self.client.post(
+            "/notes/api/create/",
+            data=json.dumps({"title": "Sprint-Meeting", "template": "does-not-exist"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_save_note_as_custom_template_strips_hazards_and_reuses_structure(self):
+        note = self.create_note("Vorlagen-Quelle")
+        note.document = {
+            "type": "doc",
+            "content": [
+                {"type": "heading", "attrs": {"level": 2}, "content": [{"type": "text", "text": "Agenda"}]},
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Wichtig",
+                            "marks": [
+                                {"type": "bold"},
+                                {"type": "commentThread", "attrs": {"threadId": str(uuid.uuid4())}},
+                            ],
+                        },
+                        {"type": "mention", "attrs": {"userId": self.editor.id, "label": "Editor"}},
+                    ],
+                },
+                {"type": "noteImage", "attrs": {"attachmentId": str(uuid.uuid4()), "alt": "Bild", "width": 400}},
+                {
+                    "type": "bulletList",
+                    "content": [
+                        {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Punkt"}]}]},
+                    ],
+                },
+            ],
+        }
+        note.plain_text = "Agenda Wichtig Punkt"
+        note.save(update_fields=["document", "plain_text"])
+
+        response = self.client.post(
+            "/notes/api/templates/",
+            data=json.dumps({"note_id": note.id, "name": "Mein Meeting"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        template_id = response.json()["template"]["id"]
+        self.assertEqual(response.json()["template"]["name"], "Mein Meeting")
+
+        template = NoteTemplate.objects.get(pk=template_id, owner=self.owner)
+        document_json = json.dumps(template.document)
+        self.assertNotIn("noteImage", document_json)
+        self.assertNotIn("mention", document_json)
+        self.assertNotIn("commentThread", document_json)
+        self.assertIn("@Editor", document_json)
+
+        create_response = self.client.post(
+            "/notes/api/create/",
+            data=json.dumps({"title": "Aus Vorlage", "custom_template_id": template_id}),
+            content_type="application/json",
+        )
+        self.assertEqual(create_response.status_code, 201, create_response.content)
+        created_note = Note.objects.get(pk=create_response.json()["note"]["id"])
+        self.assertIn("Agenda", created_note.plain_text)
+        self.assertIn("@Editor", created_note.plain_text)
+        self.assertIn("Punkt", created_note.plain_text)
+
+    def test_custom_template_name_must_be_unique_per_owner(self):
+        note = self.create_note()
+        first = self.client.post(
+            "/notes/api/templates/",
+            data=json.dumps({"note_id": note.id, "name": "Duplikat"}),
+            content_type="application/json",
+        )
+        self.assertEqual(first.status_code, 201, first.content)
+        second = self.client.post(
+            "/notes/api/templates/",
+            data=json.dumps({"note_id": note.id, "name": "Duplikat"}),
+            content_type="application/json",
+        )
+        self.assertEqual(second.status_code, 400)
+
+    def test_custom_template_deletion_is_owner_scoped(self):
+        note = self.create_note()
+        response = self.client.post(
+            "/notes/api/templates/",
+            data=json.dumps({"note_id": note.id, "name": "Meine Vorlage"}),
+            content_type="application/json",
+        )
+        template_id = response.json()["template"]["id"]
+        editor_client = Client()
+        editor_client.login(username="editor@example.com", password="secret-12345")
+        denied = editor_client.delete(f"/notes/api/templates/{template_id}/")
+        self.assertEqual(denied.status_code, 404)
+        self.assertTrue(NoteTemplate.objects.filter(pk=template_id).exists())
+        allowed = self.client.delete(f"/notes/api/templates/{template_id}/")
+        self.assertEqual(allowed.status_code, 200)
+        self.assertFalse(NoteTemplate.objects.filter(pk=template_id).exists())
+
+    def test_create_note_with_missing_custom_template_returns_404(self):
+        response = self.client.post(
+            "/notes/api/create/",
+            data=json.dumps({"title": "Fehlt", "custom_template_id": 999999}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_custom_template_limit_is_enforced(self):
+        note = self.create_note()
+        NoteTemplate.objects.bulk_create(
+            [NoteTemplate(owner=self.owner, name=f"Vorlage {i}", document=empty_note_document()) for i in range(30)]
+        )
+        response = self.client.post(
+            "/notes/api/templates/",
+            data=json.dumps({"note_id": note.id, "name": "Zu viel"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_nested_folders_render_notes_in_the_sidebar_tree(self):
+        projects = self.create_folder("Projekte")
+        lunora = self.create_folder("Lunora", parent=projects)
+        response = self.client.post(
+            "/notes/api/create/",
+            data=json.dumps({"title": "Ordnernotiz", "folder_id": lunora.id}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        note = Note.objects.get(pk=response.json()["note"]["id"])
+        self.assertEqual(response.json()["note"]["folder_id"], lunora.id)
+        self.assertEqual(NoteUserState.objects.get(note=note, user=self.owner).folder, lunora)
+
+        page = self.client.get(f"/notes/{note.id}/")
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, f'data-note-folder="{projects.id}"')
+        self.assertContains(page, f'data-note-folder="{lunora.id}"')
+        self.assertContains(page, f'data-note-card="{note.id}"')
+        self.assertContains(page, "Ordnernotiz")
+        self.assertContains(page, "Neuer Unterordner")
+
+    def test_folder_names_are_unique_within_the_same_parent(self):
+        self.create_folder("Projekte")
+        response = self.client.post(
+            "/notes/api/folders/",
+            data=json.dumps({"name": "projekte"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(NoteFolder.objects.filter(owner=self.owner).count(), 1)
+
+    def test_shared_note_folder_assignment_is_personal(self):
+        note = self.create_note()
+        NoteShare.objects.create(note=note, user=self.reader, role=NoteShare.ROLE_READER)
+        owner_folder = self.create_folder("Privat")
+        reader_client = Client()
+        reader_client.login(username="reader@example.com", password="secret-12345")
+        reader_folder = self.create_folder("Geteilt", client=reader_client)
+
+        response = reader_client.patch(
+            f"/notes/api/{note.id}/folder/",
+            data=json.dumps({"folder_id": reader_folder.id}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["note"]["folder_id"], reader_folder.id)
+        self.assertEqual(NoteUserState.objects.get(note=note, user=self.reader).folder, reader_folder)
+        self.assertIsNone(NoteUserState.objects.get(note=note, user=self.owner).folder)
+
+        denied = reader_client.patch(
+            f"/notes/api/{note.id}/folder/",
+            data=json.dumps({"folder_id": owner_folder.id}),
+            content_type="application/json",
+        )
+        self.assertEqual(denied.status_code, 404)
+
+    def test_deleting_folder_preserves_notes_and_reparents_children(self):
+        parent = self.create_folder("Arbeit")
+        child = self.create_folder("Lunora", parent=parent)
+        note = self.create_note()
+        state = NoteUserState.objects.get(note=note, user=self.owner)
+        state.folder = parent
+        state.save(update_fields=["folder"])
+
+        response = self.client.delete(f"/notes/api/folders/{parent.id}/")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertFalse(NoteFolder.objects.filter(pk=parent.id).exists())
+        child.refresh_from_db()
+        state.refresh_from_db()
+        self.assertIsNone(child.parent)
+        self.assertIsNone(state.folder)
+        self.assertTrue(Note.objects.filter(pk=note.id).exists())
+
+    def test_moving_and_duplicating_note_keeps_folder_context(self):
+        folder = self.create_folder("Ideen")
+        note = self.create_note()
+        moved = self.client.patch(
+            f"/notes/api/{note.id}/folder/",
+            data=json.dumps({"folder_id": folder.id}),
+            content_type="application/json",
+        )
+        self.assertEqual(moved.status_code, 200, moved.content)
+
+        duplicate = self.client.post(
+            f"/notes/api/{note.id}/actions/",
+            data=json.dumps({"action": "duplicate"}),
+            content_type="application/json",
+        )
+        self.assertEqual(duplicate.status_code, 201, duplicate.content)
+        duplicate_note = Note.objects.get(pk=duplicate.json()["note"]["id"])
+        self.assertEqual(NoteUserState.objects.get(note=duplicate_note, user=self.owner).folder, folder)
+
+    def test_drag_move_reorders_notes_before_and_after_each_other(self):
+        first = self.create_note("Erste")
+        second = self.create_note("Zweite")
+        third = self.create_note("Dritte")
+
+        response = self.client.patch(
+            "/notes/api/tree/move/",
+            data=json.dumps(
+                {
+                    "item_type": "note",
+                    "item_id": third.id,
+                    "placement": "before",
+                    "target_type": "note",
+                    "target_id": first.id,
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        ordered_ids = list(
+            NoteUserState.objects.filter(user=self.owner, folder__isnull=True)
+            .order_by("position")
+            .values_list("note_id", flat=True)
+        )
+        self.assertEqual(ordered_ids, [third.id, first.id, second.id])
+
+        response = self.client.patch(
+            "/notes/api/tree/move/",
+            data=json.dumps(
+                {
+                    "item_type": "note",
+                    "item_id": third.id,
+                    "placement": "after",
+                    "target_type": "note",
+                    "target_id": second.id,
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        ordered_ids = list(
+            NoteUserState.objects.filter(user=self.owner, folder__isnull=True)
+            .order_by("position")
+            .values_list("note_id", flat=True)
+        )
+        self.assertEqual(ordered_ids, [first.id, second.id, third.id])
+
+    def test_drag_move_places_note_at_bottom_of_folder(self):
+        folder = self.create_folder("Projekte")
+        existing = self.create_note("Vorhanden")
+        moved = self.create_note("Verschoben")
+        existing_state = NoteUserState.objects.get(note=existing, user=self.owner)
+        existing_state.folder = folder
+        existing_state.position = 1000
+        existing_state.save(update_fields=["folder", "position"])
+
+        response = self.client.patch(
+            "/notes/api/tree/move/",
+            data=json.dumps(
+                {
+                    "item_type": "note",
+                    "item_id": moved.id,
+                    "placement": "inside",
+                    "target_type": "folder",
+                    "target_id": folder.id,
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        moved_state = NoteUserState.objects.get(note=moved, user=self.owner)
+        existing_state.refresh_from_db()
+        self.assertEqual(moved_state.folder, folder)
+        self.assertGreater(moved_state.position, existing_state.position)
+
+    def test_drag_move_prevents_folder_cycles(self):
+        parent = self.create_folder("Eltern")
+        child = self.create_folder("Kind", parent=parent)
+
+        response = self.client.patch(
+            "/notes/api/tree/move/",
+            data=json.dumps(
+                {
+                    "item_type": "folder",
+                    "item_id": parent.id,
+                    "placement": "inside",
+                    "target_type": "folder",
+                    "target_id": child.id,
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        parent.refresh_from_db()
+        child.refresh_from_db()
+        self.assertIsNone(parent.parent)
+        self.assertEqual(child.parent, parent)
+
+    def test_drag_move_renders_persistent_tree_metadata(self):
+        folder = self.create_folder("Ablage")
+        note = self.create_note("Ziehbar")
+        response = self.client.get(f"/notes/{note.id}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["current_sort"], "custom")
+        self.assertContains(response, "data-root-drop-target")
+        self.assertContains(response, 'data-item-type="note"')
+        self.assertContains(response, 'data-item-type="folder"')
+        self.assertContains(response, f'data-item-id="{folder.id}"')
+        self.assertContains(response, 'data-tree-draggable="true"')
 
     def test_stale_revision_returns_conflict_without_overwriting(self):
         note = self.create_note()
@@ -3321,6 +3857,73 @@ class NotesTests(TestCase):
         )
         self.assertEqual(restored.status_code, 200)
 
+    def bulk_action(self, note_ids, action, *, folder_id=None, client=None):
+        payload = {"note_ids": note_ids, "action": action}
+        if folder_id is not None or action == "move_folder":
+            payload["folder_id"] = folder_id
+        return (client or self.client).post(
+            "/notes/api/bulk-action/", data=json.dumps(payload), content_type="application/json"
+        )
+
+    def test_bulk_action_pins_and_archives_multiple_notes(self):
+        first = self.create_note("Erste Notiz")
+        second = self.create_note("Zweite Notiz")
+
+        response = self.bulk_action([first.id, second.id], "pin")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(sorted(response.json()["updated_ids"]), sorted([first.id, second.id]))
+        self.assertEqual(response.json()["skipped_ids"], [])
+        self.assertTrue(NoteUserState.objects.get(note=first, user=self.owner).is_pinned)
+        self.assertTrue(NoteUserState.objects.get(note=second, user=self.owner).is_pinned)
+
+        response = self.bulk_action([first.id, second.id], "archive")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(NoteUserState.objects.get(note=first, user=self.owner).is_archived)
+        self.assertTrue(NoteUserState.objects.get(note=second, user=self.owner).is_archived)
+
+    def test_bulk_action_skips_notes_the_user_is_not_allowed_to_trash(self):
+        owned = self.create_note("Eigene Notiz")
+        editor_client = Client()
+        editor_client.login(username="editor@example.com", password="secret-12345")
+        foreign_note = self.create_note("Fremde Notiz", client=editor_client)
+        NoteShare.objects.create(note=foreign_note, user=self.owner, role=NoteShare.ROLE_EDITOR)
+
+        response = self.bulk_action([owned.id, foreign_note.id], "trash")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["updated_ids"], [owned.id])
+        self.assertEqual(response.json()["skipped_ids"], [foreign_note.id])
+        owned.refresh_from_db()
+        foreign_note.refresh_from_db()
+        self.assertIsNotNone(owned.deleted_at)
+        self.assertIsNone(foreign_note.deleted_at)
+
+    def test_bulk_move_notes_to_folder(self):
+        folder = self.create_folder("Archiv")
+        first = self.create_note("Erste Notiz")
+        second = self.create_note("Zweite Notiz")
+
+        response = self.bulk_action([first.id, second.id], "move_folder", folder_id=folder.id)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(sorted(response.json()["updated_ids"]), sorted([first.id, second.id]))
+        self.assertEqual(NoteUserState.objects.get(note=first, user=self.owner).folder, folder)
+        self.assertEqual(NoteUserState.objects.get(note=second, user=self.owner).folder, folder)
+
+        missing_folder = self.bulk_action([first.id], "move_folder", folder_id=999999)
+        self.assertEqual(missing_folder.status_code, 404)
+
+    def test_bulk_action_validates_note_ids_and_action(self):
+        note = self.create_note()
+        empty = self.bulk_action([], "pin")
+        self.assertEqual(empty.status_code, 400)
+        unknown_action = self.bulk_action([note.id], "levitate")
+        self.assertEqual(unknown_action.status_code, 400)
+        bad_id = self.client.post(
+            "/notes/api/bulk-action/",
+            data=json.dumps({"note_ids": ["not-a-number"], "action": "pin"}),
+            content_type="application/json",
+        )
+        self.assertEqual(bad_id.status_code, 400)
+
     def test_version_history_and_restore_create_new_revision(self):
         note = self.create_note()
         saved = self.save_note(note, text="Neue Fassung")
@@ -3378,7 +3981,7 @@ class NotesTests(TestCase):
         }
         response = self.client.patch(
             f"/notes/api/{note.id}/",
-            data=json.dumps({"title": note.title, "document": table_document, "tags": [], "base_revision": 1}),
+            data=json.dumps({"title": note.title, "document": table_document, "base_revision": 1}),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200, response.content)
@@ -3410,7 +4013,7 @@ class NotesTests(TestCase):
         }
         response = self.client.patch(
             f"/notes/api/{note.id}/",
-            data=json.dumps({"title": note.title, "document": unsafe, "tags": [], "base_revision": note.revision}),
+            data=json.dumps({"title": note.title, "document": unsafe, "base_revision": note.revision}),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 400)
@@ -3447,7 +4050,7 @@ class NotesTests(TestCase):
         }
         response = self.client.patch(
             f"/notes/api/{note.id}/",
-            data=json.dumps({"title": note.title, "document": linked_document, "tags": [], "base_revision": 1}),
+            data=json.dumps({"title": note.title, "document": linked_document, "base_revision": 1}),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200, response.content)
@@ -3512,7 +4115,7 @@ class NotesTests(TestCase):
         response.close()
         self.assertTrue(pdf_bytes.startswith(b"%PDF-"))
         self.assertIn(b"%%EOF", pdf_bytes[-1024:])
-        self.assertGreater(len(pdf_bytes), 2000)
+        self.assertGreater(len(pdf_bytes), 1500)
 
         NoteShare.objects.create(note=note, user=self.reader, role=NoteShare.ROLE_READER)
         reader_client = Client()
@@ -3525,6 +4128,92 @@ class NotesTests(TestCase):
         stranger_client.login(username="editor@example.com", password="secret-12345")
         self.assertEqual(stranger_client.get(f"/notes/{note.id}/export/pdf/").status_code, 404)
         self.assertRedirects(Client().get(f"/notes/{note.id}/export/pdf/"), f"/login/?next=/notes/{note.id}/export/pdf/")
+
+    def test_markdown_export_preserves_access_control_and_renders_structure(self):
+        note = self.create_note("Markdown Beispiel")
+        note.document = {
+            "type": "doc",
+            "content": [
+                {
+                    "type": "heading",
+                    "attrs": {"level": 2},
+                    "content": [{"type": "text", "text": "Überschrift"}],
+                },
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {"type": "text", "text": "Fett", "marks": [{"type": "bold"}]},
+                        {"type": "text", "text": " und *sternchen*"},
+                    ],
+                },
+                {
+                    "type": "bulletList",
+                    "content": [
+                        {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Listenpunkt"}]}]},
+                    ],
+                },
+                {
+                    "type": "codeBlock",
+                    "attrs": {"language": "python"},
+                    "content": [{"type": "text", "text": "print('hi')"}],
+                },
+                {
+                    "type": "table",
+                    "content": [
+                        {
+                            "type": "tableRow",
+                            "content": [
+                                {"type": "tableHeader", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Spalte"}]}]},
+                                {"type": "tableHeader", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Wert"}]}]},
+                            ],
+                        },
+                        {
+                            "type": "tableRow",
+                            "content": [
+                                {"type": "tableCell", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "A | B"}]}]},
+                                {"type": "tableCell", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "1"}]}]},
+                            ],
+                        },
+                    ],
+                },
+            ],
+        }
+        note.plain_text = "Überschrift Fett und sternchen Listenpunkt print hi Spalte Wert A B 1"
+        note.save(update_fields=["document", "plain_text"])
+
+        response = self.client.get(f"/notes/{note.id}/export/markdown/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "text/markdown; charset=utf-8")
+        self.assertIn("attachment", response["Content-Disposition"])
+        self.assertIn(".md", response["Content-Disposition"])
+        self.assertEqual(response["Cache-Control"], "private, no-store")
+        body = b"".join(response.streaming_content).decode("utf-8")
+        response.close()
+
+        self.assertIn("# Markdown Beispiel", body)
+        self.assertIn("## Überschrift", body)
+        self.assertIn("**Fett**", body)
+        self.assertIn("\\*sternchen\\*", body)
+        self.assertIn("- Listenpunkt", body)
+        self.assertIn("```python", body)
+        self.assertIn("print('hi')", body)
+        self.assertIn("| Spalte | Wert |", body)
+        self.assertIn("| --- | --- |", body)
+        self.assertIn("A \\| B", body)
+
+        NoteShare.objects.create(note=note, user=self.reader, role=NoteShare.ROLE_READER)
+        reader_client = Client()
+        reader_client.login(username="reader@example.com", password="secret-12345")
+        reader_response = reader_client.get(f"/notes/{note.id}/export/markdown/")
+        self.assertEqual(reader_response.status_code, 200)
+        reader_response.close()
+
+        stranger_client = Client()
+        stranger_client.login(username="editor@example.com", password="secret-12345")
+        self.assertEqual(stranger_client.get(f"/notes/{note.id}/export/markdown/").status_code, 404)
+        self.assertRedirects(
+            Client().get(f"/notes/{note.id}/export/markdown/"), f"/login/?next=/notes/{note.id}/export/markdown/"
+        )
 
     def test_shortcut_conflicts_are_rejected_and_valid_overrides_persist(self):
         invalid = self.client.patch(
@@ -3560,7 +4249,6 @@ class NotesTests(TestCase):
             source_revision=note.revision,
             title=note.title,
             document=note.document,
-            tags=[],
         )
 
         with TemporaryDirectory() as private_root, override_settings(PRIVATE_MEDIA_ROOT=private_root):
@@ -3575,6 +4263,7 @@ class NotesTests(TestCase):
 
             self.assertEqual(self.client.get("/notes/").status_code, 503)
             self.assertEqual(self.client.get(f"/notes/{note.id}/export/pdf/").status_code, 503)
+            self.assertEqual(self.client.get(f"/notes/{note.id}/export/markdown/").status_code, 503)
             response = self.client.post("/notes/api/create/", data="{}", content_type="application/json")
             self.assertEqual(response.status_code, 503)
             self.assertFalse(response.json()["ok"])
@@ -3582,6 +4271,22 @@ class NotesTests(TestCase):
             self.assertEqual(
                 self.client.post(
                     f"/notes/api/{note.id}/actions/", data="{}", content_type="application/json"
+                ).status_code,
+                503,
+            )
+            self.assertEqual(
+                self.client.post(
+                    "/notes/api/bulk-action/",
+                    data=json.dumps({"note_ids": [note.id], "action": "pin"}),
+                    content_type="application/json",
+                ).status_code,
+                503,
+            )
+            self.assertEqual(
+                self.client.post(
+                    "/notes/api/templates/",
+                    data=json.dumps({"note_id": note.id, "name": "Vorlage"}),
+                    content_type="application/json",
                 ).status_code,
                 503,
             )
@@ -3649,7 +4354,7 @@ class NotesTests(TestCase):
         }
         response = self.client.patch(
             f"/notes/api/{note.id}/",
-            data=json.dumps({"title": note.title, "document": document, "tags": [], "base_revision": note.revision}),
+            data=json.dumps({"title": note.title, "document": document, "base_revision": note.revision}),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200, response.content)
@@ -3658,7 +4363,100 @@ class NotesTests(TestCase):
         document["content"][0]["attrs"]["language"] = "cobol"
         response = self.client.patch(
             f"/notes/api/{note.id}/",
-            data=json.dumps({"title": note.title, "document": document, "tags": [], "base_revision": note.revision}),
+            data=json.dumps({"title": note.title, "document": document, "base_revision": note.revision}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_math_nodes_are_validated_and_rendered_in_exports(self):
+        note = self.create_note()
+        document = {
+            "type": "doc",
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {"type": "text", "text": "Satz des Pythagoras: "},
+                        {"type": "mathInline", "attrs": {"latex": "a^2 + b^2 = c^2"}},
+                    ],
+                },
+                {"type": "mathBlock", "attrs": {"latex": "\\frac{1}{2} g t^2"}},
+            ],
+        }
+        response = self.client.patch(
+            f"/notes/api/{note.id}/",
+            data=json.dumps({"title": note.title, "document": document, "base_revision": note.revision}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        note.refresh_from_db()
+
+        markdown_response = self.client.get(f"/notes/{note.id}/export/markdown/")
+        self.assertEqual(markdown_response.status_code, 200)
+        markdown_text = b"".join(markdown_response.streaming_content).decode("utf-8")
+        markdown_response.close()
+        self.assertIn("$a^2 + b^2 = c^2$", markdown_text)
+        self.assertIn("$$\\frac{1}{2} g t^2$$", markdown_text)
+
+        pdf_response = self.client.get(f"/notes/{note.id}/export/pdf/")
+        self.assertEqual(pdf_response.status_code, 200)
+
+        document["content"][1]["attrs"]["latex"] = ""
+        response = self.client.patch(
+            f"/notes/api/{note.id}/",
+            data=json.dumps({"title": note.title, "document": document, "base_revision": note.revision}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+        note.refresh_from_db()
+        document["content"][1]["attrs"]["latex"] = "x" * 4001
+        response = self.client.patch(
+            f"/notes/api/{note.id}/",
+            data=json.dumps({"title": note.title, "document": document, "base_revision": note.revision}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_superscript_and_subscript_marks_are_validated_and_rendered_in_exports(self):
+        note = self.create_note()
+        document = {
+            "type": "doc",
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {"type": "text", "text": "x"},
+                        {"type": "text", "text": "2", "marks": [{"type": "superscript"}]},
+                        {"type": "text", "text": " und H"},
+                        {"type": "text", "text": "2", "marks": [{"type": "subscript"}]},
+                        {"type": "text", "text": "O"},
+                    ],
+                },
+            ],
+        }
+        response = self.client.patch(
+            f"/notes/api/{note.id}/",
+            data=json.dumps({"title": note.title, "document": document, "base_revision": note.revision}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        note.refresh_from_db()
+
+        markdown_response = self.client.get(f"/notes/{note.id}/export/markdown/")
+        self.assertEqual(markdown_response.status_code, 200)
+        markdown_text = b"".join(markdown_response.streaming_content).decode("utf-8")
+        markdown_response.close()
+        self.assertIn("<sup>2</sup>", markdown_text)
+        self.assertIn("<sub>2</sub>", markdown_text)
+
+        pdf_response = self.client.get(f"/notes/{note.id}/export/pdf/")
+        self.assertEqual(pdf_response.status_code, 200)
+
+        document["content"][0]["content"][1]["marks"] = [{"type": "superscript", "attrs": {"bogus": True}}]
+        response = self.client.patch(
+            f"/notes/api/{note.id}/",
+            data=json.dumps({"title": note.title, "document": document, "base_revision": note.revision}),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 400)
@@ -3684,7 +4482,7 @@ class NotesTests(TestCase):
 
         response = self.client.patch(
             f"/notes/api/{note.id}/",
-            data=json.dumps({"title": note.title, "document": document, "tags": [], "base_revision": note.revision}),
+            data=json.dumps({"title": note.title, "document": document, "base_revision": note.revision}),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200, response.content)
@@ -3698,7 +4496,7 @@ class NotesTests(TestCase):
         # Saving again without a new mention must not create a duplicate notification.
         response = self.client.patch(
             f"/notes/api/{note.id}/",
-            data=json.dumps({"title": note.title, "document": document, "tags": [], "base_revision": note.revision}),
+            data=json.dumps({"title": note.title, "document": document, "base_revision": note.revision}),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200, response.content)
@@ -3711,7 +4509,7 @@ class NotesTests(TestCase):
 
         response = self.client.patch(
             f"/notes/api/{note.id}/",
-            data=json.dumps({"title": note.title, "document": document, "tags": [], "base_revision": note.revision}),
+            data=json.dumps({"title": note.title, "document": document, "base_revision": note.revision}),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 400)
@@ -3755,7 +4553,7 @@ class NotesTests(TestCase):
         }
         response = self.client.patch(
             f"/notes/api/{note.id}/",
-            data=json.dumps({"title": note.title, "document": document, "tags": [], "base_revision": note.revision}),
+            data=json.dumps({"title": note.title, "document": document, "base_revision": note.revision}),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200, response.content)
@@ -3800,7 +4598,7 @@ class NotesTests(TestCase):
         }
         response = self.client.patch(
             f"/notes/api/{note.id}/",
-            data=json.dumps({"title": note.title, "document": document, "tags": [], "base_revision": note.revision}),
+            data=json.dumps({"title": note.title, "document": document, "base_revision": note.revision}),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 400)
@@ -3824,7 +4622,7 @@ class NotesTests(TestCase):
         }
         self.client.patch(
             f"/notes/api/{note.id}/",
-            data=json.dumps({"title": note.title, "document": document, "tags": [], "base_revision": note.revision}),
+            data=json.dumps({"title": note.title, "document": document, "base_revision": note.revision}),
             content_type="application/json",
         )
 
@@ -3836,6 +4634,139 @@ class NotesTests(TestCase):
         self.assertEqual(response.status_code, 201, response.content)
         duplicate = Note.objects.get(pk=response.json()["note"]["id"])
         self.assertNotIn("commentThread", json.dumps(duplicate.document))
+
+    def note_link_document(self, target_note, label, text="Siehe "):
+        return {
+            "type": "doc",
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {"type": "text", "text": text},
+                        {"type": "noteLink", "attrs": {"noteId": target_note.id, "label": label}},
+                    ],
+                }
+            ],
+        }
+
+    def test_linking_to_accessible_note_creates_notelink_and_plain_text(self):
+        source = self.create_note(title="Notiz A")
+        target = self.create_note(title="Notiz B")
+        document = self.note_link_document(target, "Notiz B")
+
+        response = self.client.patch(
+            f"/notes/api/{source.id}/",
+            data=json.dumps({"title": source.title, "document": document, "base_revision": source.revision}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+
+        source.refresh_from_db()
+        self.assertIn("[[Notiz B]]", source.plain_text)
+        self.assertTrue(NoteLink.objects.filter(source_note=source, target_note=target).exists())
+
+        # Saving again without the link removes the stale NoteLink row.
+        response = self.client.patch(
+            f"/notes/api/{source.id}/",
+            data=json.dumps(
+                {"title": source.title, "document": note_document("Kein Link mehr"), "base_revision": source.revision}
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertFalse(NoteLink.objects.filter(source_note=source, target_note=target).exists())
+
+    def test_linking_to_inaccessible_note_is_rejected(self):
+        source = self.create_note(title="Notiz A")
+        editor_client = Client()
+        editor_client.login(username="editor@example.com", password="secret-12345")
+        outsider_note = Note.objects.create(owner=self.editor, title="Fremde Notiz")
+        document = self.note_link_document(outsider_note, "Fremde Notiz")
+
+        response = self.client.patch(
+            f"/notes/api/{source.id}/",
+            data=json.dumps({"title": source.title, "document": document, "base_revision": source.revision}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(NoteLink.objects.filter(source_note=source).exists())
+
+    def test_backlinks_are_filtered_by_viewer_access(self):
+        note_a = self.create_note(title="Privat A")
+        note_b = self.create_note(title="Geteilt B")
+        NoteShare.objects.create(note=note_b, user=self.reader, role=NoteShare.ROLE_READER)
+        document = self.note_link_document(note_b, "Geteilt B")
+        response = self.client.patch(
+            f"/notes/api/{note_a.id}/",
+            data=json.dumps({"title": note_a.title, "document": document, "base_revision": note_a.revision}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+
+        reader_client = Client()
+        reader_client.login(username="reader@example.com", password="secret-12345")
+        response = reader_client.get(f"/notes/api/{note_b.id}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["note"]["backlinks"], [])
+
+        NoteShare.objects.create(note=note_a, user=self.reader, role=NoteShare.ROLE_READER)
+        response = reader_client.get(f"/notes/api/{note_b.id}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["note"]["backlinks"], [{"id": note_a.id, "title": "Privat A"}])
+
+    def test_link_candidates_only_include_accessible_notes(self):
+        source = self.create_note(title="Notiz A")
+        own_other = self.create_note(title="Notiz B")
+        outsider_note = Note.objects.create(owner=self.editor, title="Fremde Notiz")
+
+        response = self.client.get(f"/notes/api/{source.id}/link-candidates/")
+        self.assertEqual(response.status_code, 200)
+        candidates = response.json()["notes"]
+        self.assertEqual({item["title"] for item in candidates}, {"Notiz B"})
+        ids = {item["id"] for item in candidates}
+        self.assertIn(own_other.id, ids)
+        self.assertNotIn(source.id, ids)
+        self.assertNotIn(outsider_note.id, ids)
+
+    def test_duplicating_note_carries_forward_note_links(self):
+        source = self.create_note(title="Notiz A")
+        target = self.create_note(title="Notiz B")
+        document = self.note_link_document(target, "Notiz B")
+        self.client.patch(
+            f"/notes/api/{source.id}/",
+            data=json.dumps({"title": source.title, "document": document, "base_revision": source.revision}),
+            content_type="application/json",
+        )
+
+        response = self.client.post(
+            f"/notes/api/{source.id}/actions/",
+            data=json.dumps({"action": "duplicate"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        duplicate = Note.objects.get(pk=response.json()["note"]["id"])
+        self.assertTrue(NoteLink.objects.filter(source_note=duplicate, target_note=target).exists())
+
+    def test_restoring_version_resyncs_note_links(self):
+        source = self.create_note(title="Notiz A")
+        target = self.create_note(title="Notiz B")
+        document = self.note_link_document(target, "Notiz B")
+        self.client.patch(
+            f"/notes/api/{source.id}/",
+            data=json.dumps({"title": source.title, "document": document, "base_revision": source.revision}),
+            content_type="application/json",
+        )
+        source.refresh_from_db()
+        self.assertTrue(NoteLink.objects.filter(source_note=source, target_note=target).exists())
+
+        version = NoteVersion.objects.get(note=source)
+        response = self.client.post(
+            f"/notes/api/{source.id}/versions/{version.id}/restore/",
+            data=json.dumps({"base_revision": source.revision}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertFalse(NoteLink.objects.filter(source_note=source, target_note=target).exists())
 
 
 class VacationPlannerTests(TestCase):
