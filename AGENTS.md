@@ -151,10 +151,12 @@ is public.
 it does not require inbound SSH or a GitHub token. For a new Fast-Forward commit it
 creates one pre-deployment backup, runs the application deployment as `yunnik`, restarts
 services as root, performs an internal health check, and only then records the successful
-commit in `/var/lib/lunora-auto-deploy`. A failure leaves the previous success marker in
-place and is retried. The root-owned installed driver `/usr/local/sbin/lunora-auto-deploy`
-must only be updated manually from `scripts/auto-deploy.sh`; never execute repository
-code directly as root.
+commit in `/var/lib/lunora-auto-deploy`. The unit must keep `UMask=0027`, and the driver
+must verify every tracked file is readable as `lunora` before restarting services; a
+stricter umask can make Git-written files unreadable to Gunicorn. A failure leaves the
+previous success marker in place and is retried. The root-owned installed driver
+`/usr/local/sbin/lunora-auto-deploy` must only be updated manually from
+`scripts/auto-deploy.sh`; never execute repository code directly as root.
 
 The manual fallback remains available on the Ubuntu server and must run as `yunnik`,
 never as root:

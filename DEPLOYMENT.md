@@ -71,9 +71,14 @@ Bei einem neuen Fast-Forward-Commit führt der root-eigene Treiber diese Schritt
 1. einen unveränderten Produktions-Checkout und Fast-Forward-Verlauf prüfen;
 2. einmalig ein lokales Backup für den Ziel-Commit erstellen;
 3. `scripts/deploy.sh` als Benutzer `yunnik` ohne privilegierten Dienstneustart starten;
-4. Web- und Automationsdienst kontrolliert als root neu starten;
-5. beide Dienste und den internen HTTPS-Proxy-Pfad prüfen;
-6. erst danach den Commit unter `/var/lib/lunora-auto-deploy` als erfolgreich markieren.
+4. als Benutzer `lunora` prüfen, dass sämtliche getrackten Dateien lesbar sind;
+5. Web- und Automationsdienst kontrolliert als root neu starten;
+6. beide Dienste und den internen HTTPS-Proxy-Pfad prüfen;
+7. erst danach den Commit unter `/var/lib/lunora-auto-deploy` als erfolgreich markieren.
+
+Die Auto-Deploy-Unit muss `UMask=0027` verwenden. Ein restriktiverer Wert wie `0077`
+würde von Git neu geschriebene Dateien vor der Gruppe `lunora` verbergen und Gunicorn
+am Start hindern. Der Lesbarkeitstest muss vor den Dienstneustarts bleiben.
 
 Ein fehlgeschlagenes Deployment wird nicht als erfolgreich markiert und beim nächsten
 Timerlauf erneut versucht. Diagnose und manuelle Auslösung:
