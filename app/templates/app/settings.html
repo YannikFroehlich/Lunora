@@ -4,7 +4,7 @@
 {% block title %}Einstellungen | Lunora{% endblock %}
 
 {% block page_css %}
-<link rel="stylesheet" href="{% static 'css/settings.css' %}?v=multi-calendar-4">
+<link rel="stylesheet" href="{% static 'css/settings.css' %}?v=pwa-1">
 {% endblock %}
 
 {% block content %}
@@ -230,7 +230,7 @@
                     <i class="fa-solid fa-pause" aria-hidden="true"></i>
                     <div>
                         <strong>Kalendersynchronisierung pausiert</strong>
-                        <p>Quellen verwalten und Synchronisieren ist voruebergehend deaktiviert.</p>
+                        <p>Quellen verwalten und Synchronisieren ist vorübergehend deaktiviert.</p>
                     </div>
                 </div>
             </section>
@@ -387,6 +387,21 @@
                     Präferenzen speichern
                 </button>
             </section>
+
+            <section class="glass-panel app-install-panel" data-pwa-install-panel>
+                <div class="panel-title"><i class="fa-solid fa-mobile-screen-button" aria-hidden="true"></i><h2>Lunora App</h2></div>
+                <div class="app-install-content">
+                    <img src="{% static 'img/icon-192.png' %}?v=brand-3" alt="" aria-hidden="true">
+                    <div>
+                        <strong>Lunora</strong>
+                        <p role="status" aria-live="polite" data-pwa-install-status>Im Browser geöffnet.</p>
+                    </div>
+                </div>
+                <button class="primary-button app-install-button" type="button" data-pwa-install hidden>
+                    <i class="fa-solid fa-download" aria-hidden="true"></i>
+                    App installieren
+                </button>
+            </section>
         </div>
     </div>
 
@@ -398,5 +413,5 @@
 {% endblock %}
 
 {% block page_js %}
-<script src="{% static 'js/settings.js' %}?v=notifications-1"></script>
+<script src="{% static 'js/settings.js' %}?v=pwa-1"></script>
 {% endblock %}

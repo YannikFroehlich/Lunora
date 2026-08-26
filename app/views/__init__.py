@@ -11,6 +11,7 @@ from .calendar_views import calendar
 from .core_views import home, settings
 from .message_views import chat_attachment_download, chat_typing_ping, messages, messages_live_updates
 from .notification_views import claim_desktop_notifications
+from .pwa_views import offline, service_worker
 from .note_views import (
     note_action_api,
     note_attachment_download,
@@ -61,6 +62,8 @@ __all__ = [
     "chat_typing_ping",
     "chat_attachment_download",
     "claim_desktop_notifications",
+    "offline",
+    "service_worker",
     "notes",
     "note_create_api",
     "note_detail_api",

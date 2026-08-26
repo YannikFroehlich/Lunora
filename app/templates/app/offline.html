@@ -1,0 +1,40 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#c2a276">
+    <meta name="robots" content="noindex, noarchive">
+    <title>Offline | Lunora</title>
+    <script>
+        const offlineTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.dataset.theme = offlineTheme;
+        document.documentElement.style.colorScheme = offlineTheme;
+    </script>
+    <link rel="icon" type="image/png" sizes="32x32" href="{% static 'img/favicon-32.png' %}?v=brand-3">
+    <link rel="apple-touch-icon" sizes="180x180" href="{% static 'img/apple-touch-icon.png' %}?v=brand-3">
+    <link rel="stylesheet" href="{% static 'css/base.css' %}?v=responsive-3">
+    <link rel="stylesheet" href="{% static 'css/offline.css' %}?v=pwa-1">
+</head>
+<body>
+<main class="offline-shell">
+    <section class="glass-panel offline-panel" aria-labelledby="offline-title">
+        <div class="offline-brand">
+            <img src="{% static 'img/lunora_logo.png' %}?v=brand-3" alt="">
+            <strong>Lunora</strong>
+        </div>
+        <span class="offline-kicker">Verbindung unterbrochen</span>
+        <h1 id="offline-title">Du bist offline</h1>
+        <p>Stelle die Verbindung wieder her und versuche es erneut.</p>
+        <div class="offline-actions">
+            <button class="primary-button" type="button" data-offline-retry>Erneut versuchen</button>
+            <a class="ghost-button" href="{% url 'home' %}">Zum Dashboard</a>
+        </div>
+    </section>
+</main>
+<script>
+    document.querySelector("[data-offline-retry]")?.addEventListener("click", () => window.location.reload());
+</script>
+</body>
+</html>

@@ -37,6 +37,7 @@ from app.services.scheduled_tasks import sync_due_calendars
 from app.services.weather_service import (
     WEATHER_MAP_LAYERS,
     _build_weather_alert,
+    _format_weather_description,
     delete_weather_location,
     fetch_weather_map_tile,
     get_location_suggestions,
@@ -51,6 +52,12 @@ from app.services.note_content import NOTE_TEMPLATES, empty_note_document, valid
 from app.services.note_search import build_snippet, highlight_text, parse_search_query, search_notes
 from app.services.notes import accessible_notes, prune_note_versions, purge_expired_notes
 from app.services.vacation_planner import annual_summary, calculate_period
+from app.view_models import (
+    _dashboard_greeting,
+    _dashboard_moment_icon,
+    _dashboard_moment_label,
+    _dashboard_tool_shortcuts,
+)
 from app.views.message_views import _build_inbox_items
 from lunora.settings import BASE_DIR, database_config
 
@@ -77,6 +84,147 @@ def note_document(text="Gedanke"):
             }
         ],
     }
+
+
+class DashboardGreetingTests(SimpleTestCase):
+    def test_dashboard_greeting_follows_local_hour(self):
+        examples = {
+            4: "Gute Nacht",
+            5: "Guten Morgen",
+            11: "Guten Tag",
+            17: "Guten Abend",
+            22: "Gute Nacht",
+        }
+
+        for hour, expected in examples.items():
+            with self.subTest(hour=hour):
+                now = datetime(2026, 8, 26, hour, 0, tzinfo=ZoneInfo("Europe/Berlin"))
+                self.assertEqual(_dashboard_greeting(now), expected)
+
+    def test_dashboard_moment_label_follows_local_hour(self):
+        examples = {
+            4: "Nachtruhe",
+            5: "Ruhiger Start",
+            11: "Fokussierter Tag",
+            17: "Ruhiger Abend",
+            22: "Nachtruhe",
+        }
+
+        for hour, expected in examples.items():
+            with self.subTest(hour=hour):
+                now = datetime(2026, 8, 26, hour, 0, tzinfo=ZoneInfo("Europe/Berlin"))
+                self.assertEqual(_dashboard_moment_label(now), expected)
+
+    def test_dashboard_moment_icon_follows_local_hour(self):
+        examples = {
+            4: "fa-regular fa-moon",
+            5: "fa-regular fa-sun",
+            17: "fa-solid fa-cloud-sun",
+            22: "fa-regular fa-moon",
+        }
+
+        for hour, expected in examples.items():
+            with self.subTest(hour=hour):
+                now = datetime(2026, 8, 26, hour, 0, tzinfo=ZoneInfo("Europe/Berlin"))
+                self.assertEqual(_dashboard_moment_icon(now), expected)
+
+    def test_dashboard_shortcuts_use_correct_german_spelling(self):
+        shortcuts = _dashboard_tool_shortcuts(
+            [],
+            0,
+            {"today": {"city": "Bünde"}},
+            0,
+            {"weather": True, "messages": True, "notes": True, "vacation_planner": True},
+        )
+
+        subtitles = {item["title"]: item["subtitle"] for item in shortcuts}
+        self.assertEqual(subtitles["Kalender"], "Kalender öffnen")
+        self.assertEqual(subtitles["Nachrichten"], "Inbox öffnen")
+        self.assertEqual(subtitles["Einstellungen"], "Profil & Präferenzen")
+
+
+class WeatherDescriptionTests(SimpleTestCase):
+    def test_weather_descriptions_follow_german_capitalization(self):
+        examples = {
+            "ein paar wolken": "Ein paar Wolken",
+            "leichter regen": "Leichter Regen",
+            "gewitter mit schnee": "Gewitter mit Schnee",
+            "mäßig bewölkt": "Mäßig bewölkt",
+        }
+
+        for description, expected in examples.items():
+            with self.subTest(description=description):
+                self.assertEqual(_format_weather_description(description), expected)
+
+
+@override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
+class PwaTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="pwa@example.com",
+            email="pwa@example.com",
+            password="secret-12345",
+        )
+        Profile.objects.create(user=self.user, display_name="PWA")
+
+    def test_service_worker_is_public_and_root_scoped(self):
+        response = self.client.get("/service-worker.js")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response["Content-Type"].startswith("application/javascript"))
+        self.assertEqual(response["Service-Worker-Allowed"], "/")
+        self.assertIn("no-store", response["Cache-Control"])
+        self.assertContains(response, 'const OFFLINE_URL = "/offline/";')
+        self.assertContains(response, 'request.mode === "navigate"')
+        self.assertContains(response, 'requestUrl.pathname.startsWith("/static/")')
+        self.assertContains(response, "ignoreSearch: true")
+
+    def test_service_worker_does_not_precache_personal_pages_or_media(self):
+        response = self.client.get("/service-worker.js")
+        content = response.content.decode("utf-8")
+
+        self.assertNotIn('"/home/"', content)
+        self.assertNotIn("/notes/", content)
+        self.assertNotIn("/messages/", content)
+        self.assertNotIn("/calendar/", content)
+        self.assertNotIn("/media/", content)
+        self.assertNotIn("/private_media/", content)
+
+    def test_offline_page_is_public_and_neutral(self):
+        response = self.client.get("/offline/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Du bist offline")
+        self.assertContains(response, "data-offline-retry")
+        self.assertNotContains(response, "Hauptnavigation")
+        self.assertEqual(response["X-Robots-Tag"], "noindex, noarchive")
+
+    def test_manifest_contains_install_metadata_and_shortcuts(self):
+        manifest_path = BASE_DIR / "app" / "static" / "site.webmanifest"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(manifest["id"], "/")
+        self.assertEqual(manifest["start_url"], "/home/")
+        self.assertEqual(manifest["scope"], "/")
+        self.assertEqual(manifest["display"], "standalone")
+        self.assertTrue(any("maskable" in icon.get("purpose", "") for icon in manifest["icons"]))
+        self.assertEqual(
+            [shortcut["short_name"] for shortcut in manifest["shortcuts"]],
+            ["Dashboard", "Notizen", "Kalender"],
+        )
+
+    def test_base_and_settings_expose_pwa_controls(self):
+        login_response = self.client.get("/login/")
+
+        self.assertContains(login_response, 'data-service-worker-url="/service-worker.js"')
+        self.assertContains(login_response, "site.webmanifest")
+
+        self.client.login(username="pwa@example.com", password="secret-12345")
+        settings_response = self.client.get("/settings/")
+
+        self.assertContains(settings_response, "data-pwa-install-panel")
+        self.assertContains(settings_response, "data-pwa-install")
+        self.assertContains(settings_response, "App installieren")
 
 
 class DatabaseConfigurationTests(SimpleTestCase):
@@ -867,7 +1015,38 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, 'name="form_name" value="calendar_source_add"')
         self.assertNotContains(response, "Google Kalender-Link")
-        self.assertNotContains(response, "Hinzufuegen")
+        self.assertNotContains(response, "Hinzufügen")
+
+    def test_calendar_empty_states_offer_direct_actions(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get("/calendar/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-calendar-empty-action="connect"')
+        self.assertContains(response, 'data-calendar-empty-action="connect-upcoming"')
+        self.assertContains(response, 'data-calendar-empty-action="event-today"')
+        self.assertContains(response, 'data-calendar-empty-action="event-upcoming"')
+        self.assertContains(response, "Kalender verbinden", count=2)
+
+    def test_calendar_upcoming_empty_state_respects_existing_sources(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        CalendarSource.objects.create(
+            user=user,
+            name="Arbeit",
+            ical_url="https://calendar.google.com/calendar/ical/example/private/basic.ics",
+        )
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get("/calendar/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Deine sichtbaren Kalender haben aktuell keine kommenden Termine.")
+        self.assertNotContains(response, 'data-calendar-empty-action="connect-upcoming"')
+        self.assertContains(response, 'data-calendar-empty-action="event-upcoming"')
 
     def test_calendar_page_get_does_not_sync_calendar_source(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
@@ -1999,6 +2178,12 @@ class WeatherMapTests(TestCase):
         self.assertContains(response, "data-weather-map-canvas")
         self.assertContains(response, "data-weather-map-reset")
         self.assertContains(response, "data-weather-map-fullscreen")
+        self.assertContains(response, "data-hourly-carousel")
+        self.assertContains(response, "data-hourly-scroll")
+        self.assertContains(response, "data-hourly-previous")
+        self.assertContains(response, "data-hourly-next")
+        self.assertContains(response, "Frühere Stunden anzeigen")
+        self.assertContains(response, "Spätere Stunden anzeigen")
         self.assertContains(response, 'data-weather-map-point-url="/weather/point/"')
         self.assertContains(response, "per Klick die Temperatur eines Ortes abrufen")
         self.assertContains(response, "Keine Einfärbung bedeutet aktuell kein Niederschlag.")
@@ -2144,12 +2329,12 @@ class WeatherMapTests(TestCase):
 
     @override_settings(WEATHER_API_KEY="test-key")
     def test_weather_map_service_rejects_invalid_layer_and_coordinates(self):
-        with self.assertRaisesMessage(ValueError, "Ungueltige Wetterkarten-Ebene"):
+        with self.assertRaisesMessage(ValueError, "Ungültige Wetterkarten-Ebene"):
             fetch_weather_map_tile(7, 67, 43, layer="snow")
 
         for coordinates in [(0, 0, 0), (11, 0, 0), (7, 128, 43), (7, 67, 128)]:
             with self.subTest(coordinates=coordinates):
-                with self.assertRaisesMessage(ValueError, "Ungueltige Wetterkarten-Kachel"):
+                with self.assertRaisesMessage(ValueError, "Ungültige Wetterkarten-Kachel"):
                     fetch_weather_map_tile(*coordinates, layer="temperature")
 
     @override_settings(WEATHER_API_KEY="")
@@ -2372,6 +2557,18 @@ class MessagesPageTests(TestCase):
         response = self.client.get("/messages/")
 
         self.assertRedirects(response, "/login/?next=/messages/")
+
+    def test_messages_empty_state_offers_direct_start_action(self):
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get("/messages/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "data-new-chat-card")
+        self.assertContains(response, "data-open-new-chat", count=2)
+        self.assertContains(response, "Neue Unterhaltung starten", count=2)
+        self.assertNotContains(response, "Starte links")
+        self.assertNotContains(response, "Starte oben")
 
     def test_start_conversation_excludes_inactive_users(self):
         self.anna.is_active = False
@@ -3101,7 +3298,24 @@ class GlobalSearchTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Wonach suchst du?")
+        self.assertContains(response, "Notizen öffnen")
+        self.assertContains(response, "Nachrichten öffnen")
+        self.assertContains(response, "Kalender öffnen")
         self.assertNotContains(response, "Irgendeine Notiz")
+
+    def test_global_search_no_results_offers_reset_and_shortcuts(self):
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get("/search/?q=Unauffindbar")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context["has_search_results"])
+        self.assertContains(response, "Keine Treffer für")
+        self.assertContains(response, "Unauffindbar")
+        self.assertContains(response, "Suche zurücksetzen")
+        self.assertContains(response, "Notizen öffnen")
+        self.assertContains(response, "Nachrichten öffnen")
+        self.assertContains(response, "Kalender öffnen")
 
     def test_global_search_does_not_leak_other_users_private_data(self):
         Note.objects.create(owner=self.lukas, title="Raketengeheimnis")
@@ -3500,7 +3714,7 @@ class AdministrationFeatureFlagTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.wsgi_request.user.is_authenticated)
-        self.assertContains(response, "Der Login ist fuer Nutzer voruebergehend deaktiviert")
+        self.assertContains(response, "Der Login ist für Nutzer vorübergehend deaktiviert")
 
         response = self.client.post(
             "/register/",
@@ -3563,6 +3777,16 @@ class AdministrationFeatureFlagTests(TestCase):
 
         self.assertEqual(response.status_code, 503)
         self.assertTrue(CalendarEvent.objects.filter(pk=event.id).exists())
+
+    def test_disabled_calendar_event_creation_hides_empty_state_actions(self):
+        SystemSettings.objects.create(calendar_event_creation_enabled=False)
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get("/calendar/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'data-calendar-empty-action="event-today"')
+        self.assertNotContains(response, 'data-calendar-empty-action="event-upcoming"')
 
     def test_disabled_reminders_block_direct_post(self):
         SystemSettings.objects.create(calendar_reminders_enabled=False)
@@ -5183,6 +5407,27 @@ class VacationPlannerTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         self.assertContains(response, "Eigener Hinweis")
         self.assertNotContains(response, "Fremder Hinweis")
+
+    def test_empty_planner_with_saved_year_offers_vacation_action(self):
+        response = self.client.get("/vacation-planner/?year=2026")
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertContains(response, 'id="vacation-period-editor"')
+        self.assertContains(response, 'data-vacation-focus="period"')
+        self.assertContains(response, "Urlaub planen")
+        self.assertNotContains(response, "Jahr zuerst einrichten")
+
+    def test_empty_planner_without_year_points_to_year_setup(self):
+        self.vacation_year.delete()
+
+        response = self.client.get("/vacation-planner/?year=2027")
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertContains(response, 'id="vacation-year-settings"')
+        self.assertContains(response, 'data-vacation-focus="year"', count=3)
+        self.assertContains(response, "Jahr zuerst einrichten")
+        self.assertContains(response, "Jahr einrichten")
+        self.assertNotContains(response, 'data-vacation-focus="period"')
 
     def test_public_holiday_import_command_is_idempotent(self):
         stale = OfficialHoliday.objects.create(
