@@ -1462,6 +1462,10 @@
 .notes-dialog header button { width: 36px; height: 36px; border-radius: 50%; }
 .notes-dialog header button:hover { background: var(--surface-control); }
 
+.template-dialog header + .table-operation-grid {
+  margin-top: 18px;
+}
+
 .dialog-search {
   display: grid;
   gap: 7px;
