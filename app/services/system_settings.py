@@ -78,7 +78,7 @@ def feature_flags():
 
 def disabled_feature_response(request, feature_key, *, json_response=False):
     label = FEATURE_LABELS.get(feature_key, "Diese Funktion")
-    message = f"{label} ist voruebergehend deaktiviert."
+    message = f"{label} ist vorübergehend deaktiviert."
     if json_response:
         return JsonResponse({"ok": False, "error": message}, status=503)
     return render(

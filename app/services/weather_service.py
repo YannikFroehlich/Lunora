@@ -1,5 +1,6 @@
 import json
 import math
+import re
 from copy import deepcopy
 from datetime import datetime
 from hashlib import sha256
@@ -15,6 +16,20 @@ from app.models import WeatherLocation
 
 MAX_WEATHER_LOCATIONS = 8
 _LOCATION_DEDUPE_PRECISION = 2
+_WEATHER_NOUN_PATTERN = re.compile(
+    r"\b(regenschauer|nieselregen|schneeregen|schneeschauer|wolken?|regen|schnee|gewitter|"
+    r"nebel|dunst|rauch|staub|sand|asche|himmel|hagel|sturm|tornado)\b",
+    re.IGNORECASE,
+)
+
+
+def _format_weather_description(description, default="Aktuelles Wetter"):
+    text = (description or default).strip() or default
+    text = text[0].upper() + text[1:]
+    return _WEATHER_NOUN_PATTERN.sub(
+        lambda match: match.group(0)[0].upper() + match.group(0)[1:],
+        text,
+    )
 
 
 def get_weather_context(params=None, user=None):
@@ -122,7 +137,7 @@ def get_weather_at_coordinates(lat, lon):
     if not location_name:
         location_name = f"{latitude:.2f}°, {longitude:.2f}°"
 
-    description = (weather.get("description") or "Aktuelles Wetter").strip().capitalize()
+    description = _format_weather_description(weather.get("description"))
     return {
         "location": location_name,
         "latitude": round(latitude, 4),
@@ -369,18 +384,18 @@ WEATHER_MAP_LAYERS = {
 
 def fetch_weather_map_tile(z, x, y, layer="temperature"):
     if not settings.WEATHER_API_KEY:
-        raise ValueError("Wetterkarte ist ohne API-Key nicht verfuegbar.")
+        raise ValueError("Wetterkarte ist ohne API-Schlüssel nicht verfügbar.")
 
     layer_config = WEATHER_MAP_LAYERS.get(layer)
     if not layer_config:
-        raise ValueError("Ungueltige Wetterkarten-Ebene.")
+        raise ValueError("Ungültige Wetterkarten-Ebene.")
 
     if z < 1 or z > 10:
-        raise ValueError("Ungueltige Wetterkarten-Kachel.")
+        raise ValueError("Ungültige Wetterkarten-Kachel.")
 
     max_tile = 2 ** z
     if x < 0 or y < 0 or x >= max_tile or y >= max_tile:
-        raise ValueError("Ungueltige Wetterkarten-Kachel.")
+        raise ValueError("Ungültige Wetterkarten-Kachel.")
 
     query = urlencode({"appid": settings.WEATHER_API_KEY})
     tile_base_url = settings.WEATHER_TILE_BASE_URL.rstrip("/")
@@ -426,7 +441,7 @@ def _build_context_from_api(current, forecast, fallback, location):
     location_detail = location.get("details") or _location_details_from_label(location_label)
     temperature = round(main.get("temp", 24))
     feels_like = round(main.get("feels_like", temperature))
-    description = weather.get("description", "Teilweise bewölkt").capitalize()
+    description = _format_weather_description(weather.get("description"), "Teilweise bewölkt")
     updated = datetime.fromtimestamp(current.get("dt", datetime.now().timestamp()))
 
     sunrise = _format_time(sys.get("sunrise"))
@@ -525,7 +540,7 @@ def _daily_from_api(forecast):
             {
                 "day": _weekday_name(when),
                 "icon": _icon_for_weather(weather.get("main", "")),
-                "description": weather.get("description", "Bewölkt").capitalize(),
+                "description": _format_weather_description(weather.get("description"), "Bewölkt"),
                 "high": round(main.get("temp_max", 24)),
                 "low": round(main.get("temp_min", 16)),
                 "rain": round(item.get("pop", 0.1) * 100),

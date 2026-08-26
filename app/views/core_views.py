@@ -116,7 +116,7 @@ def settings(request):
             return redirect(return_to)
     elif request.method == "POST" and request.POST.get("form_name") == "calendar_source_add":
         if not calendar_sync_enabled:
-            django_messages.warning(request, "Kalendersynchronisierung ist voruebergehend deaktiviert.")
+            django_messages.warning(request, "Kalendersynchronisierung ist vorübergehend deaktiviert.")
             return redirect(return_to)
         calendar_add_form = CalendarSourceForm(request.POST, user=request.user, prefix="new")
         form = ProfileForm(instance=profile)
@@ -137,7 +137,7 @@ def settings(request):
             return redirect(return_to)
     elif request.method == "POST" and request.POST.get("form_name") == "calendar_source_update":
         if not calendar_sync_enabled:
-            django_messages.warning(request, "Kalendersynchronisierung ist voruebergehend deaktiviert.")
+            django_messages.warning(request, "Kalendersynchronisierung ist vorübergehend deaktiviert.")
             return redirect(return_to)
         calendar_source = CalendarSource.objects.filter(user=request.user, pk=request.POST.get("source_id")).first()
         form = ProfileForm(instance=profile)
@@ -185,18 +185,18 @@ def settings(request):
             return redirect(return_to)
     elif request.method == "POST" and request.POST.get("form_name") == "calendar_source_delete":
         if not calendar_sync_enabled:
-            django_messages.warning(request, "Kalendersynchronisierung ist voruebergehend deaktiviert.")
+            django_messages.warning(request, "Kalendersynchronisierung ist vorübergehend deaktiviert.")
             return redirect(return_to)
         deleted_count, _details = CalendarSource.objects.filter(
             user=request.user,
             pk=request.POST.get("source_id"),
         ).delete()
         if deleted_count:
-            django_messages.success(request, "Kalender geloescht.")
+            django_messages.success(request, "Kalender gelöscht.")
         return redirect(return_to)
     elif request.method == "POST" and request.POST.get("form_name") == "calendar_sync_all":
         if not calendar_sync_enabled:
-            django_messages.warning(request, "Kalendersynchronisierung ist voruebergehend deaktiviert.")
+            django_messages.warning(request, "Kalendersynchronisierung ist vorübergehend deaktiviert.")
             return redirect(return_to)
         sync_result = queue_calendar_sources(
             CalendarSource.objects.filter(user=request.user).order_by("name", "id"),

@@ -98,7 +98,7 @@ class EmailLoginForm(AuthenticationForm):
         super().confirm_login_allowed(user)
         if not user_can_login(user):
             raise forms.ValidationError(
-                "Der Login ist voruebergehend deaktiviert.",
+                "Der Login ist vorübergehend deaktiviert.",
                 code="login_disabled",
             )
 
@@ -117,7 +117,7 @@ class SystemSettingsForm(forms.ModelForm):
             "weather_enabled",
         ]
         labels = {
-            "normal_login_enabled": "Login und Registrierung fuer Nutzer",
+            "normal_login_enabled": "Login und Registrierung für Nutzer",
             "calendar_event_creation_enabled": "Kalender: eigene Termine erstellen",
             "calendar_reminders_enabled": "Kalender: Erinnerungen",
             "calendar_sync_enabled": "Kalender: Synchronisierung und Quellen",
@@ -302,7 +302,7 @@ class ProfileForm(forms.ModelForm):
             except forms.ValidationError:
                 raise
             except Exception as error:
-                raise forms.ValidationError("Das Profilbild konnte nicht geprueft werden.") from error
+                raise forms.ValidationError("Das Profilbild konnte nicht geprüft werden.") from error
         return image
 
     def save(self, commit=True):
@@ -367,7 +367,7 @@ class AppearanceForm(forms.ModelForm):
     def clean_background_softness(self):
         value = self.cleaned_data["background_softness"]
         if value < 0 or value > 100:
-            raise forms.ValidationError("Bitte waehle einen Wert zwischen 0 und 100.")
+            raise forms.ValidationError("Bitte wähle einen Wert zwischen 0 und 100.")
         return value
 
     def _clean_optional_region_field(self, field_name):
@@ -563,7 +563,7 @@ class CalendarSourceForm(forms.ModelForm):
 
 class CalendarReminderForm(forms.ModelForm):
     due_at = forms.DateTimeField(
-        label="Faellig am",
+        label="Fällig am",
         required=False,
         input_formats=["%Y-%m-%dT%H:%M"],
         widget=forms.DateTimeInput(
