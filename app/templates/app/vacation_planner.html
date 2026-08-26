@@ -4,7 +4,7 @@
 {% block title %}Urlaubsplaner | Lunora{% endblock %}
 
 {% block page_css %}
-<link rel="stylesheet" href="{% static 'css/vacation_planner.css' %}?v=1">
+<link rel="stylesheet" href="{% static 'css/vacation_planner.css' %}?v=planner-actions-1">
 {% endblock %}
 
 {% block content %}
@@ -33,7 +33,7 @@
         </nav>
     </header>
 
-    <section class="glass-panel year-config-panel">
+    <section class="glass-panel year-config-panel" id="vacation-year-settings" data-vacation-year-panel>
         <div class="panel-title panel-title-between">
             <span><i class="fa-solid fa-sliders" aria-hidden="true"></i> Jahresdaten</span>
             {% if not year_context.vacation_year %}<span class="state-pill is-warning">Noch nicht bestätigt</span>{% endif %}
@@ -83,7 +83,7 @@
     </section>
 
     <div class="planner-grid">
-        <section class="glass-panel vacation-editor">
+        <section class="glass-panel vacation-editor" id="vacation-period-editor" data-vacation-period-panel>
             <div class="panel-title">
                 <i class="fa-solid fa-plane-departure" aria-hidden="true"></i>
                 <h2>Urlaub anlegen</h2>
@@ -181,7 +181,29 @@
                     </details>
                 </article>
                 {% empty %}
-                <p class="empty-state">Noch keine Urlaube für dieses Jahr geplant.</p>
+                <div class="empty-state-card is-compact vacation-empty-card">
+                    <i class="fa-solid fa-plane-departure" aria-hidden="true"></i>
+                    <div>
+                        {% if year_context.vacation_year %}
+                        <strong>Noch keine Urlaube geplant</strong>
+                        <p>Lege deinen ersten Zeitraum an, damit Auslastung und Monatsansicht lebendig werden.</p>
+                        {% else %}
+                        <strong>Jahr zuerst einrichten</strong>
+                        <p>Speichere deine Jahresdaten, bevor du Urlaubstage planen kannst.</p>
+                        {% endif %}
+                    </div>
+                    {% if year_context.vacation_year %}
+                    <button class="ghost-button vacation-empty-action" type="button" data-vacation-focus="period">
+                        <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                        Urlaub planen
+                    </button>
+                    {% else %}
+                    <a class="ghost-button vacation-empty-action" href="#vacation-year-settings" data-vacation-focus="year">
+                        <i class="fa-solid fa-sliders" aria-hidden="true"></i>
+                        Jahr einrichten
+                    </a>
+                    {% endif %}
+                </div>
                 {% endfor %}
             </div>
         </section>
@@ -283,7 +305,19 @@
                     </details>
                 </article>
                 {% empty %}
-                <p class="empty-state">Keine eigenen Feiertage hinterlegt.</p>
+                <div class="empty-state-card is-compact vacation-empty-card">
+                    <i class="fa-solid fa-star-half-stroke" aria-hidden="true"></i>
+                    <div>
+                        <strong>Keine eigenen Feiertage</strong>
+                        <p>{% if year_context.vacation_year %}Eigene freie Tage kannst du direkt über das Formular ergänzen.{% else %}Speichere zuerst deine Jahresdaten, um eigene Feiertage zu ergänzen.{% endif %}</p>
+                    </div>
+                    {% if not year_context.vacation_year %}
+                    <a class="ghost-button vacation-empty-action" href="#vacation-year-settings" data-vacation-focus="year">
+                        <i class="fa-solid fa-sliders" aria-hidden="true"></i>
+                        Jahr einrichten
+                    </a>
+                    {% endif %}
+                </div>
                 {% endfor %}
             </div>
         </section>
@@ -324,7 +358,19 @@
                     </details>
                 </article>
                 {% empty %}
-                <p class="empty-state">Speichere zuerst ein Urlaubsjahr, um Feiertage zu sehen.</p>
+                <div class="empty-state-card is-compact vacation-empty-card">
+                    <i class="fa-solid fa-landmark" aria-hidden="true"></i>
+                    <div>
+                        <strong>{% if year_context.vacation_year %}Keine offiziellen Feiertage gefunden{% else %}Jahr zuerst einrichten{% endif %}</strong>
+                        <p>{% if year_context.vacation_year %}Für dieses Jahr und Bundesland sind noch keine offiziellen Feiertage hinterlegt.{% else %}Speichere deine Jahresdaten, damit Lunora die passenden Feiertage laden kann.{% endif %}</p>
+                    </div>
+                    {% if not year_context.vacation_year %}
+                    <a class="ghost-button vacation-empty-action" href="#vacation-year-settings" data-vacation-focus="year">
+                        <i class="fa-solid fa-sliders" aria-hidden="true"></i>
+                        Jahr einrichten
+                    </a>
+                    {% endif %}
+                </div>
                 {% endfor %}
             </div>
         </section>
@@ -333,5 +379,5 @@
 {% endblock %}
 
 {% block page_js %}
-<script src="{% static 'js/vacation_planner.js' %}?v=1"></script>
+<script src="{% static 'js/vacation_planner.js' %}?v=planner-actions-1"></script>
 {% endblock %}

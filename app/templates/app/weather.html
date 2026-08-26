@@ -4,7 +4,7 @@
 {% block title %}Wetter | Lunora{% endblock %}
 
 {% block page_css %}
-<link rel="stylesheet" href="{% static 'css/weather.css' %}?v=weather-map-7">
+<link rel="stylesheet" href="{% static 'css/weather.css' %}?v=hourly-controls-1">
 {% endblock %}
 
 {% block content %}
@@ -133,17 +133,29 @@
             </div>
         </section>
 
-        <section class="glass-panel hourly-panel">
-            <h2>Stundenübersicht</h2>
-            <div class="hourly-scroll">
-                {% for item in hourly_forecast %}
-                <article class="hour-card">
-                    <span>{{ item.time }}</span>
-                    <i class="fa-solid {{ item.icon }}"></i>
-                    <strong>{{ item.temperature }}°</strong>
-                    <small><i class="fa-solid fa-droplet"></i> {{ item.rain }} %</small>
-                </article>
-                {% endfor %}
+        <section class="glass-panel hourly-panel" data-hourly-carousel>
+            <div class="hourly-panel-header">
+                <h2 id="hourly-forecast-title">Stundenübersicht</h2>
+                <div class="hourly-controls" aria-label="Stundenübersicht verschieben" data-hourly-controls hidden>
+                    <button class="icon-button" type="button" aria-label="Frühere Stunden anzeigen" title="Frühere Stunden" data-hourly-previous>
+                        <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                    </button>
+                    <button class="icon-button" type="button" aria-label="Spätere Stunden anzeigen" title="Spätere Stunden" data-hourly-next>
+                        <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="hourly-carousel-window">
+                <div class="hourly-scroll" role="region" aria-labelledby="hourly-forecast-title" tabindex="0" data-hourly-scroll>
+                    {% for item in hourly_forecast %}
+                    <article class="hour-card">
+                        <span>{{ item.time }}</span>
+                        <i class="fa-solid {{ item.icon }}"></i>
+                        <strong>{{ item.temperature }}°</strong>
+                        <small><i class="fa-solid fa-droplet"></i> {{ item.rain }} %</small>
+                    </article>
+                    {% endfor %}
+                </div>
             </div>
         </section>
 
@@ -300,5 +312,5 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
         crossorigin=""></script>
-<script src="{% static 'js/weather.js' %}?v=weather-map-4"></script>
+<script src="{% static 'js/weather.js' %}?v=weather-map-6"></script>
 {% endblock %}

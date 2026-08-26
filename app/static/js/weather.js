@@ -209,6 +209,58 @@ if (weatherForm) {
   });
 }
 
+const hourlyCarousel = document.querySelector("[data-hourly-carousel]");
+
+if (hourlyCarousel) {
+  const scroller = hourlyCarousel.querySelector("[data-hourly-scroll]");
+  const controls = hourlyCarousel.querySelector("[data-hourly-controls]");
+  const previousButton = hourlyCarousel.querySelector("[data-hourly-previous]");
+  const nextButton = hourlyCarousel.querySelector("[data-hourly-next]");
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  let scrollFrame;
+
+  function updateHourlyControls() {
+    if (!scroller || !controls) return;
+
+    const maxScroll = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
+    const hasOverflow = maxScroll > 2;
+    const canScrollPrevious = hasOverflow && scroller.scrollLeft > 2;
+    const canScrollNext = hasOverflow && scroller.scrollLeft < maxScroll - 2;
+
+    controls.hidden = !hasOverflow;
+    hourlyCarousel.classList.toggle("can-scroll-previous", canScrollPrevious);
+    hourlyCarousel.classList.toggle("can-scroll-next", canScrollNext);
+    if (previousButton) previousButton.disabled = !canScrollPrevious;
+    if (nextButton) nextButton.disabled = !canScrollNext;
+  }
+
+  function scrollHourlyForecast(direction) {
+    if (!scroller) return;
+
+    const firstCard = scroller.querySelector(".hour-card");
+    const cardWidth = firstCard?.getBoundingClientRect().width || 78;
+    const distance = Math.max(cardWidth * 3, scroller.clientWidth * 0.72);
+    scroller.scrollBy({
+      left: direction * distance,
+      behavior: reducedMotion.matches ? "auto" : "smooth",
+    });
+  }
+
+  previousButton?.addEventListener("click", () => scrollHourlyForecast(-1));
+  nextButton?.addEventListener("click", () => scrollHourlyForecast(1));
+  scroller?.addEventListener("scroll", () => {
+    window.cancelAnimationFrame(scrollFrame);
+    scrollFrame = window.requestAnimationFrame(updateHourlyControls);
+  }, { passive: true });
+
+  if (scroller && "ResizeObserver" in window) {
+    const hourlyResizeObserver = new ResizeObserver(updateHourlyControls);
+    hourlyResizeObserver.observe(scroller);
+  }
+
+  updateHourlyControls();
+}
+
 const weatherMapShell = document.querySelector("[data-weather-map]");
 
 if (weatherMapShell) {
@@ -236,6 +288,8 @@ if (weatherMapShell) {
   const centerLon = Number.isFinite(parsedLon) ? parsedLon : 8.5864;
   const parsedZoom = Number(weatherMapShell.dataset.weatherMapZoom);
   const initialZoom = Number.isFinite(parsedZoom) ? Math.min(10, Math.max(2, parsedZoom)) : 6;
+  const transparentErrorTile =
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'%3E%3C/svg%3E";
 
   function setStatus(message, isError = false) {
     if (!status) return;
@@ -469,6 +523,7 @@ if (weatherMapShell) {
         opacity: Number.isFinite(opacity) ? opacity : 0.78,
         zIndex: 300,
         keepBuffer: 2,
+        errorTileUrl: transparentErrorTile,
         attribution: 'Wetterdaten &copy; <a href="https://openweathermap.org/">OpenWeather</a>',
       });
 
