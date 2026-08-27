@@ -1,10 +1,10 @@
 {% extends 'app/base.html' %}
-{% load static l10n %}
+{% load static static_versioning l10n %}
 
 {% block title %}Wetter | Lunora{% endblock %}
 
 {% block page_css %}
-<link rel="stylesheet" href="{% static 'css/weather.css' %}?v=hourly-controls-1">
+<link rel="stylesheet" href="{% versioned_static 'css/weather.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -312,5 +312,5 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
         crossorigin=""></script>
-<script src="{% static 'js/weather.js' %}?v=weather-map-6"></script>
+<script src="{% versioned_static 'js/weather.js' %}"></script>
 {% endblock %}

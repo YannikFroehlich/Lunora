@@ -36,6 +36,7 @@ urlpatterns = [
         name="weather_map_tile",
     ),
     path("calendar/", view.calendar, name="calendar"),
+    path("tasks/", view.tasks, name="tasks"),
     path("vacation-planner/", view.vacation_planner, name="vacation_planner"),
     path("vacation-planner/year/", view.vacation_year_save, name="vacation_year_save"),
     path("vacation-planner/period/save/", view.vacation_period_save, name="vacation_period_save"),

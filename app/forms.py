@@ -19,6 +19,7 @@ from app.models import (
     HolidayOverride,
     Profile,
     SystemSettings,
+    Task,
     VacationPeriod,
     VacationYear,
 )
@@ -116,6 +117,7 @@ class SystemSettingsForm(forms.ModelForm):
             "vacation_planner_enabled",
             "weather_enabled",
             "dashboard_customization_enabled",
+            "tasks_enabled",
         ]
         labels = {
             "normal_login_enabled": "Login und Registrierung für Nutzer",
@@ -127,6 +129,7 @@ class SystemSettingsForm(forms.ModelForm):
             "vacation_planner_enabled": "Urlaubsplaner",
             "weather_enabled": "Wetter",
             "dashboard_customization_enabled": "Dashboard anpassen",
+            "tasks_enabled": "Aufgaben",
         }
         widgets = {
             "normal_login_enabled": forms.CheckboxInput(),
@@ -138,6 +141,7 @@ class SystemSettingsForm(forms.ModelForm):
             "vacation_planner_enabled": forms.CheckboxInput(),
             "weather_enabled": forms.CheckboxInput(),
             "dashboard_customization_enabled": forms.CheckboxInput(),
+            "tasks_enabled": forms.CheckboxInput(),
         }
 
 
@@ -586,6 +590,37 @@ class CalendarReminderForm(forms.ModelForm):
             "title": forms.TextInput(
                 attrs={
                     "placeholder": "Neue Erinnerung",
+                    "autocomplete": "off",
+                }
+            )
+        }
+
+    def clean_title(self):
+        return self.cleaned_data["title"].strip()
+
+
+class TaskForm(forms.ModelForm):
+    due_at = forms.DateTimeField(
+        label="Fällig am",
+        required=False,
+        input_formats=["%Y-%m-%dT%H:%M"],
+        widget=forms.DateTimeInput(
+            attrs={
+                "type": "datetime-local",
+                "autocomplete": "off",
+            },
+            format="%Y-%m-%dT%H:%M",
+        ),
+    )
+
+    class Meta:
+        model = Task
+        fields = ["title", "due_at"]
+        labels = {"title": "Neue Aufgabe"}
+        widgets = {
+            "title": forms.TextInput(
+                attrs={
+                    "placeholder": "Neue Aufgabe hinzufügen …",
                     "autocomplete": "off",
                 }
             )

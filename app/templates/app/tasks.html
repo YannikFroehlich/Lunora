@@ -1,0 +1,160 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}Aufgaben | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tasks.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell tasks-shell">
+    <header class="page-hero">
+        <div class="task-hero-copy">
+            <h1>Aufgaben</h1>
+            <p>Behalte deine offenen Aufgaben und Fristen im Blick.</p>
+        </div>
+        <span class="task-hero-icon" aria-hidden="true">
+            <i class="fa-solid fa-list-check"></i>
+        </span>
+    </header>
+
+    <section class="glass-panel task-panel">
+        <div class="panel-title task-panel-title">
+            <h2>Aufgaben</h2>
+        </div>
+
+        <form id="task-add-form" class="task-add-form" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="task_add">
+
+            <div class="task-add-row">
+                <div class="task-title-field">
+                    {{ task_form.title }}
+                </div>
+                <label class="task-date-field" for="{{ task_form.due_at.id_for_label }}">
+                    <i class="fa-regular fa-calendar" aria-hidden="true"></i>
+                    <span data-task-date-label>Fälligkeitsdatum</span>
+                    <i class="fa-solid fa-chevron-down task-date-chevron" aria-hidden="true"></i>
+                    {{ task_form.due_at }}
+                </label>
+                <button class="task-add-button" type="submit">
+                    <span>Hinzufügen</span>
+                    <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                </button>
+            </div>
+
+            {% if task_form.title.errors or task_form.due_at.errors %}
+            <div class="task-form-errors" role="alert">
+                {{ task_form.title.errors }}
+                {{ task_form.due_at.errors }}
+            </div>
+            {% endif %}
+        </form>
+
+        <div class="task-toolbar">
+            <div class="task-filters" role="group" aria-label="Aufgaben filtern">
+                <button class="task-filter is-active" type="button" data-task-filter="all" aria-pressed="true">
+                    Alle <span>{{ task_counts.all }}</span>
+                </button>
+                <button class="task-filter" type="button" data-task-filter="open" aria-pressed="false">
+                    Offen <span>{{ task_counts.open }}</span>
+                </button>
+                <button class="task-filter" type="button" data-task-filter="done" aria-pressed="false">
+                    Erledigt <span>{{ task_counts.done }}</span>
+                </button>
+                <button class="task-filter" type="button" data-task-filter="overdue" aria-pressed="false">
+                    Überfällig <span>{{ task_counts.overdue }}</span>
+                </button>
+            </div>
+
+            <div class="task-view-actions">
+                <label class="task-sort-control">
+                    <i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i>
+                    <span>Sortieren</span>
+                    <select data-task-sort aria-label="Aufgaben sortieren">
+                        <option value="due">Fälligkeit</option>
+                        <option value="newest">Neueste zuerst</option>
+                        <option value="oldest">Älteste zuerst</option>
+                        <option value="title">Titel A–Z</option>
+                    </select>
+                    <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                </label>
+
+                <details class="task-more-menu">
+                    <summary aria-label="Weitere Ansichtsoptionen">
+                        <i class="fa-solid fa-ellipsis" aria-hidden="true"></i>
+                    </summary>
+                    <div class="task-more-popover">
+                        <button type="button" data-task-reset>
+                            <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
+                            Ansicht zurücksetzen
+                        </button>
+                    </div>
+                </details>
+            </div>
+        </div>
+
+        {% if tasks %}
+        <div class="task-list" data-task-list>
+        {% for item in tasks %}
+        <form
+            class="task-row {{ item.due_state }} {% if item.is_done %}is-done{% endif %}"
+            method="post"
+            data-task-row
+            data-task-state="{{ item.state }}"
+            data-task-title="{{ item.title|lower }}"
+            data-task-due="{{ item.due_sort }}"
+            data-task-created="{{ item.created_sort }}"
+        >
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="task_toggle">
+            <input type="hidden" name="task_id" value="{{ item.task.id }}">
+
+            <input
+                class="task-checkbox"
+                type="checkbox"
+                name="is_done"
+                aria-label="{{ item.title }} als {% if item.is_done %}offen{% else %}erledigt{% endif %} markieren"
+                {% if item.is_done %}checked{% endif %}
+                onchange="this.form.submit()"
+            >
+
+            <div class="task-copy">
+                <strong>{{ item.title }}</strong>
+                <small>
+                    <i class="fa-regular fa-calendar" aria-hidden="true"></i>
+                    {{ item.due_label }}
+                </small>
+            </div>
+
+            <span class="task-status is-{{ item.status_tone }}">{{ item.status_label }}</span>
+            <button class="task-delete-button" type="submit" name="form_name" value="task_delete" aria-label="Aufgabe löschen">
+                <i class="fa-solid fa-trash" aria-hidden="true"></i>
+            </button>
+        </form>
+        {% endfor %}
+        </div>
+
+        <div class="task-filter-empty" data-task-filter-empty hidden>
+            <i class="fa-solid fa-filter-circle-xmark" aria-hidden="true"></i>
+            <strong>Keine passenden Aufgaben</strong>
+            <span>Wähle einen anderen Filter oder setze die Ansicht zurück.</span>
+        </div>
+        <p class="task-results-status" data-task-results-status aria-live="polite"></p>
+        {% else %}
+        <div class="task-empty-state">
+            <i class="fa-regular fa-square-check" aria-hidden="true"></i>
+            <div>
+                <strong>Keine Aufgaben</strong>
+                <p>Füge oben deine erste Aufgabe hinzu. Du kannst sie später direkt hier abhaken.</p>
+            </div>
+        </div>
+        {% endif %}
+    </section>
+</section>
+{% endblock %}
+
+{% block page_js %}
+<script src="{% versioned_static 'js/tasks.js' %}"></script>
+{% endblock %}

@@ -1,4 +1,4 @@
-{% load static %}
+{% load static static_versioning %}
 <!DOCTYPE html>
 <html lang="de">
 <head>
@@ -14,8 +14,8 @@
     </script>
     <link rel="icon" type="image/png" sizes="32x32" href="{% static 'img/favicon-32.png' %}?v=brand-3">
     <link rel="apple-touch-icon" sizes="180x180" href="{% static 'img/apple-touch-icon.png' %}?v=brand-3">
-    <link rel="stylesheet" href="{% static 'css/base.css' %}?v=responsive-3">
-    <link rel="stylesheet" href="{% static 'css/offline.css' %}?v=pwa-1">
+    <link rel="stylesheet" href="{% versioned_static 'css/base.css' %}">
+    <link rel="stylesheet" href="{% versioned_static 'css/offline.css' %}">
 </head>
 <body>
 <main class="offline-shell">

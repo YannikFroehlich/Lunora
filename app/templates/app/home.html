@@ -1,10 +1,10 @@
 {% extends 'app/base.html' %}
-{% load static %}
+{% load static static_versioning %}
 
 {% block title %}Dashboard | Lunora{% endblock %}
 
 {% block page_css %}
-<link rel="stylesheet" href="{% static 'css/home.css' %}?v=dashboard-customization-2">
+<link rel="stylesheet" href="{% versioned_static 'css/home.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -83,5 +83,5 @@
 {% endblock %}
 
 {% block page_js %}
-<script src="{% static 'js/home.js' %}?v=dashboard-customization-3"></script>
+<script src="{% versioned_static 'js/home.js' %}"></script>
 {% endblock %}

@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import re
@@ -22,7 +23,7 @@ from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
 from app.forms import CalendarSourceForm, ProfileForm
-from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, CalendarSource, ChatMessage, ChatMessageAttachment, ChatMessageReaction, Conversation, ConversationMember, CustomHoliday, Note, NoteActivityNotification, NoteAttachment, NoteCommentThread, NoteFolder, NoteLink, NoteShare, NoteTemplate, NoteUserState, NoteVersion, OfficialHoliday, Profile, SystemSettings, VacationPeriod, VacationYear, WeatherLocation, WeeklySummaryDelivery
+from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, CalendarSource, ChatMessage, ChatMessageAttachment, ChatMessageReaction, Conversation, ConversationMember, CustomHoliday, Note, NoteActivityNotification, NoteAttachment, NoteCommentThread, NoteFolder, NoteLink, NoteShare, NoteTemplate, NoteUserState, NoteVersion, OfficialHoliday, Profile, SystemSettings, Task, VacationPeriod, VacationYear, WeatherLocation, WeeklySummaryDelivery
 from app.services.calendar_service import fetch_ical, parse_ical_events
 from app.services.calendar_sync_queue import queue_calendar_sources
 from app.services.dashboard import DASHBOARD_WIDGET_IDS, default_dashboard_layout, normalize_dashboard_layout
@@ -30,11 +31,12 @@ from app.services.image_uploads import PROFILE_IMAGE_MAX_BYTES
 from app.services.notifications import (
     claim_due_weather_alerts,
     send_due_reminder_emails,
+    send_due_task_reminder_emails,
     send_new_invitation_emails,
     send_note_activity_emails,
     send_weekly_summaries,
 )
-from app.services.scheduled_tasks import sync_due_calendars
+from app.services.scheduled_tasks import run_scheduled_tasks, sync_due_calendars
 from app.services.weather_service import (
     WEATHER_MAP_LAYERS,
     _build_weather_alert,
@@ -53,6 +55,7 @@ from app.services.note_content import NOTE_TEMPLATES, empty_note_document, valid
 from app.services.note_search import build_snippet, highlight_text, parse_search_query, search_notes
 from app.services.notes import accessible_notes, prune_note_versions, purge_expired_notes
 from app.services.vacation_planner import annual_summary, calculate_period
+from app.templatetags.static_versioning import versioned_static
 from app.view_models import (
     _dashboard_greeting,
     _dashboard_moment_icon,
@@ -158,6 +161,17 @@ class WeatherDescriptionTests(SimpleTestCase):
                 self.assertEqual(_format_weather_description(description), expected)
 
 
+class StaticVersioningTests(SimpleTestCase):
+    def test_versioned_static_uses_file_content_hash(self):
+        static_path = BASE_DIR / "app" / "static" / "css" / "base.css"
+        expected_version = hashlib.sha256(static_path.read_bytes()).hexdigest()[:12]
+
+        self.assertEqual(
+            versioned_static("css/base.css"),
+            f"/static/css/base.css?v={expected_version}",
+        )
+
+
 @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
 class PwaTests(TestCase):
     def setUp(self):
@@ -178,7 +192,12 @@ class PwaTests(TestCase):
         self.assertContains(response, 'const OFFLINE_URL = "/offline/";')
         self.assertContains(response, 'request.mode === "navigate"')
         self.assertContains(response, 'requestUrl.pathname.startsWith("/static/")')
-        self.assertContains(response, "ignoreSearch: true")
+        self.assertContains(response, "caches.match(request);")
+        self.assertNotContains(response, "ignoreSearch")
+        self.assertRegex(
+            response.content.decode("utf-8"),
+            r'"/static/css/base\.css\?v=[0-9a-f]{12}"',
+        )
 
     def test_service_worker_does_not_precache_personal_pages_or_media(self):
         response = self.client.get("/service-worker.js")
@@ -1874,6 +1893,211 @@ class FakeWeatherTileResponse:
 
     def read(self, _size=-1):
         return b"png-bytes"
+
+
+class TaskTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="mira@example.com",
+            email="mira@example.com",
+            password="secret-12345",
+        )
+        self.profile = Profile.objects.create(
+            user=self.user,
+            display_name="Mira",
+            notify_email=True,
+            notify_reminders=True,
+            notify_desktop=True,
+        )
+
+    def _login(self):
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+    def test_disabled_tasks_returns_503(self):
+        SystemSettings.objects.create(tasks_enabled=False)
+        self._login()
+
+        response = self.client.get("/tasks/")
+
+        self.assertEqual(response.status_code, 503)
+
+    def test_disabled_tasks_blocks_direct_post(self):
+        SystemSettings.objects.create(tasks_enabled=False)
+        self._login()
+
+        response = self.client.post(
+            "/tasks/",
+            {"form_name": "task_add", "title": "Blockierte Aufgabe"},
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(Task.objects.filter(title="Blockierte Aufgabe").exists())
+
+    def test_task_can_be_added_toggled_and_deleted(self):
+        self._login()
+
+        response = self.client.post(
+            "/tasks/",
+            {"form_name": "task_add", "title": "Wäsche waschen"},
+        )
+
+        self.assertRedirects(response, "/tasks/")
+        task = Task.objects.get(user=self.user)
+        self.assertEqual(task.title, "Wäsche waschen")
+        self.assertFalse(task.is_done)
+
+        response = self.client.post(
+            "/tasks/",
+            {"form_name": "task_toggle", "task_id": str(task.id), "is_done": "on"},
+        )
+
+        self.assertRedirects(response, "/tasks/")
+        task.refresh_from_db()
+        self.assertTrue(task.is_done)
+
+        response = self.client.post(
+            "/tasks/",
+            {"form_name": "task_delete", "task_id": str(task.id)},
+        )
+
+        self.assertRedirects(response, "/tasks/")
+        self.assertFalse(Task.objects.filter(pk=task.id).exists())
+
+    def test_task_can_store_due_date(self):
+        self._login()
+        due_at = timezone.localtime(timezone.now() + timedelta(days=1)).replace(second=0, microsecond=0)
+
+        response = self.client.post(
+            "/tasks/",
+            {
+                "form_name": "task_add",
+                "title": "Hausaufgaben abgeben",
+                "due_at": due_at.strftime("%Y-%m-%dT%H:%M"),
+            },
+        )
+
+        self.assertRedirects(response, "/tasks/")
+        task = Task.objects.get(user=self.user)
+        self.assertEqual(
+            timezone.localtime(task.due_at).strftime("%Y-%m-%dT%H:%M"),
+            due_at.strftime("%Y-%m-%dT%H:%M"),
+        )
+
+        response = self.client.get("/tasks/")
+
+        self.assertContains(response, "Hausaufgaben abgeben")
+        self.assertContains(response, "Morgen")
+
+    def test_task_page_exposes_filter_counts_and_statuses(self):
+        now = timezone.now()
+        Task.objects.create(user=self.user, title="Ohne Termin")
+        Task.objects.create(user=self.user, title="Zu spät", due_at=now - timedelta(hours=1))
+        Task.objects.create(user=self.user, title="Fertig", is_done=True)
+        self._login()
+
+        response = self.client.get("/tasks/")
+
+        self.assertEqual(
+            response.context["task_counts"],
+            {"all": 3, "open": 2, "done": 1, "overdue": 1},
+        )
+        self.assertContains(response, 'data-task-state="overdue"')
+        self.assertContains(response, "Überfällig")
+        self.assertContains(response, 'data-task-filter="done"')
+
+    def test_user_cannot_toggle_or_delete_another_users_task(self):
+        other = User.objects.create_user(
+            username="lukas@example.com", email="lukas@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=other, display_name="Lukas")
+        task = Task.objects.create(user=self.user, title="Privat")
+        self.client.login(username="lukas@example.com", password="secret-12345")
+
+        self.client.post("/tasks/", {"form_name": "task_toggle", "task_id": str(task.id), "is_done": "on"})
+        task.refresh_from_db()
+        self.assertFalse(task.is_done)
+
+        self.client.post("/tasks/", {"form_name": "task_delete", "task_id": str(task.id)})
+        self.assertTrue(Task.objects.filter(pk=task.id).exists())
+
+        response = self.client.get("/tasks/")
+        self.assertNotContains(response, "Privat")
+
+    def test_due_task_reminder_email_is_sent_only_once(self):
+        task = Task.objects.create(
+            user=self.user,
+            title="Rechnung bezahlen",
+            due_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        first_result = send_due_task_reminder_emails()
+        second_result = send_due_task_reminder_emails()
+
+        self.assertEqual(first_result, {"sent": 1, "failed": 0})
+        self.assertEqual(second_result, {"sent": 0, "failed": 0})
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("Rechnung bezahlen", mail.outbox[0].subject)
+        task.refresh_from_db()
+        self.assertIsNotNone(task.email_notified_at)
+
+    def test_task_desktop_notification_claim_is_one_time(self):
+        task = Task.objects.create(
+            user=self.user,
+            title="Präsentation vorbereiten",
+            due_at=timezone.now() - timedelta(minutes=1),
+        )
+        self.client.force_login(self.user)
+
+        first_response = self.client.post("/notifications/claim/")
+        second_response = self.client.post("/notifications/claim/")
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(first_response.json()["notifications"][0]["title"], "Präsentation vorbereiten")
+        self.assertEqual(first_response.json()["notifications"][0]["url"], "/tasks/")
+        self.assertEqual(second_response.json(), {"notifications": []})
+        task.refresh_from_db()
+        self.assertIsNotNone(task.desktop_notified_at)
+
+    def test_dashboard_widget_appears_when_enabled(self):
+        self._login()
+        Task.objects.create(user=self.user, title="Offene Aufgabe")
+
+        response = self.client.get("/home/")
+
+        self.assertContains(response, "Offene Aufgabe")
+        self.assertContains(response, "Aufgaben")
+
+    def test_dashboard_widget_and_nav_tile_hidden_when_disabled(self):
+        SystemSettings.objects.create(tasks_enabled=False)
+        self._login()
+        Task.objects.create(user=self.user, title="Offene Aufgabe")
+
+        response = self.client.get("/home/")
+
+        self.assertNotContains(response, "Offene Aufgabe")
+
+    def test_scheduled_tasks_send_task_reminder_emails_when_enabled(self):
+        Task.objects.create(
+            user=self.user,
+            title="Rechnung bezahlen",
+            due_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        result = run_scheduled_tasks(now=timezone.now())
+
+        self.assertEqual(result["task_reminder_emails"], {"sent": 1, "failed": 0})
+
+    def test_scheduled_tasks_skip_task_reminder_emails_when_disabled(self):
+        SystemSettings.objects.create(tasks_enabled=False)
+        Task.objects.create(
+            user=self.user,
+            title="Rechnung bezahlen",
+            due_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        result = run_scheduled_tasks(now=timezone.now())
+
+        self.assertEqual(result["task_reminder_emails"], {"sent": 0, "failed": 0, "disabled": True})
 
 
 class CalendarFetchSafetyTests(TestCase):
@@ -3678,7 +3902,7 @@ class DashboardCustomizationTests(TestCase):
         )
 
     def test_home_renders_saved_order(self):
-        order = ["clock", "welcome", "quick_actions", "recent_tools", "upcoming_events", "weather"]
+        order = ["clock", "welcome", "quick_actions", "recent_tools", "upcoming_events", "weather", "tasks"]
         self.profile.dashboard_layout = self._layout(order=order)
         self.profile.save(update_fields=["dashboard_layout"])
         self._login()
@@ -3765,7 +3989,7 @@ class DashboardCustomizationTests(TestCase):
         other = User.objects.create_user(username="lukas@example.com", email="lukas@example.com", password="secret-12345")
         other_profile = Profile.objects.create(user=other, display_name="Lukas")
         layout = self._layout(
-            order=["recent_tools", "quick_actions", "upcoming_events", "weather", "clock", "welcome"],
+            order=["recent_tools", "quick_actions", "upcoming_events", "weather", "clock", "welcome", "tasks"],
             hidden=["clock", "weather"],
         )
         self._login()

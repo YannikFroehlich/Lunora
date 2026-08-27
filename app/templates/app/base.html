@@ -1,4 +1,4 @@
-{% load static %}
+{% load static static_versioning %}
 
 <!DOCTYPE html>
 <html lang="de" data-theme="{{ appearance.theme }}" data-density="{{ appearance.density }}" data-authenticated="{{ request.user.is_authenticated|yesno:'true,false' }}" data-notification-claim-url="{% if request.user.is_authenticated %}{% url 'notification_claim' %}{% endif %}" data-service-worker-url="{% url 'service_worker' %}" style="--color-accent: {{ appearance.accent_color }}; --color-accent-strong: {{ appearance.accent_strong }}; --background-overlay-alpha: {{ appearance.background_overlay_alpha }}; --background-highlight-alpha: {{ appearance.background_highlight_alpha }}; --glass-blur: {{ appearance.glass_blur }};">
@@ -9,7 +9,7 @@
 
     <title>{% block title %}Lunora{% endblock %}</title>
 
-    <link rel="stylesheet" href="{% static 'css/base.css' %}?v=responsive-3">
+    <link rel="stylesheet" href="{% versioned_static 'css/base.css' %}">
     {% block page_css %}{% endblock %}
 
     <link rel="icon" href="{% static 'img/favicon.ico' %}?v=brand-3" sizes="any">
@@ -97,7 +97,7 @@
     {% block content %}{% endblock %}
 </main>
 
-<script src="{% static 'js/base.js' %}?v=pwa-1"></script>
+<script src="{% versioned_static 'js/base.js' %}"></script>
 {% block page_js %}{% endblock %}
 </body>
 </html>

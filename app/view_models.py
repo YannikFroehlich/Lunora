@@ -4,7 +4,7 @@ from datetime import datetime, time, timedelta
 from django.db.models import F, Q
 from django.utils import timezone
 
-from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, NoteShare
+from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, NoteShare, Task
 from app.services.dashboard import (
     available_dashboard_widgets,
     dashboard_widgets_for_layout,
@@ -45,7 +45,9 @@ def get_dashboard_context(user=None):
     unread_messages_total = _dashboard_unread_message_count(user) if flags["messages"] else 0
     new_note_shares = _dashboard_new_note_share_count(user) if flags["notes"] else 0
     upcoming_dashboard_events = _dashboard_upcoming_events(user, now) if user else []
-    nav_tiles = _dashboard_nav_tiles(user, unread_messages_total, new_note_shares, flags)
+    dashboard_tasks = _dashboard_open_tasks(user, now) if flags["tasks"] and user else []
+    open_tasks_count = Task.objects.filter(user=user, is_done=False).count() if flags["tasks"] and user else 0
+    nav_tiles = _dashboard_nav_tiles(user, unread_messages_total, new_note_shares, open_tasks_count, flags)
 
     return {
         "active_page": "home",
@@ -65,6 +67,7 @@ def get_dashboard_context(user=None):
         "dashboard_visible_widgets": dashboard_visible_widgets,
         "dashboard_available_widgets": available_dashboard_widgets(flags),
         "dashboard_new_note_shares": new_note_shares,
+        "dashboard_tasks": dashboard_tasks,
         "clock": {
             "time": format_user_time(now, user),
             "weekday": get_user_weekday_name(now, user),
@@ -135,7 +138,7 @@ def _dashboard_new_note_share_count(user):
     return NoteShare.objects.filter(user=user, first_opened_at__isnull=True, note__deleted_at__isnull=True).count()
 
 
-def _dashboard_nav_tiles(user, unread_messages_total, new_note_shares, flags):
+def _dashboard_nav_tiles(user, unread_messages_total, new_note_shares, open_tasks_count, flags):
     tiles = [
         {"label": "Dashboard", "icon": "fa-table-cells-large", "url_name": "home"},
         {"label": "Kalender", "icon": "fa-calendar-days", "url_name": "calendar"},
@@ -163,6 +166,17 @@ def _dashboard_nav_tiles(user, unread_messages_total, new_note_shares, flags):
                 "url_name": "notes",
                 "badge_key": "notes_new",
                 "badge_count": new_note_shares,
+            },
+        )
+    if flags["tasks"]:
+        tiles.insert(
+            -1,
+            {
+                "label": "Aufgaben",
+                "icon": "fa-list-check",
+                "url_name": "tasks",
+                "badge_key": "tasks_due",
+                "badge_count": open_tasks_count,
             },
         )
     if flags["vacation_planner"]:
@@ -272,6 +286,134 @@ def _dashboard_upcoming_events(user, now):
         }
         for event in events
     ]
+
+
+def _dashboard_open_tasks(user, now, limit=5):
+    tasks = Task.objects.filter(user=user, is_done=False).order_by(
+        F("due_at").asc(nulls_last=True), "-created_at"
+    )[:limit]
+    return [
+        {
+            "title": task.title,
+            "due_label": _task_due_label(task, now, user),
+            "due_state": _task_due_state(task, now, user),
+        }
+        for task in tasks
+    ]
+
+
+def get_tasks_context(user, *, now=None):
+    now = now or localtime_for_user(profile_or_user=user)
+    tasks = Task.objects.filter(user=user).order_by(
+        "is_done", F("due_at").asc(nulls_last=True), "-created_at"
+    )
+    task_items = []
+    counts = {"all": 0, "open": 0, "done": 0, "overdue": 0}
+
+    for task in tasks:
+        due_state = _task_due_state(task, now, user)
+        state = "done" if task.is_done else "overdue" if due_state == "is-overdue" else "open"
+        counts["all"] += 1
+        counts[state] += 1
+        if state == "overdue":
+            counts["open"] += 1
+
+        task_items.append(
+            {
+                "task": task,
+                "title": task.title,
+                "is_done": task.is_done,
+                "due_label": _task_due_detail(task, now, user),
+                "due_state": due_state,
+                "state": state,
+                "status_label": _task_status_label(task, now, user),
+                "status_tone": _task_status_tone(task, now, user),
+                "due_sort": task.due_at.isoformat() if task.due_at else "",
+                "created_sort": task.created_at.isoformat(),
+            }
+        )
+
+    return {
+        "active_page": "tasks",
+        "tasks": task_items,
+        "task_counts": counts,
+    }
+
+
+def _task_due_detail(task, now, user):
+    if not task.due_at:
+        return "Ohne Fälligkeitsdatum"
+
+    due_at = localtime_for_user(task.due_at, user)
+    if due_at.date() == now.date():
+        return f"Heute {format_user_time(due_at, user)}"
+    if due_at.date() == now.date() + timedelta(days=1):
+        return f"Morgen {format_user_time(due_at, user)}"
+    return format_user_datetime(due_at, user)
+
+
+def _task_status_label(task, now, user):
+    if task.is_done:
+        return "Erledigt"
+    if not task.due_at:
+        return "Offen"
+
+    due_at = localtime_for_user(task.due_at, user)
+    if due_at < now:
+        return "Überfällig"
+
+    days_until_due = (due_at.date() - now.date()).days
+    if days_until_due == 0:
+        return "Heute"
+    if days_until_due == 1:
+        return "Morgen"
+    if days_until_due <= 14:
+        return f"In {days_until_due} Tagen"
+    return "Geplant"
+
+
+def _task_status_tone(task, now, user):
+    if task.is_done:
+        return "done"
+    if not task.due_at:
+        return "neutral"
+
+    due_at = localtime_for_user(task.due_at, user)
+    if due_at < now:
+        return "danger"
+    if due_at.date() == now.date():
+        return "today"
+    return "upcoming"
+
+
+def _task_due_label(task, now, user):
+    if task.is_done:
+        return "Erledigt"
+    if not task.due_at:
+        return "Ohne Fälligkeitsdatum"
+
+    due_at = localtime_for_user(task.due_at, user)
+    today = now.date()
+    if due_at < now:
+        return f"Überfällig seit {format_user_datetime(due_at, user)}"
+    if due_at.date() == today:
+        return f"Heute {format_user_time(due_at, user)}"
+    if due_at.date() == today + timedelta(days=1):
+        return f"Morgen {format_user_time(due_at, user)}"
+    return format_user_datetime(due_at, user)
+
+
+def _task_due_state(task, now, user):
+    if task.is_done:
+        return "is-done"
+    if not task.due_at:
+        return ""
+    due_at = localtime_for_user(task.due_at, user)
+    if due_at < now:
+        return "is-overdue"
+    if due_at.date() == now.date():
+        return "is-due-today"
+    return ""
 
 
 def get_calendar_context(user, *, year=None, month=None):

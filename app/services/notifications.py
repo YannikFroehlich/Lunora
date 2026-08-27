@@ -14,6 +14,7 @@ from app.models import (
     NoteActivityNotification,
     NoteShare,
     Profile,
+    Task,
     WeatherLocation,
     WeeklySummaryDelivery,
 )
@@ -104,6 +105,88 @@ def send_due_reminder_emails(*, now=None):
             continue
 
         updated = CalendarReminder.objects.filter(pk=reminder.pk, email_notified_at__isnull=True).update(
+            email_notified_at=current_time
+        )
+        sent += int(bool(updated))
+
+    return {"sent": sent, "failed": failed}
+
+
+def claim_due_desktop_tasks(user, *, now=None, limit=5):
+    """Atomically claim due tasks for one browser notification batch."""
+    current_time = now or timezone.now()
+    try:
+        profile = user.profile
+    except Profile.DoesNotExist:
+        return []
+
+    if not profile.notify_reminders or not profile.notify_desktop:
+        return []
+
+    with transaction.atomic():
+        tasks = list(
+            Task.objects.select_for_update()
+            .filter(
+                user=user,
+                is_done=False,
+                due_at__isnull=False,
+                due_at__lte=current_time,
+                desktop_notified_at__isnull=True,
+            )
+            .order_by("due_at", "id")[:limit]
+        )
+        if tasks:
+            Task.objects.filter(pk__in=[item.pk for item in tasks]).update(desktop_notified_at=current_time)
+
+    return [
+        {
+            "id": task.id,
+            "title": task.title,
+            "due_label": format_user_datetime(task.due_at, user),
+        }
+        for task in tasks
+    ]
+
+
+def send_due_task_reminder_emails(*, now=None):
+    """Send each due task email once and leave failed deliveries retryable."""
+    current_time = now or timezone.now()
+    tasks = list(
+        Task.objects.filter(
+            is_done=False,
+            due_at__isnull=False,
+            due_at__lte=current_time,
+            email_notified_at__isnull=True,
+            user__is_active=True,
+            user__profile__notify_reminders=True,
+            user__profile__notify_email=True,
+        )
+        .exclude(user__email="")
+        .select_related("user", "user__profile")
+        .order_by("due_at", "id")
+    )
+
+    sent = 0
+    failed = 0
+    for task in tasks:
+        try:
+            send_mail(
+                subject=f"Lunora-Aufgabe: {task.title}",
+                message=(
+                    f"Deine Aufgabe „{task.title}“ ist fällig.\n\n"
+                    f"Fällig am: {format_user_datetime(task.due_at, task.user)}\n"
+                    "Öffne Lunora, um sie als erledigt zu markieren."
+                ),
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[task.user.email],
+                fail_silently=False,
+            )
+        except Exception:
+            failed += 1
+            logger.exception("Task reminder email delivery failed for task %s", task.pk)
+            continue
+
+        updated = Task.objects.filter(pk=task.pk, email_notified_at__isnull=True).update(
             email_notified_at=current_time
         )
         sent += int(bool(updated))

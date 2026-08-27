@@ -1,10 +1,10 @@
 {% extends 'app/base.html' %}
-{% load static %}
+{% load static static_versioning %}
 
 {% block title %}Einstellungen | Lunora{% endblock %}
 
 {% block page_css %}
-<link rel="stylesheet" href="{% static 'css/settings.css' %}?v=pwa-1">
+<link rel="stylesheet" href="{% versioned_static 'css/settings.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -413,5 +413,5 @@
 {% endblock %}
 
 {% block page_js %}
-<script src="{% static 'js/settings.js' %}?v=pwa-1"></script>
+<script src="{% versioned_static 'js/settings.js' %}"></script>
 {% endblock %}

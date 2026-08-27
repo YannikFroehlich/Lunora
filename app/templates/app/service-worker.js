@@ -1,11 +1,11 @@
-{% load static %}
+{% load static static_versioning %}
 const CACHE_PREFIX = "lunora-pwa";
-const STATIC_CACHE = `${CACHE_PREFIX}-static-v1`;
+const STATIC_CACHE = `${CACHE_PREFIX}-static-{% static_version 'css/base.css' 'css/offline.css' 'js/base.js' %}`;
 const OFFLINE_URL = "{% url 'offline' %}";
 const APP_SHELL_URLS = [
   OFFLINE_URL,
-  "{% static 'css/base.css' %}?v=responsive-3",
-  "{% static 'css/offline.css' %}?v=pwa-1",
+  "{% versioned_static 'css/base.css' %}",
+  "{% versioned_static 'css/offline.css' %}",
   "{% static 'img/lunora_background.webp' %}?v=brand-3",
   "{% static 'img/lunora_logo.png' %}?v=brand-3",
   "{% static 'img/icon-192.png' %}?v=brand-3",
@@ -36,7 +36,7 @@ self.addEventListener("activate", (event) => {
 });
 
 async function serveStaticAsset(request) {
-  const cachedResponse = await caches.match(request, { ignoreSearch: true });
+  const cachedResponse = await caches.match(request);
   if (cachedResponse) return cachedResponse;
 
   const networkResponse = await fetch(request);

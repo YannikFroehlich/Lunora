@@ -5,6 +5,7 @@ from django.views.decorators.http import require_POST
 
 from app.services.notifications import (
     claim_due_desktop_reminders,
+    claim_due_desktop_tasks,
     claim_due_event_invitations,
     claim_due_note_activity,
     claim_due_weather_alerts,
@@ -33,5 +34,9 @@ def claim_desktop_notifications(request):
 
     if feature_enabled("weather"):
         notifications.extend(claim_due_weather_alerts(request.user))
+
+    if feature_enabled("tasks"):
+        tasks_url = reverse("tasks")
+        notifications.extend({**task, "url": tasks_url} for task in claim_due_desktop_tasks(request.user))
 
     return JsonResponse({"notifications": notifications})

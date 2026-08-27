@@ -1,11 +1,11 @@
 {% extends 'app/base.html' %}
-{% load static %}
+{% load static static_versioning %}
 
 {% block title %}Notizen | Lunora{% endblock %}
 
 {% block page_css %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.47/dist/katex.min.css">
-<link rel="stylesheet" href="{% static 'css/notes.css' %}?v=notes-23">
+<link rel="stylesheet" href="{% versioned_static 'css/notes.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -439,5 +439,5 @@
 {% endblock %}
 
 {% block page_js %}
-<script src="{% static 'js/bundles/notes.js' %}?v=notes-22" defer></script>
+<script src="{% versioned_static 'js/bundles/notes.js' %}" defer></script>
 {% endblock %}

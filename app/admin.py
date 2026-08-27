@@ -18,6 +18,7 @@ from app.models import (
     OfficialHoliday,
     Profile,
     SystemSettings,
+    Task,
     VacationPeriod,
     VacationYear,
     WeeklySummaryDelivery,
@@ -102,6 +103,13 @@ class CalendarEventAdmin(admin.ModelAdmin):
 
 @admin.register(CalendarReminder)
 class CalendarReminderAdmin(admin.ModelAdmin):
+    list_display = ("title", "user", "is_done", "due_at", "email_notified_at", "desktop_notified_at")
+    list_filter = ("is_done", "created_at")
+    search_fields = ("title", "user__username")
+
+
+@admin.register(Task)
+class TaskAdmin(admin.ModelAdmin):
     list_display = ("title", "user", "is_done", "due_at", "email_notified_at", "desktop_notified_at")
     list_filter = ("is_done", "created_at")
     search_fields = ("title", "user__username")

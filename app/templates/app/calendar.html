@@ -1,10 +1,10 @@
 {% extends 'app/base.html' %}
-{% load static %}
+{% load static static_versioning %}
 
 {% block title %}Kalender | Lunora{% endblock %}
 
 {% block page_css %}
-<link rel="stylesheet" href="{% static 'css/calendar.css' %}?v=section-accent-1">
+<link rel="stylesheet" href="{% versioned_static 'css/calendar.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -503,8 +503,8 @@
 
 {% block page_js %}
 {% if calendar_event_creation_enabled %}
-<script src="{% static 'js/calendar.js' %}?v=empty-actions-1"></script>
+<script src="{% versioned_static 'js/calendar.js' %}"></script>
 {% else %}
-<script src="{% static 'js/calendar.js' %}?v=empty-actions-1"></script>
+<script src="{% versioned_static 'js/calendar.js' %}"></script>
 {% endif %}
 {% endblock %}

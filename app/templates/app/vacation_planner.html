@@ -1,10 +1,10 @@
 {% extends 'app/base.html' %}
-{% load static %}
+{% load static static_versioning %}
 
 {% block title %}Urlaubsplaner | Lunora{% endblock %}
 
 {% block page_css %}
-<link rel="stylesheet" href="{% static 'css/vacation_planner.css' %}?v=planner-actions-1">
+<link rel="stylesheet" href="{% versioned_static 'css/vacation_planner.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -379,5 +379,5 @@
 {% endblock %}
 
 {% block page_js %}
-<script src="{% static 'js/vacation_planner.js' %}?v=planner-actions-1"></script>
+<script src="{% versioned_static 'js/vacation_planner.js' %}"></script>
 {% endblock %}

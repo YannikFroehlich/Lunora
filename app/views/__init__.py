@@ -40,6 +40,7 @@ from .note_views import (
     notes,
 )
 from .search_views import global_search
+from .tasks_views import tasks
 from .vacation_planner_views import (
     custom_holiday_delete,
     custom_holiday_save,
@@ -91,6 +92,7 @@ __all__ = [
     "note_template_detail_api",
     "note_tree_move_api",
     "global_search",
+    "tasks",
     "vacation_planner",
     "vacation_year_save",
     "vacation_period_save",
