@@ -8,7 +8,7 @@ import app.services.dashboard
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("app", "0032_remove_note_tags_and_due_dates"),
+        ("app", "0033_alter_calendarsource_color"),
     ]
 
     operations = [

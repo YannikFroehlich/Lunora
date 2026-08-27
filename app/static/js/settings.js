@@ -99,3 +99,63 @@ if (desktopNotificationInput) {
     setDesktopNotificationStatus("Browserfreigabe erteilt. Bitte die Benachrichtigungseinstellungen noch speichern.");
   });
 }
+
+const pwaInstallPanel = document.querySelector("[data-pwa-install-panel]");
+const pwaInstallButton = pwaInstallPanel?.querySelector("[data-pwa-install]");
+const pwaInstallStatus = pwaInstallPanel?.querySelector("[data-pwa-install-status]");
+
+function setPwaInstallStatus(message, { isError = false } = {}) {
+  if (!pwaInstallStatus) return;
+  pwaInstallStatus.textContent = message;
+  pwaInstallStatus.classList.toggle("is-error", isError);
+}
+
+function syncPwaInstallState() {
+  if (!pwaInstallPanel || !pwaInstallButton || !pwaInstallStatus) return;
+
+  if (window.lunoraPwa?.isInstalled()) {
+    pwaInstallButton.hidden = true;
+    setPwaInstallStatus("Auf diesem Gerät installiert.");
+    return;
+  }
+
+  if (window.lunoraPwa?.isInstallable()) {
+    pwaInstallButton.hidden = false;
+    setPwaInstallStatus("Installation verfügbar.");
+    return;
+  }
+
+  pwaInstallButton.hidden = true;
+  if (!("serviceWorker" in navigator) || !window.isSecureContext) {
+    setPwaInstallStatus("Installation in diesem Browser nicht verfügbar.", { isError: true });
+  } else {
+    setPwaInstallStatus("Im Browser geöffnet.");
+  }
+}
+
+pwaInstallButton?.addEventListener("click", async () => {
+  pwaInstallButton.disabled = true;
+  setPwaInstallStatus("Installation wird geöffnet …");
+
+  try {
+    const result = await window.lunoraPwa?.install();
+    if (result?.outcome === "accepted") {
+      setPwaInstallStatus("Installation wird abgeschlossen …");
+    } else if (result?.outcome === "dismissed") {
+      setPwaInstallStatus("Installation nicht gestartet.");
+    } else {
+      setPwaInstallStatus("Installation aktuell nicht verfügbar.", { isError: true });
+    }
+  } catch (error) {
+    setPwaInstallStatus("Installation konnte nicht geöffnet werden.", { isError: true });
+  } finally {
+    pwaInstallButton.disabled = false;
+    if (!window.lunoraPwa?.isInstallable()) {
+      pwaInstallButton.hidden = true;
+    }
+  }
+});
+
+window.addEventListener("lunora:pwa-state-change", syncPwaInstallState);
+window.addEventListener("appinstalled", syncPwaInstallState);
+syncPwaInstallState();

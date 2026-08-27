@@ -1,5 +1,39 @@
 .weather-shell {
   max-width: 1540px;
+  --color-accent: #3f718a;
+  --color-accent-strong: #315d72;
+  --surface-selected: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  --focus-ring-color: color-mix(in srgb, var(--color-accent-strong) 40%, transparent);
+  --scrollbar-thumb: color-mix(in srgb, var(--color-accent-strong) 48%, transparent);
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--color-accent-strong) 72%, transparent);
+  --empty-border: color-mix(in srgb, var(--color-accent-strong) 24%, transparent);
+}
+
+.weather-shell .page-hero {
+  background: color-mix(in srgb, var(--surface-panel) 88%, var(--color-accent) 12%);
+  border-color: color-mix(in srgb, var(--color-accent) 22%, var(--glass-border));
+}
+
+.weather-shell .page-hero::before {
+  background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+}
+
+.weather-shell .hero-branch {
+  color: color-mix(in srgb, var(--color-accent) 30%, transparent);
+}
+
+.weather-shell .glass-panel {
+  border-color: color-mix(in srgb, var(--color-accent) 12%, var(--glass-border));
+}
+
+.weather-shell .primary-button {
+  border-color: color-mix(in srgb, var(--color-accent-strong) 28%, transparent);
+  box-shadow: 0 12px 24px color-mix(in srgb, var(--color-accent-strong) 18%, transparent);
+}
+
+[data-theme="dark"] .weather-shell {
+  --color-accent: #3d6c82;
+  --color-accent-strong: #86bdd1;
 }
 
 .weather-alert-banner {
@@ -128,8 +162,8 @@
 /* Focus ring belongs on the pill-shaped wrapper, not the borderless input —
    see the "Focus rings on wrapped inputs" rule in base.css. */
 .search-field:focus-within {
-  border-color: rgba(181, 150, 104, 0.62);
-  box-shadow: 0 0 0 3px rgba(181, 150, 104, 0.14);
+  border-color: color-mix(in srgb, var(--color-accent-strong) 62%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent-strong) 14%, transparent);
 }
 
 .search-field input:focus-visible {
@@ -147,7 +181,7 @@
   padding: 6px;
   background:
     linear-gradient(180deg, rgba(255, 252, 246, 0.98), rgba(246, 238, 224, 0.96));
-  border: 1px solid rgba(181, 150, 104, 0.22);
+  border: 1px solid color-mix(in srgb, var(--color-accent-strong) 22%, transparent);
   border-radius: var(--radius-md);
   box-shadow: 0 22px 56px rgba(75, 56, 31, 0.18);
   backdrop-filter: blur(24px);
@@ -184,7 +218,7 @@
   height: 34px;
   place-items: center;
   color: var(--color-accent-strong);
-  background: rgba(181, 150, 104, 0.12);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   border-radius: 50%;
 }
 
@@ -430,14 +464,86 @@
 
 .hourly-panel {
   grid-area: hourly;
+  --hourly-fade-surface: color-mix(in srgb, var(--surface-panel) 92%, var(--color-bg));
+}
+
+.hourly-panel-header,
+.hourly-controls {
+  display: flex;
+  align-items: center;
+}
+
+.hourly-panel-header {
+  min-height: 38px;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.hourly-controls {
+  gap: 8px;
+}
+
+.hourly-controls .icon-button {
+  width: 36px;
+  height: 36px;
+  color: var(--color-accent-strong);
+  background: var(--surface-control);
+  border-color: color-mix(in srgb, var(--color-accent-strong) 20%, var(--glass-border));
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.hourly-controls .icon-button:hover:not(:disabled) {
+  background: var(--surface-control-hover);
+}
+
+.hourly-controls .icon-button:disabled {
+  cursor: default;
+  opacity: 0.34;
+  transform: none;
+}
+
+.hourly-carousel-window {
+  position: relative;
+  margin-top: 10px;
+}
+
+.hourly-carousel-window::before,
+.hourly-carousel-window::after {
+  position: absolute;
+  top: 0;
+  bottom: 10px;
+  z-index: 2;
+  width: 44px;
+  pointer-events: none;
+  content: "";
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.hourly-carousel-window::before {
+  left: 0;
+  background: linear-gradient(90deg, var(--hourly-fade-surface), transparent);
+}
+
+.hourly-carousel-window::after {
+  right: 0;
+  background: linear-gradient(270deg, var(--hourly-fade-surface), transparent);
+}
+
+.hourly-panel.can-scroll-previous .hourly-carousel-window::before,
+.hourly-panel.can-scroll-next .hourly-carousel-window::after {
+  opacity: 1;
 }
 
 .hourly-scroll {
   display: flex;
-  margin-top: 18px;
   overflow-x: auto;
+  overscroll-behavior-inline: contain;
   padding-bottom: 10px;
   scroll-behavior: smooth;
+  scroll-snap-type: inline proximity;
 }
 
 .hour-card {
@@ -448,6 +554,7 @@
   gap: 8px;
   padding: 10px;
   border-right: 1px solid var(--color-line);
+  scroll-snap-align: start;
 }
 
 .hour-card:last-child {

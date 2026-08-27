@@ -5,7 +5,7 @@
 
 {% block page_css %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.47/dist/katex.min.css">
-<link rel="stylesheet" href="{% static 'css/notes.css' %}?v=notes-21">
+<link rel="stylesheet" href="{% static 'css/notes.css' %}?v=notes-23">
 {% endblock %}
 
 {% block content %}
@@ -21,7 +21,15 @@
             </button>
         </header>
 
-        <form class="notes-filter-form" method="get" action="{% url 'notes' %}">
+        <form class="notes-filter-form" method="get" action="{% if selected_note_data %}{% url 'note_detail' selected_note_data.id %}{% else %}{% url 'notes' %}{% endif %}">
+            {% comment %}
+            Pressing Enter in the search field implicitly submits via the FIRST submit
+            control in the form. Without this, that was the "Alle" status tab button,
+            silently resetting the active status filter on every search. This hidden
+            button plus the hidden status field make Enter preserve the current tab.
+            {% endcomment %}
+            <button type="submit" class="notes-filter-default-submit" tabindex="-1" aria-hidden="true"></button>
+            <input type="hidden" name="status" value="{{ current_status }}">
             <label class="notes-search">
                 <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
                 <input type="search" name="q" value="{{ query }}" placeholder="Notizen durchsuchen" data-notes-search>
@@ -39,7 +47,11 @@
                     <option value="shared" {% if current_scope == 'shared' %}selected{% endif %}>Mit mir geteilt</option>
                 </select>
                 <select name="sort" aria-label="Sortierung" onchange="this.form.submit()">
+                    {% if query %}
+                    <option value="relevance" {% if current_sort == 'relevance' %}selected{% endif %}>Relevanz</option>
+                    {% else %}
                     <option value="custom" {% if current_sort == 'custom' %}selected{% endif %}>Eigene Reihenfolge</option>
+                    {% endif %}
                     <option value="updated" {% if current_sort == 'updated' %}selected{% endif %}>Zuletzt bearbeitet</option>
                     <option value="created" {% if current_sort == 'created' %}selected{% endif %}>Neu erstellt</option>
                     <option value="title" {% if current_sort == 'title' %}selected{% endif %}>Titel A–Z</option>
@@ -258,8 +270,13 @@
         {% else %}
         <div class="empty-chat-state note-empty-state">
             <i class="fa-regular fa-note-sticky"></i>
+            {% if note_items %}
+            <h2>Wähle eine Notiz aus</h2>
+            <p>Wähle links eine Notiz aus der Liste oder erstelle eine neue.</p>
+            {% else %}
             <h2>Dein Platz für Gedanken</h2>
             <p>Erstelle deine erste Notiz und formatiere sie wie ein Dokument.</p>
+            {% endif %}
             <button class="primary-button" type="button" data-command="newNote"><i class="fa-solid fa-plus"></i> Neue Notiz</button>
         </div>
         {% endif %}

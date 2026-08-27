@@ -4,7 +4,7 @@
 {% block title %}Nachrichten | Lunora{% endblock %}
 
 {% block page_css %}
-<link rel="stylesheet" href="{% static 'css/messages.css' %}?v=responsive-1">
+<link rel="stylesheet" href="{% static 'css/messages.css' %}?v=section-accent-1">
 {% endblock %}
 
 {% block content %}
@@ -32,7 +32,7 @@
                 <a role="listitem" class="{% if current_filter == 'groups' %}is-active{% endif %}" href="{% url 'messages' %}?filter=groups{% if query %}&q={{ query|urlencode }}{% endif %}" {% if current_filter == 'groups' %}aria-current="page"{% endif %}>Gruppen</a>
             </div>
 
-            <details class="new-chat-card" {% if start_form.errors %}open{% endif %}>
+            <details class="new-chat-card" data-new-chat-card {% if start_form.errors %}open{% endif %}>
                 <summary><i class="fa-solid fa-pen-to-square"></i> Neue Unterhaltung</summary>
                 <form method="post" action="{% url 'messages' %}">
                     {% csrf_token %}
@@ -216,5 +216,5 @@
 {% endblock %}
 
 {% block page_js %}
-<script src="{% static 'js/messages.js' %}"></script>
+<script src="{% static 'js/messages.js' %}?v=empty-action-1"></script>
 {% endblock %}

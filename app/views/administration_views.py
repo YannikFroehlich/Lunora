@@ -29,7 +29,7 @@ def _active_session_stats():
 @login_required
 def administration(request):
     if not request.user.is_superuser:
-        return HttpResponseForbidden("Diese Seite ist nur fuer Superuser verfuegbar.")
+        return HttpResponseForbidden("Diese Seite ist nur für Superuser verfügbar.")
 
     settings_obj = get_system_settings()
 

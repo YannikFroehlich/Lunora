@@ -58,6 +58,19 @@
   margin-top: 20px;
 }
 
+/* Invisible but still a valid implicit-submit target — see the comment on this
+   button in notes.html for why it needs to exist at all. */
+.notes-filter-default-submit {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
 .notes-search {
   min-height: 44px;
   display: flex;
@@ -1448,6 +1461,10 @@
 .notes-dialog h2 { margin: 6px 0 0; color: var(--color-heading); }
 .notes-dialog header button { width: 36px; height: 36px; border-radius: 50%; }
 .notes-dialog header button:hover { background: var(--surface-control); }
+
+.template-dialog header + .table-operation-grid {
+  margin-top: 18px;
+}
 
 .dialog-search {
   display: grid;

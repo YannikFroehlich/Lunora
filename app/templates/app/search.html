@@ -4,7 +4,7 @@
 {% block title %}Suche | Lunora{% endblock %}
 
 {% block page_css %}
-<link rel="stylesheet" href="{% static 'css/search.css' %}?v=search-1">
+<link rel="stylesheet" href="{% static 'css/search.css' %}?v=search-3">
 {% endblock %}
 
 {% block content %}
@@ -26,6 +26,7 @@
     </form>
 
     {% if query %}
+    {% if has_search_results %}
     <div class="search-results-grid">
         <section class="glass-panel search-result-panel">
             <div class="panel-title panel-title-between">
@@ -42,8 +43,8 @@
             <a class="search-result-row" href="{% url 'note_detail' note.id %}">
                 <i class="fa-regular fa-note-sticky" aria-hidden="true"></i>
                 <span>
-                    <strong>{{ note.title|default:"Unbenannte Notiz" }}</strong>
-                    <small>{{ note.plain_text|default:"Kein Inhalt"|truncatechars:120 }}</small>
+                    <strong>{% for part in note.title_segments %}{% if part.match %}<mark class="search-hit">{{ part.text }}</mark>{% else %}{{ part.text }}{% endif %}{% endfor %}</strong>
+                    <small>{% for part in note.snippet %}{% if part.match %}<mark class="search-hit">{{ part.text }}</mark>{% else %}{{ part.text }}{% endif %}{% empty %}Kein Inhalt{% endfor %}</small>
                 </span>
             </a>
             {% endfor %}
@@ -107,12 +108,48 @@
         </section>
     </div>
     {% else %}
-    <div class="empty-state-card">
-        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-        <div>
-            <strong>Wonach suchst du?</strong>
-            <p>Gib einen Suchbegriff ein, um Notizen, Nachrichten und Termine gleichzeitig zu durchsuchen.</p>
+    <div class="search-empty-layout">
+        <div class="empty-state-card search-empty-state">
+            <i class="fa-solid fa-magnifying-glass-minus" aria-hidden="true"></i>
+            <div>
+                <strong>Keine Treffer für &bdquo;{{ query }}&ldquo;</strong>
+                <p>Kürzere Begriffe finden oft auch Teiltreffer.</p>
+            </div>
+            <a class="ghost-button" href="{% url 'global_search' %}">Suche zurücksetzen</a>
         </div>
+        <nav class="search-shortcut-grid" aria-label="Suchbereiche öffnen">
+            {% for shortcut in search_shortcuts %}
+            <a class="search-shortcut-card" href="{% url shortcut.url_name %}">
+                <i class="{{ shortcut.icon }}" aria-hidden="true"></i>
+                <span>
+                    <strong>{{ shortcut.label }}</strong>
+                    <small>{{ shortcut.description }}</small>
+                </span>
+            </a>
+            {% endfor %}
+        </nav>
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="search-empty-layout">
+        <div class="empty-state-card search-empty-state">
+            <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+            <div>
+                <strong>Wonach suchst du?</strong>
+                <p>Notizen, Nachrichten und Termine an einem Ort.</p>
+            </div>
+        </div>
+        <nav class="search-shortcut-grid" aria-label="Suchbereiche öffnen">
+            {% for shortcut in search_shortcuts %}
+            <a class="search-shortcut-card" href="{% url shortcut.url_name %}">
+                <i class="{{ shortcut.icon }}" aria-hidden="true"></i>
+                <span>
+                    <strong>{{ shortcut.label }}</strong>
+                    <small>{{ shortcut.description }}</small>
+                </span>
+            </a>
+            {% endfor %}
+        </nav>
     </div>
     {% endif %}
 </section>

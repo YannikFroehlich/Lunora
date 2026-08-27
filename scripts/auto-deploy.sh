@@ -3,6 +3,7 @@ set -Eeuo pipefail
 
 APP_DIR="/srv/lunora/app"
 DEPLOY_USER="yunnik"
+APP_USER="lunora"
 STATE_DIR="/var/lib/lunora-auto-deploy"
 RUNTIME_DIR="/run/lunora-auto-deploy"
 SUCCESS_STATE="${STATE_DIR}/last-successful-commit"
@@ -16,6 +17,11 @@ fi
 
 if ! id "${DEPLOY_USER}" >/dev/null 2>&1; then
     echo "Deployment-Benutzer ${DEPLOY_USER} existiert nicht." >&2
+    exit 1
+fi
+
+if ! id "${APP_USER}" >/dev/null 2>&1; then
+    echo "Anwendungsbenutzer ${APP_USER} existiert nicht." >&2
     exit 1
 fi
 
@@ -109,6 +115,21 @@ echo "Deploye origin/main ${remote_commit:0:12}."
 as_deployer env LUNORA_RESTART_SERVICES=false "${APP_DIR}/scripts/deploy.sh"
 
 deployed_commit=$(as_deployer git -C "${APP_DIR}" rev-parse --verify HEAD)
+
+if ! as_deployer git -C "${APP_DIR}" ls-files -z | \
+    runuser --user "${APP_USER}" -- \
+        env APP_DIR="${APP_DIR}" bash -c '
+            while IFS= read -r -d "" path; do
+                if [[ ! -r "${APP_DIR}/${path}" ]]; then
+                    echo "Abbruch: ${path} ist für den Anwendungsdienst nicht lesbar." >&2
+                    exit 1
+                fi
+            done
+        '
+then
+    echo "Abbruch: Der Produktions-Checkout ist für ${APP_USER} nicht vollständig lesbar." >&2
+    exit 1
+fi
 
 systemctl restart lunora-web.service
 systemctl restart lunora-automations.service

@@ -46,7 +46,7 @@ def calendar(request):
 
     if request.method == "POST" and request.POST.get("form_name") == "calendar_sync_all":
         if not calendar_sync_enabled:
-            django_messages.warning(request, "Kalendersynchronisierung ist voruebergehend deaktiviert.")
+            django_messages.warning(request, "Kalendersynchronisierung ist vorübergehend deaktiviert.")
             return redirect(request.get_full_path())
         sync_result = queue_calendar_sources(sources)
         if sync_result.get("queued"):

@@ -1,0 +1,67 @@
+{% load static %}
+const CACHE_PREFIX = "lunora-pwa";
+const STATIC_CACHE = `${CACHE_PREFIX}-static-v1`;
+const OFFLINE_URL = "{% url 'offline' %}";
+const APP_SHELL_URLS = [
+  OFFLINE_URL,
+  "{% static 'css/base.css' %}?v=responsive-3",
+  "{% static 'css/offline.css' %}?v=pwa-1",
+  "{% static 'img/lunora_background.webp' %}?v=brand-3",
+  "{% static 'img/lunora_logo.png' %}?v=brand-3",
+  "{% static 'img/icon-192.png' %}?v=brand-3",
+  "{% static 'img/icon-512.png' %}?v=brand-3",
+  "{% static 'img/icon-maskable-512.png' %}?v=brand-3",
+  "{% static 'img/favicon-32.png' %}?v=brand-3",
+  "{% static 'img/apple-touch-icon.png' %}?v=brand-3",
+];
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches.open(STATIC_CACHE)
+      .then((cache) => cache.addAll(APP_SHELL_URLS))
+      .then(() => self.skipWaiting())
+  );
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches.keys()
+      .then((cacheNames) => Promise.all(
+        cacheNames
+          .filter((cacheName) => cacheName.startsWith(CACHE_PREFIX) && cacheName !== STATIC_CACHE)
+          .map((cacheName) => caches.delete(cacheName))
+      ))
+      .then(() => self.clients.claim())
+  );
+});
+
+async function serveStaticAsset(request) {
+  const cachedResponse = await caches.match(request, { ignoreSearch: true });
+  if (cachedResponse) return cachedResponse;
+
+  const networkResponse = await fetch(request);
+  if (networkResponse.ok) {
+    const cache = await caches.open(STATIC_CACHE);
+    await cache.put(request, networkResponse.clone());
+  }
+  return networkResponse;
+}
+
+self.addEventListener("fetch", (event) => {
+  const { request } = event;
+  if (request.method !== "GET") return;
+
+  const requestUrl = new URL(request.url);
+  if (requestUrl.origin !== self.location.origin) return;
+
+  if (request.mode === "navigate") {
+    event.respondWith(
+      fetch(request).catch(() => caches.match(OFFLINE_URL))
+    );
+    return;
+  }
+
+  if (requestUrl.pathname.startsWith("/static/")) {
+    event.respondWith(serveStaticAsset(request));
+  }
+});

@@ -124,6 +124,10 @@ a {
   color: inherit;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 :focus {
   outline: 0;
 }

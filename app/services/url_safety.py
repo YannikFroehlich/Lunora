@@ -24,9 +24,9 @@ def validate_calendar_url(url, *, resolve_dns=False):
     if parsed.scheme != "https":
         raise ValueError("Bitte nutze einen HTTPS-Kalenderlink.")
     if parsed.username or parsed.password:
-        raise ValueError("Kalenderlinks duerfen keine Zugangsdaten in der URL enthalten.")
+        raise ValueError("Kalenderlinks dürfen keine Zugangsdaten in der URL enthalten.")
     if not parsed.hostname:
-        raise ValueError("Bitte fuege einen gueltigen Kalenderlink ein.")
+        raise ValueError("Bitte füge einen gültigen Kalenderlink ein.")
 
     host = _normalize_hostname(parsed.hostname)
     port = _safe_port(parsed)
@@ -52,17 +52,17 @@ def _normalize_hostname(hostname):
     try:
         return hostname.rstrip(".").encode("idna").decode("ascii").lower()
     except UnicodeError as error:
-        raise ValueError("Der Hostname des Kalenderlinks ist ungueltig.") from error
+        raise ValueError("Der Hostname des Kalenderlinks ist ungültig.") from error
 
 
 def _safe_port(parsed_url):
     try:
         port = parsed_url.port
     except ValueError as error:
-        raise ValueError("Der Port des Kalenderlinks ist ungueltig.") from error
+        raise ValueError("Der Port des Kalenderlinks ist ungültig.") from error
 
     if port and port != 443:
-        raise ValueError("Kalenderlinks duerfen nur den Standard-HTTPS-Port nutzen.")
+        raise ValueError("Kalenderlinks dürfen nur den Standard-HTTPS-Port nutzen.")
     return port
 
 
@@ -74,7 +74,7 @@ def _validate_hostname(host):
         address = ipaddress.ip_address(host)
     except ValueError:
         if "." not in host:
-            raise ValueError("Der Kalenderlink muss auf einen oeffentlichen Hostnamen zeigen.")
+            raise ValueError("Der Kalenderlink muss auf einen öffentlichen Hostnamen zeigen.")
         return
 
     _validate_ip_address(address)
@@ -84,10 +84,10 @@ def _validate_resolved_addresses(host, port):
     try:
         addresses = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     except socket.gaierror as error:
-        raise ValueError("Der Hostname des Kalenderlinks konnte nicht aufgeloest werden.") from error
+        raise ValueError("Der Hostname des Kalenderlinks konnte nicht aufgelöst werden.") from error
 
     if not addresses:
-        raise ValueError("Der Hostname des Kalenderlinks konnte nicht aufgeloest werden.")
+        raise ValueError("Der Hostname des Kalenderlinks konnte nicht aufgelöst werden.")
 
     for _family, _type, _proto, _canonname, sockaddr in addresses:
         _validate_ip_address(ipaddress.ip_address(sockaddr[0]))

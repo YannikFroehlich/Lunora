@@ -16,6 +16,7 @@ from app.services.note_content import NOTE_TEMPLATE_LABELS, NOTE_TEMPLATES
 from app.services.note_files import NOTE_FILE_ACCEPT, NOTE_IMAGE_ACCEPT
 from app.services.note_markdown import note_markdown_filename, render_note_markdown
 from app.services.note_pdf import note_pdf_filename, render_note_pdf
+from app.services.note_search import search_notes
 from app.services.notes import (
     NoteConflictError,
     accessible_notes,
@@ -190,6 +191,12 @@ def notes(request, note_id=None):
     status = request.GET.get("status", "all")
     scope = request.GET.get("scope", "all")
     sort = request.GET.get("sort", "custom")
+    # Manual tree ordering says nothing about a filtered result set, so a search
+    # ranks by relevance instead. An explicit sort choice still wins.
+    if query and sort == "custom":
+        sort = "relevance"
+    elif sort == "relevance" and not query:
+        sort = "custom"
 
     queryset = accessible_notes(request.user, include_deleted=status == "trash")
     if status == "trash":
@@ -207,10 +214,11 @@ def notes(request, note_id=None):
     elif scope == "owned":
         queryset = queryset.filter(owner=request.user)
     if query:
-        queryset = queryset.filter(Q(title__icontains=query) | Q(plain_text__icontains=query)).distinct()
+        queryset = search_notes(queryset, query)
     order_map = {
         "custom": ("state_position", "id"),
         "created": ("-created_at", "-id"),
+        "relevance": ("-search_rank", "-updated_at", "-id"),
         "title": ("title", "id"),
         "updated": ("-state_is_pinned", "-updated_at", "-id"),
     }

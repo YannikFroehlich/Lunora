@@ -97,10 +97,10 @@ def _read_ical_response(response):
     content_type = response.headers.get("content-type", "")
     data = response.read(MAX_ICAL_BYTES + 1)
     if len(data) > MAX_ICAL_BYTES:
-        raise ValueError("Die iCal-Datei ist zu gross.")
+        raise ValueError("Die iCal-Datei ist zu groß.")
     text = data.decode("utf-8-sig", errors="replace")
     if "BEGIN:VCALENDAR" not in text:
-        raise ValueError("Der Kalenderlink liefert keine gueltige iCal-Datei.")
+        raise ValueError("Der Kalenderlink liefert keine gültige iCal-Datei.")
     if content_type and "text/html" in content_type:
         raise ValueError("Der Kalenderlink zeigt auf eine Webseite, nicht auf eine iCal-Datei.")
     return text

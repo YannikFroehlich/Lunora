@@ -1,5 +1,39 @@
 .messages-shell {
   max-width: 1600px;
+  --color-accent: #9a5660;
+  --color-accent-strong: #87454f;
+  --surface-selected: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  --focus-ring-color: color-mix(in srgb, var(--color-accent-strong) 40%, transparent);
+  --scrollbar-thumb: color-mix(in srgb, var(--color-accent-strong) 48%, transparent);
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--color-accent-strong) 72%, transparent);
+  --empty-border: color-mix(in srgb, var(--color-accent-strong) 24%, transparent);
+}
+
+.messages-shell .page-hero {
+  background: color-mix(in srgb, var(--surface-panel) 88%, var(--color-accent) 12%);
+  border-color: color-mix(in srgb, var(--color-accent) 22%, var(--glass-border));
+}
+
+.messages-shell .page-hero::before {
+  background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+}
+
+.messages-shell .hero-branch {
+  color: color-mix(in srgb, var(--color-accent) 30%, transparent);
+}
+
+.messages-shell .glass-panel {
+  border-color: color-mix(in srgb, var(--color-accent) 12%, var(--glass-border));
+}
+
+.messages-shell .primary-button {
+  border-color: color-mix(in srgb, var(--color-accent-strong) 28%, transparent);
+  box-shadow: 0 12px 24px color-mix(in srgb, var(--color-accent-strong) 18%, transparent);
+}
+
+[data-theme="dark"] .messages-shell {
+  --color-accent: #8e4d56;
+  --color-accent-strong: #e4a1a9;
 }
 
 .messages-layout {
@@ -44,7 +78,7 @@
   color: #fffaf2;
   background: var(--color-accent);
   border: 0;
-  box-shadow: 0 10px 24px rgba(142, 103, 53, 0.14);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--color-accent-strong) 14%, transparent);
 }
 
 .message-search button {
@@ -75,7 +109,7 @@
 .filter-row .is-active {
   color: var(--color-accent-strong);
   background: var(--surface-selected);
-  border-color: rgba(181, 150, 104, 0.42);
+  border-color: color-mix(in srgb, var(--color-accent-strong) 42%, transparent);
 }
 
 .filter-row span {
@@ -205,7 +239,7 @@
 
 .contact-card.is-active {
   background: var(--surface-selected);
-  border-color: rgba(181, 150, 104, 0.28);
+  border-color: color-mix(in srgb, var(--color-accent-strong) 28%, transparent);
 }
 
 .contact-copy {
@@ -346,7 +380,7 @@
   margin: 12px auto 4px;
   padding: 7px 22px;
   color: var(--color-muted);
-  background: rgba(226, 214, 196, 0.42);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   border-radius: 999px;
 }
 
@@ -429,7 +463,7 @@
 }
 
 .bubble.is-out > div {
-  background: rgba(222, 204, 178, 0.50);
+  background: color-mix(in srgb, var(--color-accent) 20%, rgba(255, 255, 255, 0.34));
   border-radius: 16px 16px 6px 16px;
 }
 
@@ -690,8 +724,8 @@
   gap: 10px;
   margin: 12px 0 4px;
   padding: 12px;
-  background: rgba(194, 162, 118, 0.16);
-  border: 1px solid rgba(181, 150, 104, 0.28);
+  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-accent-strong) 28%, transparent);
   border-radius: 14px;
 }
 
@@ -720,7 +754,7 @@
 }
 
 .pinned-messages a:hover {
-  border-color: rgba(181, 150, 104, 0.42);
+  border-color: color-mix(in srgb, var(--color-accent-strong) 42%, transparent);
   transform: translateY(-1px);
 }
 
@@ -739,8 +773,8 @@
 }
 
 .bubble.is-pinned > .bubble-content {
-  border-color: rgba(181, 150, 104, 0.45);
-  box-shadow: 0 12px 30px rgba(142, 103, 53, 0.10);
+  border-color: color-mix(in srgb, var(--color-accent-strong) 45%, transparent);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--color-accent-strong) 10%, transparent);
 }
 
 .bubble.is-deleted > .bubble-content {
@@ -790,7 +824,7 @@
 }
 
 [data-theme="dark"] .read-receipt.is-read {
-  color: rgba(213, 187, 139, 0.95);
+  color: var(--color-accent-strong);
 }
 
 .pin-indicator {
@@ -826,8 +860,8 @@
 
 .reaction-pill.is-own {
   color: var(--color-accent-strong);
-  background: rgba(194, 162, 118, 0.24);
-  border-color: rgba(181, 150, 104, 0.42);
+  background: color-mix(in srgb, var(--color-accent) 24%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent-strong) 42%, transparent);
 }
 
 .reaction-pill strong {
@@ -843,7 +877,7 @@
   min-width: 220px;
   padding: 8px;
   background: rgba(255, 250, 242, 0.96);
-  border: 1px solid rgba(181, 150, 104, 0.28);
+  border: 1px solid color-mix(in srgb, var(--color-accent-strong) 28%, transparent);
   border-radius: 16px;
   box-shadow: 0 24px 60px rgba(58, 45, 29, 0.18);
   backdrop-filter: blur(18px);
@@ -866,15 +900,15 @@
   width: 30px;
   height: 30px;
   place-items: center;
-  background: rgba(222, 204, 178, 0.22);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   border: 1px solid transparent;
   border-radius: 999px;
 }
 
 .context-reactions button:hover,
 .message-context-menu > button:hover {
-  background: rgba(194, 162, 118, 0.22);
-  border-color: rgba(181, 150, 104, 0.34);
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent-strong) 34%, transparent);
 }
 
 .message-context-menu > button {
@@ -918,8 +952,8 @@
 }
 
 [data-theme="dark"] .bubble.is-out > div {
-  background: rgba(194, 162, 118, 0.18);
-  border-color: rgba(181, 150, 104, 0.24);
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent-strong) 24%, transparent);
 }
 
 .message-context-menu button[hidden],
@@ -989,7 +1023,7 @@
   font-size: 1.35rem;
   background: var(--color-accent);
   border-radius: 18px;
-  box-shadow: 0 14px 32px rgba(142, 103, 53, 0.18);
+  box-shadow: 0 14px 32px color-mix(in srgb, var(--color-accent-strong) 18%, transparent);
 }
 
 .overview-hero p {
@@ -1073,7 +1107,7 @@
 }
 
 .overview-message-card:hover {
-  border-color: rgba(181, 150, 104, 0.42);
+  border-color: color-mix(in srgb, var(--color-accent-strong) 42%, transparent);
   transform: translateY(-1px);
 }
 
@@ -1148,8 +1182,8 @@
   color: var(--color-accent-strong);
   font-size: 0.82rem;
   font-weight: 750;
-  background: rgba(194, 162, 118, 0.18);
-  border: 1px solid rgba(181, 150, 104, 0.28);
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-accent-strong) 28%, transparent);
   border-radius: 999px;
 }
 
@@ -1201,8 +1235,8 @@
 
 .management-button-grid button:hover,
 .management-wide-button:hover {
-  background: rgba(194, 162, 118, 0.22);
-  border-color: rgba(181, 150, 104, 0.36);
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent-strong) 36%, transparent);
   transform: translateY(-1px);
 }
 
@@ -1347,7 +1381,7 @@
 }
 
 .attachment-chip:hover {
-  border-color: rgba(181, 150, 104, 0.42);
+  border-color: color-mix(in srgb, var(--color-accent-strong) 42%, transparent);
 }
 
 .attachment-chip i {
@@ -1395,7 +1429,7 @@
 }
 
 @keyframes message-highlight-flash {
-  0% { box-shadow: 0 0 0 3px rgba(181, 150, 104, 0.55); }
+  0% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent-strong) 55%, transparent); }
   100% { box-shadow: none; }
 }
 

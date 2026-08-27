@@ -1,5 +1,39 @@
 .calendar-shell {
   max-width: 1540px;
+  --color-accent: #537756;
+  --color-accent-strong: #3e6547;
+  --surface-selected: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  --focus-ring-color: color-mix(in srgb, var(--color-accent-strong) 40%, transparent);
+  --scrollbar-thumb: color-mix(in srgb, var(--color-accent-strong) 48%, transparent);
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--color-accent-strong) 72%, transparent);
+  --empty-border: color-mix(in srgb, var(--color-accent-strong) 24%, transparent);
+}
+
+.calendar-shell .page-hero {
+  background: color-mix(in srgb, var(--surface-panel) 88%, var(--color-accent) 12%);
+  border-color: color-mix(in srgb, var(--color-accent) 22%, var(--glass-border));
+}
+
+.calendar-shell .page-hero::before {
+  background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+}
+
+.calendar-shell .hero-branch {
+  color: color-mix(in srgb, var(--color-accent) 30%, transparent);
+}
+
+.calendar-shell .glass-panel {
+  border-color: color-mix(in srgb, var(--color-accent) 12%, var(--glass-border));
+}
+
+.calendar-shell .primary-button {
+  border-color: color-mix(in srgb, var(--color-accent-strong) 28%, transparent);
+  box-shadow: 0 12px 24px color-mix(in srgb, var(--color-accent-strong) 18%, transparent);
+}
+
+[data-theme="dark"] .calendar-shell {
+  --color-accent: #4f7654;
+  --color-accent-strong: #93c59a;
 }
 
 .calendar-layout {
@@ -214,8 +248,8 @@ button.event-chip {
 }
 
 .calendar-source-form input[type="url"]:focus {
-  border-color: rgba(181, 150, 104, 0.62);
-  box-shadow: 0 0 0 3px rgba(181, 150, 104, 0.14);
+  border-color: color-mix(in srgb, var(--color-accent-strong) 62%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent-strong) 14%, transparent);
 }
 
 .source-toggle {
@@ -341,6 +375,34 @@ button.event-chip {
   margin-top: 8px;
 }
 
+.calendar-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.calendar-empty-action {
+  width: fit-content;
+  margin-top: 12px;
+}
+
+.calendar-empty-actions .calendar-empty-action {
+  margin-top: 0;
+}
+
+.empty-state-card .calendar-empty-action i {
+  display: inline;
+  width: auto;
+  height: auto;
+  place-items: normal;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font-size: 0.95rem;
+}
+
 .calendar-event-dialog {
   width: min(620px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
@@ -419,8 +481,8 @@ button.event-chip {
 
 .event-form-field input:focus,
 .event-form-field select:focus {
-  border-color: rgba(181, 150, 104, 0.62);
-  box-shadow: 0 0 0 3px rgba(181, 150, 104, 0.14);
+  border-color: color-mix(in srgb, var(--color-accent-strong) 62%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent-strong) 14%, transparent);
 }
 
 .event-form-field.is-disabled {
@@ -610,8 +672,8 @@ button.event-chip {
 
 .reminder-add-form input[type="text"]:focus,
 .reminder-date-field:focus-within {
-  border-color: rgba(181, 150, 104, 0.62);
-  box-shadow: 0 0 0 3px rgba(181, 150, 104, 0.14);
+  border-color: color-mix(in srgb, var(--color-accent-strong) 62%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent-strong) 14%, transparent);
 }
 
 [data-theme="dark"] .reminder-add-form input[type="text"],
@@ -911,6 +973,15 @@ button.event-chip {
   .event-form-actions .ghost-button,
   .event-form-actions .primary-button {
     width: 100%;
+  }
+
+  .calendar-empty-actions,
+  .calendar-empty-action {
+    width: 100%;
+  }
+
+  .calendar-empty-actions .calendar-empty-action {
+    flex: 1 1 100%;
   }
 }
 

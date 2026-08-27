@@ -52,6 +52,32 @@
     });
   });
 
+  document.addEventListener("click", (event) => {
+    const trigger = event.target.closest("[data-open-new-chat]");
+    if (!trigger) {
+      return;
+    }
+
+    const newChatCard = document.querySelector("[data-new-chat-card]");
+    if (!newChatCard) {
+      return;
+    }
+
+    event.preventDefault();
+    newChatCard.open = true;
+
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    newChatCard.scrollIntoView({
+      block: "start",
+      behavior: reduceMotion ? "auto" : "smooth",
+    });
+
+    const focusTarget = newChatCard.querySelector(
+      'input[name="recipient"]:not(:disabled), textarea:not(:disabled), button[type="submit"]:not(:disabled)'
+    );
+    window.setTimeout(() => focusTarget?.focus({ preventScroll: true }), reduceMotion ? 0 : 220);
+  });
+
   const chatPanel = document.querySelector("[data-messages-live-url]");
 
   const currentUrlParams = () => {

@@ -49,6 +49,9 @@ def get_dashboard_context(user=None):
 
     return {
         "active_page": "home",
+        "dashboard_greeting": _dashboard_greeting(now),
+        "dashboard_moment_icon": _dashboard_moment_icon(now),
+        "dashboard_moment_label": _dashboard_moment_label(now),
         "today_label": format_user_date(now, user),
         "time_label": format_user_time(now, user),
         "dashboard_weather": dashboard_weather,
@@ -81,6 +84,37 @@ def get_dashboard_context(user=None):
         ),
         "upcoming_dashboard_events": upcoming_dashboard_events,
     }
+
+
+def _dashboard_greeting(now):
+    hour = now.hour
+    if 5 <= hour < 11:
+        return "Guten Morgen"
+    if 11 <= hour < 17:
+        return "Guten Tag"
+    if 17 <= hour < 22:
+        return "Guten Abend"
+    return "Gute Nacht"
+
+
+def _dashboard_moment_label(now):
+    hour = now.hour
+    if 5 <= hour < 11:
+        return "Ruhiger Start"
+    if 11 <= hour < 17:
+        return "Fokussierter Tag"
+    if 17 <= hour < 22:
+        return "Ruhiger Abend"
+    return "Nachtruhe"
+
+
+def _dashboard_moment_icon(now):
+    hour = now.hour
+    if 5 <= hour < 17:
+        return "fa-regular fa-sun"
+    if 17 <= hour < 22:
+        return "fa-solid fa-cloud-sun"
+    return "fa-regular fa-moon"
 
 
 def _preference_row(preferences_form, field_name, label, hint):
@@ -140,12 +174,12 @@ def _dashboard_nav_tiles(user, unread_messages_total, new_note_shares, flags):
 
 def _dashboard_tool_shortcuts(upcoming_events, unread_messages_total, dashboard_weather, new_note_shares, flags):
     event_count = len(upcoming_events)
-    event_subtitle = f"{event_count} kommende Termine" if event_count else "Kalender oeffnen"
-    unread_subtitle = f"{unread_messages_total} ungelesen" if unread_messages_total else "Inbox oeffnen"
+    event_subtitle = f"{event_count} kommende Termine" if event_count else "Kalender öffnen"
+    unread_subtitle = f"{unread_messages_total} ungelesen" if unread_messages_total else "Inbox öffnen"
     weather_city = dashboard_weather.get("today", {}).get("city", "Standardort")
     tools = [
         {"title": "Kalender", "subtitle": event_subtitle, "icon": "fa-calendar-check", "url_name": "calendar"},
-        {"title": "Einstellungen", "subtitle": "Profil & Praeferenzen", "icon": "fa-gear", "url_name": "settings"},
+        {"title": "Einstellungen", "subtitle": "Profil & Präferenzen", "icon": "fa-gear", "url_name": "settings"},
     ]
     if flags["weather"]:
         tools.insert(1, {"title": "Wetter", "subtitle": weather_city, "icon": "fa-cloud-sun", "url_name": "weather"})
@@ -463,12 +497,12 @@ def _calendar_reminder_due_label(reminder, now, user):
     if reminder.is_done:
         return "Erledigt"
     if not reminder.due_at:
-        return "Ohne Faelligkeitsdatum"
+        return "Ohne Fälligkeitsdatum"
 
     due_at = localtime_for_user(reminder.due_at, user)
     today = now.date()
     if due_at < now:
-        return f"Ueberfaellig seit {format_user_datetime(due_at, user)}"
+        return f"Überfällig seit {format_user_datetime(due_at, user)}"
     if due_at.date() == today:
         return f"Heute {format_user_time(due_at, user)}"
     if due_at.date() == today + timedelta(days=1):

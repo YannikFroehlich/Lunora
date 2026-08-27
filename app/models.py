@@ -357,7 +357,7 @@ class ChatMessageAttachment(models.Model):
 class CalendarSource(models.Model):
     COLOR_CHOICES = [
         ("blue", "Blau"),
-        ("green", "Gruen"),
+        ("green", "Grün"),
         ("red", "Rot"),
         ("sand", "Sand"),
         ("violet", "Violett"),

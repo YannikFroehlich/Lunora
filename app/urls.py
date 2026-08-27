@@ -8,6 +8,8 @@ login_view = view.LunoraLoginView.as_view()
 
 urlpatterns = [
     path("", RedirectView.as_view(url="/home/", permanent=False)),
+    path("service-worker.js", view.service_worker, name="service_worker"),
+    path("offline/", view.offline, name="offline"),
     path("login/", login_view, name="login"),
     path("accounts/login/", login_view, name="accounts_login"),
     path("logout/", LogoutView.as_view(), name="logout"),
