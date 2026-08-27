@@ -15,7 +15,7 @@ Lunora ist ein kleines Django-basiertes Workspace-Dashboard mit ruhiger Glas-UI.
 
 ## Tech Stack
 
-- Python
+- Python 3.12+ (Django 6.0.8 erfordert mindestens 3.12; CI läuft auf 3.14)
 - Django 6.0.8
 - SQLite für lokale Entwicklung
 - Django Templates
@@ -48,6 +48,8 @@ Lunora/
 ```
 
 ## Lokales Setup
+
+Voraussetzung: Python 3.12 oder neuer (Django 6.0.8 startet mit älteren Versionen nicht). Prüfe das vor dem Anlegen des virtuellen Umfelds mit `python --version`.
 
 ```powershell
 python -m venv .venv
