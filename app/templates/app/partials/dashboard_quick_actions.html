@@ -1,0 +1,15 @@
+{% for tile in nav_tiles %}
+<a class="action-tile" href="{% url tile.url_name %}">
+    {% if tile.badge_key == "messages_unread" %}
+    <span class="action-badge {% if not tile.badge_count %}is-hidden{% endif %}"
+          data-home-messages-badge
+          aria-label="{{ tile.badge_count }} ungelesene Nachrichten">{{ tile.badge_count }}</span>
+    {% endif %}
+    {% if tile.badge_key == "notes_new" %}
+    <span class="action-badge {% if not tile.badge_count %}is-hidden{% endif %}"
+          aria-label="{{ tile.badge_count }} neue Notizfreigaben">{{ tile.badge_count }}</span>
+    {% endif %}
+    <i class="fa-solid {{ tile.icon }}" aria-hidden="true"></i>
+    <span>{{ tile.label }}</span>
+</a>
+{% endfor %}

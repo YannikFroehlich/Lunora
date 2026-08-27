@@ -25,6 +25,7 @@ from app.forms import CalendarSourceForm, ProfileForm
 from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, CalendarSource, ChatMessage, ChatMessageAttachment, ChatMessageReaction, Conversation, ConversationMember, CustomHoliday, Note, NoteActivityNotification, NoteAttachment, NoteCommentThread, NoteFolder, NoteLink, NoteShare, NoteTemplate, NoteUserState, NoteVersion, OfficialHoliday, Profile, SystemSettings, VacationPeriod, VacationYear, WeatherLocation, WeeklySummaryDelivery
 from app.services.calendar_service import fetch_ical, parse_ical_events
 from app.services.calendar_sync_queue import queue_calendar_sources
+from app.services.dashboard import DASHBOARD_WIDGET_IDS, default_dashboard_layout, normalize_dashboard_layout
 from app.services.image_uploads import PROFILE_IMAGE_MAX_BYTES
 from app.services.notifications import (
     claim_due_weather_alerts,
@@ -3134,6 +3135,195 @@ class GlobalSearchTests(TestCase):
         self.assertContains(response, "Nachrichten deaktiviert")
         self.assertNotContains(response, "Raketenidee")
         self.assertContains(response, "Raketenstart")
+
+
+@override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
+class DashboardCustomizationTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="mira@example.com",
+            email="mira@example.com",
+            password="secret-12345",
+        )
+        self.profile = Profile.objects.create(user=self.user, display_name="Mira")
+
+    def _login(self):
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+    def _layout(self, *, order=None, hidden=None):
+        return {
+            "version": 1,
+            "order": order or list(DASHBOARD_WIDGET_IDS),
+            "hidden": hidden or [],
+        }
+
+    def test_home_uses_default_layout_and_creates_missing_profile(self):
+        self.profile.delete()
+        self._login()
+
+        response = self.client.get("/home/")
+
+        self.assertEqual(response.status_code, 200)
+        profile = Profile.objects.get(user=self.user)
+        self.assertEqual(profile.dashboard_layout, default_dashboard_layout())
+        self.assertEqual(
+            [widget["id"] for widget in response.context["dashboard_widgets"]],
+            list(DASHBOARD_WIDGET_IDS),
+        )
+
+    def test_home_renders_saved_order(self):
+        order = ["clock", "welcome", "quick_actions", "recent_tools", "upcoming_events", "weather"]
+        self.profile.dashboard_layout = self._layout(order=order)
+        self.profile.save(update_fields=["dashboard_layout"])
+        self._login()
+
+        response = self.client.get("/home/")
+
+        self.assertEqual(
+            [widget["id"] for widget in response.context["dashboard_widgets"]],
+            order,
+        )
+
+    def test_home_keeps_hidden_widgets_for_edit_mode_and_shows_empty_state(self):
+        self.profile.dashboard_layout = self._layout(hidden=list(DASHBOARD_WIDGET_IDS))
+        self.profile.save(update_fields=["dashboard_layout"])
+        self._login()
+
+        response = self.client.get("/home/")
+
+        self.assertFalse(response.context["dashboard_visible_widgets"])
+        self.assertContains(response, "Dein Dashboard ist leer")
+        self.assertContains(response, 'data-widget-id="welcome"')
+        self.assertContains(response, "hidden")
+
+    def test_normalization_adds_missing_widgets_and_drops_obsolete_entries(self):
+        broken_layout = {
+            "version": 1,
+            "order": ["clock", "unknown", "clock", "welcome"],
+            "hidden": ["removed", "weather", "weather"],
+        }
+
+        normalized = normalize_dashboard_layout(broken_layout)
+
+        self.assertEqual(normalized["order"][:2], ["clock", "welcome"])
+        self.assertEqual(set(normalized["order"]), set(DASHBOARD_WIDGET_IDS))
+        self.assertEqual(normalized["hidden"], ["weather"])
+
+    def test_saved_hidden_layout_is_ignored_when_customization_is_disabled(self):
+        SystemSettings.objects.create(dashboard_customization_enabled=False)
+        self.profile.dashboard_layout = self._layout(hidden=list(DASHBOARD_WIDGET_IDS))
+        self.profile.save(update_fields=["dashboard_layout"])
+        self._login()
+
+        response = self.client.get("/home/")
+
+        self.assertNotContains(response, "Dashboard anpassen")
+        self.assertContains(response, "Willkommen zurück")
+        self.assertContains(response, "Nächste Termine")
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.dashboard_layout["hidden"], list(DASHBOARD_WIDGET_IDS))
+
+    def test_dashboard_layout_api_requires_login(self):
+        response = self.client.patch(
+            "/home/dashboard-layout/",
+            data=json.dumps(default_dashboard_layout()),
+            content_type="application/json",
+        )
+
+        self.assertRedirects(response, "/login/?next=/home/dashboard-layout/")
+
+    def test_dashboard_layout_api_requires_csrf(self):
+        csrf_client = Client(enforce_csrf_checks=True)
+        csrf_client.login(username="mira@example.com", password="secret-12345")
+
+        response = csrf_client.patch(
+            "/home/dashboard-layout/",
+            data=json.dumps(default_dashboard_layout()),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+        csrf_client.get("/home/")
+        token = csrf_client.cookies["csrftoken"].value
+        response = csrf_client.patch(
+            "/home/dashboard-layout/",
+            data=json.dumps(default_dashboard_layout()),
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=token,
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_dashboard_layout_api_saves_valid_layout_for_current_user_only(self):
+        other = User.objects.create_user(username="lukas@example.com", email="lukas@example.com", password="secret-12345")
+        other_profile = Profile.objects.create(user=other, display_name="Lukas")
+        layout = self._layout(
+            order=["recent_tools", "quick_actions", "upcoming_events", "weather", "clock", "welcome"],
+            hidden=["clock", "weather"],
+        )
+        self._login()
+
+        response = self.client.patch(
+            "/home/dashboard-layout/",
+            data=json.dumps(layout),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"ok": True, "layout": layout})
+        self.profile.refresh_from_db()
+        other_profile.refresh_from_db()
+        self.assertEqual(self.profile.dashboard_layout, layout)
+        self.assertEqual(other_profile.dashboard_layout, default_dashboard_layout())
+
+    def test_dashboard_layout_api_rejects_invalid_layouts_without_saving(self):
+        original_layout = self.profile.dashboard_layout
+        invalid_layouts = [
+            {"version": 1, "order": ["welcome"], "hidden": []},
+            self._layout(order=["welcome", "welcome", "clock", "weather", "upcoming_events", "quick_actions"]),
+            self._layout(order=["welcome", "clock", "weather", "upcoming_events", "quick_actions", "bogus"]),
+            {"version": 1, "order": list(DASHBOARD_WIDGET_IDS), "hidden": "weather"},
+            ["welcome", "clock"],
+        ]
+        self._login()
+
+        for layout in invalid_layouts:
+            response = self.client.patch(
+                "/home/dashboard-layout/",
+                data=json.dumps(layout),
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 400)
+            self.profile.refresh_from_db()
+            self.assertEqual(self.profile.dashboard_layout, original_layout)
+
+    def test_dashboard_layout_api_respects_feature_flag(self):
+        SystemSettings.objects.create(dashboard_customization_enabled=False)
+        layout = self._layout(hidden=["welcome"])
+        self._login()
+
+        response = self.client.patch(
+            "/home/dashboard-layout/",
+            data=json.dumps(layout),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.dashboard_layout, default_dashboard_layout())
+
+    def test_disabled_weather_or_messages_are_not_restored_by_dashboard_layout(self):
+        SystemSettings.objects.create(weather_enabled=False, messages_enabled=False)
+        self.profile.dashboard_layout = self._layout(order=["weather", "quick_actions", "recent_tools", "welcome", "clock", "upcoming_events"])
+        self.profile.save(update_fields=["dashboard_layout"])
+        self._login()
+
+        response = self.client.get("/home/")
+
+        self.assertNotContains(response, 'data-widget-id="weather"')
+        self.assertNotContains(response, "Nachrichten")
+        self.assertContains(response, "Schnellzugriff")
 
 
 @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])

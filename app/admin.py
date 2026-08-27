@@ -42,6 +42,7 @@ class SystemSettingsAdmin(admin.ModelAdmin):
         "notes_enabled",
         "vacation_planner_enabled",
         "weather_enabled",
+        "dashboard_customization_enabled",
         "updated_at",
     )
     readonly_fields = ("created_at", "updated_at")

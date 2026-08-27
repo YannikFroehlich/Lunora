@@ -1,0 +1,22 @@
+<div class="panel-title panel-title-between">
+    <span><i class="fa-regular fa-calendar"></i> Nächste Termine</span>
+    <a class="icon-button" href="{% url 'calendar' %}" aria-label="Kalender öffnen">
+        <i class="fa-solid fa-arrow-right"></i>
+    </a>
+</div>
+<ul class="event-list">
+    {% if upcoming_dashboard_events %}
+    {% for event in upcoming_dashboard_events %}
+    <li>
+        <span class="event-dot tone-{{ event.tone }}"></span>
+        <span>
+            <strong>{{ event.title }}</strong>
+            <small>{{ event.date }} · {{ event.time }}</small>
+        </span>
+    </li>
+    {% endfor %}
+    {% else %}
+    <li class="empty-events">Keine kommenden Termine synchronisiert.</li>
+    {% endif %}
+</ul>
+<a class="panel-link" href="{% url 'calendar' %}">Kalender ansehen <i class="fa-solid fa-chevron-right"></i></a>

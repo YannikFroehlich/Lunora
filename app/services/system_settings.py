@@ -17,6 +17,7 @@ FEATURE_FIELDS = {
     "notes": "notes_enabled",
     "vacation_planner": "vacation_planner_enabled",
     "weather": "weather_enabled",
+    "dashboard_customization": "dashboard_customization_enabled",
 }
 
 
@@ -28,6 +29,7 @@ FEATURE_LABELS = {
     "notes": "Notizen",
     "vacation_planner": "Urlaubsplaner",
     "weather": "Wetter",
+    "dashboard_customization": "Dashboard-Personalisierung",
 }
 
 
@@ -41,6 +43,7 @@ class DefaultSystemSettings:
     notes_enabled: bool = True
     vacation_planner_enabled: bool = True
     weather_enabled: bool = True
+    dashboard_customization_enabled: bool = True
     updated_by: object = None
     updated_at: object = None
 

@@ -115,6 +115,7 @@ class SystemSettingsForm(forms.ModelForm):
             "notes_enabled",
             "vacation_planner_enabled",
             "weather_enabled",
+            "dashboard_customization_enabled",
         ]
         labels = {
             "normal_login_enabled": "Login und Registrierung fuer Nutzer",
@@ -125,6 +126,7 @@ class SystemSettingsForm(forms.ModelForm):
             "notes_enabled": "Notizen",
             "vacation_planner_enabled": "Urlaubsplaner",
             "weather_enabled": "Wetter",
+            "dashboard_customization_enabled": "Dashboard anpassen",
         }
         widgets = {
             "normal_login_enabled": forms.CheckboxInput(),
@@ -135,6 +137,7 @@ class SystemSettingsForm(forms.ModelForm):
             "notes_enabled": forms.CheckboxInput(),
             "vacation_planner_enabled": forms.CheckboxInput(),
             "weather_enabled": forms.CheckboxInput(),
+            "dashboard_customization_enabled": forms.CheckboxInput(),
         }
 
 

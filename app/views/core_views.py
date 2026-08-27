@@ -1,15 +1,19 @@
+import json
 from urllib.parse import urlparse, urlunparse
 
 from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
+from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.views.decorators.http import require_http_methods
 from django.utils.http import url_has_allowed_host_and_scheme
 
 from app.forms import AppearanceForm, CalendarSourceForm, ProfileForm, ProfilePreferencesForm
 from app.models import CalendarSource, Profile
 from app.services.calendar_sync_queue import queue_calendar_sources
-from app.services.system_settings import feature_enabled
+from app.services.dashboard import normalize_dashboard_layout, validate_dashboard_layout
+from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.user_preferences import format_user_datetime
 from app.view_models import get_dashboard_context, get_settings_context
 
@@ -84,7 +88,34 @@ def _calendar_source_form_items(sources, user, bound_form=None, bound_source_id=
 
 @login_required
 def home(request):
-    return render(request, "app/home.html", get_dashboard_context(request.user))
+    profile = get_or_create_profile(request.user)
+    context = get_dashboard_context(request.user)
+    if profile.dashboard_layout != context["dashboard_layout"]:
+        profile.dashboard_layout = context["dashboard_layout"]
+        profile.save(update_fields=["dashboard_layout"])
+    return render(request, "app/home.html", context)
+
+
+@login_required
+@require_http_methods(["PATCH"])
+def dashboard_layout_update(request):
+    if not feature_enabled("dashboard_customization"):
+        return disabled_feature_response(request, "dashboard_customization", json_response=True)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return JsonResponse({"ok": False, "error": "Das Layout muss gültiges JSON sein."}, status=400)
+
+    is_valid, error = validate_dashboard_layout(payload)
+    if not is_valid:
+        return JsonResponse({"ok": False, "error": error}, status=400)
+
+    profile = get_or_create_profile(request.user)
+    layout = normalize_dashboard_layout(payload)
+    profile.dashboard_layout = layout
+    profile.save(update_fields=["dashboard_layout"])
+    return JsonResponse({"ok": True, "layout": layout})
 
 
 @login_required

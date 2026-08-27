@@ -8,7 +8,7 @@ from .auth_views import (
     register,
 )
 from .calendar_views import calendar
-from .core_views import home, settings
+from .core_views import dashboard_layout_update, home, settings
 from .message_views import chat_attachment_download, chat_typing_ping, messages, messages_live_updates
 from .notification_views import claim_desktop_notifications
 from .note_views import (
@@ -56,6 +56,7 @@ __all__ = [
     "calendar",
     "administration",
     "home",
+    "dashboard_layout_update",
     "messages",
     "messages_live_updates",
     "chat_typing_ping",

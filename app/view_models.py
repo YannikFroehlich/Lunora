@@ -5,6 +5,12 @@ from django.db.models import F, Q
 from django.utils import timezone
 
 from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, NoteShare
+from app.services.dashboard import (
+    available_dashboard_widgets,
+    dashboard_widgets_for_layout,
+    default_dashboard_layout,
+    normalize_dashboard_layout,
+)
 from app.services.message_queries import unread_total_for_user
 from app.services.system_settings import feature_enabled, feature_flags
 from app.services.user_preferences import (
@@ -24,6 +30,17 @@ from app.services.weather_service import get_weather_context
 def get_dashboard_context(user=None):
     now = localtime_for_user(profile_or_user=user)
     flags = feature_flags()
+    profile = getattr(user, "profile", None) if user else None
+    stored_layout = getattr(profile, "dashboard_layout", None) if profile else None
+    dashboard_customization_enabled = flags["dashboard_customization"]
+    dashboard_layout = normalize_dashboard_layout(stored_layout)
+    rendered_dashboard_layout = dashboard_layout if dashboard_customization_enabled else default_dashboard_layout()
+    dashboard_widgets = dashboard_widgets_for_layout(
+        rendered_dashboard_layout,
+        flags,
+        include_hidden=dashboard_customization_enabled,
+    )
+    dashboard_visible_widgets = [widget for widget in dashboard_widgets if not widget["hidden"]]
     dashboard_weather = _dashboard_weather_context(user) if flags["weather"] else {}
     unread_messages_total = _dashboard_unread_message_count(user) if flags["messages"] else 0
     new_note_shares = _dashboard_new_note_share_count(user) if flags["notes"] else 0
@@ -38,6 +55,12 @@ def get_dashboard_context(user=None):
         "dashboard_weather_enabled": flags["weather"],
         "dashboard_messages_enabled": flags["messages"],
         "dashboard_notes_enabled": flags["notes"],
+        "dashboard_customization_enabled": dashboard_customization_enabled,
+        "dashboard_layout": dashboard_layout,
+        "dashboard_default_layout": default_dashboard_layout(),
+        "dashboard_widgets": dashboard_widgets,
+        "dashboard_visible_widgets": dashboard_visible_widgets,
+        "dashboard_available_widgets": available_dashboard_widgets(flags),
         "dashboard_new_note_shares": new_note_shares,
         "clock": {
             "time": format_user_time(now, user),

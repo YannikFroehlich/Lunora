@@ -6,7 +6,7 @@ Lunora ist ein kleines Django-basiertes Workspace-Dashboard mit ruhiger Glas-UI.
 
 - Authentifizierung mit Registrierung, Login und Logout
 - Profil- und Erscheinungsbild-Einstellungen mit Theme, Akzentfarbe, Dichte, Datumsformat, Zeitformat und Zeitzone
-- Dashboard mit Uhr, Wetterausblick, Schnellzugriffen, kommenden Terminen und Nachrichten-Badge
+- Anpassbares Dashboard mit Uhr, Wetterausblick, Schnellzugriffen, kommenden Terminen, Nachrichten-Badge und kontogespeicherter Widget-Reihenfolge
 - Wetterseite mit Ortssuche, Demo-Daten ohne API-Key, OpenWeather-Anbindung und Regenradar-Proxy
 - Kalenderseite mit privatem iCal-/Google-Kalender-Link, Synchronisierung, Monatsübersicht, Tagesliste, kommenden Terminen und Erinnerungen
 - Nachrichtenseite mit Direktunterhaltungen, ungelesenen Nachrichten, Live-Updates, Reaktionen, angepinnten Nachrichten, Lesestatus, Stummschalten und Blockieren

@@ -22,6 +22,7 @@ urlpatterns = [
     path("reset/done/", view.LunoraPasswordResetCompleteView.as_view(), name="password_reset_complete"),
     path("administration/", view.administration, name="administration"),
     path("home/", view.home, name="home"),
+    path("home/dashboard-layout/", view.dashboard_layout_update, name="dashboard_layout_update"),
     path("search/", view.global_search, name="global_search"),
     path("settings/", view.settings, name="settings"),
     path("weather/", view.weather, name="weather"),

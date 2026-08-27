@@ -6,6 +6,7 @@ from django.db.models import Count, Exists, OuterRef, Prefetch
 from django.utils import timezone
 
 from app.services.chat_files import chat_upload_to
+from app.services.dashboard import default_dashboard_layout
 from app.services.image_uploads import validate_profile_image_file
 from app.services.note_content import empty_note_document
 from app.services.note_files import note_upload_to, private_note_storage
@@ -20,6 +21,7 @@ class SystemSettings(models.Model):
     notes_enabled = models.BooleanField(default=True)
     vacation_planner_enabled = models.BooleanField(default=True)
     weather_enabled = models.BooleanField(default=True)
+    dashboard_customization_enabled = models.BooleanField(default=True)
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -100,6 +102,7 @@ class Profile(models.Model):
     analytics_enabled = models.BooleanField(default=True)
     usage_data_enabled = models.BooleanField(default=False)
     note_shortcuts = models.JSONField(default=dict, blank=True)
+    dashboard_layout = models.JSONField(default=default_dashboard_layout, blank=True)
     weather_default_city = models.CharField(max_length=120, blank=True, default="Bünde,de")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
