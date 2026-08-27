@@ -492,6 +492,7 @@ const COMMAND_DEFAULTS = {
   focusSearch: { label: "Suche fokussieren", shortcut: "Mod+Alt+F" },
   pin: { label: "Anpinnen/Loslösen", shortcut: "Mod+Alt+P" },
   archive: { label: "Archivieren/Wiederherstellen", shortcut: "Mod+Alt+A" },
+  style: { label: "Farbe & Icon", shortcut: "Mod+Alt+I" },
   duplicate: { label: "Duplizieren", shortcut: "Mod+Alt+D" },
   trash: { label: "In Papierkorb", shortcut: "Mod+Alt+Backspace" },
   share: { label: "Teilen", shortcut: "Mod+Alt+H" },
@@ -522,6 +523,7 @@ function initNotesApp() {
   let contextNoteCard = null;
   let contextFolder = null;
   let movingNoteCard = null;
+  let stylingNoteCard = null;
   let draggedTreeItem = null;
   let treeDropDescriptor = null;
   let hoveredDropFolder = null;
@@ -556,6 +558,9 @@ function initNotesApp() {
   const templateDialog = document.querySelector("[data-template-dialog]");
   const noteMoveDialog = document.querySelector("[data-note-move-dialog]");
   const noteMoveFolder = document.querySelector("[data-note-move-folder]");
+  const noteStyleDialog = document.querySelector("[data-style-dialog]");
+  const noteColorGrid = document.querySelector("[data-note-color-grid]");
+  const noteIconGrid = document.querySelector("[data-note-icon-grid]");
   const noteContextMenu = document.querySelector("[data-note-context-menu]");
   const folderContextMenu = document.querySelector("[data-folder-context-menu]");
   const notesList = document.querySelector("[data-notes-list]");
@@ -676,6 +681,20 @@ function initNotesApp() {
 
   document.querySelector("[data-note-move-confirm]")?.addEventListener("click", moveNoteFromDialog);
   noteMoveDialog?.addEventListener("close", () => { movingNoteCard = null; });
+  document.querySelector("[data-note-style-confirm]")?.addEventListener("click", applyStyleFromDialog);
+  noteStyleDialog?.addEventListener("close", () => { stylingNoteCard = null; });
+  noteIconGrid?.addEventListener("click", (event) => {
+    const option = event.target.closest("[data-note-icon-value]");
+    if (!option) return;
+    noteIconGrid.querySelectorAll("[data-note-icon-value]").forEach((button) => button.classList.toggle("is-active", button === option));
+  });
+  noteColorGrid?.addEventListener("change", (event) => {
+    const input = event.target.closest("input[name='note-style-color']");
+    if (!input) return;
+    noteColorGrid.querySelectorAll(".note-color-dot").forEach((dot) => {
+      dot.classList.toggle("is-active", dot.querySelector("input") === input);
+    });
+  });
   document.querySelector("[data-table-dialog-open]")?.addEventListener("click", () => tableDialog?.showModal());
   mathInput?.addEventListener("input", renderMathPreview);
   mathBlockToggle?.addEventListener("change", renderMathPreview);
@@ -829,6 +848,7 @@ function initNotesApp() {
       focusSearch: () => document.querySelector("[data-notes-search]")?.focus(),
       pin: () => performAction(note?.is_pinned ? "unpin" : "pin"),
       archive: () => performAction(note?.is_archived ? "unarchive" : "archive"),
+      style: () => openStyleDialog(null),
       duplicate: () => performAction("duplicate"),
       trash: trashCurrentNote,
       share: openShareDialog,
@@ -1679,6 +1699,7 @@ function initNotesApp() {
     setContextItem(noteContextMenu, "rename", { hidden: isDeleted || !canEdit });
     setContextItem(noteContextMenu, "duplicate", { hidden: isDeleted });
     setContextItem(noteContextMenu, "move", { hidden: isDeleted });
+    setContextItem(noteContextMenu, "style", { hidden: isDeleted });
     setContextItem(noteContextMenu, "archive", {
       hidden: isDeleted,
       label: isArchived ? "Aus Archiv holen" : "Archivieren",
@@ -1763,6 +1784,48 @@ function initNotesApp() {
     noteMoveDialog?.showModal();
   }
 
+  function openStyleDialog(card) {
+    const noteId = card ? Number.parseInt(card.dataset.noteCard, 10) : note?.id;
+    if (!noteStyleDialog || !noteId) return;
+    stylingNoteCard = card;
+    const currentColor = card ? (card.dataset.noteColor || "") : (note?.color || "");
+    const currentIcon = card ? (card.dataset.noteIcon || "") : (note?.icon || "");
+    noteColorGrid?.querySelectorAll(".note-color-dot").forEach((dot) => {
+      const input = dot.querySelector("input");
+      const matches = input?.value === currentColor;
+      if (input) input.checked = matches;
+      dot.classList.toggle("is-active", matches);
+    });
+    noteIconGrid?.querySelectorAll("[data-note-icon-value]").forEach((button) => {
+      button.classList.toggle("is-active", button.dataset.noteIconValue === currentIcon);
+    });
+    noteStyleDialog.showModal();
+  }
+
+  async function performNoteStyleAction(noteId, { color, icon }) {
+    if (!await ensureCurrentNoteSaved(noteId)) return false;
+    const { response, data } = await requestJson(`/notes/api/${noteId}/actions/`, {
+      method: "POST",
+      body: JSON.stringify({ action: "style", color, icon }),
+    });
+    if (!response.ok || !data.ok) {
+      window.alert(data.error || "Die Farbe/das Icon konnte nicht gespeichert werden.");
+      return false;
+    }
+    return true;
+  }
+
+  async function applyStyleFromDialog() {
+    const noteId = stylingNoteCard ? Number.parseInt(stylingNoteCard.dataset.noteCard, 10) : note?.id;
+    if (!noteId) return;
+    const color = noteColorGrid?.querySelector("input[name='note-style-color']:checked")?.value ?? "";
+    const icon = noteIconGrid?.querySelector(".is-active")?.dataset.noteIconValue ?? "";
+    if (!await performNoteStyleAction(noteId, { color, icon })) return;
+    stylingNoteCard = null;
+    noteStyleDialog?.close();
+    window.location.reload();
+  }
+
   async function moveNoteFromDialog() {
     if (!movingNoteCard) return;
     const card = movingNoteCard;
@@ -1805,6 +1868,10 @@ function initNotesApp() {
     }
     if (action === "move") {
       openMoveNoteDialog(card);
+      return;
+    }
+    if (action === "style") {
+      openStyleDialog(card);
       return;
     }
     if (action === "archive") {

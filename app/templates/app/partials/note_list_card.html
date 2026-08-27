@@ -1,4 +1,4 @@
-<div class="note-list-card notes-tree-item {% if selected_note_data.id == item.id %}is-active{% endif %}"
+<div class="note-list-card notes-tree-item {% if item.color %}tone-{{ item.color }}{% endif %} {% if selected_note_data.id == item.id %}is-active{% endif %}"
      data-tree-item
      data-item-type="note"
      data-item-id="{{ item.id }}"
@@ -12,11 +12,14 @@
      data-note-pinned="{{ item.is_pinned|yesno:'true,false' }}"
      data-note-archived="{{ item.is_archived|yesno:'true,false' }}"
      data-note-deleted="{{ item.is_deleted|yesno:'true,false' }}"
+     data-note-color="{{ item.color }}"
+     data-note-icon="{{ item.icon }}"
      {% if not item.is_deleted %}data-tree-draggable="true"{% endif %}>
     <a class="note-list-card-link"
        draggable="false"
        href="{% url 'note_detail' item.id %}?status={{ current_status }}&scope={{ current_scope }}&sort={{ current_sort }}{% if query %}&q={{ query|urlencode }}{% endif %}">
         {% if item.is_pinned %}<i class="fa-solid fa-thumbtack note-card-pin-icon" aria-hidden="true"></i>{% endif %}
+        {% if item.icon %}<i class="fa-solid fa-{{ item.icon }} note-card-icon" aria-hidden="true"></i>{% endif %}
         <strong data-note-card-title>{{ item.title }}</strong>
     </a>
 </div>

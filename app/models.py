@@ -733,6 +733,30 @@ class NoteShare(models.Model):
 
 
 class NoteUserState(models.Model):
+    COLOR_CHOICES = [
+        ("", "Keine"),
+        ("blue", "Blau"),
+        ("green", "Grün"),
+        ("red", "Rot"),
+        ("sand", "Sand"),
+        ("violet", "Violett"),
+    ]
+    ICON_CHOICES = [
+        ("", "Kein Icon"),
+        ("star", "Stern"),
+        ("flag", "Flagge"),
+        ("lightbulb", "Idee"),
+        ("bookmark", "Lesezeichen"),
+        ("rocket", "Rakete"),
+        ("heart", "Herz"),
+        ("circle-exclamation", "Achtung"),
+        ("circle-check", "Erledigt"),
+        ("book", "Buch"),
+        ("briefcase", "Arbeit"),
+        ("house", "Privat"),
+        ("code", "Code"),
+    ]
+
     note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name="user_states")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="note_states")
     folder = models.ForeignKey(
@@ -747,6 +771,8 @@ class NoteUserState(models.Model):
     pinned_at = models.DateTimeField(blank=True, null=True)
     is_archived = models.BooleanField(default=False)
     archived_at = models.DateTimeField(blank=True, null=True)
+    color = models.CharField(max_length=12, choices=COLOR_CHOICES, default="", blank=True)
+    icon = models.CharField(max_length=24, choices=ICON_CHOICES, default="", blank=True)
 
     class Meta:
         constraints = [

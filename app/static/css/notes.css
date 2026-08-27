@@ -500,6 +500,23 @@
   font-size: 0.7rem;
 }
 
+.tone-blue { --tone: #8bb3cf; }
+.tone-green { --tone: #91a87c; }
+.tone-red { --tone: #d29a97; }
+.tone-sand { --tone: #c5a67d; }
+.tone-violet { --tone: #b5a2c9; }
+
+.note-list-card[class*="tone-"] {
+  box-shadow: inset 3px 0 0 0 var(--tone);
+}
+
+.note-card-icon {
+  flex: 0 0 auto;
+  margin-right: 6px;
+  color: var(--tone, var(--color-accent-strong));
+  font-size: 0.72rem;
+}
+
 .notes-bulk-bar[hidden] {
   display: none;
 }
@@ -1620,6 +1637,80 @@
   .note-toolbar { flex-wrap: nowrap; overflow-x: auto; padding-inline: 7px; }
   .table-operation-grid { grid-template-columns: 1fr; }
   .shortcut-row { grid-template-columns: 1fr 1fr 36px; }
+}
+
+.note-style-section + .note-style-section {
+  margin-top: 16px;
+}
+
+.note-style-label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--color-muted);
+  font-size: 0.8rem;
+}
+
+.note-color-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.note-color-dot {
+  position: relative;
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  background: var(--tone, var(--surface-control));
+  border: 3px solid rgba(255, 255, 255, 0.62);
+  border-radius: 50%;
+  box-shadow: 0 3px 10px rgba(75, 56, 31, 0.16);
+  cursor: pointer;
+}
+
+.note-color-dot input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.note-color-dot.is-active {
+  outline: 3px solid color-mix(in srgb, var(--tone, var(--color-accent)) 70%, #ffffff);
+  outline-offset: 3px;
+}
+
+.note-color-dot.is-none {
+  background: var(--surface-control);
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+.note-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+  gap: 8px;
+}
+
+.note-icon-option {
+  display: grid;
+  height: 38px;
+  color: var(--color-text);
+  background: color-mix(in srgb, var(--surface-control) 68%, transparent);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: 9px;
+  place-items: center;
+  cursor: pointer;
+}
+
+.note-icon-option:hover {
+  background: var(--surface-control-hover);
+}
+
+.note-icon-option.is-active {
+  color: var(--color-accent-strong);
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+  border-color: var(--color-accent-strong);
 }
 
 @media print {

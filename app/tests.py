@@ -4804,6 +4804,34 @@ class NotesTests(TestCase):
         note.refresh_from_db()
         self.assertEqual(note.plain_text, "Vom Bearbeiter")
 
+    def test_note_style_is_personal_and_validated(self):
+        note = self.create_note()
+        NoteShare.objects.create(note=note, user=self.reader, role=NoteShare.ROLE_READER)
+        reader_client = Client()
+        reader_client.login(username="reader@example.com", password="secret-12345")
+
+        styled = reader_client.post(
+            f"/notes/api/{note.id}/actions/",
+            data=json.dumps({"action": "style", "color": "violet", "icon": "rocket"}),
+            content_type="application/json",
+        )
+        self.assertEqual(styled.status_code, 200, styled.content)
+        self.assertEqual(styled.json()["note"]["color"], "violet")
+        self.assertEqual(styled.json()["note"]["icon"], "rocket")
+        reader_state = NoteUserState.objects.get(note=note, user=self.reader)
+        self.assertEqual(reader_state.color, "violet")
+        self.assertEqual(reader_state.icon, "rocket")
+        owner_state, _created = NoteUserState.objects.get_or_create(note=note, user=self.owner)
+        self.assertEqual(owner_state.color, "")
+        self.assertEqual(owner_state.icon, "")
+
+        invalid = self.client.post(
+            f"/notes/api/{note.id}/actions/",
+            data=json.dumps({"action": "style", "color": "gold", "icon": ""}),
+            content_type="application/json",
+        )
+        self.assertEqual(invalid.status_code, 400)
+
     def test_only_owner_can_manage_shares_and_trash(self):
         note = self.create_note()
         NoteShare.objects.create(note=note, user=self.editor, role=NoteShare.ROLE_EDITOR)
