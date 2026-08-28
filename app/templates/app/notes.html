@@ -145,6 +145,7 @@
                     <i class="fa-solid fa-box-archive"></i>
                 </button>
                 <button type="button" data-command="style" aria-label="Farbe & Icon"><i class="fa-solid fa-palette"></i></button>
+                <button type="button" data-command="outline" aria-label="Inhaltsverzeichnis" aria-pressed="false"><i class="fa-solid fa-bars-staggered"></i></button>
                 <button type="button" data-command="comments" aria-label="Kommentare"><i class="fa-regular fa-comment"></i></button>
                 <button type="button" data-command="versions" aria-label="Versionsverlauf"><i class="fa-solid fa-clock-rotate-left"></i></button>
                 {% if selected_note_data.can_manage %}<button type="button" data-command="share" aria-label="Teilen"><i class="fa-solid fa-user-plus"></i></button>{% endif %}
@@ -260,10 +261,19 @@
                     </select>
                 </div>
             </div>
-            <div class="note-editor-scroll soft-scrollbar">
-                <div class="note-editor-zoom-frame" data-note-zoom-frame>
-                    <div class="note-editor-page" data-note-editor></div>
+            <div class="note-editor-body">
+                <div class="note-editor-scroll soft-scrollbar">
+                    <div class="note-editor-zoom-frame" data-note-zoom-frame>
+                        <div class="note-editor-page" data-note-editor></div>
+                    </div>
                 </div>
+                <aside class="note-outline-panel soft-scrollbar" data-note-outline-panel hidden>
+                    <header class="note-outline-header">
+                        <span><i class="fa-solid fa-bars-staggered" aria-hidden="true"></i> Inhaltsverzeichnis</span>
+                        <button type="button" data-command="outline" aria-label="Inhaltsverzeichnis schließen"><i class="fa-solid fa-xmark"></i></button>
+                    </header>
+                    <div class="note-outline-list" data-note-outline-list></div>
+                </aside>
             </div>
             <button type="button" class="note-editor-zoom-indicator" data-editor-zoom-level aria-label="Zoomstufe des Editors, klicken zum Zurücksetzen">100%</button>
             {% if selected_note_data.backlinks %}

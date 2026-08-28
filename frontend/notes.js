@@ -496,6 +496,7 @@ const COMMAND_DEFAULTS = {
   duplicate: { label: "Duplizieren", shortcut: "Mod+Alt+D" },
   trash: { label: "In Papierkorb", shortcut: "Mod+Alt+Backspace" },
   share: { label: "Teilen", shortcut: "Mod+Alt+H" },
+  outline: { label: "Inhaltsverzeichnis anzeigen/verbergen", shortcut: "Mod+Alt+O" },
   versions: { label: "Versionsverlauf", shortcut: "Mod+Alt+V" },
   exportPdf: { label: "Als PDF exportieren", shortcut: "Mod+Alt+E" },
   exportMarkdown: { label: "Als Markdown exportieren", shortcut: "Mod+Alt+Shift+E" },
@@ -545,6 +546,8 @@ function initNotesApp() {
   const wordCount = document.querySelector("[data-word-count]");
   const shareDialog = document.querySelector("[data-share-dialog]");
   const versionsDialog = document.querySelector("[data-versions-dialog]");
+  const outlinePanel = document.querySelector("[data-note-outline-panel]");
+  const outlineList = document.querySelector("[data-note-outline-list]");
   const shortcutDialog = document.querySelector("[data-shortcut-dialog]");
   const conflictDialog = document.querySelector("[data-conflict-dialog]");
   const tableDialog = document.querySelector("[data-table-dialog]");
@@ -636,6 +639,7 @@ function initNotesApp() {
         updateCounts();
         updateToolbarState();
         markDirty();
+        if (outlinePanel && !outlinePanel.hidden) updateOutline();
       },
       onSelectionUpdate: updateToolbarState,
     });
@@ -854,6 +858,7 @@ function initNotesApp() {
       trash: trashCurrentNote,
       share: openShareDialog,
       comments: openCommentsDialog,
+      outline: toggleOutlinePanel,
       versions: openVersionsDialog,
       exportPdf: exportPdf,
       exportMarkdown: exportMarkdown,
@@ -1046,6 +1051,59 @@ function initNotesApp() {
     const words = editor.storage.characterCount.words();
     const characters = editor.storage.characterCount.characters();
     wordCount.textContent = `${words} ${words === 1 ? "Wort" : "Wörter"} · ${characters} Zeichen`;
+  }
+
+  function toggleOutlinePanel() {
+    if (!outlinePanel) return;
+    const willShow = outlinePanel.hidden;
+    outlinePanel.hidden = !willShow;
+    document.querySelectorAll('[data-command="outline"]').forEach((button) => button.setAttribute("aria-pressed", String(willShow)));
+    if (willShow) updateOutline();
+  }
+
+  function buildOutlineTree(headings) {
+    const root = [];
+    const stack = [{ level: 0, children: root }];
+    headings.forEach((heading) => {
+      const level = Number(heading.tagName.slice(1));
+      while (stack.length > 1 && stack[stack.length - 1].level >= level) stack.pop();
+      const node = { heading, level, children: [] };
+      stack[stack.length - 1].children.push(node);
+      stack.push(node);
+    });
+    return root;
+  }
+
+  function renderOutlineNodes(nodes, container) {
+    nodes.forEach((node) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "note-outline-item";
+      item.textContent = node.heading.textContent.trim() || "Ohne Titel";
+      item.addEventListener("click", () => node.heading.scrollIntoView({ behavior: "smooth", block: "start" }));
+      container.appendChild(item);
+      if (node.children.length) {
+        const childWrap = document.createElement("div");
+        childWrap.className = "note-outline-children";
+        renderOutlineNodes(node.children, childWrap);
+        container.appendChild(childWrap);
+      }
+    });
+  }
+
+  function updateOutline() {
+    if (!outlineList) return;
+    const editorElement = document.querySelector("[data-note-editor]");
+    const headings = editorElement ? Array.from(editorElement.querySelectorAll("h1, h2, h3")) : [];
+    outlineList.innerHTML = "";
+    if (!headings.length) {
+      const empty = document.createElement("p");
+      empty.className = "note-outline-empty";
+      empty.textContent = "Noch keine Überschriften in dieser Notiz.";
+      outlineList.appendChild(empty);
+      return;
+    }
+    renderOutlineNodes(buildOutlineTree(headings), outlineList);
   }
 
   function currentPayload() {

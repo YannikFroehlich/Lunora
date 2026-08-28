@@ -1016,11 +1016,101 @@
   border-color: #b05b4f;
 }
 
+.note-editor-body {
+  min-height: 0;
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
 .note-editor-scroll {
   min-height: 0;
   flex: 1;
   overflow: auto;
   padding: 24px clamp(18px, 4vw, 56px) 48px;
+}
+
+.note-outline-panel {
+  flex: 0 0 240px;
+  overflow-y: auto;
+  padding: 16px 14px 24px;
+  border-left: 1px solid var(--glass-border-soft);
+  background: color-mix(in srgb, var(--surface-panel) 94%, transparent);
+}
+
+.note-outline-panel[hidden] {
+  display: none;
+}
+
+.note-outline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  color: var(--color-heading);
+  border-bottom: 1px solid var(--glass-border-soft);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.note-outline-header button {
+  width: 26px;
+  height: 26px;
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 8px;
+}
+
+.note-outline-header button:hover {
+  color: var(--color-accent-strong);
+  background: var(--surface-control);
+}
+
+.note-outline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.note-outline-empty {
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.note-outline-item {
+  display: block;
+  width: 100%;
+  padding: 5px 8px;
+  color: var(--color-text);
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.note-outline-item:hover {
+  color: var(--color-accent-strong);
+  background: color-mix(in srgb, var(--surface-control) 72%, transparent);
+}
+
+.note-outline-list > .note-outline-item {
+  color: var(--color-heading);
+  font-weight: 600;
+}
+
+.note-outline-children {
+  margin-left: 12px;
+  padding: 2px 0 2px 8px;
+  border-left: 1px solid color-mix(in srgb, var(--color-accent-strong) 18%, transparent);
 }
 
 .note-editor-zoom-frame {
@@ -1698,6 +1788,7 @@
   .toolbar-panel { flex-wrap: nowrap; }
   .table-operation-grid { grid-template-columns: 1fr; }
   .shortcut-row { grid-template-columns: 1fr 1fr 36px; }
+  .note-outline-panel { display: none !important; }
 }
 
 .note-style-section + .note-style-section {
@@ -1780,6 +1871,7 @@
   .note-toolbar,
   .note-trash-banner,
   .note-editor-zoom-indicator,
+  .note-outline-panel,
   .note-backlinks {
     display: none !important;
   }
