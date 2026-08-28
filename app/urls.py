@@ -55,6 +55,22 @@ urlpatterns = [
         name="official_holiday_override_reset",
     ),
     path("notifications/claim/", view.claim_desktop_notifications, name="notification_claim"),
+    path("notifications/", view.notification_center, name="notification_center"),
+    path(
+        "notifications/mark-all-read/",
+        view.notification_mark_all_read,
+        name="notification_mark_all_read",
+    ),
+    path(
+        "notifications/<int:notification_id>/open/",
+        view.notification_open,
+        name="notification_open",
+    ),
+    path(
+        "notifications/<int:notification_id>/toggle-read/",
+        view.notification_toggle_read,
+        name="notification_toggle_read",
+    ),
     path("messages/", view.messages, name="messages"),
     path("messages/live/", view.messages_live_updates, name="messages_live_updates"),
     path(

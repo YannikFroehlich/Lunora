@@ -812,13 +812,16 @@ class CalendarEventForm(_CalendarEventDateTimeForm):
 
         attendees = self.cleaned_data.get("attendees")
         if attendees:
-            CalendarEventAttendee.objects.bulk_create(
+            invitation_rows = CalendarEventAttendee.objects.bulk_create(
                 [
                     CalendarEventAttendee(event=event, user=attendee, invited_by=user)
                     for event in events
                     for attendee in attendees
                 ]
             )
+            from app.services.notifications import materialize_event_invitation_notifications
+
+            materialize_event_invitation_notifications(invitation_rows)
 
         return events[0] if events else None
 
@@ -860,11 +863,14 @@ class CalendarEventEditForm(_CalendarEventDateTimeForm):
 
         to_add = new_attendee_ids - existing_attendee_ids
         if to_add:
-            CalendarEventAttendee.objects.bulk_create(
+            invitation_rows = CalendarEventAttendee.objects.bulk_create(
                 [
                     CalendarEventAttendee(event=event, user_id=user_id, invited_by=self.user)
                     for user_id in to_add
                 ]
             )
+            from app.services.notifications import materialize_event_invitation_notifications
+
+            materialize_event_invitation_notifications(invitation_rows)
 
         return event

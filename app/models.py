@@ -496,6 +496,67 @@ class Task(models.Model):
         return self.title
 
 
+class UserNotification(models.Model):
+    KIND_CALENDAR_REMINDER = "calendar_reminder"
+    KIND_TASK_DUE = "task_due"
+    KIND_EVENT_INVITATION = "event_invitation"
+    KIND_NOTE_MENTION = "note_mention"
+    KIND_NOTE_COMMENT = "note_comment"
+    KIND_NOTE_SHARE = "note_share"
+    KIND_WEATHER_ALERT = "weather_alert"
+    KIND_CHOICES = [
+        (KIND_CALENDAR_REMINDER, "Kalendererinnerung"),
+        (KIND_TASK_DUE, "Fällige Aufgabe"),
+        (KIND_EVENT_INVITATION, "Termineinladung"),
+        (KIND_NOTE_MENTION, "Notizerwähnung"),
+        (KIND_NOTE_COMMENT, "Notizkommentar"),
+        (KIND_NOTE_SHARE, "Notizfreigabe"),
+        (KIND_WEATHER_ALERT, "Wetterwarnung"),
+    ]
+
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="notifications",
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="+",
+    )
+    kind = models.CharField(max_length=24, choices=KIND_CHOICES)
+    title = models.CharField(max_length=300)
+    body = models.CharField(max_length=500, blank=True)
+    url = models.CharField(max_length=500, blank=True)
+    source_key = models.CharField(max_length=180)
+    read_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["recipient", "source_key"],
+                name="unique_user_notification_source",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["recipient", "read_at", "-created_at"],
+                name="notification_inbox_idx",
+            ),
+        ]
+
+    @property
+    def is_read(self):
+        return self.read_at is not None
+
+    def __str__(self):
+        return self.title
+
+
 class WeeklySummaryDelivery(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="weekly_summaries")
     week_start = models.DateField()

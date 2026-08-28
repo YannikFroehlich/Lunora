@@ -1,4 +1,7 @@
-from app.models import Profile
+from django.db import OperationalError, ProgrammingError
+
+from app.models import Profile, UserNotification
+from app.services.notifications import materialize_due_user_notifications
 from app.services.system_settings import feature_flags, get_system_settings
 
 
@@ -56,7 +59,25 @@ def appearance_settings(request):
 
 
 def system_settings(request):
+    flags = feature_flags()
+    unread_notification_count = 0
+    if request.user.is_authenticated:
+        try:
+            materialize_due_user_notifications(
+                user=request.user,
+                include_reminders=flags.get("calendar_reminders", False),
+                include_tasks=flags.get("tasks", False),
+            )
+            unread_notification_count = UserNotification.objects.filter(
+                recipient=request.user,
+                read_at__isnull=True,
+            ).count()
+        except (OperationalError, ProgrammingError):
+            # Keep pages usable while a deployment is between code update and migration.
+            unread_notification_count = 0
+
     return {
         "system_settings": get_system_settings(),
-        "feature_flags": feature_flags(),
+        "feature_flags": flags,
+        "unread_notification_count": unread_notification_count,
     }

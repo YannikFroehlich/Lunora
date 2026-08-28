@@ -19,6 +19,7 @@ from app.models import (
     Profile,
     SystemSettings,
     Task,
+    UserNotification,
     VacationPeriod,
     VacationYear,
     WeeklySummaryDelivery,
@@ -113,6 +114,15 @@ class TaskAdmin(admin.ModelAdmin):
     list_display = ("title", "user", "is_done", "due_at", "email_notified_at", "desktop_notified_at")
     list_filter = ("is_done", "created_at")
     search_fields = ("title", "user__username")
+
+
+@admin.register(UserNotification)
+class UserNotificationAdmin(admin.ModelAdmin):
+    list_display = ("title", "recipient", "kind", "read_at", "created_at")
+    list_filter = ("kind", "read_at", "created_at")
+    search_fields = ("title", "body", "recipient__username", "recipient__email")
+    autocomplete_fields = ("recipient", "actor")
+    readonly_fields = ("source_key", "created_at")
 
 
 @admin.register(WeeklySummaryDelivery)

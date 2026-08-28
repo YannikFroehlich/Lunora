@@ -23,7 +23,7 @@ from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
 from app.forms import CalendarSourceForm, ProfileForm
-from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, CalendarSource, ChatMessage, ChatMessageAttachment, ChatMessageReaction, Conversation, ConversationMember, CustomHoliday, Note, NoteActivityNotification, NoteAttachment, NoteCommentThread, NoteFolder, NoteLink, NoteShare, NoteTemplate, NoteUserState, NoteVersion, OfficialHoliday, Profile, SystemSettings, Task, VacationPeriod, VacationYear, WeatherLocation, WeeklySummaryDelivery
+from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, CalendarSource, ChatMessage, ChatMessageAttachment, ChatMessageReaction, Conversation, ConversationMember, CustomHoliday, Note, NoteActivityNotification, NoteAttachment, NoteCommentThread, NoteFolder, NoteLink, NoteShare, NoteTemplate, NoteUserState, NoteVersion, OfficialHoliday, Profile, SystemSettings, Task, UserNotification, VacationPeriod, VacationYear, WeatherLocation, WeeklySummaryDelivery
 from app.services.calendar_service import fetch_ical, parse_ical_events
 from app.services.calendar_sync_queue import queue_calendar_sources
 from app.services.dashboard import DASHBOARD_WIDGET_IDS, default_dashboard_layout, normalize_dashboard_layout
@@ -53,7 +53,7 @@ from app.services.weather_service import (
 )
 from app.services.note_content import NOTE_TEMPLATES, empty_note_document, validate_note_document
 from app.services.note_search import build_snippet, highlight_text, parse_search_query, search_notes
-from app.services.notes import accessible_notes, prune_note_versions, purge_expired_notes
+from app.services.notes import accessible_notes, prune_note_versions, purge_expired_notes, share_note
 from app.services.vacation_planner import annual_summary, calculate_period
 from app.templatetags.static_versioning import versioned_static
 from app.view_models import (
@@ -1167,6 +1167,13 @@ class SettingsProfileTests(TestCase):
         attendee = CalendarEventAttendee.objects.get(event=event, user=invitee)
         self.assertEqual(attendee.status, CalendarEventAttendee.STATUS_INVITED)
         self.assertEqual(attendee.invited_by, organizer)
+        self.assertTrue(
+            UserNotification.objects.filter(
+                recipient=invitee,
+                source_key=f"event-invitation:{attendee.id}",
+                kind=UserNotification.KIND_EVENT_INVITATION,
+            ).exists()
+        )
 
         self.client.logout()
         self.client.login(username="lukas@example.com", password="secret-12345")
@@ -2380,6 +2387,170 @@ class ScheduledAutomationTests(TestCase):
 
         run_tasks.assert_called_once_with()
         self.assertIn("Kalender: 1 synchronisiert", output.getvalue())
+
+
+@override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
+class NotificationCenterTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="mira@example.com",
+            email="mira@example.com",
+            password="secret-12345",
+        )
+        Profile.objects.create(user=self.user, display_name="Mira")
+        self.other = User.objects.create_user(
+            username="lukas@example.com",
+            email="lukas@example.com",
+            password="secret-12345",
+        )
+        Profile.objects.create(user=self.other, display_name="Lukas")
+
+    def test_notification_center_requires_login(self):
+        response = self.client.get("/notifications/")
+
+        self.assertRedirects(response, "/login/?next=/notifications/")
+
+    def test_due_tasks_and_reminders_are_materialized_once_and_appear_in_badge(self):
+        now = timezone.now()
+        Task.objects.create(user=self.user, title="Präsentation", due_at=now - timedelta(minutes=2))
+        CalendarReminder.objects.create(user=self.user, title="Arzt anrufen", due_at=now - timedelta(minutes=1))
+        self.client.force_login(self.user)
+
+        first_response = self.client.get("/notifications/?status=all")
+        second_response = self.client.get("/notifications/?status=all")
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertContains(first_response, "Aufgabe fällig: Präsentation")
+        self.assertContains(first_response, "Erinnerung fällig: Arzt anrufen")
+        self.assertContains(first_response, "2 ungelesen")
+        self.assertEqual(first_response.context["unread_notification_count"], 2)
+        self.assertEqual(second_response.context["total_notification_count"], 2)
+        self.assertEqual(UserNotification.objects.filter(recipient=self.user).count(), 2)
+
+    def test_existing_invitations_and_note_activity_are_backfilled(self):
+        event = CalendarEvent.objects.create(
+            user=self.other,
+            title="Projektmeeting",
+            start_at=timezone.now() + timedelta(days=1),
+            end_at=timezone.now() + timedelta(days=1, hours=1),
+        )
+        invitation = CalendarEventAttendee.objects.create(
+            event=event,
+            user=self.user,
+            invited_by=self.other,
+        )
+        note = Note.objects.create(owner=self.other, title="Ideen")
+        share = NoteShare.objects.create(note=note, user=self.user, role=NoteShare.ROLE_READER)
+        activity = NoteActivityNotification.objects.create(
+            note=note,
+            recipient=self.user,
+            actor=self.other,
+            kind=NoteActivityNotification.KIND_MENTION,
+            excerpt="Hallo @Mira",
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get("/notifications/?status=all")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Einladung: Projektmeeting")
+        self.assertContains(response, "Lukas hat dich erwähnt")
+        self.assertContains(response, "Lukas hat eine Notiz mit dir geteilt")
+        self.assertTrue(
+            UserNotification.objects.filter(
+                recipient=self.user,
+                source_key=f"event-invitation:{invitation.id}",
+            ).exists()
+        )
+        self.assertTrue(
+            UserNotification.objects.filter(
+                recipient=self.user,
+                source_key=f"note-activity:{activity.id}",
+            ).exists()
+        )
+        self.assertTrue(
+            UserNotification.objects.filter(
+                recipient=self.user,
+                source_key=f"note-share:{share.id}",
+            ).exists()
+        )
+
+    def test_new_note_share_creates_inbox_notification_immediately(self):
+        note = Note.objects.create(owner=self.other, title="Roadmap")
+
+        share = share_note(self.other, note.id, self.user.id, NoteShare.ROLE_EDITOR)
+        share_note(self.other, note.id, self.user.id, NoteShare.ROLE_READER)
+
+        notification = UserNotification.objects.get(
+            recipient=self.user,
+            source_key=f"note-share:{share.id}",
+        )
+        self.assertEqual(notification.kind, UserNotification.KIND_NOTE_SHARE)
+        self.assertEqual(notification.actor, self.other)
+        self.assertEqual(notification.url, f"/notes/{note.id}/")
+        self.assertEqual(UserNotification.objects.filter(recipient=self.user).count(), 1)
+
+    def test_opening_and_toggling_notification_are_user_scoped(self):
+        notification = UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_TASK_DUE,
+            title="Aufgabe fällig",
+            url="/tasks/",
+            source_key="task:1001",
+        )
+        other_notification = UserNotification.objects.create(
+            recipient=self.other,
+            kind=UserNotification.KIND_TASK_DUE,
+            title="Privat",
+            url="/tasks/",
+            source_key="task:1002",
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(f"/notifications/{notification.id}/open/")
+
+        self.assertRedirects(response, "/tasks/")
+        notification.refresh_from_db()
+        self.assertIsNotNone(notification.read_at)
+
+        response = self.client.post(f"/notifications/{notification.id}/toggle-read/", {"status": "all"})
+        self.assertRedirects(response, "/notifications/?status=all")
+        notification.refresh_from_db()
+        self.assertIsNone(notification.read_at)
+
+        response = self.client.post(f"/notifications/{other_notification.id}/toggle-read/")
+        self.assertEqual(response.status_code, 404)
+
+    def test_filters_and_mark_all_read(self):
+        unread = UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_NOTE_COMMENT,
+            title="Neuer Kommentar",
+            source_key="note-activity:1001",
+        )
+        UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_EVENT_INVITATION,
+            title="Gelesene Einladung",
+            source_key="event-invitation:1002",
+            read_at=timezone.now(),
+        )
+        self.client.force_login(self.user)
+
+        unread_response = self.client.get("/notifications/")
+        all_response = self.client.get("/notifications/?status=all")
+
+        self.assertContains(unread_response, "Neuer Kommentar")
+        self.assertNotContains(unread_response, "Gelesene Einladung")
+        self.assertContains(all_response, "Neuer Kommentar")
+        self.assertContains(all_response, "Gelesene Einladung")
+
+        response = self.client.post("/notifications/mark-all-read/")
+
+        self.assertRedirects(response, "/notifications/?status=all")
+        unread.refresh_from_db()
+        self.assertIsNotNone(unread.read_at)
+        self.assertFalse(UserNotification.objects.filter(recipient=self.user, read_at__isnull=True).exists())
 
 
 class WeatherMapTests(TestCase):
@@ -5493,6 +5664,13 @@ class NotesTests(TestCase):
         notification = NoteActivityNotification.objects.get(note=note, recipient=self.reader)
         self.assertEqual(notification.kind, NoteActivityNotification.KIND_MENTION)
         self.assertEqual(notification.actor, self.owner)
+        self.assertTrue(
+            UserNotification.objects.filter(
+                recipient=self.reader,
+                source_key=f"note-activity:{notification.id}",
+                kind=UserNotification.KIND_NOTE_MENTION,
+            ).exists()
+        )
 
         # Saving again without a new mention must not create a duplicate notification.
         response = self.client.patch(
@@ -5502,6 +5680,7 @@ class NotesTests(TestCase):
         )
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(NoteActivityNotification.objects.filter(note=note, recipient=self.reader).count(), 1)
+        self.assertEqual(UserNotification.objects.filter(recipient=self.reader).count(), 1)
 
     def test_mentioning_user_without_access_is_rejected(self):
         note = self.create_note()

@@ -534,13 +534,16 @@ def get_note_backlinks(note, user):
 
 def _create_note_activity_notifications(note, actor, recipient_ids, kind):
     excerpt = note.plain_text[:200]
-    NoteActivityNotification.objects.bulk_create(
+    notification_rows = NoteActivityNotification.objects.bulk_create(
         [
             NoteActivityNotification(note=note, recipient_id=recipient_id, actor=actor, kind=kind, excerpt=excerpt)
             for recipient_id in recipient_ids
             if recipient_id != actor.id
         ]
     )
+    from app.services.notifications import materialize_note_activity_notifications
+
+    materialize_note_activity_notifications(notification_rows)
 
 
 def _create_interval_version(note, user):
@@ -859,6 +862,10 @@ def share_note(owner, note_id, target_user_id, role):
         share.role = role
         share.save(update_fields=["role"])
     NoteUserState.objects.get_or_create(note=note, user=target)
+    if created:
+        from app.services.notifications import materialize_note_share_notifications
+
+        materialize_note_share_notifications([share])
     return share
 
 

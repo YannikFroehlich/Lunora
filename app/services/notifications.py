@@ -15,6 +15,7 @@ from app.models import (
     NoteShare,
     Profile,
     Task,
+    UserNotification,
     WeatherLocation,
     WeeklySummaryDelivery,
 )
@@ -28,9 +29,187 @@ logger = logging.getLogger(__name__)
 WEATHER_ALERT_COOLDOWN = timedelta(hours=6)
 
 
+def _create_missing_user_notifications(rows):
+    if not rows:
+        return 0
+
+    created = 0
+    for offset in range(0, len(rows), 400):
+        batch = rows[offset : offset + 400]
+        source_keys = [row["source_key"] for row in batch]
+        recipient_ids = [row["recipient_id"] for row in batch]
+        existing_sources = set(
+            UserNotification.objects.filter(
+                recipient_id__in=recipient_ids,
+                source_key__in=source_keys,
+            ).values_list("recipient_id", "source_key")
+        )
+        notifications = [
+            UserNotification(**row)
+            for row in batch
+            if (row["recipient_id"], row["source_key"]) not in existing_sources
+        ]
+        if notifications:
+            UserNotification.objects.bulk_create(notifications, ignore_conflicts=True)
+            created += len(notifications)
+    return created
+
+
+def materialize_due_user_notifications(
+    *,
+    user=None,
+    now=None,
+    include_reminders=True,
+    include_tasks=True,
+):
+    """Persist due reminder/task events for the notification inbox."""
+    current_time = now or timezone.now()
+    rows = []
+
+    if include_reminders:
+        reminders = CalendarReminder.objects.filter(
+            is_done=False,
+            due_at__isnull=False,
+            due_at__lte=current_time,
+        ).select_related("user", "user__profile")
+        if user is not None:
+            reminders = reminders.filter(user=user)
+        for reminder in reminders:
+            rows.append(
+                {
+                    "recipient_id": reminder.user_id,
+                    "kind": UserNotification.KIND_CALENDAR_REMINDER,
+                    "title": f"Erinnerung fällig: {reminder.title}",
+                    "body": f"Fällig am {format_user_datetime(reminder.due_at, reminder.user)}",
+                    "url": "/calendar/",
+                    "source_key": f"calendar-reminder:{reminder.pk}",
+                }
+            )
+
+    if include_tasks:
+        tasks = Task.objects.filter(
+            is_done=False,
+            due_at__isnull=False,
+            due_at__lte=current_time,
+        ).select_related("user", "user__profile")
+        if user is not None:
+            tasks = tasks.filter(user=user)
+        for task in tasks:
+            rows.append(
+                {
+                    "recipient_id": task.user_id,
+                    "kind": UserNotification.KIND_TASK_DUE,
+                    "title": f"Aufgabe fällig: {task.title}",
+                    "body": f"Fällig am {format_user_datetime(task.due_at, task.user)}",
+                    "url": "/tasks/",
+                    "source_key": f"task:{task.pk}",
+                }
+            )
+
+    return _create_missing_user_notifications(rows)
+
+
+def materialize_event_invitation_notifications(invitations):
+    rows = []
+    for invitation in invitations:
+        organizer_name = _display_name(invitation.invited_by) if invitation.invited_by else "Jemand"
+        rows.append(
+            {
+                "recipient_id": invitation.user_id,
+                "actor_id": invitation.invited_by_id,
+                "kind": UserNotification.KIND_EVENT_INVITATION,
+                "title": f"Einladung: {invitation.event.title}",
+                "body": (
+                    f"{organizer_name} · "
+                    f"{format_user_datetime(invitation.event.start_at, invitation.user)}"
+                ),
+                "url": "/calendar/",
+                "source_key": f"event-invitation:{invitation.pk}",
+            }
+        )
+    return _create_missing_user_notifications(rows)
+
+
+def materialize_note_activity_notifications(notifications):
+    rows = []
+    for notification in notifications:
+        body_parts = [notification.note.title]
+        if notification.excerpt:
+            body_parts.append(notification.excerpt)
+        rows.append(
+            {
+                "recipient_id": notification.recipient_id,
+                "actor_id": notification.actor_id,
+                "kind": (
+                    UserNotification.KIND_NOTE_MENTION
+                    if notification.kind == NoteActivityNotification.KIND_MENTION
+                    else UserNotification.KIND_NOTE_COMMENT
+                ),
+                "title": _note_activity_title(notification),
+                "body": " · ".join(body_parts)[:500],
+                "url": f"/notes/{notification.note_id}/",
+                "source_key": f"note-activity:{notification.pk}",
+            }
+        )
+    return _create_missing_user_notifications(rows)
+
+
+def materialize_note_share_notifications(shares):
+    rows = []
+    for share in shares:
+        owner_name = _display_name(share.note.owner)
+        rows.append(
+            {
+                "recipient_id": share.user_id,
+                "actor_id": share.note.owner_id,
+                "kind": UserNotification.KIND_NOTE_SHARE,
+                "title": f"{owner_name} hat eine Notiz mit dir geteilt",
+                "body": share.note.title,
+                "url": f"/notes/{share.note_id}/",
+                "source_key": f"note-share:{share.pk}",
+            }
+        )
+    return _create_missing_user_notifications(rows)
+
+
+def materialize_user_notification_sources(user, *, now=None, include_reminders=True, include_tasks=True):
+    """Backfill all inbox-capable sources for one user without duplicating entries."""
+    created = materialize_due_user_notifications(
+        user=user,
+        now=now,
+        include_reminders=include_reminders,
+        include_tasks=include_tasks,
+    )
+    invitations = list(
+        CalendarEventAttendee.objects.filter(user=user)
+        .select_related("event", "user", "user__profile", "invited_by", "invited_by__profile")
+        .order_by("created_at", "id")
+    )
+    note_activity = list(
+        NoteActivityNotification.objects.filter(recipient=user)
+        .select_related("note", "recipient", "recipient__profile", "actor", "actor__profile")
+        .order_by("created_at", "id")
+    )
+    note_shares = list(
+        NoteShare.objects.filter(user=user)
+        .select_related("note", "note__owner", "note__owner__profile", "user", "user__profile")
+        .order_by("created_at", "id")
+    )
+    created += materialize_event_invitation_notifications(invitations)
+    created += materialize_note_activity_notifications(note_activity)
+    created += materialize_note_share_notifications(note_shares)
+    return created
+
+
 def claim_due_desktop_reminders(user, *, now=None, limit=5):
     """Atomically claim due reminders for one browser notification batch."""
     current_time = now or timezone.now()
+    materialize_due_user_notifications(
+        user=user,
+        now=current_time,
+        include_reminders=True,
+        include_tasks=False,
+    )
     try:
         profile = user.profile
     except Profile.DoesNotExist:
@@ -69,6 +248,11 @@ def claim_due_desktop_reminders(user, *, now=None, limit=5):
 def send_due_reminder_emails(*, now=None):
     """Send each due reminder email once and leave failed deliveries retryable."""
     current_time = now or timezone.now()
+    materialize_due_user_notifications(
+        now=current_time,
+        include_reminders=True,
+        include_tasks=False,
+    )
     reminders = list(
         CalendarReminder.objects.filter(
             is_done=False,
@@ -115,6 +299,12 @@ def send_due_reminder_emails(*, now=None):
 def claim_due_desktop_tasks(user, *, now=None, limit=5):
     """Atomically claim due tasks for one browser notification batch."""
     current_time = now or timezone.now()
+    materialize_due_user_notifications(
+        user=user,
+        now=current_time,
+        include_reminders=False,
+        include_tasks=True,
+    )
     try:
         profile = user.profile
     except Profile.DoesNotExist:
@@ -151,6 +341,11 @@ def claim_due_desktop_tasks(user, *, now=None, limit=5):
 def send_due_task_reminder_emails(*, now=None):
     """Send each due task email once and leave failed deliveries retryable."""
     current_time = now or timezone.now()
+    materialize_due_user_notifications(
+        now=current_time,
+        include_reminders=False,
+        include_tasks=True,
+    )
     tasks = list(
         Task.objects.filter(
             is_done=False,
@@ -252,6 +447,12 @@ def _display_name(user):
 def claim_due_note_activity(user, *, now=None, limit=5):
     """Atomically claim pending mention/comment notifications for one browser notification batch."""
     current_time = now or timezone.now()
+    inbox_sources = list(
+        NoteActivityNotification.objects.filter(recipient=user)
+        .select_related("note", "recipient", "recipient__profile", "actor", "actor__profile")
+        .order_by("created_at", "id")
+    )
+    materialize_note_activity_notifications(inbox_sources)
     try:
         profile = user.profile
     except Profile.DoesNotExist:
@@ -303,6 +504,7 @@ def send_note_activity_emails(*, now=None):
         .select_related("note", "recipient", "actor")
         .order_by("created_at", "id")
     )
+    materialize_note_activity_notifications(notifications)
 
     sent = 0
     failed = 0
@@ -335,6 +537,12 @@ def send_note_activity_emails(*, now=None):
 def claim_due_event_invitations(user, *, now=None, limit=5):
     """Atomically claim pending calendar event invitations for one browser notification batch."""
     current_time = now or timezone.now()
+    inbox_sources = list(
+        CalendarEventAttendee.objects.filter(user=user)
+        .select_related("event", "user", "user__profile", "invited_by", "invited_by__profile")
+        .order_by("created_at", "id")
+    )
+    materialize_event_invitation_notifications(inbox_sources)
     try:
         profile = user.profile
     except Profile.DoesNotExist:
@@ -378,6 +586,7 @@ def send_new_invitation_emails(*, now=None):
         .select_related("event", "user", "invited_by")
         .order_by("created_at", "id")
     )
+    materialize_event_invitation_notifications(invitations)
 
     sent = 0
     failed = 0
@@ -489,6 +698,21 @@ def claim_due_weather_alerts(user, *, now=None, limit=5):
 
         WeatherLocation.objects.filter(pk=location.pk).update(
             last_alert_kind=alert["kind"], last_alert_notified_at=current_time
+        )
+        _create_missing_user_notifications(
+            [
+                {
+                    "recipient_id": user.id,
+                    "kind": UserNotification.KIND_WEATHER_ALERT,
+                    "title": alert["title"],
+                    "body": location.label or location.name,
+                    "url": "/weather/",
+                    "source_key": (
+                        f"weather-alert:{location.pk}:{alert['kind']}:"
+                        f"{int(current_time.timestamp() // WEATHER_ALERT_COOLDOWN.total_seconds())}"
+                    ),
+                }
+            ]
         )
         notifications.append(
             {

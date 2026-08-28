@@ -10,7 +10,13 @@ from .auth_views import (
 from .calendar_views import calendar
 from .core_views import dashboard_layout_update, home, settings
 from .message_views import chat_attachment_download, chat_typing_ping, messages, messages_live_updates
-from .notification_views import claim_desktop_notifications
+from .notification_views import (
+    claim_desktop_notifications,
+    notification_center,
+    notification_mark_all_read,
+    notification_open,
+    notification_toggle_read,
+)
 from .pwa_views import offline, service_worker
 from .note_views import (
     note_action_api,
@@ -64,6 +70,10 @@ __all__ = [
     "chat_typing_ping",
     "chat_attachment_download",
     "claim_desktop_notifications",
+    "notification_center",
+    "notification_mark_all_read",
+    "notification_open",
+    "notification_toggle_read",
     "offline",
     "service_worker",
     "notes",
