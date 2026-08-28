@@ -232,7 +232,7 @@ def _dashboard_weather_context(user=None):
     }
 
 
-def get_settings_context(preferences_form=None):
+def get_settings_context(notification_form=None, notification_preferences_form=None):
     context = {
         "active_page": "settings",
         "accent_colors": ["#c2a276", "#7f916b", "#a5aa74", "#9eb1b6", "#aaa2be", "#c1a09a"],
@@ -250,11 +250,14 @@ def get_settings_context(preferences_form=None):
         ],
     }
     context["notification_rows"] = [
-        _preference_row(preferences_form, "notify_reminders", "Erinnerungszustellung", "Fällige Erinnerungen automatisch zustellen"),
-        _preference_row(preferences_form, "notify_email", "E-Mail-Versand", "Fällige Erinnerungen per E-Mail erhalten"),
-        _preference_row(preferences_form, "notify_desktop", "Web-Push-Zustellung", "Auch bei geschlossener App auf registrierten Geräten anzeigen"),
-        _preference_row(preferences_form, "weekly_summary", "Wöchentliche Zusammenfassung", "Montags einen Überblick per E-Mail erhalten"),
+        _preference_row(notification_form, "notify_reminders", "Erinnerungszustellung", "Fällige Erinnerungen automatisch zustellen"),
+        _preference_row(notification_form, "notify_email", "E-Mail-Versand", "Fällige Erinnerungen per E-Mail erhalten"),
+        _preference_row(notification_form, "notify_desktop", "Web-Push-Zustellung", "Auch bei geschlossener App auf registrierten Geräten anzeigen"),
+        _preference_row(notification_form, "weekly_summary", "Wöchentliche Zusammenfassung", "Montags einen Überblick per E-Mail erhalten"),
     ]
+    context["notification_category_rows"] = (
+        notification_preferences_form.category_rows if notification_preferences_form else []
+    )
     return context
 
 

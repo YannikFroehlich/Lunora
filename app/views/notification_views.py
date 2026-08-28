@@ -21,7 +21,13 @@ from app.services.notifications import (
 )
 from app.services.system_settings import feature_enabled, feature_flags
 from app.services.user_preferences import format_user_datetime
-from app.services.web_push import register_web_push_subscription, remove_web_push_subscription
+from app.services.notification_preferences import CHANNEL_INBOX, enabled_notification_kinds
+from app.services.web_push import (
+    WebPushTestError,
+    register_web_push_subscription,
+    remove_web_push_subscription,
+    send_test_web_push,
+)
 
 
 NOTIFICATION_PRESENTATION = {
@@ -67,7 +73,11 @@ def notification_center(request):
     if selected_filter not in {"unread", "all"}:
         selected_filter = "unread"
 
-    notifications = UserNotification.objects.filter(recipient=request.user).select_related("actor")
+    visible_kinds = enabled_notification_kinds(request.user, CHANNEL_INBOX)
+    notifications = UserNotification.objects.filter(
+        recipient=request.user,
+        kind__in=visible_kinds,
+    ).select_related("actor")
     total_count = notifications.count()
     unread_count = notifications.filter(read_at__isnull=True).count()
     if selected_filter == "unread":
@@ -132,6 +142,7 @@ def notification_toggle_read(request, notification_id):
 def notification_mark_all_read(request):
     UserNotification.objects.filter(
         recipient=request.user,
+        kind__in=enabled_notification_kinds(request.user, CHANNEL_INBOX),
         read_at__isnull=True,
     ).update(read_at=timezone.now())
     return redirect(f"{reverse('notification_center')}?status=all")
@@ -166,6 +177,26 @@ def web_push_subscription(request):
         return JsonResponse({"ok": True, "active": False, "removed": removed})
     except (AttributeError, ValueError) as error:
         return JsonResponse({"ok": False, "error": str(error)}, status=400)
+
+
+@login_required
+@require_POST
+def web_push_test(request):
+    if len(request.body) > 4096:
+        return JsonResponse({"ok": False, "error": "Die Push-Daten sind zu groß."}, status=400)
+    try:
+        payload = json.loads(request.body or b"{}")
+        endpoint = payload.get("endpoint")
+    except (AttributeError, TypeError, ValueError, UnicodeDecodeError):
+        return JsonResponse({"ok": False, "error": "Ungültige Push-Daten."}, status=400)
+
+    try:
+        send_test_web_push(request.user, endpoint)
+    except WebPushTestError as error:
+        return JsonResponse({"ok": False, "error": str(error)}, status=error.status_code)
+    return JsonResponse(
+        {"ok": True, "message": "Testbenachrichtigung wurde an dieses Gerät gesendet."}
+    )
 
 
 @login_required

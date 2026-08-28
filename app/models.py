@@ -1,4 +1,5 @@
 import uuid
+from datetime import time
 
 from django.conf import settings
 from django.db import models
@@ -99,6 +100,9 @@ class Profile(models.Model):
     notify_email = models.BooleanField(default=False)
     notify_reminders = models.BooleanField(default=True)
     notify_desktop = models.BooleanField(default=False)
+    notification_quiet_hours_enabled = models.BooleanField(default=False)
+    notification_quiet_start = models.TimeField(default=time(22, 0))
+    notification_quiet_end = models.TimeField(default=time(7, 0))
     weekly_summary = models.BooleanField(default=False)
     analytics_enabled = models.BooleanField(default=True)
     usage_data_enabled = models.BooleanField(default=False)
@@ -532,6 +536,7 @@ class UserNotification(models.Model):
     url = models.CharField(max_length=500, blank=True)
     source_key = models.CharField(max_length=180)
     read_at = models.DateTimeField(blank=True, null=True)
+    email_notified_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -555,6 +560,42 @@ class UserNotification(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class NotificationPreference(models.Model):
+    CATEGORY_CALENDAR = "calendar"
+    CATEGORY_TASKS = "tasks"
+    CATEGORY_NOTES = "notes"
+    CATEGORY_WEATHER = "weather"
+    CATEGORY_CHOICES = [
+        (CATEGORY_CALENDAR, "Kalender"),
+        (CATEGORY_TASKS, "Aufgaben"),
+        (CATEGORY_NOTES, "Notizen"),
+        (CATEGORY_WEATHER, "Wetter"),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="notification_preferences",
+    )
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES)
+    inbox_enabled = models.BooleanField(default=True)
+    email_enabled = models.BooleanField(default=True)
+    web_push_enabled = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["user_id", "category"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "category"],
+                name="unique_notification_preference",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.user} – {self.get_category_display()}"
 
 
 class WebPushSubscription(models.Model):

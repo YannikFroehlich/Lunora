@@ -11,12 +11,24 @@ from django.utils import timezone
 from pywebpush import WebPushException, webpush
 
 from app.models import UserNotification, WebPushDelivery, WebPushSubscription
+from app.services.notification_preferences import (
+    CHANNEL_WEB_PUSH,
+    notification_channel_enabled,
+    notification_preference_map,
+    web_push_is_quiet_for_user,
+)
 
 
 logger = logging.getLogger(__name__)
 
 BASE64URL_PATTERN = re.compile(r"^[A-Za-z0-9_-]+={0,2}$")
 EXPIRED_SUBSCRIPTION_STATUS_CODES = {404, 410}
+
+
+class WebPushTestError(Exception):
+    def __init__(self, message, *, status_code=502):
+        super().__init__(message)
+        self.status_code = status_code
 
 
 def web_push_configured():
@@ -106,15 +118,16 @@ def queue_web_push_deliveries(*, per_subscription_limit=50):
         return 0
 
     queued = 0
-    subscriptions = (
+    subscriptions = list(
         WebPushSubscription.objects.filter(
             user__is_active=True,
             user__profile__notify_desktop=True,
         )
-        .select_related("user")
+        .select_related("user", "user__profile")
         .order_by("id")
     )
-    for subscription in subscriptions.iterator():
+    preferences = notification_preference_map(subscription.user_id for subscription in subscriptions)
+    for subscription in subscriptions:
         notifications = list(
             UserNotification.objects.filter(
                 recipient_id=subscription.user_id,
@@ -124,6 +137,16 @@ def queue_web_push_deliveries(*, per_subscription_limit=50):
             .exclude(web_push_deliveries__subscription=subscription)
             .order_by("created_at", "id")[:per_subscription_limit]
         )
+        notifications = [
+            notification
+            for notification in notifications
+            if notification_channel_enabled(
+                subscription.user,
+                notification.kind,
+                CHANNEL_WEB_PUSH,
+                preference_map=preferences,
+            )
+        ]
         if not notifications:
             continue
         deliveries = [
@@ -136,32 +159,14 @@ def queue_web_push_deliveries(*, per_subscription_limit=50):
 
 
 def materialize_web_push_weather_alerts(*, now=None):
-    if not web_push_configured():
-        return {"created": 0, "failed": 0, "disabled": True}
+    """Materialize weather events needed by either e-mail or Web Push.
 
-    from app.services.notifications import claim_due_weather_alerts
+    The legacy function name is kept because the automation service and callers
+    already use it, but detection is deliberately channel-independent now.
+    """
+    from app.services.notifications import materialize_scheduled_weather_alerts
 
-    users = (
-        WebPushSubscription.objects.filter(
-            user__is_active=True,
-            user__profile__notify_desktop=True,
-        )
-        .select_related("user", "user__profile")
-        .order_by("user_id")
-    )
-    created = 0
-    failed = 0
-    seen_user_ids = set()
-    for subscription in users.iterator():
-        if subscription.user_id in seen_user_ids:
-            continue
-        seen_user_ids.add(subscription.user_id)
-        try:
-            created += len(claim_due_weather_alerts(subscription.user, now=now))
-        except Exception:
-            failed += 1
-            logger.exception("Weather alert check for web push failed for user %s", subscription.user_id)
-    return {"created": created, "failed": failed}
+    return materialize_scheduled_weather_alerts(now=now)
 
 
 def _notification_payload(notification):
@@ -184,9 +189,72 @@ def _delivery_status_code(error):
     return status_code if isinstance(status_code, int) else None
 
 
+def _send_payload(subscription, payload):
+    return webpush(
+        subscription_info={
+            "endpoint": subscription.endpoint,
+            "keys": {"p256dh": subscription.p256dh, "auth": subscription.auth},
+        },
+        data=json.dumps(payload, ensure_ascii=False),
+        vapid_private_key=settings.WEB_PUSH_VAPID_PRIVATE_KEY,
+        vapid_claims={"sub": settings.WEB_PUSH_VAPID_SUBJECT},
+        ttl=settings.WEB_PUSH_TTL_SECONDS,
+        timeout=settings.WEB_PUSH_TIMEOUT_SECONDS,
+    )
+
+
+def send_test_web_push(user, endpoint, *, now=None):
+    if not web_push_configured():
+        raise WebPushTestError("Web Push ist auf dem Server nicht eingerichtet.", status_code=503)
+    if not isinstance(endpoint, str) or not endpoint.strip():
+        raise WebPushTestError("Dieses Gerät ist nicht registriert.", status_code=400)
+
+    endpoint_hash = hashlib.sha256(endpoint.strip().encode("utf-8")).hexdigest()
+    subscription = WebPushSubscription.objects.filter(
+        user=user,
+        endpoint_hash=endpoint_hash,
+    ).first()
+    if subscription is None:
+        raise WebPushTestError("Dieses Gerät ist nicht registriert.", status_code=404)
+
+    try:
+        _send_payload(
+            subscription,
+            {
+                "title": "Lunora-Testbenachrichtigung",
+                "body": "Web Push funktioniert auf diesem Gerät.",
+                "url": "/notifications/",
+                "tag": "lunora-web-push-test",
+            },
+        )
+    except WebPushException as error:
+        status_code = _delivery_status_code(error)
+        if status_code in EXPIRED_SUBSCRIPTION_STATUS_CODES:
+            subscription.delete()
+            raise WebPushTestError(
+                "Das Browser-Abonnement ist abgelaufen. Aktiviere dieses Gerät erneut.",
+                status_code=410,
+            ) from error
+        raise WebPushTestError("Die Testbenachrichtigung konnte nicht zugestellt werden.") from error
+    except Exception as error:
+        raise WebPushTestError("Die Testbenachrichtigung konnte nicht zugestellt werden.") from error
+
+    WebPushSubscription.objects.filter(pk=subscription.pk).update(
+        last_success_at=now or timezone.now(),
+        failure_count=0,
+    )
+
+
 def send_pending_web_push_notifications(*, now=None, limit=100):
     if not web_push_configured():
-        return {"sent": 0, "failed": 0, "removed": 0, "queued": 0, "disabled": True}
+        return {
+            "sent": 0,
+            "failed": 0,
+            "removed": 0,
+            "queued": 0,
+            "deferred": 0,
+            "disabled": True,
+        }
 
     current_time = now or timezone.now()
     WebPushDelivery.objects.filter(delivered_at__isnull=True).filter(
@@ -203,28 +271,37 @@ def send_pending_web_push_notifications(*, now=None, limit=100):
             subscription__user__profile__notify_desktop=True,
             notification__read_at__isnull=True,
         )
-        .select_related("subscription", "notification")
+        .select_related(
+            "subscription",
+            "subscription__user",
+            "subscription__user__profile",
+            "notification",
+        )
         .order_by("created_at", "id")[:limit]
     )
 
     sent = 0
     failed = 0
     removed = 0
+    deferred = 0
+    preference_cache = notification_preference_map(
+        delivery.subscription.user_id for delivery in deliveries
+    )
     for delivery in deliveries:
         subscription = delivery.subscription
+        if not notification_channel_enabled(
+            subscription.user,
+            delivery.notification.kind,
+            CHANNEL_WEB_PUSH,
+            preference_map=preference_cache,
+        ):
+            continue
+        if web_push_is_quiet_for_user(subscription.user, now=current_time):
+            deferred += 1
+            continue
         status_code = None
         try:
-            webpush(
-                subscription_info={
-                    "endpoint": subscription.endpoint,
-                    "keys": {"p256dh": subscription.p256dh, "auth": subscription.auth},
-                },
-                data=_notification_payload(delivery.notification),
-                vapid_private_key=settings.WEB_PUSH_VAPID_PRIVATE_KEY,
-                vapid_claims={"sub": settings.WEB_PUSH_VAPID_SUBJECT},
-                ttl=settings.WEB_PUSH_TTL_SECONDS,
-                timeout=settings.WEB_PUSH_TIMEOUT_SECONDS,
-            )
+            _send_payload(subscription, json.loads(_notification_payload(delivery.notification)))
         except WebPushException as error:
             status_code = _delivery_status_code(error)
             if status_code in EXPIRED_SUBSCRIPTION_STATUS_CODES:
@@ -270,4 +347,10 @@ def send_pending_web_push_notifications(*, now=None, limit=100):
             failure_count=F("failure_count") + 1,
         )
 
-    return {"sent": sent, "failed": failed, "removed": removed, "queued": queued}
+    return {
+        "sent": sent,
+        "failed": failed,
+        "removed": removed,
+        "queued": queued,
+        "deferred": deferred,
+    }

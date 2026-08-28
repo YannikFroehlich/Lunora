@@ -10,6 +10,7 @@ from app.services.notifications import (
     send_due_task_reminder_emails,
     send_new_invitation_emails,
     send_note_activity_emails,
+    send_pending_user_notification_emails,
     send_weekly_summaries,
 )
 from app.services.system_settings import feature_enabled
@@ -46,6 +47,11 @@ def run_scheduled_tasks(*, now=None):
         weather_push_result = materialize_web_push_weather_alerts(now=current_time)
     else:
         weather_push_result = {"created": 0, "failed": 0, "disabled": True}
+    notification_email_result = send_pending_user_notification_emails(
+        now=current_time,
+        include_note_shares=feature_enabled("notes"),
+        include_weather=feature_enabled("weather"),
+    )
     web_push_result = send_pending_web_push_notifications(now=current_time)
     return {
         "calendar_sync": sync_result,
@@ -55,6 +61,7 @@ def run_scheduled_tasks(*, now=None):
         "task_reminder_emails": task_reminder_result,
         "weekly_summaries": weekly_result,
         "weather_push_alerts": weather_push_result,
+        "notification_emails": notification_email_result,
         "web_push": web_push_result,
     }
 

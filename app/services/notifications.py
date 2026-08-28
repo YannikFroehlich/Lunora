@@ -20,6 +20,14 @@ from app.models import (
     WeeklySummaryDelivery,
 )
 from app.services.message_queries import unread_total_for_user
+from app.services.notification_preferences import (
+    CHANNEL_EMAIL,
+    CHANNEL_INBOX,
+    CHANNEL_WEB_PUSH,
+    filter_channel_items,
+    notification_channel_enabled,
+    notification_preference_map,
+)
 from app.services.user_preferences import format_user_datetime, localtime_for_user
 from app.services.weather_service import get_weather_alert_for_location, weather_location_to_dict
 
@@ -215,7 +223,11 @@ def claim_due_desktop_reminders(user, *, now=None, limit=5):
     except Profile.DoesNotExist:
         return []
 
-    if not profile.notify_reminders or not profile.notify_desktop:
+    if not notification_channel_enabled(
+        user,
+        UserNotification.KIND_CALENDAR_REMINDER,
+        CHANNEL_WEB_PUSH,
+    ):
         return []
 
     with transaction.atomic():
@@ -267,6 +279,12 @@ def send_due_reminder_emails(*, now=None):
         .select_related("user", "user__profile")
         .order_by("due_at", "id")
     )
+    reminders = filter_channel_items(
+        reminders,
+        user_id_getter=lambda reminder: reminder.user_id,
+        category="calendar",
+        channel=CHANNEL_EMAIL,
+    )
 
     sent = 0
     failed = 0
@@ -310,7 +328,11 @@ def claim_due_desktop_tasks(user, *, now=None, limit=5):
     except Profile.DoesNotExist:
         return []
 
-    if not profile.notify_reminders or not profile.notify_desktop:
+    if not notification_channel_enabled(
+        user,
+        UserNotification.KIND_TASK_DUE,
+        CHANNEL_WEB_PUSH,
+    ):
         return []
 
     with transaction.atomic():
@@ -359,6 +381,12 @@ def send_due_task_reminder_emails(*, now=None):
         .exclude(user__email="")
         .select_related("user", "user__profile")
         .order_by("due_at", "id")
+    )
+    tasks = filter_channel_items(
+        tasks,
+        user_id_getter=lambda task: task.user_id,
+        category="tasks",
+        channel=CHANNEL_EMAIL,
     )
 
     sent = 0
@@ -458,7 +486,11 @@ def claim_due_note_activity(user, *, now=None, limit=5):
     except Profile.DoesNotExist:
         return []
 
-    if not profile.notify_desktop:
+    if not notification_channel_enabled(
+        user,
+        UserNotification.KIND_NOTE_COMMENT,
+        CHANNEL_WEB_PUSH,
+    ):
         return []
 
     with transaction.atomic():
@@ -504,6 +536,12 @@ def send_note_activity_emails(*, now=None):
         .select_related("note", "recipient", "actor")
         .order_by("created_at", "id")
     )
+    notifications = filter_channel_items(
+        notifications,
+        user_id_getter=lambda notification: notification.recipient_id,
+        category="notes",
+        channel=CHANNEL_EMAIL,
+    )
     materialize_note_activity_notifications(notifications)
 
     sent = 0
@@ -548,7 +586,11 @@ def claim_due_event_invitations(user, *, now=None, limit=5):
     except Profile.DoesNotExist:
         return []
 
-    if not profile.notify_desktop:
+    if not notification_channel_enabled(
+        user,
+        UserNotification.KIND_EVENT_INVITATION,
+        CHANNEL_WEB_PUSH,
+    ):
         return []
 
     with transaction.atomic():
@@ -586,6 +628,12 @@ def send_new_invitation_emails(*, now=None):
         .select_related("event", "user", "invited_by")
         .order_by("created_at", "id")
     )
+    invitations = filter_channel_items(
+        invitations,
+        user_id_getter=lambda invitation: invitation.user_id,
+        category="calendar",
+        channel=CHANNEL_EMAIL,
+    )
     materialize_event_invitation_notifications(invitations)
 
     sent = 0
@@ -612,6 +660,73 @@ def send_new_invitation_emails(*, now=None):
         updated = CalendarEventAttendee.objects.filter(pk=invitation.pk, email_notified_at__isnull=True).update(
             email_notified_at=current_time
         )
+        sent += int(bool(updated))
+
+    return {"sent": sent, "failed": failed}
+
+
+def send_pending_user_notification_emails(
+    *,
+    now=None,
+    include_note_shares=True,
+    include_weather=True,
+):
+    """Send inbox-backed e-mails for notification types without a source delivery column."""
+    current_time = now or timezone.now()
+    kinds = []
+    if include_note_shares:
+        kinds.append(UserNotification.KIND_NOTE_SHARE)
+    if include_weather:
+        kinds.append(UserNotification.KIND_WEATHER_ALERT)
+    if not kinds:
+        return {"sent": 0, "failed": 0, "disabled": True}
+
+    notifications = list(
+        UserNotification.objects.filter(
+            kind__in=kinds,
+            email_notified_at__isnull=True,
+            recipient__is_active=True,
+            recipient__profile__notify_email=True,
+        )
+        .exclude(recipient__email="")
+        .select_related("recipient", "recipient__profile")
+        .order_by("created_at", "id")
+    )
+    preferences = notification_preference_map(
+        notification.recipient_id for notification in notifications
+    )
+
+    sent = 0
+    failed = 0
+    for notification in notifications:
+        if not notification_channel_enabled(
+            notification.recipient,
+            notification.kind,
+            CHANNEL_EMAIL,
+            preference_map=preferences,
+        ):
+            continue
+        try:
+            send_mail(
+                subject=f"Lunora: {notification.title}",
+                message=(
+                    f"{notification.title}\n\n"
+                    f"{notification.body}\n\n"
+                    "Öffne Lunora, um den Hinweis anzusehen."
+                ),
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[notification.recipient.email],
+                fail_silently=False,
+            )
+        except Exception:
+            failed += 1
+            logger.exception("Inbox notification email failed for notification %s", notification.pk)
+            continue
+
+        updated = UserNotification.objects.filter(
+            pk=notification.pk,
+            email_notified_at__isnull=True,
+        ).update(email_notified_at=current_time)
         sent += int(bool(updated))
 
     return {"sent": sent, "failed": failed}
@@ -667,17 +782,9 @@ def _weekly_summary_text(user, current_time):
     return "\n".join(lines)
 
 
-def claim_due_weather_alerts(user, *, now=None, limit=5):
-    """Check each saved weather location for a heuristic severe-weather alert, cooldown-gated."""
+def materialize_due_weather_alerts(user, *, now=None, limit=5):
+    """Detect severe weather and persist cooldown-gated notification events."""
     current_time = now or timezone.now()
-    try:
-        profile = user.profile
-    except Profile.DoesNotExist:
-        return []
-
-    if not profile.notify_desktop:
-        return []
-
     notifications = []
     locations = WeatherLocation.objects.filter(user=user).order_by("order", "id")[:limit]
     for location in locations:
@@ -724,3 +831,56 @@ def claim_due_weather_alerts(user, *, now=None, limit=5):
         )
 
     return notifications
+
+
+def materialize_scheduled_weather_alerts(*, now=None):
+    profiles = list(
+        Profile.objects.filter(
+            user__is_active=True,
+            user__weather_locations__isnull=False,
+        )
+        .select_related("user")
+        .distinct()
+        .order_by("user_id")
+    )
+    preferences = notification_preference_map(profile.user_id for profile in profiles)
+    created = 0
+    failed = 0
+    for profile in profiles:
+        inbox_enabled = notification_channel_enabled(
+            profile.user,
+            UserNotification.KIND_WEATHER_ALERT,
+            CHANNEL_INBOX,
+            preference_map=preferences,
+        )
+        email_enabled = notification_channel_enabled(
+            profile.user,
+            UserNotification.KIND_WEATHER_ALERT,
+            CHANNEL_EMAIL,
+            preference_map=preferences,
+        )
+        web_push_enabled = settings.WEB_PUSH_ENABLED and notification_channel_enabled(
+            profile.user,
+            UserNotification.KIND_WEATHER_ALERT,
+            CHANNEL_WEB_PUSH,
+            preference_map=preferences,
+        )
+        if not inbox_enabled and not email_enabled and not web_push_enabled:
+            continue
+        try:
+            created += len(materialize_due_weather_alerts(profile.user, now=now))
+        except Exception:
+            failed += 1
+            logger.exception("Scheduled weather alert check failed for user %s", profile.user_id)
+    return {"created": created, "failed": failed}
+
+
+def claim_due_weather_alerts(user, *, now=None, limit=5):
+    """Claim detected severe-weather alerts for the browser fallback channel."""
+    if not notification_channel_enabled(
+        user,
+        UserNotification.KIND_WEATHER_ALERT,
+        CHANNEL_WEB_PUSH,
+    ):
+        return []
+    return materialize_due_weather_alerts(user, now=now, limit=limit)

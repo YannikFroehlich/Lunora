@@ -10,7 +10,8 @@ Lunora ist ein kleines Django-basiertes Workspace-Dashboard mit ruhiger Glas-UI.
 - Wetterseite mit Ortssuche, Demo-Daten ohne API-Key, OpenWeather-Anbindung und Regenradar-Proxy
 - Kalenderseite mit privatem iCal-/Google-Kalender-Link, Synchronisierung, Monatsübersicht, Tagesliste, kommenden Terminen und Erinnerungen
 - Nachrichtenseite mit Direktunterhaltungen, ungelesenen Nachrichten, Live-Updates, Reaktionen, angepinnten Nachrichten, Lesestatus, Stummschalten und Blockieren
-- Zentrale Benachrichtigungs-Inbox mit ungelesenem Badge, Filter, Lesestatus und Web-Push-Zustellung für Termineinladungen, Erinnerungen, Aufgaben, Notizaktivitäten, Freigaben und Wetterwarnungen
+- Zentrale Benachrichtigungs-Inbox mit ungelesenem Badge, Filter und Lesestatus sowie detaillierten Kanalregeln pro Kategorie für Inbox, E-Mail und Web Push
+- Web-Push-Zustellung für Termineinladungen, Erinnerungen, Aufgaben, Notizaktivitäten, Freigaben und Wetterwarnungen mit Ruhezeit, Geräte-Test und automatischer Wiederholung
 - Notizbereich mit Rich-Text-Editor, Autosave, frei belegbaren Hotkeys, Hashtags, Freigaben, Versionen, privaten Anhängen, layoutgetreuem PDF-Export, Archiv und Papierkorb
 - Responsive UI mit gemeinsamen Design-Tokens, Darkmode-Kontrast, Fokuszuständen und gestylten Scrollbars
 
@@ -82,9 +83,12 @@ der Web-Request selbst lädt keine externen iCal-Dateien. Deshalb muss dieser Pr
 Deployment dauerhaft, beispielsweise als eigener systemd-Service, laufen. Atomare
 Markierungen verhindern doppelte Kalender-Syncs, falls sich zwei Durchläufe überschneiden.
 Fehlgeschlagene Quellen werden frühestens nach ihrem konfigurierten Sync-Intervall erneut
-versucht. Web-Push-Hinweise werden bei erteilter Browserfreigabe über den Service
-Worker zugestellt, auch wenn kein Lunora-Tab geöffnet ist. Ohne eingerichtete
-VAPID-Schlüssel bleibt die bisherige Zustellung bei geöffnetem Tab als Fallback verfügbar.
+versucht. Benachrichtigungsereignisse werden anhand der kontoweiten Schalter und der
+Kanalregeln für Kalender, Aufgaben, Notizen und Wetter verteilt. Web-Push-Hinweise
+werden bei erteilter Browserfreigabe über den Service Worker zugestellt, auch wenn kein
+Lunora-Tab geöffnet ist; während der persönlichen Ruhezeit bleiben sie bis zum nächsten
+Automationslauf nach deren Ende vorgemerkt. Ohne eingerichtete VAPID-Schlüssel bleibt die
+bisherige Zustellung bei geöffnetem Tab als Fallback verfügbar.
 
 Für einen einzelnen Durchlauf, beispielsweise über die Windows-Aufgabenplanung oder Cron, genügt:
 

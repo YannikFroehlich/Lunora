@@ -13,6 +13,7 @@ from app.models import (
     NoteShare,
     NoteUserState,
     NoteVersion,
+    NotificationPreference,
     CustomHoliday,
     HolidayOverride,
     OfficialHoliday,
@@ -120,11 +121,19 @@ class TaskAdmin(admin.ModelAdmin):
 
 @admin.register(UserNotification)
 class UserNotificationAdmin(admin.ModelAdmin):
-    list_display = ("title", "recipient", "kind", "read_at", "created_at")
+    list_display = ("title", "recipient", "kind", "read_at", "email_notified_at", "created_at")
     list_filter = ("kind", "read_at", "created_at")
     search_fields = ("title", "body", "recipient__username", "recipient__email")
     autocomplete_fields = ("recipient", "actor")
     readonly_fields = ("source_key", "created_at")
+
+
+@admin.register(NotificationPreference)
+class NotificationPreferenceAdmin(admin.ModelAdmin):
+    list_display = ("user", "category", "inbox_enabled", "email_enabled", "web_push_enabled", "updated_at")
+    list_filter = ("category", "inbox_enabled", "email_enabled", "web_push_enabled")
+    search_fields = ("user__username", "user__email")
+    autocomplete_fields = ("user",)
 
 
 @admin.register(WebPushSubscription)

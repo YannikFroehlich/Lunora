@@ -11,21 +11,48 @@
 <section class="page-shell settings-shell">
     <header class="page-hero">
         <div>
+            <a class="settings-back-link" href="{{ return_to }}">
+                <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+                Zurück
+            </a>
             <h1>Einstellungen</h1>
             <p>Personalisiere deinen ruhigen Workspace.</p>
         </div>
         <i class="hero-branch fa-solid fa-seedling" aria-hidden="true"></i>
     </header>
 
-    <div class="settings-grid">
-        <form id="preferences-form" class="settings-hidden-form" method="post">
-            {% csrf_token %}
-            <input type="hidden" name="form_name" value="preferences">
-            <input type="hidden" name="return_to" value="{{ return_to }}">
-        </form>
+    <nav class="settings-section-switcher" aria-label="Einstellungsbereiche" data-settings-tabs hidden>
+        <div class="settings-section-tabs" role="tablist" aria-label="Einstellungsbereich auswählen">
+            <button class="settings-section-tab is-active" type="button" role="tab" id="settings-tab-appearance" aria-selected="true" aria-controls="appearance-form" tabindex="0" data-settings-tab="appearance">
+                <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
+                <span>Darstellung</span>
+            </button>
+            <button class="settings-section-tab" type="button" role="tab" id="settings-tab-profile" aria-selected="false" aria-controls="settings-panel-profile settings-panel-region" tabindex="-1" data-settings-tab="profile">
+                <i class="fa-regular fa-user" aria-hidden="true"></i>
+                <span>Profil</span>
+            </button>
+            <button class="settings-section-tab" type="button" role="tab" id="settings-tab-calendar" aria-selected="false" aria-controls="settings-panel-calendar" tabindex="-1" data-settings-tab="calendar">
+                <i class="fa-regular fa-calendar" aria-hidden="true"></i>
+                <span>Kalender</span>
+            </button>
+            <button class="settings-section-tab" type="button" role="tab" id="settings-tab-notifications" aria-selected="false" aria-controls="settings-panel-notifications" tabindex="-1" data-settings-tab="notifications">
+                <i class="fa-regular fa-bell" aria-hidden="true"></i>
+                <span>Benachrichtigungen</span>
+            </button>
+            <button class="settings-section-tab" type="button" role="tab" id="settings-tab-weather" aria-selected="false" aria-controls="settings-panel-weather" tabindex="-1" data-settings-tab="weather">
+                <i class="fa-solid fa-cloud-sun" aria-hidden="true"></i>
+                <span>Wetter</span>
+            </button>
+            <button class="settings-section-tab" type="button" role="tab" id="settings-tab-app" aria-selected="false" aria-controls="settings-panel-app" tabindex="-1" data-settings-tab="app">
+                <i class="fa-solid fa-mobile-screen-button" aria-hidden="true"></i>
+                <span>App</span>
+            </button>
+        </div>
+    </nav>
 
+    <div class="settings-grid" data-settings-panels>
         <div class="settings-column">
-            <form id="appearance-form" class="glass-panel appearance-panel" method="post">
+            <form id="appearance-form" class="glass-panel appearance-panel" method="post" role="tabpanel" aria-labelledby="settings-tab-appearance" data-settings-panel="appearance">
                 {% csrf_token %}
                 <input type="hidden" name="form_name" value="appearance">
                 <input type="hidden" name="return_to" value="{{ return_to }}">
@@ -74,10 +101,14 @@
                     {% endfor %}
                 </div>
                 {{ appearance_form.density.errors }}
+                <button class="primary-button settings-panel-submit" type="submit">
+                    <i class="fa-solid fa-floppy-disk"></i>
+                    Darstellung speichern
+                </button>
             </form>
 
             {% if calendar_sync_enabled %}
-            <section class="glass-panel calendar-settings-panel">
+            <section id="settings-panel-calendar" class="glass-panel calendar-settings-panel" role="tabpanel" aria-labelledby="settings-tab-calendar" data-settings-panel="calendar">
                 <div class="panel-title panel-title-between">
                     <span><i class="fa-brands fa-google"></i><h2>Google Kalender</h2></span>
                     {% if calendar_source_forms %}
@@ -105,12 +136,18 @@
                     <div class="calendar-form-grid">
                         <label>
                             <span class="field-label">{{ calendar_source_form.name.label }}</span>
-                            {{ calendar_source_form.name }}
+                            <span class="calendar-input-pill">
+                                <i class="fa-regular fa-calendar" aria-hidden="true"></i>
+                                {{ calendar_source_form.name }}
+                            </span>
                             {{ calendar_source_form.name.errors }}
                         </label>
                         <label>
                             <span class="field-label">{{ calendar_source_form.ical_url.label }}</span>
-                            {{ calendar_source_form.ical_url }}
+                            <span class="calendar-input-pill">
+                                <i class="fa-solid fa-link" aria-hidden="true"></i>
+                                {{ calendar_source_form.ical_url }}
+                            </span>
                             {{ calendar_source_form.ical_url.errors }}
                         </label>
                     </div>
@@ -121,7 +158,7 @@
                             <legend>{{ calendar_source_form.color.label }}</legend>
                             {% for value, label in calendar_source_form.color.field.choices %}
                             <label class="source-color-choice tone-{{ value }}" title="{{ label }}">
-                                <input type="radio" name="{{ calendar_source_form.color.html_name }}" value="{{ value }}" {% if calendar_source_form.color.value == value %}checked{% endif %}>
+                                <input type="radio" name="{{ calendar_source_form.color.html_name }}" value="{{ value }}" aria-label="{{ label }}" {% if calendar_source_form.color.value == value %}checked{% endif %}>
                                 <span></span>
                             </label>
                             {% endfor %}
@@ -164,12 +201,18 @@
                             <div class="calendar-form-grid">
                                 <label>
                                     <span class="field-label">{{ item.form.name.label }}</span>
-                                    {{ item.form.name }}
+                                    <span class="calendar-input-pill">
+                                        <i class="fa-regular fa-calendar" aria-hidden="true"></i>
+                                        {{ item.form.name }}
+                                    </span>
                                     {{ item.form.name.errors }}
                                 </label>
                                 <label>
                                     <span class="field-label">{{ item.form.ical_url.label }}</span>
-                                    {{ item.form.ical_url }}
+                                    <span class="calendar-input-pill">
+                                        <i class="fa-solid fa-link" aria-hidden="true"></i>
+                                        {{ item.form.ical_url }}
+                                    </span>
                                     {{ item.form.ical_url.errors }}
                                 </label>
                             </div>
@@ -179,7 +222,7 @@
                                     <legend>{{ item.form.color.label }}</legend>
                                     {% for value, label in item.form.color.field.choices %}
                                     <label class="source-color-choice tone-{{ value }}" title="{{ label }}">
-                                        <input type="radio" name="{{ item.form.color.html_name }}" value="{{ value }}" {% if item.form.color.value == value %}checked{% endif %}>
+                                        <input type="radio" name="{{ item.form.color.html_name }}" value="{{ value }}" aria-label="{{ label }}" {% if item.form.color.value == value %}checked{% endif %}>
                                         <span></span>
                                     </label>
                                     {% endfor %}
@@ -221,7 +264,7 @@
             </section>
 
             {% else %}
-            <section class="glass-panel calendar-settings-panel">
+            <section id="settings-panel-calendar" class="glass-panel calendar-settings-panel" role="tabpanel" aria-labelledby="settings-tab-calendar" data-settings-panel="calendar">
                 <div class="panel-title">
                     <i class="fa-brands fa-google"></i>
                     <h2>Google Kalender</h2>
@@ -236,33 +279,96 @@
             </section>
             {% endif %}
 
-            <section class="glass-panel notifications-panel">
+            <form id="settings-panel-notifications" class="glass-panel notifications-panel" method="post" role="tabpanel" aria-labelledby="settings-tab-notifications" data-settings-panel="notifications">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="notifications">
+                <input type="hidden" name="return_to" value="{{ return_to }}">
+                <input type="hidden" name="notification_matrix_present" value="1">
                 <div class="panel-title"><i class="fa-regular fa-bell"></i><h2>Benachrichtigungen</h2></div>
-                {% if preferences_form.non_field_errors %}
-                <div class="form-errors">{{ preferences_form.non_field_errors }}</div>
+                {% if notification_form.non_field_errors %}
+                <div class="form-errors">{{ notification_form.non_field_errors }}</div>
                 {% endif %}
                 {% for row in notification_rows %}
                 <div class="setting-line">
                     <span><strong>{{ row.label }}</strong><small>{{ row.hint }}</small></span>
                     <label class="switch {% if row.field.value %}is-on{% endif %}" aria-label="{{ row.label }}" for="{{ row.field.id_for_label }}">
-                        <input type="checkbox" name="{{ row.field.html_name }}" id="{{ row.field.id_for_label }}" form="preferences-form" {% if row.field.value %}checked{% endif %}>
+                        <input type="checkbox" name="{{ row.field.html_name }}" id="{{ row.field.id_for_label }}" {% if row.field.value %}checked{% endif %}>
                     </label>
                 </div>
                 {% endfor %}
+
+                <div class="notification-matrix" role="table" aria-label="Zustellung nach Kategorie">
+                    <div class="notification-matrix-header" role="row">
+                        <span role="columnheader">Kategorie</span>
+                        <span role="columnheader">Inbox</span>
+                        <span role="columnheader">E-Mail</span>
+                        <span role="columnheader">Web Push</span>
+                    </div>
+                    {% for category in notification_category_rows %}
+                    <div class="notification-matrix-row" role="row">
+                        <span class="notification-category" role="rowheader">
+                            <i class="fa-solid {{ category.icon }}" aria-hidden="true"></i>
+                            <span><strong>{{ category.label }}</strong><small>{{ category.hint }}</small></span>
+                        </span>
+                        {% for channel in category.channels %}
+                        <label class="notification-channel-check" title="{{ category.label }}: {{ channel.label }}">
+                            <input type="checkbox"
+                                   name="{{ channel.field.html_name }}"
+                                   id="{{ channel.field.id_for_label }}"
+                                   {% if channel.field.value %}checked{% endif %}>
+                            <span aria-hidden="true"><i class="fa-solid fa-check"></i></span>
+                            <span class="visually-hidden">{{ category.label }} über {{ channel.label }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="notification-quiet-hours">
+                    <div class="setting-line">
+                        <span><strong>Web-Push-Ruhezeit</strong><small>Pushs werden bis zum Ende der Ruhezeit zurückgehalten</small></span>
+                        <label class="switch {% if notification_form.notification_quiet_hours_enabled.value %}is-on{% endif %}" aria-label="Web-Push-Ruhezeit" for="{{ notification_form.notification_quiet_hours_enabled.id_for_label }}">
+                            <input type="checkbox"
+                                   name="{{ notification_form.notification_quiet_hours_enabled.html_name }}"
+                                   id="{{ notification_form.notification_quiet_hours_enabled.id_for_label }}"
+                                   data-notification-quiet-toggle
+                                   {% if notification_form.notification_quiet_hours_enabled.value %}checked{% endif %}>
+                        </label>
+                    </div>
+                    <div class="notification-quiet-time-grid" data-notification-quiet-times>
+                        <label>
+                            <span>{{ notification_form.notification_quiet_start.label }}</span>
+                            {{ notification_form.notification_quiet_start }}
+                            {{ notification_form.notification_quiet_start.errors }}
+                        </label>
+                        <span aria-hidden="true">bis</span>
+                        <label>
+                            <span>{{ notification_form.notification_quiet_end.label }}</span>
+                            {{ notification_form.notification_quiet_end }}
+                            {{ notification_form.notification_quiet_end.errors }}
+                        </label>
+                    </div>
+                </div>
                 <p class="notification-permission-status" role="status" data-desktop-notification-status></p>
-                <button class="ghost-button notification-permission-button" type="button" data-request-notification-permission>
-                    <i class="fa-solid fa-mobile-screen-button" aria-hidden="true"></i>
-                    <span data-web-push-button-label>Auf diesem Gerät aktivieren</span>
-                </button>
-                <button class="primary-button preference-submit" type="submit" form="preferences-form">
+                <div class="notification-device-actions">
+                    <button class="ghost-button notification-permission-button" type="button" data-request-notification-permission>
+                        <i class="fa-solid fa-mobile-screen-button" aria-hidden="true"></i>
+                        <span data-web-push-button-label>Auf diesem Gerät aktivieren</span>
+                    </button>
+                    <button class="ghost-button notification-test-button" type="button" data-send-test-web-push hidden>
+                        <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
+                        Test senden
+                    </button>
+                </div>
+                <button class="primary-button preference-submit" type="submit">
                     <i class="fa-solid fa-floppy-disk"></i>
                     Benachrichtigungen speichern
                 </button>
-            </section>
+            </form>
         </div>
 
         <div class="settings-column">
-            <section class="glass-panel profile-panel">
+            <section id="settings-panel-profile" class="glass-panel profile-panel" role="tabpanel" aria-labelledby="settings-tab-profile" data-settings-panel="profile">
                 <div class="panel-title"><i class="fa-regular fa-user"></i><h2>Profil</h2></div>
                 <div class="profile-row">
                     <div class="profile-avatar">
@@ -333,62 +439,71 @@
                 </form>
             </section>
 
-            <section class="glass-panel region-panel">
+            <form id="settings-panel-region" class="glass-panel region-panel" method="post" role="tabpanel" aria-labelledby="settings-tab-profile" data-settings-panel="profile">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="region">
+                <input type="hidden" name="return_to" value="{{ return_to }}">
                 <div class="panel-title"><i class="fa-solid fa-globe"></i><h2>Sprache & Region</h2></div>
                 <div class="region-form-fields">
-                    <label class="region-field" for="{{ appearance_form.date_format.id_for_label }}">
-                        <span><strong>{{ appearance_form.date_format.label }}</strong></span>
-                        <select class="region-select" name="{{ appearance_form.date_format.html_name }}" id="{{ appearance_form.date_format.id_for_label }}" form="appearance-form">
-                            {% for value, label in appearance_form.date_format.field.choices %}
-                            <option value="{{ value }}" {% if appearance_form.date_format.value == value %}selected{% endif %}>{{ label }}</option>
+                    <label class="region-field" for="{{ region_form.date_format.id_for_label }}">
+                        <span><strong>{{ region_form.date_format.label }}</strong></span>
+                        <select class="region-select" name="{{ region_form.date_format.html_name }}" id="{{ region_form.date_format.id_for_label }}">
+                            {% for value, label in region_form.date_format.field.choices %}
+                            <option value="{{ value }}" {% if region_form.date_format.value == value %}selected{% endif %}>{{ label }}</option>
                             {% endfor %}
                         </select>
                     </label>
-                    {{ appearance_form.date_format.errors }}
+                    {{ region_form.date_format.errors }}
 
-                    <label class="region-field" for="{{ appearance_form.time_format.id_for_label }}">
-                        <span><strong>{{ appearance_form.time_format.label }}</strong></span>
-                        <select class="region-select" name="{{ appearance_form.time_format.html_name }}" id="{{ appearance_form.time_format.id_for_label }}" form="appearance-form">
-                            {% for value, label in appearance_form.time_format.field.choices %}
-                            <option value="{{ value }}" {% if appearance_form.time_format.value == value %}selected{% endif %}>{{ label }}</option>
+                    <label class="region-field" for="{{ region_form.time_format.id_for_label }}">
+                        <span><strong>{{ region_form.time_format.label }}</strong></span>
+                        <select class="region-select" name="{{ region_form.time_format.html_name }}" id="{{ region_form.time_format.id_for_label }}">
+                            {% for value, label in region_form.time_format.field.choices %}
+                            <option value="{{ value }}" {% if region_form.time_format.value == value %}selected{% endif %}>{{ label }}</option>
                             {% endfor %}
                         </select>
                     </label>
-                    {{ appearance_form.time_format.errors }}
+                    {{ region_form.time_format.errors }}
 
-                    <label class="region-field" for="{{ appearance_form.timezone_name.id_for_label }}">
-                        <span><strong>{{ appearance_form.timezone_name.label }}</strong></span>
-                        <select class="region-select" name="{{ appearance_form.timezone_name.html_name }}" id="{{ appearance_form.timezone_name.id_for_label }}" form="appearance-form">
-                            {% for value, label in appearance_form.timezone_name.field.choices %}
-                            <option value="{{ value }}" {% if appearance_form.timezone_name.value == value %}selected{% endif %}>{{ label }}</option>
+                    <label class="region-field" for="{{ region_form.timezone_name.id_for_label }}">
+                        <span><strong>{{ region_form.timezone_name.label }}</strong></span>
+                        <select class="region-select" name="{{ region_form.timezone_name.html_name }}" id="{{ region_form.timezone_name.id_for_label }}">
+                            {% for value, label in region_form.timezone_name.field.choices %}
+                            <option value="{{ value }}" {% if region_form.timezone_name.value == value %}selected{% endif %}>{{ label }}</option>
                             {% endfor %}
                         </select>
                     </label>
-                    {{ appearance_form.timezone_name.errors }}
+                    {{ region_form.timezone_name.errors }}
                 </div>
-            </section>
+                <button class="primary-button settings-panel-submit" type="submit">
+                    <i class="fa-solid fa-floppy-disk"></i>
+                    Sprache &amp; Region speichern
+                </button>
+            </form>
 
-            <section class="glass-panel weather-preferences-panel">
+            <form id="settings-panel-weather" class="glass-panel weather-preferences-panel" method="post" role="tabpanel" aria-labelledby="settings-tab-weather" data-settings-panel="weather">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="weather">
+                <input type="hidden" name="return_to" value="{{ return_to }}">
                 <div class="panel-title"><i class="fa-solid fa-cloud-sun"></i><h2>Wetter</h2></div>
                 <div class="preference-field">
-                    <label class="field-label" for="{{ preferences_form.weather_default_city.id_for_label }}">{{ preferences_form.weather_default_city.label }}</label>
+                    <label class="field-label" for="{{ weather_form.weather_default_city.id_for_label }}">{{ weather_form.weather_default_city.label }}</label>
                     <input type="text"
-                           name="{{ preferences_form.weather_default_city.html_name }}"
-                           id="{{ preferences_form.weather_default_city.id_for_label }}"
-                           value="{{ preferences_form.weather_default_city.value|default_if_none:'' }}"
-                           placeholder="{{ preferences_form.weather_default_city.field.widget.attrs.placeholder }}"
-                           autocomplete="{{ preferences_form.weather_default_city.field.widget.attrs.autocomplete }}"
-                           form="preferences-form">
+                           name="{{ weather_form.weather_default_city.html_name }}"
+                           id="{{ weather_form.weather_default_city.id_for_label }}"
+                           value="{{ weather_form.weather_default_city.value|default_if_none:'' }}"
+                           placeholder="{{ weather_form.weather_default_city.field.widget.attrs.placeholder }}"
+                           autocomplete="{{ weather_form.weather_default_city.field.widget.attrs.autocomplete }}">
                     <small class="field-hint">Wird für Dashboard und Wetterseite genutzt, wenn keine Suche aktiv ist.</small>
-                    {{ preferences_form.weather_default_city.errors }}
+                    {{ weather_form.weather_default_city.errors }}
                 </div>
-                <button class="primary-button preference-submit" type="submit" form="preferences-form">
+                <button class="primary-button preference-submit" type="submit">
                     <i class="fa-solid fa-floppy-disk"></i>
-                    Präferenzen speichern
+                    Wetter speichern
                 </button>
-            </section>
+            </form>
 
-            <section class="glass-panel app-install-panel" data-pwa-install-panel>
+            <section id="settings-panel-app" class="glass-panel app-install-panel" role="tabpanel" aria-labelledby="settings-tab-app" data-settings-panel="app" data-pwa-install-panel>
                 <div class="panel-title"><i class="fa-solid fa-mobile-screen-button" aria-hidden="true"></i><h2>Lunora App</h2></div>
                 <div class="app-install-content">
                     <img src="{% static 'img/icon-192.png' %}?v=brand-3" alt="" aria-hidden="true">
@@ -405,10 +520,6 @@
         </div>
     </div>
 
-    <footer class="settings-footer glass-panel">
-        <a class="ghost-button" href="{{ return_to }}">Abbrechen</a>
-        <button class="primary-button" type="submit" form="appearance-form">Darstellung speichern</button>
-    </footer>
 </section>
 {% endblock %}
 

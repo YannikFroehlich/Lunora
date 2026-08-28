@@ -60,6 +60,7 @@ urlpatterns = [
         view.web_push_subscription,
         name="web_push_subscription",
     ),
+    path("notifications/push-test/", view.web_push_test, name="web_push_test"),
     path("notifications/", view.notification_center, name="notification_center"),
     path(
         "notifications/mark-all-read/",

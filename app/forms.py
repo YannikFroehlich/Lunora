@@ -17,6 +17,7 @@ from app.models import (
     ChatMessage,
     CustomHoliday,
     HolidayOverride,
+    NotificationPreference,
     Profile,
     SystemSettings,
     Task,
@@ -26,6 +27,7 @@ from app.models import (
 from app.services.calendar_service import expand_manual_recurrence
 from app.services.chat_files import infer_attachment_kind, validate_note_upload
 from app.services.image_uploads import PROFILE_IMAGE_ACCEPT, validate_profile_image_file
+from app.services.notification_preferences import CATEGORY_DEFINITIONS
 from app.services.user_preferences import get_user_zoneinfo, localtime_for_user
 from app.services.url_safety import validate_calendar_url
 
@@ -332,12 +334,6 @@ class ProfileForm(forms.ModelForm):
 
 
 class AppearanceForm(forms.ModelForm):
-    REGION_FIELD_FALLBACKS = {
-        "date_format": "de_numeric",
-        "time_format": "24h",
-        "timezone_name": "Europe/Berlin",
-    }
-
     class Meta:
         model = Profile
         fields = [
@@ -345,15 +341,7 @@ class AppearanceForm(forms.ModelForm):
             "accent_color",
             "background_softness",
             "density",
-            "date_format",
-            "time_format",
-            "timezone_name",
         ]
-        labels = {
-            "date_format": "Datumsformat",
-            "time_format": "Zeitformat",
-            "timezone_name": "Zeitzone",
-        }
         widgets = {
             "theme": forms.RadioSelect(),
             "accent_color": forms.RadioSelect(),
@@ -361,15 +349,7 @@ class AppearanceForm(forms.ModelForm):
                 attrs={"class": "softness-slider", "type": "range", "min": "0", "max": "100"}
             ),
             "density": forms.RadioSelect(),
-            "date_format": forms.Select(attrs={"class": "region-select"}),
-            "time_format": forms.Select(attrs={"class": "region-select"}),
-            "timezone_name": forms.Select(attrs={"class": "region-select"}),
         }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        for field_name in self.REGION_FIELD_FALLBACKS:
-            self.fields[field_name].required = False
 
     def clean_background_softness(self):
         value = self.cleaned_data["background_softness"]
@@ -377,11 +357,38 @@ class AppearanceForm(forms.ModelForm):
             raise forms.ValidationError("Bitte wähle einen Wert zwischen 0 und 100.")
         return value
 
+
+class RegionPreferencesForm(forms.ModelForm):
+    FIELD_FALLBACKS = {
+        "date_format": "de_numeric",
+        "time_format": "24h",
+        "timezone_name": "Europe/Berlin",
+    }
+
+    class Meta:
+        model = Profile
+        fields = ["date_format", "time_format", "timezone_name"]
+        labels = {
+            "date_format": "Datumsformat",
+            "time_format": "Zeitformat",
+            "timezone_name": "Zeitzone",
+        }
+        widgets = {
+            "date_format": forms.Select(attrs={"class": "region-select"}),
+            "time_format": forms.Select(attrs={"class": "region-select"}),
+            "timezone_name": forms.Select(attrs={"class": "region-select"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field_name in self.FIELD_FALLBACKS:
+            self.fields[field_name].required = False
+
     def _clean_optional_region_field(self, field_name):
         value = self.cleaned_data.get(field_name)
         if value:
             return value
-        return getattr(self.instance, field_name, "") or self.REGION_FIELD_FALLBACKS[field_name]
+        return getattr(self.instance, field_name, "") or self.FIELD_FALLBACKS[field_name]
 
     def clean_date_format(self):
         return self._clean_optional_region_field("date_format")
@@ -393,34 +400,41 @@ class AppearanceForm(forms.ModelForm):
         return self._clean_optional_region_field("timezone_name")
 
 
-class ProfilePreferencesForm(forms.ModelForm):
+class NotificationPreferencesForm(forms.ModelForm):
     class Meta:
         model = Profile
         fields = [
             "notify_email",
             "notify_reminders",
             "notify_desktop",
+            "notification_quiet_hours_enabled",
+            "notification_quiet_start",
+            "notification_quiet_end",
             "weekly_summary",
-            "weather_default_city",
         ]
         labels = {
             "notify_email": "E-Mail Benachrichtigungen",
             "notify_reminders": "Erinnerungen",
             "notify_desktop": "Web-Push-Zustellung",
+            "notification_quiet_hours_enabled": "Web-Push-Ruhezeit",
+            "notification_quiet_start": "Beginn",
+            "notification_quiet_end": "Ende",
             "weekly_summary": "Wöchentliche Zusammenfassung",
-            "weather_default_city": "Standard-Wetterort",
         }
         widgets = {
             "notify_email": forms.CheckboxInput(),
             "notify_reminders": forms.CheckboxInput(),
             "notify_desktop": forms.CheckboxInput(),
-            "weekly_summary": forms.CheckboxInput(),
-            "weather_default_city": forms.TextInput(
-                attrs={
-                    "placeholder": "z. B. Bünde,de",
-                    "autocomplete": "address-level2",
-                }
+            "notification_quiet_hours_enabled": forms.CheckboxInput(),
+            "notification_quiet_start": forms.TimeInput(
+                format="%H:%M",
+                attrs={"type": "time"},
             ),
+            "notification_quiet_end": forms.TimeInput(
+                format="%H:%M",
+                attrs={"type": "time"},
+            ),
+            "weekly_summary": forms.CheckboxInput(),
         }
 
     def __init__(self, *args, **kwargs):
@@ -429,12 +443,101 @@ class ProfilePreferencesForm(forms.ModelForm):
             "notify_email",
             "notify_reminders",
             "notify_desktop",
+            "notification_quiet_hours_enabled",
             "weekly_summary",
         ]:
             self.fields[field_name].required = False
+        self.fields["notification_quiet_start"].required = False
+        self.fields["notification_quiet_end"].required = False
+
+    def clean_notification_quiet_start(self):
+        return self.cleaned_data.get("notification_quiet_start") or self.instance.notification_quiet_start or time(22, 0)
+
+    def clean_notification_quiet_end(self):
+        return self.cleaned_data.get("notification_quiet_end") or self.instance.notification_quiet_end or time(7, 0)
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if (
+            cleaned_data.get("notification_quiet_hours_enabled")
+            and cleaned_data.get("notification_quiet_start") == cleaned_data.get("notification_quiet_end")
+        ):
+            self.add_error(
+                "notification_quiet_end",
+                "Beginn und Ende der Ruhezeit müssen unterschiedlich sein.",
+            )
+        return cleaned_data
+
+
+class WeatherPreferencesForm(forms.ModelForm):
+    class Meta:
+        model = Profile
+        fields = ["weather_default_city"]
+        labels = {"weather_default_city": "Standard-Wetterort"}
+        widgets = {
+            "weather_default_city": forms.TextInput(
+                attrs={
+                    "placeholder": "z. B. Bünde,de",
+                    "autocomplete": "address-level2",
+                }
+            ),
+        }
 
     def clean_weather_default_city(self):
         return self.cleaned_data.get("weather_default_city", "").strip()
+
+
+class NotificationCategoryPreferencesForm(forms.Form):
+    CHANNELS = (
+        ("inbox", "Inbox", "inbox_enabled"),
+        ("email", "E-Mail", "email_enabled"),
+        ("web_push", "Web Push", "web_push_enabled"),
+    )
+
+    def __init__(self, *args, user, **kwargs):
+        self.user = user
+        super().__init__(*args, **kwargs)
+        saved_preferences = {
+            preference.category: preference
+            for preference in NotificationPreference.objects.filter(user=user)
+        }
+        self.category_rows = []
+        for category in CATEGORY_DEFINITIONS:
+            preference = saved_preferences.get(category["key"])
+            channel_fields = []
+            for channel_key, channel_label, model_field in self.CHANNELS:
+                field_name = f"notification_{category['key']}_{channel_key}"
+                self.fields[field_name] = forms.BooleanField(
+                    label=f"{category['label']}: {channel_label}",
+                    required=False,
+                    initial=getattr(preference, model_field, True),
+                )
+                channel_fields.append(
+                    {
+                        "key": channel_key,
+                        "label": channel_label,
+                        "field": self[field_name],
+                    }
+                )
+            self.category_rows.append({**category, "channels": channel_fields})
+
+    @property
+    def matrix_present(self):
+        return not self.is_bound or self.data.get("notification_matrix_present") == "1"
+
+    def save(self):
+        if not self.is_valid() or not self.matrix_present:
+            return
+        for category in CATEGORY_DEFINITIONS:
+            values = {
+                model_field: self.cleaned_data[f"notification_{category['key']}_{channel_key}"]
+                for channel_key, _channel_label, model_field in self.CHANNELS
+            }
+            NotificationPreference.objects.update_or_create(
+                user=self.user,
+                category=category["key"],
+                defaults=values,
+            )
 
 
 class MessageForm(forms.ModelForm):

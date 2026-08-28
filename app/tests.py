@@ -3,7 +3,7 @@ import json
 import os
 import re
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from email.message import Message
 from io import StringIO
@@ -24,7 +24,7 @@ from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
 from app.forms import CalendarSourceForm, ProfileForm
-from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, CalendarSource, ChatMessage, ChatMessageAttachment, ChatMessageReaction, Conversation, ConversationMember, CustomHoliday, Note, NoteActivityNotification, NoteAttachment, NoteCommentThread, NoteFolder, NoteLink, NoteShare, NoteTemplate, NoteUserState, NoteVersion, OfficialHoliday, Profile, SystemSettings, Task, UserNotification, VacationPeriod, VacationYear, WeatherLocation, WebPushDelivery, WebPushSubscription, WeeklySummaryDelivery
+from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, CalendarSource, ChatMessage, ChatMessageAttachment, ChatMessageReaction, Conversation, ConversationMember, CustomHoliday, Note, NoteActivityNotification, NoteAttachment, NoteCommentThread, NoteFolder, NoteLink, NoteShare, NoteTemplate, NoteUserState, NoteVersion, NotificationPreference, OfficialHoliday, Profile, SystemSettings, Task, UserNotification, VacationPeriod, VacationYear, WeatherLocation, WebPushDelivery, WebPushSubscription, WeeklySummaryDelivery
 from app.services.calendar_service import fetch_ical, parse_ical_events
 from app.services.calendar_sync_queue import queue_calendar_sources
 from app.services.dashboard import DASHBOARD_WIDGET_IDS, default_dashboard_layout, normalize_dashboard_layout
@@ -35,6 +35,7 @@ from app.services.notifications import (
     send_due_task_reminder_emails,
     send_new_invitation_emails,
     send_note_activity_emails,
+    send_pending_user_notification_emails,
     send_weekly_summaries,
 )
 from app.services.scheduled_tasks import run_scheduled_tasks, sync_due_calendars
@@ -612,7 +613,7 @@ class SettingsProfileTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, "/home/")
+        self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-profile")
         user.refresh_from_db()
         self.assertEqual(user.profile.display_name, "Mira Neu")
         self.assertEqual(user.first_name, "Mira Neu")
@@ -704,7 +705,13 @@ class SettingsProfileTests(TestCase):
 
     def test_logged_in_user_can_save_appearance_settings(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
-        Profile.objects.create(user=user, display_name="Mira")
+        Profile.objects.create(
+            user=user,
+            display_name="Mira",
+            date_format="iso",
+            time_format="12h",
+            timezone_name="UTC",
+        )
         self.client.login(username="mira@example.com", password="secret-12345")
 
         response = self.client.post(
@@ -718,55 +725,64 @@ class SettingsProfileTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, "/home/")
+        self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-appearance")
         user.profile.refresh_from_db()
         self.assertEqual(user.profile.theme, "dark")
         self.assertEqual(user.profile.accent_color, "#7f916b")
         self.assertEqual(user.profile.background_softness, 82)
         self.assertEqual(user.profile.density, "compact")
+        self.assertEqual(user.profile.date_format, "iso")
+        self.assertEqual(user.profile.time_format, "12h")
+        self.assertEqual(user.profile.timezone_name, "UTC")
 
     def test_logged_in_user_can_save_region_settings(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
-        Profile.objects.create(user=user, display_name="Mira")
+        Profile.objects.create(
+            user=user,
+            display_name="Mira",
+            theme="dark",
+            accent_color="#7f916b",
+            background_softness=82,
+            density="compact",
+        )
         self.client.login(username="mira@example.com", password="secret-12345")
 
         response = self.client.post(
             "/settings/",
             {
-                "form_name": "appearance",
-                "theme": "light",
-                "accent_color": "#c2a276",
-                "background_softness": "55",
-                "density": "comfortable",
+                "form_name": "region",
                 "date_format": "iso",
                 "time_format": "12h",
                 "timezone_name": "UTC",
             },
         )
 
-        self.assertRedirects(response, "/home/")
+        self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-profile")
         user.profile.refresh_from_db()
         self.assertEqual(user.profile.date_format, "iso")
         self.assertEqual(user.profile.time_format, "12h")
         self.assertEqual(user.profile.timezone_name, "UTC")
+        self.assertEqual(user.profile.theme, "dark")
+        self.assertEqual(user.profile.accent_color, "#7f916b")
+        self.assertEqual(user.profile.background_softness, 82)
+        self.assertEqual(user.profile.density, "compact")
 
-    def test_logged_in_user_can_save_preferences(self):
+    def test_logged_in_user_can_save_notification_preferences_without_changing_weather(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
-        Profile.objects.create(user=user, display_name="Mira")
+        Profile.objects.create(user=user, display_name="Mira", weather_default_city="Hamburg,de")
         self.client.login(username="mira@example.com", password="secret-12345")
 
         response = self.client.post(
             "/settings/",
             {
-                "form_name": "preferences",
+                "form_name": "notifications",
                 "notify_reminders": "on",
                 "weekly_summary": "on",
                 "usage_data_enabled": "on",
-                "weather_default_city": "Berlin,de",
             },
         )
 
-        self.assertRedirects(response, "/home/")
+        self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-notifications")
         user.profile.refresh_from_db()
         self.assertFalse(user.profile.notify_email)
         self.assertTrue(user.profile.notify_reminders)
@@ -774,7 +790,105 @@ class SettingsProfileTests(TestCase):
         self.assertTrue(user.profile.weekly_summary)
         self.assertTrue(user.profile.analytics_enabled)
         self.assertFalse(user.profile.usage_data_enabled)
+        self.assertEqual(user.profile.weather_default_city, "Hamburg,de")
+
+    def test_logged_in_user_can_save_weather_without_changing_notifications(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(
+            user=user,
+            display_name="Mira",
+            notify_email=True,
+            notify_reminders=False,
+            notify_desktop=True,
+            weekly_summary=True,
+        )
+        NotificationPreference.objects.create(
+            user=user,
+            category="calendar",
+            inbox_enabled=False,
+            email_enabled=False,
+            web_push_enabled=True,
+        )
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.post(
+            "/settings/",
+            {
+                "form_name": "weather",
+                "weather_default_city": "  Berlin,de  ",
+            },
+        )
+
+        self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-weather")
+        user.profile.refresh_from_db()
         self.assertEqual(user.profile.weather_default_city, "Berlin,de")
+        self.assertTrue(user.profile.notify_email)
+        self.assertFalse(user.profile.notify_reminders)
+        self.assertTrue(user.profile.notify_desktop)
+        self.assertTrue(user.profile.weekly_summary)
+        category = NotificationPreference.objects.get(user=user, category="calendar")
+        self.assertFalse(category.inbox_enabled)
+        self.assertFalse(category.email_enabled)
+        self.assertTrue(category.web_push_enabled)
+
+    def test_invalid_appearance_settings_render_without_changing_profile(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        profile = Profile.objects.create(user=user, display_name="Mira", background_softness=55)
+        self.client.force_login(user)
+
+        response = self.client.post(
+            "/settings/",
+            {
+                "form_name": "appearance",
+                "theme": "dark",
+                "accent_color": "#7f916b",
+                "background_softness": "101",
+                "density": "compact",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("background_softness", response.context["appearance_form"].errors)
+        profile.refresh_from_db()
+        self.assertEqual(profile.background_softness, 55)
+
+    def test_invalid_region_settings_render_without_changing_profile(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        profile = Profile.objects.create(user=user, display_name="Mira", timezone_name="Europe/Berlin")
+        self.client.force_login(user)
+
+        response = self.client.post(
+            "/settings/",
+            {
+                "form_name": "region",
+                "date_format": "iso",
+                "time_format": "12h",
+                "timezone_name": "Mars/Olympus",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("timezone_name", response.context["region_form"].errors)
+        profile.refresh_from_db()
+        self.assertEqual(profile.timezone_name, "Europe/Berlin")
+
+    def test_invalid_weather_settings_render_without_changing_profile(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        profile = Profile.objects.create(user=user, display_name="Mira", weather_default_city="Bünde,de")
+        self.client.force_login(user)
+
+        response = self.client.post(
+            "/settings/",
+            {
+                "form_name": "weather",
+                "weather_default_city": "x" * 121,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("weather_default_city", response.context["weather_form"].errors)
+        profile.refresh_from_db()
+        self.assertEqual(profile.weather_default_city, "Bünde,de")
 
     def test_settings_hide_unimplemented_analytics_controls(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
@@ -787,6 +901,188 @@ class SettingsProfileTests(TestCase):
         self.assertNotContains(response, 'name="usage_data_enabled"')
         self.assertContains(response, "Erinnerungszustellung")
 
+    def test_settings_show_detailed_notification_controls(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        self.client.force_login(user)
+
+        response = self.client.get("/settings/")
+
+        self.assertContains(response, 'aria-label="Zustellung nach Kategorie"')
+        self.assertContains(response, 'name="notification_calendar_inbox"')
+        self.assertContains(response, 'name="notification_weather_web_push"')
+        self.assertContains(response, "Web-Push-Ruhezeit")
+        self.assertContains(response, "Test senden")
+
+    def test_settings_are_grouped_into_accessible_sections(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        self.client.force_login(user)
+
+        response = self.client.get("/settings/")
+
+        self.assertContains(response, 'role="tablist"')
+        self.assertContains(response, 'data-settings-tab=', count=6)
+        self.assertContains(response, 'data-settings-panel="appearance"')
+        self.assertContains(response, 'data-settings-panel="profile"', count=2)
+        self.assertContains(response, 'data-settings-panel="calendar"')
+        self.assertContains(response, 'data-settings-panel="notifications"')
+        self.assertContains(response, 'data-settings-panel="weather"')
+        self.assertContains(response, 'data-settings-panel="app"')
+        self.assertContains(response, "Sprache &amp; Region speichern")
+        self.assertContains(response, 'class="calendar-input-pill"', count=2)
+        self.assertContains(response, 'class="source-toggle"')
+        self.assertContains(response, 'name="form_name" value="appearance"')
+        self.assertContains(response, 'name="form_name" value="profile"')
+        self.assertContains(response, 'name="form_name" value="region"')
+        self.assertContains(response, 'name="form_name" value="notifications"')
+        self.assertContains(response, 'name="form_name" value="weather"')
+        self.assertContains(response, 'class="settings-back-link" href="/home/"')
+        self.assertNotContains(response, ">Abbrechen<")
+
+    def test_settings_reject_unsafe_or_authentication_return_targets(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        self.client.force_login(user)
+        unsafe_targets = [
+            "https://evil.example/steal",
+            "/settings/",
+            "/login/?next=/settings/",
+            "/accounts/login/",
+            "/logout/",
+            "/register/",
+            "/password-reset/",
+            "/password-reset/done/",
+            "/reset/example/token/",
+            "/reset/done/",
+        ]
+
+        for target in unsafe_targets:
+            with self.subTest(target=target):
+                response = self.client.get("/settings/", {"next": target})
+
+                self.assertEqual(response.context["return_to"], "/home/")
+                self.assertContains(response, 'class="settings-back-link" href="/home/"')
+
+    def test_settings_preserve_valid_return_target_across_save_redirect(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        self.client.force_login(user)
+        return_to = "/calendar/?view=month#week"
+
+        response = self.client.get("/settings/", {"next": return_to})
+
+        self.assertEqual(response.context["return_to"], return_to)
+        self.assertContains(response, 'class="settings-back-link" href="/calendar/?view=month#week"')
+
+        response = self.client.post(
+            "/settings/",
+            {
+                "form_name": "weather",
+                "return_to": return_to,
+                "weather_default_city": "Berlin,de",
+            },
+        )
+
+        self.assertEqual(
+            response["Location"],
+            "/settings/?next=%2Fcalendar%2F%3Fview%3Dmonth%23week#settings-weather",
+        )
+
+    def test_settings_ignore_login_referrer_for_back_link(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        self.client.force_login(user)
+
+        response = self.client.get(
+            "/settings/",
+            HTTP_REFERER="http://testserver/login/?next=/settings/",
+        )
+
+        self.assertEqual(response.context["return_to"], "/home/")
+
+    def test_calendar_color_choices_have_accessible_names(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        CalendarSource.objects.create(
+            user=user,
+            name="Arbeit",
+            ical_url="https://calendar.google.com/calendar/ical/accessibility/private/basic.ics",
+        )
+        self.client.force_login(user)
+
+        response = self.client.get("/settings/")
+
+        for label in ("Blau", "Grün", "Rot", "Sand", "Violett"):
+            with self.subTest(label=label):
+                self.assertContains(response, f'aria-label="{label}"', count=2)
+
+    def test_logged_in_user_can_save_detailed_notification_preferences(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        self.client.force_login(user)
+
+        response = self.client.post(
+            "/settings/",
+            {
+                "form_name": "notifications",
+                "notification_matrix_present": "1",
+                "notify_email": "on",
+                "notify_reminders": "on",
+                "notify_desktop": "on",
+                "notification_quiet_hours_enabled": "on",
+                "notification_quiet_start": "21:30",
+                "notification_quiet_end": "06:45",
+                "notification_calendar_inbox": "on",
+                "notification_calendar_email": "on",
+                "notification_tasks_web_push": "on",
+                "notification_notes_inbox": "on",
+                "notification_notes_email": "on",
+                "notification_notes_web_push": "on",
+                "notification_weather_email": "on",
+            },
+        )
+
+        self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-notifications")
+        user.profile.refresh_from_db()
+        self.assertTrue(user.profile.notification_quiet_hours_enabled)
+        self.assertEqual(user.profile.notification_quiet_start, time(21, 30))
+        self.assertEqual(user.profile.notification_quiet_end, time(6, 45))
+        calendar = NotificationPreference.objects.get(user=user, category="calendar")
+        tasks = NotificationPreference.objects.get(user=user, category="tasks")
+        weather = NotificationPreference.objects.get(user=user, category="weather")
+        self.assertTrue(calendar.inbox_enabled)
+        self.assertTrue(calendar.email_enabled)
+        self.assertFalse(calendar.web_push_enabled)
+        self.assertFalse(tasks.inbox_enabled)
+        self.assertFalse(tasks.email_enabled)
+        self.assertTrue(tasks.web_push_enabled)
+        self.assertFalse(weather.inbox_enabled)
+        self.assertTrue(weather.email_enabled)
+        self.assertFalse(weather.web_push_enabled)
+
+    def test_equal_quiet_hour_boundaries_are_rejected(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        self.client.force_login(user)
+
+        response = self.client.post(
+            "/settings/",
+            {
+                "form_name": "notifications",
+                "notification_matrix_present": "1",
+                "notification_quiet_hours_enabled": "on",
+                "notification_quiet_start": "22:00",
+                "notification_quiet_end": "22:00",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Beginn und Ende der Ruhezeit müssen unterschiedlich sein.")
+        user.profile.refresh_from_db()
+        self.assertFalse(user.profile.notification_quiet_hours_enabled)
+        self.assertFalse(NotificationPreference.objects.filter(user=user).exists())
+
     def test_settings_save_shows_feedback_message(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
         Profile.objects.create(user=user, display_name="Mira")
@@ -795,17 +1091,16 @@ class SettingsProfileTests(TestCase):
         response = self.client.post(
             "/settings/",
             {
-                "form_name": "preferences",
+                "form_name": "notifications",
                 "notify_email": "on",
                 "notify_reminders": "on",
                 "notify_desktop": "on",
                 "analytics_enabled": "on",
-                "weather_default_city": "Bünde,de",
             },
             follow=True,
         )
 
-        self.assertContains(response, "Präferenzen gespeichert.")
+        self.assertContains(response, "Benachrichtigungseinstellungen gespeichert.")
 
     def test_calendar_source_can_be_added_and_queued_from_settings(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
@@ -824,7 +1119,7 @@ class SettingsProfileTests(TestCase):
                 },
             )
 
-        self.assertRedirects(response, "/home/")
+        self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-calendar")
         source = CalendarSource.objects.get(user=user)
         self.assertEqual(source.name, "Arbeit")
         self.assertEqual(source.ical_url, "https://calendar.google.com/calendar/ical/settings/private/basic.ics")
@@ -850,7 +1145,7 @@ class SettingsProfileTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, "/home/")
+        self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-calendar")
         source = CalendarSource.objects.get(user=user, name="Familie")
         self.assertIsNotNone(source.sync_requested_at)
 
@@ -932,7 +1227,7 @@ class SettingsProfileTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, "/home/")
+        self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-calendar")
         self.assertEqual(CalendarSource.objects.get(user=mira).ical_url, private_url)
         self.assertEqual(
             CalendarSource.objects.get(user=lukas).ical_url,
@@ -971,7 +1266,7 @@ class SettingsProfileTests(TestCase):
                 },
             )
 
-        self.assertRedirects(response, "/home/")
+        self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-calendar")
         source.refresh_from_db()
         self.assertEqual(source.name, "Neu")
         self.assertEqual(source.color, "red")
@@ -1036,7 +1331,7 @@ class SettingsProfileTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, "/home/")
+        self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-calendar")
         self.assertFalse(CalendarSource.objects.filter(pk=source.id).exists())
         self.assertFalse(CalendarEvent.objects.filter(external_id="delete-event").exists())
 
@@ -2062,6 +2357,25 @@ class TaskTests(TestCase):
         task.refresh_from_db()
         self.assertIsNotNone(task.email_notified_at)
 
+    def test_task_email_category_can_be_disabled(self):
+        task = Task.objects.create(
+            user=self.user,
+            title="Nicht per E-Mail senden",
+            due_at=timezone.now() - timedelta(minutes=1),
+        )
+        NotificationPreference.objects.create(
+            user=self.user,
+            category=NotificationPreference.CATEGORY_TASKS,
+            email_enabled=False,
+        )
+
+        result = send_due_task_reminder_emails()
+
+        self.assertEqual(result, {"sent": 0, "failed": 0})
+        self.assertEqual(len(mail.outbox), 0)
+        task.refresh_from_db()
+        self.assertIsNone(task.email_notified_at)
+
     def test_task_desktop_notification_claim_is_one_time(self):
         task = Task.objects.create(
             user=self.user,
@@ -2567,6 +2881,78 @@ class NotificationCenterTests(TestCase):
         self.assertIsNotNone(unread.read_at)
         self.assertFalse(UserNotification.objects.filter(recipient=self.user, read_at__isnull=True).exists())
 
+    def test_inbox_category_preference_hides_items_badge_and_bulk_read(self):
+        hidden = UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_TASK_DUE,
+            title="Verborgene Aufgabe",
+            source_key="task:hidden-category",
+        )
+        visible = UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_NOTE_COMMENT,
+            title="Sichtbarer Kommentar",
+            source_key="note-comment:visible-category",
+        )
+        NotificationPreference.objects.create(
+            user=self.user,
+            category=NotificationPreference.CATEGORY_TASKS,
+            inbox_enabled=False,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get("/notifications/?status=all")
+
+        self.assertNotContains(response, "Verborgene Aufgabe")
+        self.assertContains(response, "Sichtbarer Kommentar")
+        self.assertEqual(response.context["unread_notification_count"], 1)
+        self.assertEqual(response.context["total_notification_count"], 1)
+
+        self.client.post("/notifications/mark-all-read/")
+        hidden.refresh_from_db()
+        visible.refresh_from_db()
+        self.assertIsNone(hidden.read_at)
+        self.assertIsNotNone(visible.read_at)
+
+    def test_inbox_backed_email_is_sent_once_and_respects_category(self):
+        self.user.profile.notify_email = True
+        self.user.profile.save(update_fields=["notify_email"])
+        sent_notification = UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_NOTE_SHARE,
+            title="Neue Notizfreigabe",
+            body="Lukas hat Roadmap mit dir geteilt.",
+            source_key="note-share:email-enabled",
+        )
+
+        first_result = send_pending_user_notification_emails()
+        second_result = send_pending_user_notification_emails()
+
+        self.assertEqual(first_result, {"sent": 1, "failed": 0})
+        self.assertEqual(second_result, {"sent": 0, "failed": 0})
+        self.assertEqual(len(mail.outbox), 1)
+        sent_notification.refresh_from_db()
+        self.assertIsNotNone(sent_notification.email_notified_at)
+
+        NotificationPreference.objects.create(
+            user=self.user,
+            category=NotificationPreference.CATEGORY_WEATHER,
+            email_enabled=False,
+        )
+        muted_notification = UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_WEATHER_ALERT,
+            title="Gewitterwarnung",
+            source_key="weather-alert:email-disabled",
+        )
+
+        muted_result = send_pending_user_notification_emails()
+
+        self.assertEqual(muted_result, {"sent": 0, "failed": 0})
+        self.assertEqual(len(mail.outbox), 1)
+        muted_notification.refresh_from_db()
+        self.assertIsNone(muted_notification.email_notified_at)
+
 
 @override_settings(
     PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"],
@@ -2709,8 +3095,8 @@ class WebPushTests(TestCase):
             first_result = send_pending_web_push_notifications()
             second_result = send_pending_web_push_notifications()
 
-        self.assertEqual(first_result, {"sent": 1, "failed": 0, "removed": 0, "queued": 1})
-        self.assertEqual(second_result, {"sent": 0, "failed": 0, "removed": 0, "queued": 0})
+        self.assertEqual(first_result, {"sent": 1, "failed": 0, "removed": 0, "queued": 1, "deferred": 0})
+        self.assertEqual(second_result, {"sent": 0, "failed": 0, "removed": 0, "queued": 0, "deferred": 0})
         send_push.assert_called_once()
         payload = json.loads(send_push.call_args.kwargs["data"])
         self.assertEqual(payload["title"], notification.title)
@@ -2785,6 +3171,110 @@ class WebPushTests(TestCase):
         subscription.refresh_from_db()
         self.assertEqual(subscription.failure_count, 1)
 
+    def test_category_preference_prevents_web_push_delivery(self):
+        self.create_subscription()
+        NotificationPreference.objects.create(
+            user=self.user,
+            category=NotificationPreference.CATEGORY_TASKS,
+            web_push_enabled=False,
+        )
+        UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_TASK_DUE,
+            title="Stille Aufgabe",
+            source_key="task:push-category-disabled",
+        )
+
+        with patch("app.services.web_push.webpush") as send_push:
+            result = send_pending_web_push_notifications()
+
+        self.assertEqual(result["queued"], 0)
+        self.assertEqual(result["sent"], 0)
+        send_push.assert_not_called()
+        self.assertFalse(WebPushDelivery.objects.exists())
+
+    def test_quiet_hours_defer_web_push_until_the_window_ends(self):
+        subscription = self.create_subscription()
+        profile = self.user.profile
+        profile.timezone_name = "UTC"
+        profile.notification_quiet_hours_enabled = True
+        profile.notification_quiet_start = time(22, 0)
+        profile.notification_quiet_end = time(7, 0)
+        profile.save(
+            update_fields=[
+                "timezone_name",
+                "notification_quiet_hours_enabled",
+                "notification_quiet_start",
+                "notification_quiet_end",
+            ]
+        )
+        notification = UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_NOTE_COMMENT,
+            title="Später zustellen",
+            source_key="note-comment:quiet-hours",
+        )
+        during_quiet_hours = datetime(2026, 8, 28, 23, 0, tzinfo=ZoneInfo("UTC"))
+        after_quiet_hours = datetime(2026, 8, 29, 8, 0, tzinfo=ZoneInfo("UTC"))
+
+        with patch("app.services.web_push.webpush") as send_push:
+            deferred_result = send_pending_web_push_notifications(now=during_quiet_hours)
+            sent_result = send_pending_web_push_notifications(now=after_quiet_hours)
+
+        self.assertEqual(deferred_result["deferred"], 1)
+        self.assertEqual(deferred_result["sent"], 0)
+        self.assertEqual(sent_result["sent"], 1)
+        send_push.assert_called_once()
+        delivery = WebPushDelivery.objects.get(subscription=subscription, notification=notification)
+        self.assertEqual(delivery.delivered_at, after_quiet_hours)
+
+    def test_test_push_endpoint_sends_to_current_users_device(self):
+        self.create_subscription()
+        NotificationPreference.objects.create(
+            user=self.user,
+            category=NotificationPreference.CATEGORY_TASKS,
+            web_push_enabled=False,
+        )
+        profile = self.user.profile
+        profile.notification_quiet_hours_enabled = True
+        profile.notification_quiet_start = time(0, 0)
+        profile.notification_quiet_end = time(23, 59)
+        profile.save(
+            update_fields=[
+                "notification_quiet_hours_enabled",
+                "notification_quiet_start",
+                "notification_quiet_end",
+            ]
+        )
+        self.client.force_login(self.user)
+
+        with patch("app.services.web_push.webpush") as send_push:
+            response = self.client.post(
+                "/notifications/push-test/",
+                data=json.dumps({"endpoint": self.endpoint}),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["ok"])
+        send_push.assert_called_once()
+        payload = json.loads(send_push.call_args.kwargs["data"])
+        self.assertEqual(payload["title"], "Lunora-Testbenachrichtigung")
+
+    def test_test_push_endpoint_is_user_scoped(self):
+        self.create_subscription(self.other)
+        self.client.force_login(self.user)
+
+        with patch("app.services.web_push.webpush") as send_push:
+            response = self.client.post(
+                "/notifications/push-test/",
+                data=json.dumps({"endpoint": self.endpoint}),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 404)
+        send_push.assert_not_called()
+
     def test_weather_alerts_are_checked_once_per_user_with_multiple_devices(self):
         self.create_subscription()
         second_payload = {
@@ -2792,12 +3282,43 @@ class WebPushTests(TestCase):
             "endpoint": "https://updates.push.services.mozilla.com/wpush/v2/second-device",
         }
         register_web_push_subscription(self.user, second_payload)
+        WeatherLocation.objects.create(
+            user=self.user,
+            query="Berlin,de",
+            name="Berlin",
+            label="Berlin",
+        )
 
-        with patch("app.services.notifications.claim_due_weather_alerts", return_value=[{"id": "alert"}]) as claim:
+        with patch("app.services.notifications.materialize_due_weather_alerts", return_value=[{"id": "alert"}]) as claim:
             result = materialize_web_push_weather_alerts()
 
         self.assertEqual(result, {"created": 1, "failed": 0})
         claim.assert_called_once()
+
+    def test_weather_alert_detection_supports_inbox_only_preferences(self):
+        profile = self.user.profile
+        profile.notify_desktop = False
+        profile.notify_email = False
+        profile.save(update_fields=["notify_desktop", "notify_email"])
+        NotificationPreference.objects.create(
+            user=self.user,
+            category=NotificationPreference.CATEGORY_WEATHER,
+            inbox_enabled=True,
+            email_enabled=False,
+            web_push_enabled=False,
+        )
+        WeatherLocation.objects.create(
+            user=self.user,
+            query="Berlin,de",
+            name="Berlin",
+            label="Berlin",
+        )
+
+        with patch("app.services.notifications.materialize_due_weather_alerts", return_value=[{"id": "alert"}]) as detect:
+            result = materialize_web_push_weather_alerts()
+
+        self.assertEqual(result, {"created": 1, "failed": 0})
+        detect.assert_called_once_with(self.user, now=None)
 
 
 class WeatherMapTests(TestCase):
@@ -4652,7 +5173,7 @@ class AdministrationFeatureFlagTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, "/home/")
+        self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-calendar")
         self.assertFalse(CalendarSource.objects.filter(user=self.user, name="Privat").exists())
 
     def test_disabled_messages_and_weather_return_unavailable(self):

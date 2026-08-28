@@ -1,3 +1,89 @@
+const settingsShell = document.querySelector(".settings-shell");
+const settingsTabsContainer = document.querySelector("[data-settings-tabs]");
+const settingsTabList = settingsTabsContainer?.querySelector("[role='tablist']");
+const settingsTabs = Array.from(settingsTabsContainer?.querySelectorAll("[data-settings-tab]") || []);
+const settingsPanels = Array.from(document.querySelectorAll("[data-settings-panel]"));
+
+function settingsSectionFromHash() {
+  const prefix = "#settings-";
+  if (!window.location.hash.startsWith(prefix)) return null;
+  const section = window.location.hash.slice(prefix.length);
+  return settingsTabs.some((tab) => tab.dataset.settingsTab === section) ? section : null;
+}
+
+function activateSettingsSection(section, { updateHash = false, focusTab = false } = {}) {
+  const activeTab = settingsTabs.find((tab) => tab.dataset.settingsTab === section);
+  if (!activeTab) return;
+
+  settingsTabs.forEach((tab) => {
+    const isActive = tab === activeTab;
+    tab.classList.toggle("is-active", isActive);
+    tab.setAttribute("aria-selected", String(isActive));
+    tab.tabIndex = isActive ? 0 : -1;
+  });
+
+  settingsPanels.forEach((panel) => {
+    const isActive = panel.dataset.settingsPanel === section;
+    panel.hidden = !isActive;
+    panel.classList.toggle("is-active", isActive);
+  });
+
+  if (updateHash) {
+    const url = new URL(window.location.href);
+    url.hash = `settings-${section}`;
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  }
+
+  if (focusTab) {
+    activeTab.focus();
+    activeTab.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+  }
+}
+
+if (settingsShell && settingsTabsContainer && settingsTabList && settingsTabs.length && settingsPanels.length) {
+  const errorPanel = settingsPanels.find((panel) => panel.querySelector(".errorlist, .form-errors"));
+  const initialSection = errorPanel?.dataset.settingsPanel || settingsSectionFromHash() || "appearance";
+
+  settingsShell.classList.add("settings-tabs-ready");
+  settingsTabsContainer.hidden = false;
+  activateSettingsSection(initialSection);
+
+  settingsTabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      activateSettingsSection(tab.dataset.settingsTab, { updateHash: true });
+    });
+  });
+
+  settingsTabList.addEventListener("keydown", (event) => {
+    const currentIndex = settingsTabs.indexOf(document.activeElement);
+    if (currentIndex === -1) return;
+
+    let nextIndex = currentIndex;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      nextIndex = (currentIndex + 1) % settingsTabs.length;
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      nextIndex = (currentIndex - 1 + settingsTabs.length) % settingsTabs.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = settingsTabs.length - 1;
+    } else {
+      return;
+    }
+
+    event.preventDefault();
+    activateSettingsSection(settingsTabs[nextIndex].dataset.settingsTab, {
+      updateHash: true,
+      focusTab: true,
+    });
+  });
+
+  window.addEventListener("hashchange", () => {
+    const section = settingsSectionFromHash();
+    if (section) activateSettingsSection(section);
+  });
+}
+
 // Keep the custom profile image picker label in sync with the selected file.
 document.querySelectorAll("[data-file-input]").forEach((input) => {
   const fileNameLabel = document.querySelector(`[data-file-name-for="${input.id}"]`);
@@ -38,8 +124,10 @@ const desktopNotificationPermissionButton = document.querySelector("[data-reques
 const webPushButtonLabel = document.querySelector("[data-web-push-button-label]");
 const webPushPublicKey = document.documentElement.dataset.webPushPublicKey;
 const webPushSubscriptionUrl = document.documentElement.dataset.webPushSubscriptionUrl;
+const webPushTestUrl = document.documentElement.dataset.webPushTestUrl;
 const serviceWorkerUrl = document.documentElement.dataset.serviceWorkerUrl;
 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+const webPushTestButton = document.querySelector("[data-send-test-web-push]");
 let activeWebPushSubscription = null;
 
 function setDesktopNotificationStatus(message, { isError = false } = {}) {
@@ -117,6 +205,7 @@ function syncWebPushButton() {
   webPushButtonLabel.textContent = activeWebPushSubscription
     ? "Auf diesem Gerät deaktivieren"
     : "Auf diesem Gerät aktivieren";
+  if (webPushTestButton) webPushTestButton.hidden = !activeWebPushSubscription;
 }
 
 async function activateWebPush() {
@@ -161,6 +250,23 @@ async function deactivateWebPush() {
   activeWebPushSubscription = null;
   syncWebPushButton();
   setDesktopNotificationStatus("Dieses Gerät erhält keine Web-Push-Benachrichtigungen mehr.");
+}
+
+async function sendWebPushTest() {
+  if (!activeWebPushSubscription || !webPushTestUrl) return;
+  const response = await fetch(webPushTestUrl, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "X-CSRFToken": csrfToken,
+    },
+    body: JSON.stringify({ endpoint: activeWebPushSubscription.endpoint }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || "Die Testbenachrichtigung konnte nicht gesendet werden.");
+  setDesktopNotificationStatus(payload.message || "Testbenachrichtigung wurde gesendet.");
 }
 
 async function initializeWebPushSettings() {
@@ -235,9 +341,32 @@ if (desktopNotificationInput) {
       desktopNotificationPermissionButton.disabled = false;
     }
   });
+
+  webPushTestButton?.addEventListener("click", async () => {
+    webPushTestButton.disabled = true;
+    try {
+      await sendWebPushTest();
+    } catch (error) {
+      setDesktopNotificationStatus(error.message || "Die Testbenachrichtigung konnte nicht gesendet werden.", { isError: true });
+    } finally {
+      webPushTestButton.disabled = false;
+    }
+  });
 }
 
 initializeWebPushSettings();
+
+const notificationQuietToggle = document.querySelector("[data-notification-quiet-toggle]");
+const notificationQuietInputs = document.querySelectorAll("[data-notification-quiet-times] input");
+
+function syncNotificationQuietHours() {
+  notificationQuietInputs.forEach((input) => {
+    input.disabled = !notificationQuietToggle?.checked;
+  });
+}
+
+notificationQuietToggle?.addEventListener("change", syncNotificationQuietHours);
+syncNotificationQuietHours();
 
 const pwaInstallPanel = document.querySelector("[data-pwa-install-panel]");
 const pwaInstallButton = pwaInstallPanel?.querySelector("[data-pwa-install]");
