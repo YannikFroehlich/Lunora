@@ -21,6 +21,8 @@ from app.models import (
     Profile,
     SystemSettings,
     Task,
+    TaskLabel,
+    TaskList,
     VacationPeriod,
     VacationYear,
 )
@@ -715,10 +717,36 @@ class TaskForm(forms.ModelForm):
             format="%Y-%m-%dT%H:%M",
         ),
     )
+    task_list = forms.ModelChoiceField(
+        label="Liste",
+        queryset=TaskList.objects.none(),
+        required=False,
+        empty_label="Eingang",
+    )
+    parent = forms.ModelChoiceField(
+        label="Übergeordnete Aufgabe",
+        queryset=Task.objects.none(),
+        required=False,
+        widget=forms.HiddenInput(),
+    )
+    labels = forms.ModelMultipleChoiceField(
+        label="Labels",
+        queryset=TaskLabel.objects.none(),
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+    )
+    # Declared explicitly (rather than left to ModelForm auto-generation) so Django doesn't
+    # prepend its own blank "---------" choice alongside the model's own "Keine" option.
+    priority = forms.ChoiceField(
+        label="Priorität", choices=Task.PRIORITY_CHOICES, required=False, initial=Task.PRIORITY_NONE
+    )
+    recurrence_rule = forms.ChoiceField(
+        label="Wiederholung", choices=Task.RECURRENCE_CHOICES, required=False, initial=Task.RECURRENCE_NONE
+    )
 
     class Meta:
         model = Task
-        fields = ["title", "due_at"]
+        fields = ["title", "due_at", "task_list", "parent", "priority", "labels", "recurrence_rule"]
         labels = {"title": "Neue Aufgabe"}
         widgets = {
             "title": forms.TextInput(
@@ -727,6 +755,34 @@ class TaskForm(forms.ModelForm):
                     "autocomplete": "off",
                 }
             )
+        }
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if user is not None:
+            self.fields["task_list"].queryset = TaskList.objects.filter(owner=user)
+            # A parent must itself be a top-level task, which caps subtasks at one level deep.
+            self.fields["parent"].queryset = Task.objects.filter(user=user, parent__isnull=True)
+            self.fields["labels"].queryset = TaskLabel.objects.filter(owner=user)
+
+
+class TaskListForm(forms.ModelForm):
+    class Meta:
+        model = TaskList
+        fields = ["name", "color"]
+        labels = {"name": "Listenname", "color": "Farbe"}
+        widgets = {
+            "name": forms.TextInput(attrs={"placeholder": "Neue Liste …", "autocomplete": "off"}),
+        }
+
+
+class TaskLabelForm(forms.ModelForm):
+    class Meta:
+        model = TaskLabel
+        fields = ["name", "color"]
+        labels = {"name": "Labelname", "color": "Farbe"}
+        widgets = {
+            "name": forms.TextInput(attrs={"placeholder": "Neues Label …", "autocomplete": "off"}),
         }
 
     def clean_title(self):

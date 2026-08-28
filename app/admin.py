@@ -20,6 +20,8 @@ from app.models import (
     Profile,
     SystemSettings,
     Task,
+    TaskLabel,
+    TaskList,
     UserNotification,
     VacationPeriod,
     VacationYear,
@@ -112,10 +114,22 @@ class CalendarReminderAdmin(admin.ModelAdmin):
     search_fields = ("title", "user__username")
 
 
+@admin.register(TaskList)
+class TaskListAdmin(admin.ModelAdmin):
+    list_display = ("name", "owner", "color", "position")
+    search_fields = ("name", "owner__username")
+
+
+@admin.register(TaskLabel)
+class TaskLabelAdmin(admin.ModelAdmin):
+    list_display = ("name", "owner", "color")
+    search_fields = ("name", "owner__username")
+
+
 @admin.register(Task)
 class TaskAdmin(admin.ModelAdmin):
-    list_display = ("title", "user", "is_done", "due_at", "email_notified_at", "desktop_notified_at")
-    list_filter = ("is_done", "created_at")
+    list_display = ("title", "user", "task_list", "priority", "is_done", "due_at", "email_notified_at", "desktop_notified_at")
+    list_filter = ("is_done", "priority", "recurrence_rule", "created_at")
     search_fields = ("title", "user__username")
 
 

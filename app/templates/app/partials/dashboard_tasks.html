@@ -10,7 +10,10 @@
     <li>
         <span class="event-dot tone-violet"></span>
         <span>
-            <strong>{{ task.title }}</strong>
+            <strong>
+                {{ task.title }}
+                {% if task.priority != "none" %}<i class="fa-solid fa-flag task-priority-flag is-{{ task.priority }}" aria-hidden="true"></i>{% endif %}
+            </strong>
             <small class="{{ task.due_state }}">{{ task.due_label }}</small>
         </span>
     </li>

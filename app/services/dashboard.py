@@ -28,6 +28,12 @@ DASHBOARD_WIDGETS = (
         class_name="clock-panel",
     ),
     DashboardWidget(
+        id="notifications",
+        label="Benachrichtigungen",
+        template="app/partials/dashboard_notifications.html",
+        class_name="notes-panel",
+    ),
+    DashboardWidget(
         id="weather",
         label="Wetter",
         template="app/partials/dashboard_weather.html",

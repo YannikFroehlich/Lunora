@@ -560,10 +560,95 @@
   border-radius: 50%;
 }
 
+.task-priority-flag {
+  margin-left: 5px;
+  font-size: 0.8em;
+}
+
+.task-priority-flag.is-low { color: #8bb3cf; }
+.task-priority-flag.is-medium { color: #e0b872; }
+.task-priority-flag.is-high { color: #e07a76; }
+
 .event-list .empty-events {
   display: block;
   color: var(--color-muted);
   line-height: 1.45;
+}
+
+.notice-list {
+  margin: 14px -8px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.notice-list li {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 15px 8px;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.notice-list li:last-child {
+  border-bottom: 0;
+}
+
+.notice-list .empty-events {
+  display: block;
+  grid-column: 1 / -1;
+  color: var(--color-muted);
+  line-height: 1.45;
+}
+
+.notice-content {
+  min-width: 0;
+}
+
+.notice-content strong,
+.notice-content small {
+  display: block;
+}
+
+.notice-content strong {
+  overflow: hidden;
+  color: var(--color-heading);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notice-content small {
+  margin-top: 5px;
+  color: var(--color-muted);
+  font-size: 0.85rem;
+}
+
+.notice-action-form {
+  margin: 0;
+}
+
+.notice-action {
+  display: inline-grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  color: var(--color-accent-strong);
+  background: rgba(255, 255, 255, 0.42);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 180ms ease, background 180ms ease;
+}
+
+.notice-action:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.panel-title-secondary {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--color-line);
 }
 
 .today-panel {
@@ -638,14 +723,16 @@
 [data-theme="dark"] .dashboard-widget-edit-controls button,
 [data-theme="dark"] .dashboard-widget.is-hidden-by-user::after,
 [data-theme="dark"] .date-strip,
-[data-theme="dark"] .clock-details span {
+[data-theme="dark"] .clock-details span,
+[data-theme="dark"] .notice-action {
   background: rgba(255, 248, 237, 0.12);
   border-color: rgba(255, 248, 237, 0.10);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 14px 28px rgba(0, 0, 0, 0.18);
 }
 
 [data-theme="dark"] .action-tile:hover,
-[data-theme="dark"] .dashboard-widget-edit-controls button:hover {
+[data-theme="dark"] .dashboard-widget-edit-controls button:hover,
+[data-theme="dark"] .notice-action:hover {
   background: rgba(255, 248, 237, 0.18);
 }
 

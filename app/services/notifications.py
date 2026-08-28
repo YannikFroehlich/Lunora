@@ -24,6 +24,7 @@ from app.services.notification_preferences import (
     CHANNEL_EMAIL,
     CHANNEL_INBOX,
     CHANNEL_WEB_PUSH,
+    enabled_notification_kinds,
     filter_channel_items,
     notification_channel_enabled,
     notification_preference_map,
@@ -35,6 +36,44 @@ from app.services.weather_service import get_weather_alert_for_location, weather
 logger = logging.getLogger(__name__)
 
 WEATHER_ALERT_COOLDOWN = timedelta(hours=6)
+
+NOTIFICATION_PRESENTATION = {
+    UserNotification.KIND_CALENDAR_REMINDER: ("fa-calendar-check", "Kalender", "calendar"),
+    UserNotification.KIND_TASK_DUE: ("fa-list-check", "Aufgabe", "task"),
+    UserNotification.KIND_EVENT_INVITATION: ("fa-user-clock", "Einladung", "invitation"),
+    UserNotification.KIND_NOTE_MENTION: ("fa-at", "Erwähnung", "note"),
+    UserNotification.KIND_NOTE_COMMENT: ("fa-comment-dots", "Kommentar", "note"),
+    UserNotification.KIND_NOTE_SHARE: ("fa-share-nodes", "Freigabe", "note"),
+    UserNotification.KIND_WEATHER_ALERT: ("fa-cloud-bolt", "Wetter", "weather"),
+}
+
+
+def notification_display_items(notifications, user):
+    """Attach the shared icon/label/tone presentation to a list of UserNotification rows."""
+    items = []
+    for notification in notifications:
+        icon, label, tone = NOTIFICATION_PRESENTATION.get(notification.kind, ("fa-bell", "Hinweis", "default"))
+        items.append(
+            {
+                "notification": notification,
+                "icon": icon,
+                "label": label,
+                "tone": tone,
+                "created_label": format_user_datetime(notification.created_at, user),
+            }
+        )
+    return items
+
+
+def dashboard_latest_notifications(user, *, limit=5):
+    """Latest unread inbox notifications for the dashboard notification widget."""
+    visible_kinds = enabled_notification_kinds(user, CHANNEL_INBOX)
+    notifications = (
+        UserNotification.objects.filter(recipient=user, kind__in=visible_kinds, read_at__isnull=True)
+        .select_related("actor")
+        .order_by("-created_at", "-id")[:limit]
+    )
+    return notification_display_items(notifications, user)
 
 
 def _create_missing_user_notifications(rows):

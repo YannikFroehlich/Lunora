@@ -483,10 +483,81 @@ class CalendarReminder(models.Model):
         return self.title
 
 
+TASK_COLOR_CHOICES = [
+    ("blue", "Blau"),
+    ("green", "Grün"),
+    ("red", "Rot"),
+    ("sand", "Sand"),
+    ("violet", "Violett"),
+]
+
+
+class TaskList(models.Model):
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="task_lists")
+    name = models.CharField(max_length=80)
+    color = models.CharField(max_length=12, choices=TASK_COLOR_CHOICES, default="blue")
+    position = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["position", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["owner", "name"], name="unique_task_list_name_per_owner"),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class TaskLabel(models.Model):
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="task_labels")
+    name = models.CharField(max_length=40)
+    color = models.CharField(max_length=12, choices=TASK_COLOR_CHOICES, default="blue")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["owner", "name"], name="unique_task_label_name_per_owner"),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
 class Task(models.Model):
+    PRIORITY_NONE = "none"
+    PRIORITY_LOW = "low"
+    PRIORITY_MEDIUM = "medium"
+    PRIORITY_HIGH = "high"
+    PRIORITY_CHOICES = [
+        (PRIORITY_NONE, "Keine"),
+        (PRIORITY_LOW, "Niedrig"),
+        (PRIORITY_MEDIUM, "Mittel"),
+        (PRIORITY_HIGH, "Hoch"),
+    ]
+
+    RECURRENCE_NONE = "none"
+    RECURRENCE_CHOICES = [
+        (RECURRENCE_NONE, "Keine"),
+        ("DAILY", "Täglich"),
+        ("WEEKLY", "Wöchentlich"),
+        ("MONTHLY", "Monatlich"),
+        ("YEARLY", "Jährlich"),
+    ]
+
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="tasks")
+    task_list = models.ForeignKey(
+        TaskList, on_delete=models.SET_NULL, blank=True, null=True, related_name="tasks"
+    )
+    parent = models.ForeignKey(
+        "self", on_delete=models.CASCADE, blank=True, null=True, related_name="subtasks"
+    )
     title = models.CharField(max_length=180)
     due_at = models.DateTimeField(blank=True, null=True)
+    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default=PRIORITY_NONE, blank=True)
+    recurrence_rule = models.CharField(max_length=10, choices=RECURRENCE_CHOICES, default=RECURRENCE_NONE, blank=True)
+    labels = models.ManyToManyField(TaskLabel, blank=True, related_name="tasks")
     is_done = models.BooleanField(default=False)
     email_notified_at = models.DateTimeField(blank=True, null=True)
     desktop_notified_at = models.DateTimeField(blank=True, null=True)

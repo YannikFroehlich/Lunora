@@ -18,9 +18,9 @@ from app.services.notifications import (
     claim_due_note_activity,
     claim_due_weather_alerts,
     materialize_user_notification_sources,
+    notification_display_items,
 )
 from app.services.system_settings import feature_enabled, feature_flags
-from app.services.user_preferences import format_user_datetime
 from app.services.notification_preferences import CHANNEL_INBOX, enabled_notification_kinds
 from app.services.web_push import (
     WebPushTestError,
@@ -28,36 +28,6 @@ from app.services.web_push import (
     remove_web_push_subscription,
     send_test_web_push,
 )
-
-
-NOTIFICATION_PRESENTATION = {
-    UserNotification.KIND_CALENDAR_REMINDER: ("fa-calendar-check", "Kalender", "calendar"),
-    UserNotification.KIND_TASK_DUE: ("fa-list-check", "Aufgabe", "task"),
-    UserNotification.KIND_EVENT_INVITATION: ("fa-user-clock", "Einladung", "invitation"),
-    UserNotification.KIND_NOTE_MENTION: ("fa-at", "Erwähnung", "note"),
-    UserNotification.KIND_NOTE_COMMENT: ("fa-comment-dots", "Kommentar", "note"),
-    UserNotification.KIND_NOTE_SHARE: ("fa-share-nodes", "Freigabe", "note"),
-    UserNotification.KIND_WEATHER_ALERT: ("fa-cloud-bolt", "Wetter", "weather"),
-}
-
-
-def _notification_items(notifications, user):
-    items = []
-    for notification in notifications:
-        icon, label, tone = NOTIFICATION_PRESENTATION.get(
-            notification.kind,
-            ("fa-bell", "Hinweis", "default"),
-        )
-        items.append(
-            {
-                "notification": notification,
-                "icon": icon,
-                "label": label,
-                "tone": tone,
-                "created_label": format_user_datetime(notification.created_at, user),
-            }
-        )
-    return items
 
 
 @login_required
@@ -85,7 +55,7 @@ def notification_center(request):
 
     paginator = Paginator(notifications, 25)
     page = paginator.get_page(request.GET.get("page"))
-    page.object_list = _notification_items(page.object_list, request.user)
+    page.object_list = notification_display_items(page.object_list, request.user)
     return render(
         request,
         "app/notifications.html",
@@ -131,6 +101,19 @@ def notification_toggle_read(request, notification_id):
     )
     notification.read_at = None if notification.read_at else timezone.now()
     notification.save(update_fields=["read_at"])
+
+    return_to = request.POST.get("return_to")
+    if (
+        return_to
+        and return_to.startswith("/")
+        and url_has_allowed_host_and_scheme(
+            return_to,
+            allowed_hosts={request.get_host()},
+            require_https=request.is_secure(),
+        )
+    ):
+        return redirect(return_to)
+
     selected_filter = request.POST.get("status", "unread")
     if selected_filter not in {"unread", "all"}:
         selected_filter = "unread"
