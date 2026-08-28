@@ -24,6 +24,8 @@ private_media/
 .env
 .env.*
 !.env.example
+private_key.pem
+vapid_private_key.pem
 
 # PyCharm / IntelliJ
 .idea/

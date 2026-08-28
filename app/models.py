@@ -557,6 +557,65 @@ class UserNotification(models.Model):
         return self.title
 
 
+class WebPushSubscription(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="web_push_subscriptions",
+    )
+    endpoint = models.TextField()
+    endpoint_hash = models.CharField(max_length=64, unique=True, editable=False)
+    p256dh = models.CharField(max_length=512)
+    auth = models.CharField(max_length=256)
+    user_agent = models.CharField(max_length=500, blank=True)
+    last_success_at = models.DateTimeField(blank=True, null=True)
+    failure_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at", "-id"]
+
+    def __str__(self):
+        return f"Web Push für {self.user}"
+
+
+class WebPushDelivery(models.Model):
+    subscription = models.ForeignKey(
+        WebPushSubscription,
+        on_delete=models.CASCADE,
+        related_name="deliveries",
+    )
+    notification = models.ForeignKey(
+        UserNotification,
+        on_delete=models.CASCADE,
+        related_name="web_push_deliveries",
+    )
+    attempt_count = models.PositiveSmallIntegerField(default=0)
+    last_status_code = models.PositiveSmallIntegerField(blank=True, null=True)
+    attempted_at = models.DateTimeField(blank=True, null=True)
+    delivered_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["subscription", "notification"],
+                name="unique_web_push_delivery",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["delivered_at", "created_at"],
+                name="web_push_pending_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Push-Zustellung {self.pk or 'neu'}"
+
+
 class WeeklySummaryDelivery(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="weekly_summaries")
     week_start = models.DateField()

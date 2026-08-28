@@ -65,3 +65,50 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(serveStaticAsset(request));
   }
 });
+
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch (error) {
+    payload = { body: event.data ? event.data.text() : "" };
+  }
+
+  const title = payload.title || "Lunora";
+  const options = {
+    body: payload.body || "Du hast eine neue Benachrichtigung.",
+    icon: "{% static 'img/icon-192.png' %}?v=brand-3",
+    badge: "{% static 'img/favicon-32.png' %}?v=brand-3",
+    tag: payload.tag || "lunora-notification",
+    data: {
+      url: typeof payload.url === "string" && payload.url.startsWith("/")
+        ? payload.url
+        : "/notifications/",
+    },
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const requestedPath = event.notification.data?.url || "/notifications/";
+  let targetUrl = new URL("/notifications/", self.location.origin);
+  try {
+    const candidate = new URL(requestedPath, self.location.origin);
+    if (candidate.origin === self.location.origin) targetUrl = candidate;
+  } catch (error) {
+    // Keep the safe notification-center fallback for malformed payload URLs.
+  }
+
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (windowClients) => {
+      const existingClient = windowClients.find((client) => new URL(client.url).origin === self.location.origin);
+      if (existingClient) {
+        await existingClient.focus();
+        if ("navigate" in existingClient) await existingClient.navigate(targetUrl.href);
+        return;
+      }
+      if (clients.openWindow) await clients.openWindow(targetUrl.href);
+    })
+  );
+});

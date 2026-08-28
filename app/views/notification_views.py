@@ -1,3 +1,6 @@
+import json
+
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.http import JsonResponse
@@ -5,7 +8,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_http_methods, require_POST
 
 from app.models import UserNotification
 from app.services.notifications import (
@@ -18,6 +21,7 @@ from app.services.notifications import (
 )
 from app.services.system_settings import feature_enabled, feature_flags
 from app.services.user_preferences import format_user_datetime
+from app.services.web_push import register_web_push_subscription, remove_web_push_subscription
 
 
 NOTIFICATION_PRESENTATION = {
@@ -131,6 +135,37 @@ def notification_mark_all_read(request):
         read_at__isnull=True,
     ).update(read_at=timezone.now())
     return redirect(f"{reverse('notification_center')}?status=all")
+
+
+@login_required
+@require_http_methods(["POST", "DELETE"])
+def web_push_subscription(request):
+    if not settings.WEB_PUSH_ENABLED:
+        return JsonResponse(
+            {"ok": False, "error": "Web Push ist auf dem Server nicht eingerichtet."},
+            status=503,
+        )
+    if len(request.body) > 8192:
+        return JsonResponse({"ok": False, "error": "Die Push-Daten sind zu groß."}, status=400)
+
+    try:
+        payload = json.loads(request.body or b"{}")
+    except (TypeError, ValueError, UnicodeDecodeError):
+        return JsonResponse({"ok": False, "error": "Ungültige Push-Daten."}, status=400)
+
+    try:
+        if request.method == "POST":
+            _subscription, created = register_web_push_subscription(
+                request.user,
+                payload,
+                user_agent=request.headers.get("User-Agent", ""),
+            )
+            return JsonResponse({"ok": True, "active": True}, status=201 if created else 200)
+
+        removed = remove_web_push_subscription(request.user, payload.get("endpoint"))
+        return JsonResponse({"ok": True, "active": False, "removed": removed})
+    except (AttributeError, ValueError) as error:
+        return JsonResponse({"ok": False, "error": str(error)}, status=400)
 
 
 @login_required

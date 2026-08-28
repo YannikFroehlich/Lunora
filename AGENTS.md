@@ -10,7 +10,7 @@ Templates are under `app/templates/app/`; reusable page fragments, especially fo
 
 User-uploaded profile media is served from `media/` during development and should not be treated as committed source. Private note attachments live under `private_media/` (`DJANGO_PRIVATE_MEDIA_ROOT`) and are never served directly. Database migrations belong in `app/migrations/`.
 
-Current feature areas include authentication with e-mail-or-username login, profile settings, appearance and regional preferences, weather lookup with a keyless demo fallback, calendar sync from iCal/Google Calendar links plus manually created and invitable events, reminders with e-mail and desktop notifications, a persistent notification center with unread state, a per-user task list with the same notification pattern, weekly summary e-mails, direct messaging (including group chats, file/image attachments, and replies) with unread counts, pinning, reactions, muting, blocking, and live-update partials, a rich-text notes workspace with sharing, versions, per-user color/icon tagging, private attachments and PDF export, a German vacation planner with public-holiday accounting, a customizable dashboard with a fixed widget catalog and per-user layout, and a superuser-only administration page with system-wide feature flags.
+Current feature areas include authentication with e-mail-or-username login, profile settings, appearance and regional preferences, weather lookup with a keyless demo fallback, calendar sync from iCal/Google Calendar links plus manually created and invitable events, reminders with e-mail and Web Push notifications, a persistent notification center with unread state, per-device push subscriptions and retryable delivery rows, a per-user task list with the same notification pattern, weekly summary e-mails, direct messaging (including group chats, file/image attachments, and replies) with unread counts, pinning, reactions, muting, blocking, and live-update partials, a rich-text notes workspace with sharing, versions, per-user color/icon tagging, private attachments and PDF export, a German vacation planner with public-holiday accounting, a customizable dashboard with a fixed widget catalog and per-user layout, and a superuser-only administration page with system-wide feature flags.
 
 ## Build, Test, and Development Commands
 
@@ -59,7 +59,7 @@ Recent commits use short, imperative summaries, for example `Add notification au
 
 Local configuration is loaded from `.env` in `lunora/settings.py`; `.env.example` documents every supported variable. Real environment variables take precedence over `.env`. With `DJANGO_DEBUG=false`, a missing `DJANGO_SECRET_KEY` or `DJANGO_ALLOWED_HOSTS` raises `ImproperlyConfigured` and the HTTPS, HSTS, and secure-cookie settings default to enabled.
 
-Do not commit real secrets, API keys, uploaded media, private note attachments, or `db.sqlite3`. Weather configuration is read from `OPENWEATHER_API_KEY`, `WEATHER_API_KEY`, and related base URL variables; keys stay server-side and map tiles are proxied so browser code never sees them. Calendar sources store private iCal URLs, so avoid logging full URLs or exposing them in templates beyond the owning user's settings; fetches are restricted to public hosts by `app/services/url_safety.py` and must not follow redirects. Note attachments are addressed by UUID and may only be delivered through the permission-checked download view.
+Do not commit real secrets, API keys, VAPID private keys, uploaded media, private note attachments, or `db.sqlite3`. Weather configuration is read from `OPENWEATHER_API_KEY`, `WEATHER_API_KEY`, and related base URL variables; keys stay server-side and map tiles are proxied so browser code never sees them. Calendar sources store private iCal URLs, so avoid logging full URLs or exposing them in templates beyond the owning user's settings; fetches are restricted to public hosts by `app/services/url_safety.py` and must not follow redirects. Web Push endpoints are capability URLs: never log or expose them, keep endpoint-host validation in place, and expose only the public VAPID key to templates. Note attachments are addressed by UUID and may only be delivered through the permission-checked download view.
 
 ## Production Operations Runbook
 
@@ -96,7 +96,8 @@ location: `Windows PC (PowerShell)`, `Ubuntu server`, or `Cloudflare dashboard`.
   manager. Never print, copy into chat, log, commit, or include them in diagnostics.
 - Required secrets include `DJANGO_SECRET_KEY`, `DJANGO_DB_PASSWORD`,
   `DJANGO_EMAIL_HOST_PASSWORD`, `CLOUDFLARE_TURNSTILE_SITE_KEY`, and
-  `CLOUDFLARE_TURNSTILE_SECRET_KEY`. `OPENWEATHER_API_KEY` is expected to be present;
+  `CLOUDFLARE_TURNSTILE_SECRET_KEY`, plus the VAPID private key referenced by
+  `WEB_PUSH_VAPID_PRIVATE_KEY`. `OPENWEATHER_API_KEY` is expected to be present;
   verify only whether it is non-empty and never display its value. The application can
   fall back to keyless demo weather if it is absent.
 - SMTP uses `smtp.strato.de:465` with SSL, user and sender

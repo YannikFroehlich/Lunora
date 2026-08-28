@@ -252,7 +252,7 @@ def get_settings_context(preferences_form=None):
     context["notification_rows"] = [
         _preference_row(preferences_form, "notify_reminders", "Erinnerungszustellung", "Fällige Erinnerungen automatisch zustellen"),
         _preference_row(preferences_form, "notify_email", "E-Mail-Versand", "Fällige Erinnerungen per E-Mail erhalten"),
-        _preference_row(preferences_form, "notify_desktop", "Desktop-Hinweise", "Bei geöffnetem Lunora-Tab im Browser anzeigen"),
+        _preference_row(preferences_form, "notify_desktop", "Web-Push-Zustellung", "Auch bei geschlossener App auf registrierten Geräten anzeigen"),
         _preference_row(preferences_form, "weekly_summary", "Wöchentliche Zusammenfassung", "Montags einen Überblick per E-Mail erhalten"),
     ]
     return context

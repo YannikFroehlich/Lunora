@@ -406,7 +406,7 @@ class ProfilePreferencesForm(forms.ModelForm):
         labels = {
             "notify_email": "E-Mail Benachrichtigungen",
             "notify_reminders": "Erinnerungen",
-            "notify_desktop": "Desktop Hinweise",
+            "notify_desktop": "Web-Push-Zustellung",
             "weekly_summary": "Wöchentliche Zusammenfassung",
             "weather_default_city": "Standard-Wetterort",
         }

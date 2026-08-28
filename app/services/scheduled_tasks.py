@@ -13,6 +13,10 @@ from app.services.notifications import (
     send_weekly_summaries,
 )
 from app.services.system_settings import feature_enabled
+from app.services.web_push import (
+    materialize_web_push_weather_alerts,
+    send_pending_web_push_notifications,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -38,6 +42,11 @@ def run_scheduled_tasks(*, now=None):
     else:
         task_reminder_result = {"sent": 0, "failed": 0, "disabled": True}
     weekly_result = send_weekly_summaries(now=current_time)
+    if feature_enabled("weather"):
+        weather_push_result = materialize_web_push_weather_alerts(now=current_time)
+    else:
+        weather_push_result = {"created": 0, "failed": 0, "disabled": True}
+    web_push_result = send_pending_web_push_notifications(now=current_time)
     return {
         "calendar_sync": sync_result,
         "reminder_emails": reminder_result,
@@ -45,6 +54,8 @@ def run_scheduled_tasks(*, now=None):
         "note_activity_emails": note_activity_result,
         "task_reminder_emails": task_reminder_result,
         "weekly_summaries": weekly_result,
+        "weather_push_alerts": weather_push_result,
+        "web_push": web_push_result,
     }
 
 

@@ -16,6 +16,7 @@ from .notification_views import (
     notification_mark_all_read,
     notification_open,
     notification_toggle_read,
+    web_push_subscription,
 )
 from .pwa_views import offline, service_worker
 from .note_views import (
@@ -74,6 +75,7 @@ __all__ = [
     "notification_mark_all_read",
     "notification_open",
     "notification_toggle_read",
+    "web_push_subscription",
     "offline",
     "service_worker",
     "notes",

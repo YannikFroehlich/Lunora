@@ -55,6 +55,11 @@ urlpatterns = [
         name="official_holiday_override_reset",
     ),
     path("notifications/claim/", view.claim_desktop_notifications, name="notification_claim"),
+    path(
+        "notifications/push-subscription/",
+        view.web_push_subscription,
+        name="web_push_subscription",
+    ),
     path("notifications/", view.notification_center, name="notification_center"),
     path(
         "notifications/mark-all-read/",

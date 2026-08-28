@@ -293,11 +293,27 @@ if (document.readyState === "loading") {
 
 window.addEventListener("pageshow", initFlashMessages);
 
-function initDesktopReminderNotifications() {
+async function hasActiveWebPushSubscription() {
+  const pushUrl = document.documentElement.dataset.webPushSubscriptionUrl;
+  if (!pushUrl || !("serviceWorker" in navigator) || !("PushManager" in window)) return false;
+  try {
+    const registration = await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise((resolve) => window.setTimeout(() => resolve(null), 4000)),
+    ]);
+    if (!registration) return false;
+    return Boolean(await registration.pushManager.getSubscription());
+  } catch (error) {
+    return false;
+  }
+}
+
+async function initDesktopReminderNotifications() {
   const claimUrl = document.documentElement.dataset.notificationClaimUrl;
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
   if (!isAuthenticated || !claimUrl || !csrfToken || !("Notification" in window)) return;
   if (Notification.permission !== "granted") return;
+  if (await hasActiveWebPushSubscription()) return;
 
   let claimInProgress = false;
   const claimNotifications = async () => {

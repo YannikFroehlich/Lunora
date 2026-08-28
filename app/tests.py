@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from email.message import Message
 from io import StringIO
+from types import SimpleNamespace
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from urllib.error import HTTPError, URLError
@@ -23,7 +24,7 @@ from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
 from app.forms import CalendarSourceForm, ProfileForm
-from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, CalendarSource, ChatMessage, ChatMessageAttachment, ChatMessageReaction, Conversation, ConversationMember, CustomHoliday, Note, NoteActivityNotification, NoteAttachment, NoteCommentThread, NoteFolder, NoteLink, NoteShare, NoteTemplate, NoteUserState, NoteVersion, OfficialHoliday, Profile, SystemSettings, Task, UserNotification, VacationPeriod, VacationYear, WeatherLocation, WeeklySummaryDelivery
+from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, CalendarSource, ChatMessage, ChatMessageAttachment, ChatMessageReaction, Conversation, ConversationMember, CustomHoliday, Note, NoteActivityNotification, NoteAttachment, NoteCommentThread, NoteFolder, NoteLink, NoteShare, NoteTemplate, NoteUserState, NoteVersion, OfficialHoliday, Profile, SystemSettings, Task, UserNotification, VacationPeriod, VacationYear, WeatherLocation, WebPushDelivery, WebPushSubscription, WeeklySummaryDelivery
 from app.services.calendar_service import fetch_ical, parse_ical_events
 from app.services.calendar_sync_queue import queue_calendar_sources
 from app.services.dashboard import DASHBOARD_WIDGET_IDS, default_dashboard_layout, normalize_dashboard_layout
@@ -37,6 +38,11 @@ from app.services.notifications import (
     send_weekly_summaries,
 )
 from app.services.scheduled_tasks import run_scheduled_tasks, sync_due_calendars
+from app.services.web_push import (
+    materialize_web_push_weather_alerts,
+    register_web_push_subscription,
+    send_pending_web_push_notifications,
+)
 from app.services.weather_service import (
     WEATHER_MAP_LAYERS,
     _build_weather_alert,
@@ -209,6 +215,15 @@ class PwaTests(TestCase):
         self.assertNotIn("/calendar/", content)
         self.assertNotIn("/media/", content)
         self.assertNotIn("/private_media/", content)
+
+    def test_service_worker_handles_web_push_and_notification_clicks(self):
+        response = self.client.get("/service-worker.js")
+        content = response.content.decode("utf-8")
+
+        self.assertIn('self.addEventListener("push"', content)
+        self.assertIn('self.addEventListener("notificationclick"', content)
+        self.assertIn("showNotification", content)
+        self.assertIn("clients.openWindow", content)
 
     def test_offline_page_is_public_and_neutral(self):
         response = self.client.get("/offline/")
@@ -2551,6 +2566,238 @@ class NotificationCenterTests(TestCase):
         unread.refresh_from_db()
         self.assertIsNotNone(unread.read_at)
         self.assertFalse(UserNotification.objects.filter(recipient=self.user, read_at__isnull=True).exists())
+
+
+@override_settings(
+    PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"],
+    WEB_PUSH_ENABLED=True,
+    WEB_PUSH_VAPID_PUBLIC_KEY="B" * 87,
+    WEB_PUSH_VAPID_PRIVATE_KEY="test-private-key",
+    WEB_PUSH_VAPID_SUBJECT="mailto:push@example.com",
+    WEB_PUSH_ALLOWED_ENDPOINT_HOSTS=[
+        "fcm.googleapis.com",
+        "updates.push.services.mozilla.com",
+        "notify.windows.com",
+        "push.apple.com",
+    ],
+    WEB_PUSH_TTL_SECONDS=600,
+    WEB_PUSH_TIMEOUT_SECONDS=10,
+    WEB_PUSH_MAX_ATTEMPTS=5,
+)
+class WebPushTests(TestCase):
+    endpoint = "https://fcm.googleapis.com/fcm/send/test-device-token"
+    subscription_payload = {
+        "endpoint": endpoint,
+        "keys": {"p256dh": "A" * 87, "auth": "B" * 22},
+    }
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="push@example.com",
+            email="push@example.com",
+            password="secret-12345",
+        )
+        Profile.objects.create(
+            user=self.user,
+            display_name="Push",
+            notify_desktop=True,
+        )
+        self.other = User.objects.create_user(
+            username="other-push@example.com",
+            email="other-push@example.com",
+            password="secret-12345",
+        )
+        Profile.objects.create(user=self.other, display_name="Other Push", notify_desktop=True)
+
+    def create_subscription(self, user=None):
+        subscription, _created = register_web_push_subscription(
+            user or self.user,
+            self.subscription_payload,
+            user_agent="Test Browser",
+        )
+        return subscription
+
+    def test_subscription_endpoint_requires_login_and_stores_current_device(self):
+        anonymous_response = self.client.post(
+            "/notifications/push-subscription/",
+            data=json.dumps(self.subscription_payload),
+            content_type="application/json",
+        )
+        self.assertRedirects(
+            anonymous_response,
+            "/login/?next=/notifications/push-subscription/",
+        )
+
+        self.client.force_login(self.user)
+        response = self.client.post(
+            "/notifications/push-subscription/",
+            data=json.dumps(self.subscription_payload),
+            content_type="application/json",
+            HTTP_USER_AGENT="Test Browser 1.0",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        subscription = WebPushSubscription.objects.get(user=self.user)
+        self.assertEqual(subscription.endpoint, self.endpoint)
+        self.assertEqual(subscription.user_agent, "Test Browser 1.0")
+        self.assertNotEqual(subscription.endpoint_hash, self.endpoint)
+
+    def test_subscription_endpoint_rejects_untrusted_push_host(self):
+        self.client.force_login(self.user)
+        payload = {
+            **self.subscription_payload,
+            "endpoint": "https://127.0.0.1/internal-service",
+        }
+
+        response = self.client.post(
+            "/notifications/push-subscription/",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(WebPushSubscription.objects.exists())
+
+    @override_settings(WEB_PUSH_ENABLED=False)
+    def test_subscription_endpoint_reports_missing_server_configuration(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            "/notifications/push-subscription/",
+            data=json.dumps(self.subscription_payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("nicht eingerichtet", response.json()["error"])
+
+    def test_settings_exposes_public_key_and_device_activation(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get("/settings/")
+
+        self.assertContains(response, f'data-web-push-public-key="{"B" * 87}"')
+        self.assertContains(response, "Auf diesem Gerät aktivieren")
+        self.assertNotContains(response, "test-private-key")
+
+    def test_subscription_delete_is_user_scoped(self):
+        self.create_subscription(self.other)
+        self.client.force_login(self.user)
+
+        response = self.client.delete(
+            "/notifications/push-subscription/",
+            data=json.dumps({"endpoint": self.endpoint}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["removed"])
+        self.assertTrue(WebPushSubscription.objects.filter(user=self.other).exists())
+
+    def test_pending_notification_is_sent_once_per_registered_device(self):
+        subscription = self.create_subscription()
+        notification = UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_TASK_DUE,
+            title="Aufgabe fällig: Rechnung",
+            body="Fällig heute um 12:00 Uhr",
+            url="/tasks/",
+            source_key="task:push-1",
+        )
+
+        with patch("app.services.web_push.webpush") as send_push:
+            first_result = send_pending_web_push_notifications()
+            second_result = send_pending_web_push_notifications()
+
+        self.assertEqual(first_result, {"sent": 1, "failed": 0, "removed": 0, "queued": 1})
+        self.assertEqual(second_result, {"sent": 0, "failed": 0, "removed": 0, "queued": 0})
+        send_push.assert_called_once()
+        payload = json.loads(send_push.call_args.kwargs["data"])
+        self.assertEqual(payload["title"], notification.title)
+        self.assertEqual(payload["url"], "/tasks/")
+        self.assertEqual(send_push.call_args.kwargs["ttl"], 600)
+        delivery = WebPushDelivery.objects.get(subscription=subscription, notification=notification)
+        self.assertIsNotNone(delivery.delivered_at)
+        self.assertEqual(delivery.attempt_count, 1)
+        subscription.refresh_from_db()
+        self.assertIsNotNone(subscription.last_success_at)
+
+    def test_notifications_created_before_device_registration_are_not_backfilled(self):
+        UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_NOTE_SHARE,
+            title="Alte Freigabe",
+            source_key="note-share:old",
+        )
+        self.create_subscription()
+
+        with patch("app.services.web_push.webpush") as send_push:
+            result = send_pending_web_push_notifications()
+
+        self.assertEqual(result["queued"], 0)
+        send_push.assert_not_called()
+
+    def test_expired_subscription_is_removed_after_gone_response(self):
+        subscription = self.create_subscription()
+        UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_EVENT_INVITATION,
+            title="Einladung",
+            source_key="event-invitation:push-1",
+        )
+        response = SimpleNamespace(status_code=410)
+
+        from pywebpush import WebPushException
+
+        with patch(
+            "app.services.web_push.webpush",
+            side_effect=WebPushException("Gone", response=response),
+        ):
+            result = send_pending_web_push_notifications()
+
+        self.assertEqual(result["removed"], 1)
+        self.assertFalse(WebPushSubscription.objects.filter(pk=subscription.pk).exists())
+        self.assertFalse(WebPushDelivery.objects.exists())
+
+    def test_transient_delivery_failure_remains_retryable(self):
+        subscription = self.create_subscription()
+        notification = UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_NOTE_COMMENT,
+            title="Neuer Kommentar",
+            source_key="note-comment:push-1",
+        )
+        response = SimpleNamespace(status_code=503)
+
+        from pywebpush import WebPushException
+
+        with patch(
+            "app.services.web_push.webpush",
+            side_effect=WebPushException("Unavailable", response=response),
+        ):
+            result = send_pending_web_push_notifications()
+
+        self.assertEqual(result["failed"], 1)
+        delivery = WebPushDelivery.objects.get(subscription=subscription, notification=notification)
+        self.assertEqual(delivery.attempt_count, 1)
+        self.assertEqual(delivery.last_status_code, 503)
+        self.assertIsNone(delivery.delivered_at)
+        subscription.refresh_from_db()
+        self.assertEqual(subscription.failure_count, 1)
+
+    def test_weather_alerts_are_checked_once_per_user_with_multiple_devices(self):
+        self.create_subscription()
+        second_payload = {
+            **self.subscription_payload,
+            "endpoint": "https://updates.push.services.mozilla.com/wpush/v2/second-device",
+        }
+        register_web_push_subscription(self.user, second_payload)
+
+        with patch("app.services.notifications.claim_due_weather_alerts", return_value=[{"id": "alert"}]) as claim:
+            result = materialize_web_push_weather_alerts()
+
+        self.assertEqual(result, {"created": 1, "failed": 0})
+        claim.assert_called_once()
 
 
 class WeatherMapTests(TestCase):

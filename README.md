@@ -10,7 +10,7 @@ Lunora ist ein kleines Django-basiertes Workspace-Dashboard mit ruhiger Glas-UI.
 - Wetterseite mit Ortssuche, Demo-Daten ohne API-Key, OpenWeather-Anbindung und Regenradar-Proxy
 - Kalenderseite mit privatem iCal-/Google-Kalender-Link, Synchronisierung, Monatsübersicht, Tagesliste, kommenden Terminen und Erinnerungen
 - Nachrichtenseite mit Direktunterhaltungen, ungelesenen Nachrichten, Live-Updates, Reaktionen, angepinnten Nachrichten, Lesestatus, Stummschalten und Blockieren
-- Zentrale Benachrichtigungs-Inbox mit ungelesenem Badge, Filter, Lesestatus und dauerhaften Hinweisen für Termineinladungen, Erinnerungen, Aufgaben, Notizaktivitäten, Freigaben und Wetterwarnungen
+- Zentrale Benachrichtigungs-Inbox mit ungelesenem Badge, Filter, Lesestatus und Web-Push-Zustellung für Termineinladungen, Erinnerungen, Aufgaben, Notizaktivitäten, Freigaben und Wetterwarnungen
 - Notizbereich mit Rich-Text-Editor, Autosave, frei belegbaren Hotkeys, Hashtags, Freigaben, Versionen, privaten Anhängen, layoutgetreuem PDF-Export, Archiv und Papierkorb
 - Responsive UI mit gemeinsamen Design-Tokens, Darkmode-Kontrast, Fokuszuständen und gestylten Scrollbars
 
@@ -23,6 +23,7 @@ Lunora ist ein kleines Django-basiertes Workspace-Dashboard mit ruhiger Glas-UI.
 - Vanilla CSS und JavaScript
 - Tiptap 3 und Vite für das lokal gebündelte Notiz-Frontend
 - ReportLab und Pillow für den serverseitigen, berechtigungsgeprüften Notiz-PDF-Export
+- pywebpush für verschlüsselte Web-Push-Zustellung mit VAPID
 
 ## Projektstruktur
 
@@ -81,8 +82,9 @@ der Web-Request selbst lädt keine externen iCal-Dateien. Deshalb muss dieser Pr
 Deployment dauerhaft, beispielsweise als eigener systemd-Service, laufen. Atomare
 Markierungen verhindern doppelte Kalender-Syncs, falls sich zwei Durchläufe überschneiden.
 Fehlgeschlagene Quellen werden frühestens nach ihrem konfigurierten Sync-Intervall erneut
-versucht. Desktop-Hinweise werden bei erteilter Browserfreigabe zugestellt, solange
-mindestens ein Lunora-Tab geöffnet ist.
+versucht. Web-Push-Hinweise werden bei erteilter Browserfreigabe über den Service
+Worker zugestellt, auch wenn kein Lunora-Tab geöffnet ist. Ohne eingerichtete
+VAPID-Schlüssel bleibt die bisherige Zustellung bei geöffnetem Tab als Fallback verfügbar.
 
 Für einen einzelnen Durchlauf, beispielsweise über die Windows-Aufgabenplanung oder Cron, genügt:
 
@@ -119,6 +121,10 @@ DJANGO_SECURE_HSTS_SECONDS=0
 OPENWEATHER_API_KEY=
 WEATHER_DEFAULT_CITY=Buende,de
 WEATHER_CACHE_SECONDS=600
+
+WEB_PUSH_VAPID_PUBLIC_KEY=
+WEB_PUSH_VAPID_PRIVATE_KEY=
+WEB_PUSH_VAPID_SUBJECT=
 ```
 
 Wichtige Variablen:
@@ -152,8 +158,29 @@ Wichtige Variablen:
 - `CLOUDFLARE_TURNSTILE_REQUIRED` und die `CLOUDFLARE_TURNSTILE_*`-Variablen: serverseitig validierter Bot-Schutz für die öffentliche Registrierung
 - `LUNORA_AUTOMATION_INTERVAL_SECONDS`: Intervall des dauerhaft laufenden Automatikprozesses
 - `LUNORA_WEEKLY_SUMMARY_HOUR`: lokale Montagstunde, ab der ein Wochenbericht versendet wird
+- `WEB_PUSH_VAPID_PUBLIC_KEY`: öffentlicher URL-safe-Base64-Schlüssel für Browser-Abonnements
+- `WEB_PUSH_VAPID_PRIVATE_KEY`: geheimer VAPID-Schlüssel oder Pfad zu einer PEM-Datei außerhalb des Repositorys
+- `WEB_PUSH_VAPID_SUBJECT`: Kontaktkennung des Betreibers, beispielsweise `mailto:webmaster@example.com`
+- `WEB_PUSH_ALLOWED_ENDPOINT_HOSTS`: erlaubte Push-Dienst-Domains; schützt den späteren Versand vor frei wählbaren Ziel-URLs
+- `WEB_PUSH_TTL_SECONDS`, `WEB_PUSH_TIMEOUT_SECONDS` und `WEB_PUSH_MAX_ATTEMPTS`: Zustellungsdauer, Netzwerk-Timeout und Wiederholungsgrenze
 
 Ohne Wetter-API-Key zeigt Lunora Demo-Wetterdaten und eine Radar-Vorschau.
+
+### VAPID-Schlüssel für Web Push
+
+Ein Schlüsselpaar wird einmal pro Installation erzeugt und anschließend dauerhaft
+außerhalb des Repositorys aufbewahrt. Nach Installation der Python-Abhängigkeiten:
+
+```text
+vapid --gen
+vapid --applicationServerKey --private-key private_key.pem
+```
+
+Der zweite Befehl liefert den öffentlichen `WEB_PUSH_VAPID_PUBLIC_KEY`. Für
+`WEB_PUSH_VAPID_PRIVATE_KEY` kann direkt der geschützte Pfad zu `private_key.pem`
+verwendet werden. Der private Schlüssel darf weder committet noch in Logs ausgegeben
+werden. Nach einer Änderung der drei VAPID-Variablen müssen Web- und Automationsdienst
+neu gestartet werden.
 
 ### Datenbank lokal und auf dem Ubuntu-Server
 

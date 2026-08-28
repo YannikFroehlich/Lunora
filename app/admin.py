@@ -22,6 +22,8 @@ from app.models import (
     UserNotification,
     VacationPeriod,
     VacationYear,
+    WebPushDelivery,
+    WebPushSubscription,
     WeeklySummaryDelivery,
 )
 
@@ -123,6 +125,50 @@ class UserNotificationAdmin(admin.ModelAdmin):
     search_fields = ("title", "body", "recipient__username", "recipient__email")
     autocomplete_fields = ("recipient", "actor")
     readonly_fields = ("source_key", "created_at")
+
+
+@admin.register(WebPushSubscription)
+class WebPushSubscriptionAdmin(admin.ModelAdmin):
+    list_display = ("user", "last_success_at", "failure_count", "created_at", "updated_at")
+    list_filter = ("created_at", "last_success_at")
+    search_fields = ("user__username", "user__email")
+    fields = ("user", "user_agent", "last_success_at", "failure_count", "created_at", "updated_at")
+    readonly_fields = (
+        "user",
+        "user_agent",
+        "last_success_at",
+        "failure_count",
+        "created_at",
+        "updated_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+
+@admin.register(WebPushDelivery)
+class WebPushDeliveryAdmin(admin.ModelAdmin):
+    list_display = (
+        "notification",
+        "subscription",
+        "attempt_count",
+        "last_status_code",
+        "delivered_at",
+    )
+    list_filter = ("delivered_at", "last_status_code", "created_at")
+    search_fields = ("notification__title", "subscription__user__username")
+    readonly_fields = (
+        "notification",
+        "subscription",
+        "attempt_count",
+        "last_status_code",
+        "attempted_at",
+        "delivered_at",
+        "created_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
 
 
 @admin.register(WeeklySummaryDelivery)
