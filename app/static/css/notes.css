@@ -788,6 +788,52 @@
   border-right: 1px solid var(--glass-border-soft);
 }
 
+.toolbar-tabs {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface-control);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: 10px;
+}
+
+.toolbar-tab {
+  height: 30px;
+  padding: 0 12px;
+  color: var(--color-muted);
+  background: transparent;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+/* Higher-specificity overrides of the generic `.note-toolbar button:hover/.is-active`
+   rule below, which would otherwise win on specificity and mute these tab colors. */
+.note-toolbar .toolbar-tab:hover {
+  color: var(--color-heading);
+  background: transparent;
+}
+
+.note-toolbar .toolbar-tab.is-active {
+  color: #fff;
+  background: var(--color-accent);
+}
+
+.toolbar-panel {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 7px;
+}
+
+.toolbar-panel[hidden] {
+  display: none;
+}
+
 .note-toolbar button,
 .toolbar-color {
   min-width: 34px;
@@ -1649,6 +1695,7 @@
   .note-editor-page { min-height: calc(100dvh - 290px); padding: 24px 18px; }
   .note-editor-page .tiptap { min-height: calc(100dvh - 350px); }
   .note-toolbar { flex-wrap: nowrap; overflow-x: auto; padding-inline: 7px; }
+  .toolbar-panel { flex-wrap: nowrap; }
   .table-operation-grid { grid-template-columns: 1fr; }
   .shortcut-row { grid-template-columns: 1fr 1fr 36px; }
 }

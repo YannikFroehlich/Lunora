@@ -670,6 +670,7 @@ function initNotesApp() {
   initializeNoteTreeDragAndDrop();
   initializeBulkSelection();
   initializeEditorZoom();
+  initToolbarTabs();
 
   titleInput?.addEventListener("input", markDirty);
   titleInput?.addEventListener("change", markDirty);
@@ -942,8 +943,54 @@ function initNotesApp() {
 
   function openFormatControl(format) {
     const control = document.querySelector(`[data-format="${format}"]`);
-    control?.focus();
-    control?.click();
+    if (!control) return;
+    const panel = control.closest("[data-toolbar-panel]");
+    if (panel?.hidden) activateToolbarTab(panel.dataset.toolbarPanel);
+    control.focus();
+    control.click();
+  }
+
+  function activateToolbarTab(name, { focusTab = false } = {}) {
+    const tabs = Array.from(document.querySelectorAll("[data-toolbar-tab]"));
+    const panels = Array.from(document.querySelectorAll("[data-toolbar-panel]"));
+    const activeTab = tabs.find((tab) => tab.dataset.toolbarTab === name);
+    if (!activeTab) return;
+
+    tabs.forEach((tab) => {
+      const isActive = tab === activeTab;
+      tab.classList.toggle("is-active", isActive);
+      tab.setAttribute("aria-selected", String(isActive));
+      tab.tabIndex = isActive ? 0 : -1;
+    });
+    panels.forEach((panel) => {
+      panel.hidden = panel.dataset.toolbarPanel !== name;
+    });
+    if (focusTab) activeTab.focus();
+  }
+
+  function initToolbarTabs() {
+    const tabsContainer = document.querySelector("[data-toolbar-tabs]");
+    const tabs = Array.from(document.querySelectorAll("[data-toolbar-tab]"));
+    if (!tabsContainer || !tabs.length) return;
+
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => activateToolbarTab(tab.dataset.toolbarTab));
+    });
+
+    tabsContainer.addEventListener("keydown", (event) => {
+      const currentIndex = tabs.indexOf(document.activeElement);
+      if (currentIndex === -1) return;
+
+      let nextIndex = currentIndex;
+      if (event.key === "ArrowRight" || event.key === "ArrowDown") nextIndex = (currentIndex + 1) % tabs.length;
+      else if (event.key === "ArrowLeft" || event.key === "ArrowUp") nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+      else if (event.key === "Home") nextIndex = 0;
+      else if (event.key === "End") nextIndex = tabs.length - 1;
+      else return;
+
+      event.preventDefault();
+      activateToolbarTab(tabs[nextIndex].dataset.toolbarTab, { focusTab: true });
+    });
   }
 
   function sinkCurrentListItem() {
