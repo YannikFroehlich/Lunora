@@ -1023,11 +1023,26 @@ function initNotesApp() {
     }
   }
 
+  function currentSelectionElement() {
+    if (!editor) return null;
+    try {
+      const dom = editor.view.domAtPos(editor.state.selection.$from.pos).node;
+      return dom.nodeType === window.Node.TEXT_NODE ? dom.parentElement : dom;
+    } catch (_error) {
+      return null;
+    }
+  }
+
   function updateToolbarState() {
     if (!editor) return;
     const inCodeBlock = editor.isActive("codeBlock");
+    const selectionElement = currentSelectionElement();
+    const computedStyle = selectionElement ? window.getComputedStyle(selectionElement) : null;
+    const effectivelyBold = computedStyle
+      ? computedStyle.fontWeight === "bold" || Number.parseInt(computedStyle.fontWeight, 10) >= 600
+      : false;
     const active = {
-      bold: editor.isActive("bold"), italic: editor.isActive("italic"), underline: editor.isActive("underline"),
+      bold: editor.isActive("bold") || effectivelyBold, italic: editor.isActive("italic"), underline: editor.isActive("underline"),
       strike: editor.isActive("strike"), superscript: editor.isActive("superscript"), subscript: editor.isActive("subscript"),
       bulletList: editor.isActive("bulletList"), orderedList: editor.isActive("orderedList"),
       taskList: editor.isActive("taskList"), alignLeft: editor.isActive({ textAlign: "left" }),
@@ -1055,7 +1070,19 @@ function initNotesApp() {
     const fontFamilySelect = document.querySelector('[data-format="fontFamily"]');
     if (fontFamilySelect) fontFamilySelect.value = textStyle.fontFamily || "Inter";
     const fontSizeSelect = document.querySelector('[data-format="fontSize"]');
-    if (fontSizeSelect) fontSizeSelect.value = textStyle.fontSize || "16px";
+    if (fontSizeSelect) {
+      if (textStyle.fontSize) {
+        fontSizeSelect.value = textStyle.fontSize;
+      } else {
+        const computedPx = computedStyle ? Number.parseFloat(computedStyle.fontSize) : 16;
+        const available = Array.from(fontSizeSelect.options, (option) => Number.parseInt(option.value, 10));
+        const nearest = available.reduce(
+          (best, size) => (Math.abs(size - computedPx) < Math.abs(best - computedPx) ? size : best),
+          available[0],
+        );
+        fontSizeSelect.value = `${nearest}px`;
+      }
+    }
     const lineHeightSelect = document.querySelector('[data-format="lineHeight"]');
     if (lineHeightSelect) lineHeightSelect.value = textStyle.lineHeight || "1.5";
     const textColorInput = document.querySelector('[data-format="textColor"]');
