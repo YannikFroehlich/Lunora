@@ -1044,6 +1044,24 @@ function initNotesApp() {
     if (languageSelect && inCodeBlock) {
       languageSelect.value = editor.getAttributes("codeBlock").language || "";
     }
+
+    const blockSelect = document.querySelector('[data-format="block"]');
+    if (blockSelect) {
+      const headingLevel = [1, 2, 3].find((level) => editor.isActive("heading", { level }));
+      blockSelect.value = headingLevel ? `heading${headingLevel}` : "paragraph";
+    }
+
+    const textStyle = editor.getAttributes("textStyle");
+    const fontFamilySelect = document.querySelector('[data-format="fontFamily"]');
+    if (fontFamilySelect) fontFamilySelect.value = textStyle.fontFamily || "Inter";
+    const fontSizeSelect = document.querySelector('[data-format="fontSize"]');
+    if (fontSizeSelect) fontSizeSelect.value = textStyle.fontSize || "16px";
+    const lineHeightSelect = document.querySelector('[data-format="lineHeight"]');
+    if (lineHeightSelect) lineHeightSelect.value = textStyle.lineHeight || "1.5";
+    const textColorInput = document.querySelector('[data-format="textColor"]');
+    if (textColorInput) textColorInput.value = textStyle.color || "#40372f";
+    const highlightInput = document.querySelector('[data-format="highlight"]');
+    if (highlightInput) highlightInput.value = editor.getAttributes("highlight").color || "#f1d99e";
   }
 
   function updateCounts() {
