@@ -386,11 +386,7 @@
 
 .note-folder-contents .note-list-card {
   padding: 6px 10px;
-  border-radius: 9px;
-}
-
-.note-folder-contents .note-list-card.is-active {
-  padding-left: 7px;
+  border-radius: 11px;
 }
 
 .notes-tree-item {
@@ -441,6 +437,7 @@
 }
 
 .note-list-card {
+  position: relative;
   min-height: 36px;
   display: flex;
   align-items: center;
@@ -450,7 +447,7 @@
   text-decoration: none;
   background: color-mix(in srgb, var(--surface-control) 68%, transparent);
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: 12px;
   transition: 160ms ease;
 }
 
@@ -462,9 +459,15 @@
   box-shadow: var(--shadow-soft);
 }
 
-.note-list-card.is-active {
-  padding-left: 8px;
-  border-left: 3px solid var(--color-accent-strong);
+.note-list-card.is-active::after {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 3px;
+  width: 2px;
+  content: "";
+  background: var(--color-accent-strong);
+  border-radius: 999px;
 }
 
 .note-list-card-link {
@@ -1017,15 +1020,22 @@
   padding: 68px 72px 72px;
   color: #332d27;
   background: #fffdf9;
-  border: 1px solid rgba(128, 103, 74, 0.13);
-  border-radius: 5px;
+  border: 1px solid rgba(128, 103, 74, 0.1);
+  border-radius: 10px;
   box-shadow: 0 18px 48px rgba(73, 56, 38, 0.12);
 }
 
 [data-theme="dark"] .note-editor-page {
   color: #e9e1d8;
   background: #2d2925;
-  border-color: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+/* Focus ring belongs on the rounded page, not the borderless contenteditable
+   area — see the "Focus rings on wrapped inputs" rule in base.css. */
+.note-editor-page:focus-within {
+  border-color: rgba(181, 150, 104, 0.55);
+  box-shadow: 0 0 0 2px rgba(181, 150, 104, 0.14);
 }
 
 .note-editor-page .tiptap {
@@ -1033,6 +1043,10 @@
   min-height: 580px;
   outline: 0;
   line-height: 1.5;
+}
+
+.note-editor-page .tiptap:focus-visible {
+  box-shadow: none;
 }
 
 .note-editor-page .tiptap p { margin: 0.5em 0; }
