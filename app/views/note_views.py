@@ -11,7 +11,17 @@ from django.shortcuts import redirect, render
 from django.utils.http import content_disposition_header
 from django.views.decorators.http import require_http_methods
 
-from app.models import Note, NoteAttachment, NoteCommentThread, NoteFolder, NoteShare, NoteTemplate, NoteVersion, Profile
+from app.models import (
+    Note,
+    NoteAttachment,
+    NoteCommentThread,
+    NoteFolder,
+    NoteShare,
+    NoteTemplate,
+    NoteUserState,
+    NoteVersion,
+    Profile,
+)
 from app.services.note_content import NOTE_TEMPLATE_LABELS, NOTE_TEMPLATES
 from app.services.note_files import NOTE_FILE_ACCEPT, NOTE_IMAGE_ACCEPT
 from app.services.note_markdown import note_markdown_filename, render_note_markdown
@@ -49,6 +59,7 @@ from app.services.notes import (
     serialize_version,
     set_comment_thread_resolved,
     set_note_folder,
+    set_note_style,
     set_personal_state,
     set_trash_state,
     share_note,
@@ -63,7 +74,7 @@ SHORTCUT_ACTIONS = {
     "outdent", "fontFamily", "fontSize", "textColor", "highlight", "lineHeight",
     "image", "attachment", "horizontalRule", "insertMath", "insertTable", "addRowBefore", "addRowAfter",
     "addColumnBefore", "addColumnAfter", "deleteRow", "deleteColumn", "deleteTable",
-    "mergeCells", "splitCell", "clearFormat", "newNote", "focusSearch", "pin", "archive",
+    "mergeCells", "splitCell", "clearFormat", "newNote", "focusSearch", "pin", "archive", "style",
     "duplicate", "trash", "share", "versions", "exportPdf", "exportMarkdown", "saveAsTemplate", "shortcutSettings",
 }
 RESERVED_SHORTCUTS = {"Mod+W", "Mod+T", "Mod+N", "Mod+L", "Mod+R", "Mod+Shift+N"}
@@ -260,6 +271,8 @@ def notes(request, note_id=None):
         "note_templates": [{"key": key, "label": NOTE_TEMPLATE_LABELS[key]} for key in NOTE_TEMPLATES],
         "custom_note_templates": [serialize_note_template(t) for t in list_note_templates(request.user)],
         "shortcut_overrides": getattr(getattr(request.user, "profile", None), "note_shortcuts", {}),
+        "note_color_choices": NoteUserState.COLOR_CHOICES,
+        "note_icon_choices": NoteUserState.ICON_CHOICES,
     }
     return render(request, "app/notes.html", context)
 
@@ -509,6 +522,9 @@ def note_action_api(request, note_id):
         action = payload.get("action")
         if action in {"pin", "unpin", "archive", "unarchive"}:
             note = set_personal_state(request.user, note_id, action=action)
+            return JsonResponse({"ok": True, "note": serialize_note(note, request.user)})
+        if action == "style":
+            note = set_note_style(request.user, note_id, color=payload.get("color"), icon=payload.get("icon"))
             return JsonResponse({"ok": True, "note": serialize_note(note, request.user)})
         if action in {"trash", "restore", "purge"}:
             note = set_trash_state(request.user, note_id, action=action)

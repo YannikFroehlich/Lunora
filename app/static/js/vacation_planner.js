@@ -70,4 +70,35 @@
         form.querySelector('[name="start_date"]')?.addEventListener("change", trigger);
         form.querySelector('[name="end_date"]')?.addEventListener("change", trigger);
     }
+
+    function focusPlannerArea(kind) {
+        const target =
+            kind === "year"
+                ? document.querySelector("[data-vacation-year-panel]")
+                : document.querySelector("[data-vacation-period-panel]");
+
+        if (!target) {
+            return;
+        }
+
+        const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        target.scrollIntoView({ block: "start", behavior: reduceMotion ? "auto" : "smooth" });
+
+        const focusTarget =
+            kind === "year"
+                ? target.querySelector('input[name="allowance_days"], select[name="subdivision"], button[type="submit"]')
+                : target.querySelector('input[name="start_date"], select[name="name"], button[type="submit"]:not(:disabled)');
+
+        window.setTimeout(() => focusTarget?.focus({ preventScroll: true }), reduceMotion ? 0 : 220);
+    }
+
+    document.addEventListener("click", (event) => {
+        const trigger = event.target.closest("[data-vacation-focus]");
+        if (!trigger) {
+            return;
+        }
+
+        event.preventDefault();
+        focusPlannerArea(trigger.dataset.vacationFocus);
+    });
 })();

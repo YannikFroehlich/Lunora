@@ -17,14 +17,19 @@ from app.models import (
     ChatMessage,
     CustomHoliday,
     HolidayOverride,
+    NotificationPreference,
     Profile,
     SystemSettings,
+    Task,
+    TaskLabel,
+    TaskList,
     VacationPeriod,
     VacationYear,
 )
 from app.services.calendar_service import expand_manual_recurrence
 from app.services.chat_files import infer_attachment_kind, validate_note_upload
 from app.services.image_uploads import PROFILE_IMAGE_ACCEPT, validate_profile_image_file
+from app.services.notification_preferences import CATEGORY_DEFINITIONS
 from app.services.user_preferences import get_user_zoneinfo, localtime_for_user
 from app.services.url_safety import validate_calendar_url
 
@@ -98,7 +103,7 @@ class EmailLoginForm(AuthenticationForm):
         super().confirm_login_allowed(user)
         if not user_can_login(user):
             raise forms.ValidationError(
-                "Der Login ist voruebergehend deaktiviert.",
+                "Der Login ist vorübergehend deaktiviert.",
                 code="login_disabled",
             )
 
@@ -115,9 +120,11 @@ class SystemSettingsForm(forms.ModelForm):
             "notes_enabled",
             "vacation_planner_enabled",
             "weather_enabled",
+            "dashboard_customization_enabled",
+            "tasks_enabled",
         ]
         labels = {
-            "normal_login_enabled": "Login und Registrierung fuer Nutzer",
+            "normal_login_enabled": "Login und Registrierung für Nutzer",
             "calendar_event_creation_enabled": "Kalender: eigene Termine erstellen",
             "calendar_reminders_enabled": "Kalender: Erinnerungen",
             "calendar_sync_enabled": "Kalender: Synchronisierung und Quellen",
@@ -125,6 +132,8 @@ class SystemSettingsForm(forms.ModelForm):
             "notes_enabled": "Notizen",
             "vacation_planner_enabled": "Urlaubsplaner",
             "weather_enabled": "Wetter",
+            "dashboard_customization_enabled": "Dashboard anpassen",
+            "tasks_enabled": "Aufgaben",
         }
         widgets = {
             "normal_login_enabled": forms.CheckboxInput(),
@@ -135,6 +144,8 @@ class SystemSettingsForm(forms.ModelForm):
             "notes_enabled": forms.CheckboxInput(),
             "vacation_planner_enabled": forms.CheckboxInput(),
             "weather_enabled": forms.CheckboxInput(),
+            "dashboard_customization_enabled": forms.CheckboxInput(),
+            "tasks_enabled": forms.CheckboxInput(),
         }
 
 
@@ -302,7 +313,7 @@ class ProfileForm(forms.ModelForm):
             except forms.ValidationError:
                 raise
             except Exception as error:
-                raise forms.ValidationError("Das Profilbild konnte nicht geprueft werden.") from error
+                raise forms.ValidationError("Das Profilbild konnte nicht geprüft werden.") from error
         return image
 
     def save(self, commit=True):
@@ -325,12 +336,6 @@ class ProfileForm(forms.ModelForm):
 
 
 class AppearanceForm(forms.ModelForm):
-    REGION_FIELD_FALLBACKS = {
-        "date_format": "de_numeric",
-        "time_format": "24h",
-        "timezone_name": "Europe/Berlin",
-    }
-
     class Meta:
         model = Profile
         fields = [
@@ -338,15 +343,7 @@ class AppearanceForm(forms.ModelForm):
             "accent_color",
             "background_softness",
             "density",
-            "date_format",
-            "time_format",
-            "timezone_name",
         ]
-        labels = {
-            "date_format": "Datumsformat",
-            "time_format": "Zeitformat",
-            "timezone_name": "Zeitzone",
-        }
         widgets = {
             "theme": forms.RadioSelect(),
             "accent_color": forms.RadioSelect(),
@@ -354,6 +351,31 @@ class AppearanceForm(forms.ModelForm):
                 attrs={"class": "softness-slider", "type": "range", "min": "0", "max": "100"}
             ),
             "density": forms.RadioSelect(),
+        }
+
+    def clean_background_softness(self):
+        value = self.cleaned_data["background_softness"]
+        if value < 0 or value > 100:
+            raise forms.ValidationError("Bitte wähle einen Wert zwischen 0 und 100.")
+        return value
+
+
+class RegionPreferencesForm(forms.ModelForm):
+    FIELD_FALLBACKS = {
+        "date_format": "de_numeric",
+        "time_format": "24h",
+        "timezone_name": "Europe/Berlin",
+    }
+
+    class Meta:
+        model = Profile
+        fields = ["date_format", "time_format", "timezone_name"]
+        labels = {
+            "date_format": "Datumsformat",
+            "time_format": "Zeitformat",
+            "timezone_name": "Zeitzone",
+        }
+        widgets = {
             "date_format": forms.Select(attrs={"class": "region-select"}),
             "time_format": forms.Select(attrs={"class": "region-select"}),
             "timezone_name": forms.Select(attrs={"class": "region-select"}),
@@ -361,20 +383,14 @@ class AppearanceForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for field_name in self.REGION_FIELD_FALLBACKS:
+        for field_name in self.FIELD_FALLBACKS:
             self.fields[field_name].required = False
-
-    def clean_background_softness(self):
-        value = self.cleaned_data["background_softness"]
-        if value < 0 or value > 100:
-            raise forms.ValidationError("Bitte waehle einen Wert zwischen 0 und 100.")
-        return value
 
     def _clean_optional_region_field(self, field_name):
         value = self.cleaned_data.get(field_name)
         if value:
             return value
-        return getattr(self.instance, field_name, "") or self.REGION_FIELD_FALLBACKS[field_name]
+        return getattr(self.instance, field_name, "") or self.FIELD_FALLBACKS[field_name]
 
     def clean_date_format(self):
         return self._clean_optional_region_field("date_format")
@@ -386,34 +402,41 @@ class AppearanceForm(forms.ModelForm):
         return self._clean_optional_region_field("timezone_name")
 
 
-class ProfilePreferencesForm(forms.ModelForm):
+class NotificationPreferencesForm(forms.ModelForm):
     class Meta:
         model = Profile
         fields = [
             "notify_email",
             "notify_reminders",
             "notify_desktop",
+            "notification_quiet_hours_enabled",
+            "notification_quiet_start",
+            "notification_quiet_end",
             "weekly_summary",
-            "weather_default_city",
         ]
         labels = {
             "notify_email": "E-Mail Benachrichtigungen",
             "notify_reminders": "Erinnerungen",
-            "notify_desktop": "Desktop Hinweise",
+            "notify_desktop": "Web-Push-Zustellung",
+            "notification_quiet_hours_enabled": "Web-Push-Ruhezeit",
+            "notification_quiet_start": "Beginn",
+            "notification_quiet_end": "Ende",
             "weekly_summary": "Wöchentliche Zusammenfassung",
-            "weather_default_city": "Standard-Wetterort",
         }
         widgets = {
             "notify_email": forms.CheckboxInput(),
             "notify_reminders": forms.CheckboxInput(),
             "notify_desktop": forms.CheckboxInput(),
-            "weekly_summary": forms.CheckboxInput(),
-            "weather_default_city": forms.TextInput(
-                attrs={
-                    "placeholder": "z. B. Bünde,de",
-                    "autocomplete": "address-level2",
-                }
+            "notification_quiet_hours_enabled": forms.CheckboxInput(),
+            "notification_quiet_start": forms.TimeInput(
+                format="%H:%M",
+                attrs={"type": "time"},
             ),
+            "notification_quiet_end": forms.TimeInput(
+                format="%H:%M",
+                attrs={"type": "time"},
+            ),
+            "weekly_summary": forms.CheckboxInput(),
         }
 
     def __init__(self, *args, **kwargs):
@@ -422,12 +445,101 @@ class ProfilePreferencesForm(forms.ModelForm):
             "notify_email",
             "notify_reminders",
             "notify_desktop",
+            "notification_quiet_hours_enabled",
             "weekly_summary",
         ]:
             self.fields[field_name].required = False
+        self.fields["notification_quiet_start"].required = False
+        self.fields["notification_quiet_end"].required = False
+
+    def clean_notification_quiet_start(self):
+        return self.cleaned_data.get("notification_quiet_start") or self.instance.notification_quiet_start or time(22, 0)
+
+    def clean_notification_quiet_end(self):
+        return self.cleaned_data.get("notification_quiet_end") or self.instance.notification_quiet_end or time(7, 0)
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if (
+            cleaned_data.get("notification_quiet_hours_enabled")
+            and cleaned_data.get("notification_quiet_start") == cleaned_data.get("notification_quiet_end")
+        ):
+            self.add_error(
+                "notification_quiet_end",
+                "Beginn und Ende der Ruhezeit müssen unterschiedlich sein.",
+            )
+        return cleaned_data
+
+
+class WeatherPreferencesForm(forms.ModelForm):
+    class Meta:
+        model = Profile
+        fields = ["weather_default_city"]
+        labels = {"weather_default_city": "Standard-Wetterort"}
+        widgets = {
+            "weather_default_city": forms.TextInput(
+                attrs={
+                    "placeholder": "z. B. Bünde,de",
+                    "autocomplete": "address-level2",
+                }
+            ),
+        }
 
     def clean_weather_default_city(self):
         return self.cleaned_data.get("weather_default_city", "").strip()
+
+
+class NotificationCategoryPreferencesForm(forms.Form):
+    CHANNELS = (
+        ("inbox", "Inbox", "inbox_enabled"),
+        ("email", "E-Mail", "email_enabled"),
+        ("web_push", "Web Push", "web_push_enabled"),
+    )
+
+    def __init__(self, *args, user, **kwargs):
+        self.user = user
+        super().__init__(*args, **kwargs)
+        saved_preferences = {
+            preference.category: preference
+            for preference in NotificationPreference.objects.filter(user=user)
+        }
+        self.category_rows = []
+        for category in CATEGORY_DEFINITIONS:
+            preference = saved_preferences.get(category["key"])
+            channel_fields = []
+            for channel_key, channel_label, model_field in self.CHANNELS:
+                field_name = f"notification_{category['key']}_{channel_key}"
+                self.fields[field_name] = forms.BooleanField(
+                    label=f"{category['label']}: {channel_label}",
+                    required=False,
+                    initial=getattr(preference, model_field, True),
+                )
+                channel_fields.append(
+                    {
+                        "key": channel_key,
+                        "label": channel_label,
+                        "field": self[field_name],
+                    }
+                )
+            self.category_rows.append({**category, "channels": channel_fields})
+
+    @property
+    def matrix_present(self):
+        return not self.is_bound or self.data.get("notification_matrix_present") == "1"
+
+    def save(self):
+        if not self.is_valid() or not self.matrix_present:
+            return
+        for category in CATEGORY_DEFINITIONS:
+            values = {
+                model_field: self.cleaned_data[f"notification_{category['key']}_{channel_key}"]
+                for channel_key, _channel_label, model_field in self.CHANNELS
+            }
+            NotificationPreference.objects.update_or_create(
+                user=self.user,
+                category=category["key"],
+                defaults=values,
+            )
 
 
 class MessageForm(forms.ModelForm):
@@ -563,7 +675,7 @@ class CalendarSourceForm(forms.ModelForm):
 
 class CalendarReminderForm(forms.ModelForm):
     due_at = forms.DateTimeField(
-        label="Faellig am",
+        label="Fällig am",
         required=False,
         input_formats=["%Y-%m-%dT%H:%M"],
         widget=forms.DateTimeInput(
@@ -586,6 +698,91 @@ class CalendarReminderForm(forms.ModelForm):
                     "autocomplete": "off",
                 }
             )
+        }
+
+    def clean_title(self):
+        return self.cleaned_data["title"].strip()
+
+
+class TaskForm(forms.ModelForm):
+    due_at = forms.DateTimeField(
+        label="Fällig am",
+        required=False,
+        input_formats=["%Y-%m-%dT%H:%M"],
+        widget=forms.DateTimeInput(
+            attrs={
+                "type": "datetime-local",
+                "autocomplete": "off",
+            },
+            format="%Y-%m-%dT%H:%M",
+        ),
+    )
+    task_list = forms.ModelChoiceField(
+        label="Liste",
+        queryset=TaskList.objects.none(),
+        required=False,
+        empty_label="Eingang",
+    )
+    parent = forms.ModelChoiceField(
+        label="Übergeordnete Aufgabe",
+        queryset=Task.objects.none(),
+        required=False,
+        widget=forms.HiddenInput(),
+    )
+    labels = forms.ModelMultipleChoiceField(
+        label="Labels",
+        queryset=TaskLabel.objects.none(),
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+    )
+    # Declared explicitly (rather than left to ModelForm auto-generation) so Django doesn't
+    # prepend its own blank "---------" choice alongside the model's own "Keine" option.
+    priority = forms.ChoiceField(
+        label="Priorität", choices=Task.PRIORITY_CHOICES, required=False, initial=Task.PRIORITY_NONE
+    )
+    recurrence_rule = forms.ChoiceField(
+        label="Wiederholung", choices=Task.RECURRENCE_CHOICES, required=False, initial=Task.RECURRENCE_NONE
+    )
+
+    class Meta:
+        model = Task
+        fields = ["title", "due_at", "task_list", "parent", "priority", "labels", "recurrence_rule"]
+        labels = {"title": "Neue Aufgabe"}
+        widgets = {
+            "title": forms.TextInput(
+                attrs={
+                    "placeholder": "Neue Aufgabe hinzufügen …",
+                    "autocomplete": "off",
+                }
+            )
+        }
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if user is not None:
+            self.fields["task_list"].queryset = TaskList.objects.filter(owner=user)
+            # A parent must itself be a top-level task, which caps subtasks at one level deep.
+            self.fields["parent"].queryset = Task.objects.filter(user=user, parent__isnull=True)
+            self.fields["labels"].queryset = TaskLabel.objects.filter(owner=user)
+
+
+class TaskListForm(forms.ModelForm):
+    class Meta:
+        model = TaskList
+        fields = ["name", "color"]
+        labels = {"name": "Listenname", "color": "Farbe"}
+        widgets = {
+            "name": forms.TextInput(attrs={"placeholder": "Neue Liste …", "autocomplete": "off"}),
+        }
+
+
+class TaskLabelForm(forms.ModelForm):
+    class Meta:
+        model = TaskLabel
+        fields = ["name", "color"]
+        labels = {"name": "Labelname", "color": "Farbe"}
+        widgets = {
+            "name": forms.TextInput(attrs={"placeholder": "Neues Label …", "autocomplete": "off"}),
         }
 
     def clean_title(self):
@@ -774,13 +971,16 @@ class CalendarEventForm(_CalendarEventDateTimeForm):
 
         attendees = self.cleaned_data.get("attendees")
         if attendees:
-            CalendarEventAttendee.objects.bulk_create(
+            invitation_rows = CalendarEventAttendee.objects.bulk_create(
                 [
                     CalendarEventAttendee(event=event, user=attendee, invited_by=user)
                     for event in events
                     for attendee in attendees
                 ]
             )
+            from app.services.notifications import materialize_event_invitation_notifications
+
+            materialize_event_invitation_notifications(invitation_rows)
 
         return events[0] if events else None
 
@@ -822,11 +1022,14 @@ class CalendarEventEditForm(_CalendarEventDateTimeForm):
 
         to_add = new_attendee_ids - existing_attendee_ids
         if to_add:
-            CalendarEventAttendee.objects.bulk_create(
+            invitation_rows = CalendarEventAttendee.objects.bulk_create(
                 [
                     CalendarEventAttendee(event=event, user_id=user_id, invited_by=self.user)
                     for user_id in to_add
                 ]
             )
+            from app.services.notifications import materialize_event_invitation_notifications
+
+            materialize_event_invitation_notifications(invitation_rows)
 
         return event

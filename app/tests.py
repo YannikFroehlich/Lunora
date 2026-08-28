@@ -1,11 +1,13 @@
+import hashlib
 import json
 import os
 import re
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from email.message import Message
 from io import StringIO
+from types import SimpleNamespace
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from urllib.error import HTTPError, URLError
@@ -22,21 +24,31 @@ from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
 from app.forms import CalendarSourceForm, ProfileForm
-from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, CalendarSource, ChatMessage, ChatMessageAttachment, ChatMessageReaction, Conversation, ConversationMember, CustomHoliday, Note, NoteActivityNotification, NoteAttachment, NoteCommentThread, NoteFolder, NoteLink, NoteShare, NoteTemplate, NoteUserState, NoteVersion, OfficialHoliday, Profile, SystemSettings, VacationPeriod, VacationYear, WeatherLocation, WeeklySummaryDelivery
+from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, CalendarSource, ChatMessage, ChatMessageAttachment, ChatMessageReaction, Conversation, ConversationMember, CustomHoliday, Note, NoteActivityNotification, NoteAttachment, NoteCommentThread, NoteFolder, NoteLink, NoteShare, NoteTemplate, NoteUserState, NoteVersion, NotificationPreference, OfficialHoliday, Profile, SystemSettings, Task, TaskLabel, TaskList, UserNotification, VacationPeriod, VacationYear, WeatherLocation, WebPushDelivery, WebPushSubscription, WeeklySummaryDelivery
 from app.services.calendar_service import fetch_ical, parse_ical_events
 from app.services.calendar_sync_queue import queue_calendar_sources
+from app.services.dashboard import DASHBOARD_WIDGET_IDS, default_dashboard_layout, normalize_dashboard_layout
 from app.services.image_uploads import PROFILE_IMAGE_MAX_BYTES
 from app.services.notifications import (
     claim_due_weather_alerts,
     send_due_reminder_emails,
+    send_due_task_reminder_emails,
     send_new_invitation_emails,
     send_note_activity_emails,
+    send_pending_user_notification_emails,
     send_weekly_summaries,
 )
-from app.services.scheduled_tasks import sync_due_calendars
+from app.services.scheduled_tasks import run_scheduled_tasks, sync_due_calendars
+from app.services.tasks import dashboard_today_tasks, toggle_task
+from app.services.web_push import (
+    materialize_web_push_weather_alerts,
+    register_web_push_subscription,
+    send_pending_web_push_notifications,
+)
 from app.services.weather_service import (
     WEATHER_MAP_LAYERS,
     _build_weather_alert,
+    _format_weather_description,
     delete_weather_location,
     fetch_weather_map_tile,
     get_location_suggestions,
@@ -49,8 +61,15 @@ from app.services.weather_service import (
 )
 from app.services.note_content import NOTE_TEMPLATES, empty_note_document, validate_note_document
 from app.services.note_search import build_snippet, highlight_text, parse_search_query, search_notes
-from app.services.notes import accessible_notes, prune_note_versions, purge_expired_notes
+from app.services.notes import accessible_notes, prune_note_versions, purge_expired_notes, share_note
 from app.services.vacation_planner import annual_summary, calculate_period
+from app.templatetags.static_versioning import versioned_static
+from app.view_models import (
+    _dashboard_greeting,
+    _dashboard_moment_icon,
+    _dashboard_moment_label,
+    _dashboard_tool_shortcuts,
+)
 from app.views.message_views import _build_inbox_items
 from lunora.settings import BASE_DIR, database_config
 
@@ -77,6 +96,172 @@ def note_document(text="Gedanke"):
             }
         ],
     }
+
+
+class DashboardGreetingTests(SimpleTestCase):
+    def test_dashboard_greeting_follows_local_hour(self):
+        examples = {
+            4: "Gute Nacht",
+            5: "Guten Morgen",
+            11: "Guten Tag",
+            17: "Guten Abend",
+            22: "Gute Nacht",
+        }
+
+        for hour, expected in examples.items():
+            with self.subTest(hour=hour):
+                now = datetime(2026, 8, 26, hour, 0, tzinfo=ZoneInfo("Europe/Berlin"))
+                self.assertEqual(_dashboard_greeting(now), expected)
+
+    def test_dashboard_moment_label_follows_local_hour(self):
+        examples = {
+            4: "Nachtruhe",
+            5: "Ruhiger Start",
+            11: "Fokussierter Tag",
+            17: "Ruhiger Abend",
+            22: "Nachtruhe",
+        }
+
+        for hour, expected in examples.items():
+            with self.subTest(hour=hour):
+                now = datetime(2026, 8, 26, hour, 0, tzinfo=ZoneInfo("Europe/Berlin"))
+                self.assertEqual(_dashboard_moment_label(now), expected)
+
+    def test_dashboard_moment_icon_follows_local_hour(self):
+        examples = {
+            4: "fa-regular fa-moon",
+            5: "fa-regular fa-sun",
+            17: "fa-solid fa-cloud-sun",
+            22: "fa-regular fa-moon",
+        }
+
+        for hour, expected in examples.items():
+            with self.subTest(hour=hour):
+                now = datetime(2026, 8, 26, hour, 0, tzinfo=ZoneInfo("Europe/Berlin"))
+                self.assertEqual(_dashboard_moment_icon(now), expected)
+
+    def test_dashboard_shortcuts_use_correct_german_spelling(self):
+        shortcuts = _dashboard_tool_shortcuts(
+            [],
+            0,
+            {"today": {"city": "Bünde"}},
+            0,
+            {"weather": True, "messages": True, "notes": True, "vacation_planner": True},
+        )
+
+        subtitles = {item["title"]: item["subtitle"] for item in shortcuts}
+        self.assertEqual(subtitles["Kalender"], "Kalender öffnen")
+        self.assertEqual(subtitles["Nachrichten"], "Inbox öffnen")
+        self.assertEqual(subtitles["Einstellungen"], "Profil & Präferenzen")
+
+
+class WeatherDescriptionTests(SimpleTestCase):
+    def test_weather_descriptions_follow_german_capitalization(self):
+        examples = {
+            "ein paar wolken": "Ein paar Wolken",
+            "leichter regen": "Leichter Regen",
+            "gewitter mit schnee": "Gewitter mit Schnee",
+            "mäßig bewölkt": "Mäßig bewölkt",
+        }
+
+        for description, expected in examples.items():
+            with self.subTest(description=description):
+                self.assertEqual(_format_weather_description(description), expected)
+
+
+class StaticVersioningTests(SimpleTestCase):
+    def test_versioned_static_uses_file_content_hash(self):
+        static_path = BASE_DIR / "app" / "static" / "css" / "base.css"
+        expected_version = hashlib.sha256(static_path.read_bytes()).hexdigest()[:12]
+
+        self.assertEqual(
+            versioned_static("css/base.css"),
+            f"/static/css/base.css?v={expected_version}",
+        )
+
+
+@override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
+class PwaTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="pwa@example.com",
+            email="pwa@example.com",
+            password="secret-12345",
+        )
+        Profile.objects.create(user=self.user, display_name="PWA")
+
+    def test_service_worker_is_public_and_root_scoped(self):
+        response = self.client.get("/service-worker.js")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response["Content-Type"].startswith("application/javascript"))
+        self.assertEqual(response["Service-Worker-Allowed"], "/")
+        self.assertIn("no-store", response["Cache-Control"])
+        self.assertContains(response, 'const OFFLINE_URL = "/offline/";')
+        self.assertContains(response, 'request.mode === "navigate"')
+        self.assertContains(response, 'requestUrl.pathname.startsWith("/static/")')
+        self.assertContains(response, "caches.match(request);")
+        self.assertNotContains(response, "ignoreSearch")
+        self.assertRegex(
+            response.content.decode("utf-8"),
+            r'"/static/css/base\.css\?v=[0-9a-f]{12}"',
+        )
+
+    def test_service_worker_does_not_precache_personal_pages_or_media(self):
+        response = self.client.get("/service-worker.js")
+        content = response.content.decode("utf-8")
+
+        self.assertNotIn('"/home/"', content)
+        self.assertNotIn("/notes/", content)
+        self.assertNotIn("/messages/", content)
+        self.assertNotIn("/calendar/", content)
+        self.assertNotIn("/media/", content)
+        self.assertNotIn("/private_media/", content)
+
+    def test_service_worker_handles_web_push_and_notification_clicks(self):
+        response = self.client.get("/service-worker.js")
+        content = response.content.decode("utf-8")
+
+        self.assertIn('self.addEventListener("push"', content)
+        self.assertIn('self.addEventListener("notificationclick"', content)
+        self.assertIn("showNotification", content)
+        self.assertIn("clients.openWindow", content)
+
+    def test_offline_page_is_public_and_neutral(self):
+        response = self.client.get("/offline/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Du bist offline")
+        self.assertContains(response, "data-offline-retry")
+        self.assertNotContains(response, "Hauptnavigation")
+        self.assertEqual(response["X-Robots-Tag"], "noindex, noarchive")
+
+    def test_manifest_contains_install_metadata_and_shortcuts(self):
+        manifest_path = BASE_DIR / "app" / "static" / "site.webmanifest"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(manifest["id"], "/")
+        self.assertEqual(manifest["start_url"], "/home/")
+        self.assertEqual(manifest["scope"], "/")
+        self.assertEqual(manifest["display"], "standalone")
+        self.assertTrue(any("maskable" in icon.get("purpose", "") for icon in manifest["icons"]))
+        self.assertEqual(
+            [shortcut["short_name"] for shortcut in manifest["shortcuts"]],
+            ["Dashboard", "Notizen", "Kalender"],
+        )
+
+    def test_base_and_settings_expose_pwa_controls(self):
+        login_response = self.client.get("/login/")
+
+        self.assertContains(login_response, 'data-service-worker-url="/service-worker.js"')
+        self.assertContains(login_response, "site.webmanifest")
+
+        self.client.login(username="pwa@example.com", password="secret-12345")
+        settings_response = self.client.get("/settings/")
+
+        self.assertContains(settings_response, "data-pwa-install-panel")
+        self.assertContains(settings_response, "data-pwa-install")
+        self.assertContains(settings_response, "App installieren")
 
 
 class DatabaseConfigurationTests(SimpleTestCase):
@@ -429,7 +614,7 @@ class SettingsProfileTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, "/home/")
+        self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-profile")
         user.refresh_from_db()
         self.assertEqual(user.profile.display_name, "Mira Neu")
         self.assertEqual(user.first_name, "Mira Neu")
@@ -521,7 +706,13 @@ class SettingsProfileTests(TestCase):
 
     def test_logged_in_user_can_save_appearance_settings(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
-        Profile.objects.create(user=user, display_name="Mira")
+        Profile.objects.create(
+            user=user,
+            display_name="Mira",
+            date_format="iso",
+            time_format="12h",
+            timezone_name="UTC",
+        )
         self.client.login(username="mira@example.com", password="secret-12345")
 
         response = self.client.post(
@@ -535,55 +726,64 @@ class SettingsProfileTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, "/home/")
+        self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-appearance")
         user.profile.refresh_from_db()
         self.assertEqual(user.profile.theme, "dark")
         self.assertEqual(user.profile.accent_color, "#7f916b")
         self.assertEqual(user.profile.background_softness, 82)
         self.assertEqual(user.profile.density, "compact")
+        self.assertEqual(user.profile.date_format, "iso")
+        self.assertEqual(user.profile.time_format, "12h")
+        self.assertEqual(user.profile.timezone_name, "UTC")
 
     def test_logged_in_user_can_save_region_settings(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
-        Profile.objects.create(user=user, display_name="Mira")
+        Profile.objects.create(
+            user=user,
+            display_name="Mira",
+            theme="dark",
+            accent_color="#7f916b",
+            background_softness=82,
+            density="compact",
+        )
         self.client.login(username="mira@example.com", password="secret-12345")
 
         response = self.client.post(
             "/settings/",
             {
-                "form_name": "appearance",
-                "theme": "light",
-                "accent_color": "#c2a276",
-                "background_softness": "55",
-                "density": "comfortable",
+                "form_name": "region",
                 "date_format": "iso",
                 "time_format": "12h",
                 "timezone_name": "UTC",
             },
         )
 
-        self.assertRedirects(response, "/home/")
+        self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-profile")
         user.profile.refresh_from_db()
         self.assertEqual(user.profile.date_format, "iso")
         self.assertEqual(user.profile.time_format, "12h")
         self.assertEqual(user.profile.timezone_name, "UTC")
+        self.assertEqual(user.profile.theme, "dark")
+        self.assertEqual(user.profile.accent_color, "#7f916b")
+        self.assertEqual(user.profile.background_softness, 82)
+        self.assertEqual(user.profile.density, "compact")
 
-    def test_logged_in_user_can_save_preferences(self):
+    def test_logged_in_user_can_save_notification_preferences_without_changing_weather(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
-        Profile.objects.create(user=user, display_name="Mira")
+        Profile.objects.create(user=user, display_name="Mira", weather_default_city="Hamburg,de")
         self.client.login(username="mira@example.com", password="secret-12345")
 
         response = self.client.post(
             "/settings/",
             {
-                "form_name": "preferences",
+                "form_name": "notifications",
                 "notify_reminders": "on",
                 "weekly_summary": "on",
                 "usage_data_enabled": "on",
-                "weather_default_city": "Berlin,de",
             },
         )
 
-        self.assertRedirects(response, "/home/")
+        self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-notifications")
         user.profile.refresh_from_db()
         self.assertFalse(user.profile.notify_email)
         self.assertTrue(user.profile.notify_reminders)
@@ -591,7 +791,105 @@ class SettingsProfileTests(TestCase):
         self.assertTrue(user.profile.weekly_summary)
         self.assertTrue(user.profile.analytics_enabled)
         self.assertFalse(user.profile.usage_data_enabled)
+        self.assertEqual(user.profile.weather_default_city, "Hamburg,de")
+
+    def test_logged_in_user_can_save_weather_without_changing_notifications(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(
+            user=user,
+            display_name="Mira",
+            notify_email=True,
+            notify_reminders=False,
+            notify_desktop=True,
+            weekly_summary=True,
+        )
+        NotificationPreference.objects.create(
+            user=user,
+            category="calendar",
+            inbox_enabled=False,
+            email_enabled=False,
+            web_push_enabled=True,
+        )
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.post(
+            "/settings/",
+            {
+                "form_name": "weather",
+                "weather_default_city": "  Berlin,de  ",
+            },
+        )
+
+        self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-weather")
+        user.profile.refresh_from_db()
         self.assertEqual(user.profile.weather_default_city, "Berlin,de")
+        self.assertTrue(user.profile.notify_email)
+        self.assertFalse(user.profile.notify_reminders)
+        self.assertTrue(user.profile.notify_desktop)
+        self.assertTrue(user.profile.weekly_summary)
+        category = NotificationPreference.objects.get(user=user, category="calendar")
+        self.assertFalse(category.inbox_enabled)
+        self.assertFalse(category.email_enabled)
+        self.assertTrue(category.web_push_enabled)
+
+    def test_invalid_appearance_settings_render_without_changing_profile(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        profile = Profile.objects.create(user=user, display_name="Mira", background_softness=55)
+        self.client.force_login(user)
+
+        response = self.client.post(
+            "/settings/",
+            {
+                "form_name": "appearance",
+                "theme": "dark",
+                "accent_color": "#7f916b",
+                "background_softness": "101",
+                "density": "compact",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("background_softness", response.context["appearance_form"].errors)
+        profile.refresh_from_db()
+        self.assertEqual(profile.background_softness, 55)
+
+    def test_invalid_region_settings_render_without_changing_profile(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        profile = Profile.objects.create(user=user, display_name="Mira", timezone_name="Europe/Berlin")
+        self.client.force_login(user)
+
+        response = self.client.post(
+            "/settings/",
+            {
+                "form_name": "region",
+                "date_format": "iso",
+                "time_format": "12h",
+                "timezone_name": "Mars/Olympus",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("timezone_name", response.context["region_form"].errors)
+        profile.refresh_from_db()
+        self.assertEqual(profile.timezone_name, "Europe/Berlin")
+
+    def test_invalid_weather_settings_render_without_changing_profile(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        profile = Profile.objects.create(user=user, display_name="Mira", weather_default_city="Bünde,de")
+        self.client.force_login(user)
+
+        response = self.client.post(
+            "/settings/",
+            {
+                "form_name": "weather",
+                "weather_default_city": "x" * 121,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("weather_default_city", response.context["weather_form"].errors)
+        profile.refresh_from_db()
+        self.assertEqual(profile.weather_default_city, "Bünde,de")
 
     def test_settings_hide_unimplemented_analytics_controls(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
@@ -604,6 +902,188 @@ class SettingsProfileTests(TestCase):
         self.assertNotContains(response, 'name="usage_data_enabled"')
         self.assertContains(response, "Erinnerungszustellung")
 
+    def test_settings_show_detailed_notification_controls(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        self.client.force_login(user)
+
+        response = self.client.get("/settings/")
+
+        self.assertContains(response, 'aria-label="Zustellung nach Kategorie"')
+        self.assertContains(response, 'name="notification_calendar_inbox"')
+        self.assertContains(response, 'name="notification_weather_web_push"')
+        self.assertContains(response, "Web-Push-Ruhezeit")
+        self.assertContains(response, "Test senden")
+
+    def test_settings_are_grouped_into_accessible_sections(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        self.client.force_login(user)
+
+        response = self.client.get("/settings/")
+
+        self.assertContains(response, 'role="tablist"')
+        self.assertContains(response, 'data-settings-tab=', count=6)
+        self.assertContains(response, 'data-settings-panel="appearance"')
+        self.assertContains(response, 'data-settings-panel="profile"', count=2)
+        self.assertContains(response, 'data-settings-panel="calendar"')
+        self.assertContains(response, 'data-settings-panel="notifications"')
+        self.assertContains(response, 'data-settings-panel="weather"')
+        self.assertContains(response, 'data-settings-panel="app"')
+        self.assertContains(response, "Sprache &amp; Region speichern")
+        self.assertContains(response, 'class="calendar-input-pill"', count=2)
+        self.assertContains(response, 'class="source-toggle"')
+        self.assertContains(response, 'name="form_name" value="appearance"')
+        self.assertContains(response, 'name="form_name" value="profile"')
+        self.assertContains(response, 'name="form_name" value="region"')
+        self.assertContains(response, 'name="form_name" value="notifications"')
+        self.assertContains(response, 'name="form_name" value="weather"')
+        self.assertContains(response, 'class="settings-back-link" href="/home/"')
+        self.assertNotContains(response, ">Abbrechen<")
+
+    def test_settings_reject_unsafe_or_authentication_return_targets(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        self.client.force_login(user)
+        unsafe_targets = [
+            "https://evil.example/steal",
+            "/settings/",
+            "/login/?next=/settings/",
+            "/accounts/login/",
+            "/logout/",
+            "/register/",
+            "/password-reset/",
+            "/password-reset/done/",
+            "/reset/example/token/",
+            "/reset/done/",
+        ]
+
+        for target in unsafe_targets:
+            with self.subTest(target=target):
+                response = self.client.get("/settings/", {"next": target})
+
+                self.assertEqual(response.context["return_to"], "/home/")
+                self.assertContains(response, 'class="settings-back-link" href="/home/"')
+
+    def test_settings_preserve_valid_return_target_across_save_redirect(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        self.client.force_login(user)
+        return_to = "/calendar/?view=month#week"
+
+        response = self.client.get("/settings/", {"next": return_to})
+
+        self.assertEqual(response.context["return_to"], return_to)
+        self.assertContains(response, 'class="settings-back-link" href="/calendar/?view=month#week"')
+
+        response = self.client.post(
+            "/settings/",
+            {
+                "form_name": "weather",
+                "return_to": return_to,
+                "weather_default_city": "Berlin,de",
+            },
+        )
+
+        self.assertEqual(
+            response["Location"],
+            "/settings/?next=%2Fcalendar%2F%3Fview%3Dmonth%23week#settings-weather",
+        )
+
+    def test_settings_ignore_login_referrer_for_back_link(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        self.client.force_login(user)
+
+        response = self.client.get(
+            "/settings/",
+            HTTP_REFERER="http://testserver/login/?next=/settings/",
+        )
+
+        self.assertEqual(response.context["return_to"], "/home/")
+
+    def test_calendar_color_choices_have_accessible_names(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        CalendarSource.objects.create(
+            user=user,
+            name="Arbeit",
+            ical_url="https://calendar.google.com/calendar/ical/accessibility/private/basic.ics",
+        )
+        self.client.force_login(user)
+
+        response = self.client.get("/settings/")
+
+        for label in ("Blau", "Grün", "Rot", "Sand", "Violett"):
+            with self.subTest(label=label):
+                self.assertContains(response, f'aria-label="{label}"', count=2)
+
+    def test_logged_in_user_can_save_detailed_notification_preferences(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        self.client.force_login(user)
+
+        response = self.client.post(
+            "/settings/",
+            {
+                "form_name": "notifications",
+                "notification_matrix_present": "1",
+                "notify_email": "on",
+                "notify_reminders": "on",
+                "notify_desktop": "on",
+                "notification_quiet_hours_enabled": "on",
+                "notification_quiet_start": "21:30",
+                "notification_quiet_end": "06:45",
+                "notification_calendar_inbox": "on",
+                "notification_calendar_email": "on",
+                "notification_tasks_web_push": "on",
+                "notification_notes_inbox": "on",
+                "notification_notes_email": "on",
+                "notification_notes_web_push": "on",
+                "notification_weather_email": "on",
+            },
+        )
+
+        self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-notifications")
+        user.profile.refresh_from_db()
+        self.assertTrue(user.profile.notification_quiet_hours_enabled)
+        self.assertEqual(user.profile.notification_quiet_start, time(21, 30))
+        self.assertEqual(user.profile.notification_quiet_end, time(6, 45))
+        calendar = NotificationPreference.objects.get(user=user, category="calendar")
+        tasks = NotificationPreference.objects.get(user=user, category="tasks")
+        weather = NotificationPreference.objects.get(user=user, category="weather")
+        self.assertTrue(calendar.inbox_enabled)
+        self.assertTrue(calendar.email_enabled)
+        self.assertFalse(calendar.web_push_enabled)
+        self.assertFalse(tasks.inbox_enabled)
+        self.assertFalse(tasks.email_enabled)
+        self.assertTrue(tasks.web_push_enabled)
+        self.assertFalse(weather.inbox_enabled)
+        self.assertTrue(weather.email_enabled)
+        self.assertFalse(weather.web_push_enabled)
+
+    def test_equal_quiet_hour_boundaries_are_rejected(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        self.client.force_login(user)
+
+        response = self.client.post(
+            "/settings/",
+            {
+                "form_name": "notifications",
+                "notification_matrix_present": "1",
+                "notification_quiet_hours_enabled": "on",
+                "notification_quiet_start": "22:00",
+                "notification_quiet_end": "22:00",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Beginn und Ende der Ruhezeit müssen unterschiedlich sein.")
+        user.profile.refresh_from_db()
+        self.assertFalse(user.profile.notification_quiet_hours_enabled)
+        self.assertFalse(NotificationPreference.objects.filter(user=user).exists())
+
     def test_settings_save_shows_feedback_message(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
         Profile.objects.create(user=user, display_name="Mira")
@@ -612,17 +1092,16 @@ class SettingsProfileTests(TestCase):
         response = self.client.post(
             "/settings/",
             {
-                "form_name": "preferences",
+                "form_name": "notifications",
                 "notify_email": "on",
                 "notify_reminders": "on",
                 "notify_desktop": "on",
                 "analytics_enabled": "on",
-                "weather_default_city": "Bünde,de",
             },
             follow=True,
         )
 
-        self.assertContains(response, "Präferenzen gespeichert.")
+        self.assertContains(response, "Benachrichtigungseinstellungen gespeichert.")
 
     def test_calendar_source_can_be_added_and_queued_from_settings(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
@@ -641,7 +1120,7 @@ class SettingsProfileTests(TestCase):
                 },
             )
 
-        self.assertRedirects(response, "/home/")
+        self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-calendar")
         source = CalendarSource.objects.get(user=user)
         self.assertEqual(source.name, "Arbeit")
         self.assertEqual(source.ical_url, "https://calendar.google.com/calendar/ical/settings/private/basic.ics")
@@ -667,7 +1146,7 @@ class SettingsProfileTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, "/home/")
+        self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-calendar")
         source = CalendarSource.objects.get(user=user, name="Familie")
         self.assertIsNotNone(source.sync_requested_at)
 
@@ -749,7 +1228,7 @@ class SettingsProfileTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, "/home/")
+        self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-calendar")
         self.assertEqual(CalendarSource.objects.get(user=mira).ical_url, private_url)
         self.assertEqual(
             CalendarSource.objects.get(user=lukas).ical_url,
@@ -788,7 +1267,7 @@ class SettingsProfileTests(TestCase):
                 },
             )
 
-        self.assertRedirects(response, "/home/")
+        self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-calendar")
         source.refresh_from_db()
         self.assertEqual(source.name, "Neu")
         self.assertEqual(source.color, "red")
@@ -853,7 +1332,7 @@ class SettingsProfileTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, "/home/")
+        self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-calendar")
         self.assertFalse(CalendarSource.objects.filter(pk=source.id).exists())
         self.assertFalse(CalendarEvent.objects.filter(external_id="delete-event").exists())
 
@@ -867,7 +1346,38 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, 'name="form_name" value="calendar_source_add"')
         self.assertNotContains(response, "Google Kalender-Link")
-        self.assertNotContains(response, "Hinzufuegen")
+        self.assertNotContains(response, "Hinzufügen")
+
+    def test_calendar_empty_states_offer_direct_actions(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get("/calendar/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-calendar-empty-action="connect"')
+        self.assertContains(response, 'data-calendar-empty-action="connect-upcoming"')
+        self.assertContains(response, 'data-calendar-empty-action="event-today"')
+        self.assertContains(response, 'data-calendar-empty-action="event-upcoming"')
+        self.assertContains(response, "Kalender verbinden", count=2)
+
+    def test_calendar_upcoming_empty_state_respects_existing_sources(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        CalendarSource.objects.create(
+            user=user,
+            name="Arbeit",
+            ical_url="https://calendar.google.com/calendar/ical/example/private/basic.ics",
+        )
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get("/calendar/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Deine sichtbaren Kalender haben aktuell keine kommenden Termine.")
+        self.assertNotContains(response, 'data-calendar-empty-action="connect-upcoming"')
+        self.assertContains(response, 'data-calendar-empty-action="event-upcoming"')
 
     def test_calendar_page_get_does_not_sync_calendar_source(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
@@ -968,6 +1478,13 @@ class SettingsProfileTests(TestCase):
         attendee = CalendarEventAttendee.objects.get(event=event, user=invitee)
         self.assertEqual(attendee.status, CalendarEventAttendee.STATUS_INVITED)
         self.assertEqual(attendee.invited_by, organizer)
+        self.assertTrue(
+            UserNotification.objects.filter(
+                recipient=invitee,
+                source_key=f"event-invitation:{attendee.id}",
+                kind=UserNotification.KIND_EVENT_INVITATION,
+            ).exists()
+        )
 
         self.client.logout()
         self.client.login(username="lukas@example.com", password="secret-12345")
@@ -1696,6 +2213,400 @@ class FakeWeatherTileResponse:
         return b"png-bytes"
 
 
+class TaskTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="mira@example.com",
+            email="mira@example.com",
+            password="secret-12345",
+        )
+        self.profile = Profile.objects.create(
+            user=self.user,
+            display_name="Mira",
+            notify_email=True,
+            notify_reminders=True,
+            notify_desktop=True,
+        )
+
+    def _login(self):
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+    def test_disabled_tasks_returns_503(self):
+        SystemSettings.objects.create(tasks_enabled=False)
+        self._login()
+
+        response = self.client.get("/tasks/")
+
+        self.assertEqual(response.status_code, 503)
+
+    def test_disabled_tasks_blocks_direct_post(self):
+        SystemSettings.objects.create(tasks_enabled=False)
+        self._login()
+
+        response = self.client.post(
+            "/tasks/",
+            {"form_name": "task_add", "title": "Blockierte Aufgabe"},
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(Task.objects.filter(title="Blockierte Aufgabe").exists())
+
+    def test_task_can_be_added_toggled_and_deleted(self):
+        self._login()
+
+        response = self.client.post(
+            "/tasks/",
+            {"form_name": "task_add", "title": "Wäsche waschen"},
+        )
+
+        self.assertRedirects(response, "/tasks/")
+        task = Task.objects.get(user=self.user)
+        self.assertEqual(task.title, "Wäsche waschen")
+        self.assertFalse(task.is_done)
+
+        response = self.client.post(
+            "/tasks/",
+            {"form_name": "task_toggle", "task_id": str(task.id), "is_done": "on"},
+        )
+
+        self.assertRedirects(response, "/tasks/")
+        task.refresh_from_db()
+        self.assertTrue(task.is_done)
+
+        response = self.client.post(
+            "/tasks/",
+            {"form_name": "task_delete", "task_id": str(task.id)},
+        )
+
+        self.assertRedirects(response, "/tasks/")
+        self.assertFalse(Task.objects.filter(pk=task.id).exists())
+
+    def test_task_can_store_due_date(self):
+        self._login()
+        due_at = timezone.localtime(timezone.now() + timedelta(days=1)).replace(second=0, microsecond=0)
+
+        response = self.client.post(
+            "/tasks/",
+            {
+                "form_name": "task_add",
+                "title": "Hausaufgaben abgeben",
+                "due_at": due_at.strftime("%Y-%m-%dT%H:%M"),
+            },
+        )
+
+        self.assertRedirects(response, "/tasks/")
+        task = Task.objects.get(user=self.user)
+        self.assertEqual(
+            timezone.localtime(task.due_at).strftime("%Y-%m-%dT%H:%M"),
+            due_at.strftime("%Y-%m-%dT%H:%M"),
+        )
+
+        response = self.client.get("/tasks/")
+
+        self.assertContains(response, "Hausaufgaben abgeben")
+        self.assertContains(response, "Morgen")
+
+    def test_task_page_exposes_filter_counts_and_statuses(self):
+        now = timezone.now()
+        Task.objects.create(user=self.user, title="Ohne Termin")
+        Task.objects.create(user=self.user, title="Zu spät", due_at=now - timedelta(hours=1))
+        Task.objects.create(user=self.user, title="Fertig", is_done=True)
+        self._login()
+
+        response = self.client.get("/tasks/")
+
+        self.assertEqual(
+            response.context["task_counts"],
+            {"all": 3, "open": 2, "done": 1, "overdue": 1, "today": 1, "upcoming": 0},
+        )
+        self.assertContains(response, 'data-task-state="overdue"')
+        self.assertContains(response, "Überfällig")
+        self.assertContains(response, 'data-task-filter="done"')
+
+    def test_user_cannot_toggle_or_delete_another_users_task(self):
+        other = User.objects.create_user(
+            username="lukas@example.com", email="lukas@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=other, display_name="Lukas")
+        task = Task.objects.create(user=self.user, title="Privat")
+        self.client.login(username="lukas@example.com", password="secret-12345")
+
+        self.client.post("/tasks/", {"form_name": "task_toggle", "task_id": str(task.id), "is_done": "on"})
+        task.refresh_from_db()
+        self.assertFalse(task.is_done)
+
+        self.client.post("/tasks/", {"form_name": "task_delete", "task_id": str(task.id)})
+        self.assertTrue(Task.objects.filter(pk=task.id).exists())
+
+        response = self.client.get("/tasks/")
+        self.assertNotContains(response, "Privat")
+
+    def test_due_task_reminder_email_is_sent_only_once(self):
+        task = Task.objects.create(
+            user=self.user,
+            title="Rechnung bezahlen",
+            due_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        first_result = send_due_task_reminder_emails()
+        second_result = send_due_task_reminder_emails()
+
+        self.assertEqual(first_result, {"sent": 1, "failed": 0})
+        self.assertEqual(second_result, {"sent": 0, "failed": 0})
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("Rechnung bezahlen", mail.outbox[0].subject)
+        task.refresh_from_db()
+        self.assertIsNotNone(task.email_notified_at)
+
+    def test_task_email_category_can_be_disabled(self):
+        task = Task.objects.create(
+            user=self.user,
+            title="Nicht per E-Mail senden",
+            due_at=timezone.now() - timedelta(minutes=1),
+        )
+        NotificationPreference.objects.create(
+            user=self.user,
+            category=NotificationPreference.CATEGORY_TASKS,
+            email_enabled=False,
+        )
+
+        result = send_due_task_reminder_emails()
+
+        self.assertEqual(result, {"sent": 0, "failed": 0})
+        self.assertEqual(len(mail.outbox), 0)
+        task.refresh_from_db()
+        self.assertIsNone(task.email_notified_at)
+
+    def test_task_desktop_notification_claim_is_one_time(self):
+        task = Task.objects.create(
+            user=self.user,
+            title="Präsentation vorbereiten",
+            due_at=timezone.now() - timedelta(minutes=1),
+        )
+        self.client.force_login(self.user)
+
+        first_response = self.client.post("/notifications/claim/")
+        second_response = self.client.post("/notifications/claim/")
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(first_response.json()["notifications"][0]["title"], "Präsentation vorbereiten")
+        self.assertEqual(first_response.json()["notifications"][0]["url"], "/tasks/")
+        self.assertEqual(second_response.json(), {"notifications": []})
+        task.refresh_from_db()
+        self.assertIsNotNone(task.desktop_notified_at)
+
+    def test_dashboard_widget_appears_when_enabled(self):
+        self._login()
+        Task.objects.create(user=self.user, title="Offene Aufgabe")
+
+        response = self.client.get("/home/")
+
+        self.assertContains(response, "Offene Aufgabe")
+        self.assertContains(response, "Aufgaben")
+
+    def test_dashboard_widget_and_nav_tile_hidden_when_disabled(self):
+        SystemSettings.objects.create(tasks_enabled=False)
+        self._login()
+        Task.objects.create(user=self.user, title="Offene Aufgabe")
+
+        response = self.client.get("/home/")
+
+        self.assertNotContains(response, "Offene Aufgabe")
+
+    def test_scheduled_tasks_send_task_reminder_emails_when_enabled(self):
+        Task.objects.create(
+            user=self.user,
+            title="Rechnung bezahlen",
+            due_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        result = run_scheduled_tasks(now=timezone.now())
+
+        self.assertEqual(result["task_reminder_emails"], {"sent": 1, "failed": 0})
+
+    def test_scheduled_tasks_skip_task_reminder_emails_when_disabled(self):
+        SystemSettings.objects.create(tasks_enabled=False)
+        Task.objects.create(
+            user=self.user,
+            title="Rechnung bezahlen",
+            due_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        result = run_scheduled_tasks(now=timezone.now())
+
+        self.assertEqual(result["task_reminder_emails"], {"sent": 0, "failed": 0, "disabled": True})
+
+    def test_task_list_crud_and_task_falls_back_to_inbox_when_list_deleted(self):
+        self._login()
+
+        self.client.post("/tasks/", {"form_name": "task_list_add", "name": "Projekt Alpha", "color": "blue"})
+        task_list = TaskList.objects.get(owner=self.user, name="Projekt Alpha")
+
+        response = self.client.post(
+            "/tasks/",
+            {"form_name": "task_add", "title": "Kickoff vorbereiten", "task_list": str(task_list.id)},
+        )
+        self.assertRedirects(response, "/tasks/")
+        task = Task.objects.get(title="Kickoff vorbereiten")
+        self.assertEqual(task.task_list_id, task_list.id)
+
+        self.client.post(
+            "/tasks/", {"form_name": "task_list_rename", "task_list_id": str(task_list.id), "name": "Projekt Beta"}
+        )
+        task_list.refresh_from_db()
+        self.assertEqual(task_list.name, "Projekt Beta")
+
+        self.client.post("/tasks/", {"form_name": "task_list_delete", "task_list_id": str(task_list.id)})
+
+        self.assertFalse(TaskList.objects.filter(pk=task_list.id).exists())
+        task.refresh_from_db()
+        self.assertIsNone(task.task_list_id)
+
+    def test_task_label_create_assign_and_delete(self):
+        self._login()
+        self.client.post("/tasks/", {"form_name": "task_label_add", "name": "Dringend", "color": "red"})
+        label = TaskLabel.objects.get(owner=self.user, name="Dringend")
+
+        response = self.client.post(
+            "/tasks/",
+            {"form_name": "task_add", "title": "Kunde anrufen", "labels": [str(label.id)]},
+        )
+        self.assertRedirects(response, "/tasks/")
+        task = Task.objects.get(title="Kunde anrufen")
+        self.assertIn(label, task.labels.all())
+
+        self.client.post("/tasks/", {"form_name": "task_label_delete", "task_label_id": str(label.id)})
+
+        self.assertFalse(TaskLabel.objects.filter(pk=label.id).exists())
+        self.assertEqual(task.labels.count(), 0)
+
+    def test_subtask_creation_and_one_level_depth_enforcement(self):
+        self._login()
+        parent = Task.objects.create(user=self.user, title="Umzug organisieren")
+
+        response = self.client.post(
+            "/tasks/",
+            {"form_name": "task_add", "title": "Umzugswagen mieten", "parent": str(parent.id)},
+        )
+        self.assertRedirects(response, "/tasks/")
+        subtask = Task.objects.get(title="Umzugswagen mieten")
+        self.assertEqual(subtask.parent_id, parent.id)
+
+        # The parent picker only lists top-level tasks, so a subtask can never be chosen
+        # as a parent itself -- this caps nesting at one level.
+        response = self.client.post(
+            "/tasks/",
+            {"form_name": "task_add", "title": "Noch tiefer", "parent": str(subtask.id)},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Task.objects.filter(title="Noch tiefer").exists())
+
+    def test_subtasks_cascade_delete_with_parent(self):
+        parent = Task.objects.create(user=self.user, title="Elternaufgabe")
+        Task.objects.create(user=self.user, title="Kindaufgabe", parent=parent)
+        self._login()
+
+        self.client.post("/tasks/", {"form_name": "task_delete", "task_id": str(parent.id)})
+
+        self.assertFalse(Task.objects.filter(title="Elternaufgabe").exists())
+        self.assertFalse(Task.objects.filter(title="Kindaufgabe").exists())
+
+    def test_completing_recurring_task_creates_next_occurrence(self):
+        due_at = timezone.now().replace(microsecond=0)
+        task = Task.objects.create(
+            user=self.user, title="Müll rausbringen", due_at=due_at, recurrence_rule="WEEKLY"
+        )
+
+        result = toggle_task(self.user, task.id, True)
+
+        self.assertIsNotNone(result)
+        task.refresh_from_db()
+        self.assertTrue(task.is_done)
+        siblings = Task.objects.filter(user=self.user, title="Müll rausbringen").exclude(pk=task.id)
+        self.assertEqual(siblings.count(), 1)
+        next_task = siblings.first()
+        self.assertFalse(next_task.is_done)
+        self.assertEqual(next_task.due_at, due_at + timedelta(weeks=1))
+        self.assertIsNone(next_task.email_notified_at)
+        self.assertIsNone(next_task.desktop_notified_at)
+
+    def test_completing_non_recurring_task_does_not_duplicate(self):
+        task = Task.objects.create(user=self.user, title="Einmalig")
+
+        toggle_task(self.user, task.id, True)
+
+        self.assertEqual(Task.objects.filter(title="Einmalig").count(), 1)
+
+    def test_task_counts_include_today_and_upcoming_buckets(self):
+        now = timezone.now()
+        Task.objects.create(user=self.user, title="Heute fällig", due_at=now + timedelta(hours=2))
+        Task.objects.create(user=self.user, title="Nächste Woche", due_at=now + timedelta(days=3))
+        Task.objects.create(user=self.user, title="Weit weg", due_at=now + timedelta(days=30))
+        self._login()
+
+        response = self.client.get("/tasks/")
+
+        self.assertEqual(response.context["task_counts"]["today"], 1)
+        self.assertEqual(response.context["task_counts"]["upcoming"], 1)
+
+    def test_user_cannot_manage_another_users_task_list_or_label(self):
+        other = User.objects.create_user(
+            username="lukas2@example.com", email="lukas2@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=other, display_name="Lukas2")
+        task_list = TaskList.objects.create(owner=self.user, name="Privatliste")
+        label = TaskLabel.objects.create(owner=self.user, name="Privatlabel")
+        self.client.login(username="lukas2@example.com", password="secret-12345")
+
+        self.client.post("/tasks/", {"form_name": "task_list_delete", "task_list_id": str(task_list.id)})
+        self.client.post("/tasks/", {"form_name": "task_label_delete", "task_label_id": str(label.id)})
+
+        self.assertTrue(TaskList.objects.filter(pk=task_list.id).exists())
+        self.assertTrue(TaskLabel.objects.filter(pk=label.id).exists())
+
+    def test_dashboard_today_tasks_includes_overdue_and_today_but_not_upcoming(self):
+        now = timezone.now()
+        Task.objects.create(user=self.user, title="Überfällig", due_at=now - timedelta(days=1))
+        Task.objects.create(user=self.user, title="Heute fällig", due_at=now + timedelta(hours=2))
+        Task.objects.create(user=self.user, title="Nächste Woche", due_at=now + timedelta(days=3))
+        Task.objects.create(user=self.user, title="Ohne Fälligkeit")
+        Task.objects.create(user=self.user, title="Erledigt", due_at=now, is_done=True)
+
+        result = dashboard_today_tasks(self.user, now)
+
+        titles = {item["title"] for item in result}
+        self.assertEqual(titles, {"Überfällig", "Heute fällig"})
+
+    def test_task_toggle_redirects_to_safe_return_to_url(self):
+        task = Task.objects.create(user=self.user, title="Vom Dashboard erledigen")
+        self._login()
+
+        response = self.client.post(
+            "/tasks/",
+            {"form_name": "task_toggle", "task_id": str(task.id), "is_done": "on", "return_to": "/home/"},
+        )
+
+        self.assertRedirects(response, "/home/")
+        task.refresh_from_db()
+        self.assertTrue(task.is_done)
+
+    def test_task_toggle_ignores_unsafe_return_to_url(self):
+        task = Task.objects.create(user=self.user, title="Sicherheitscheck")
+        self._login()
+
+        response = self.client.post(
+            "/tasks/",
+            {
+                "form_name": "task_toggle",
+                "task_id": str(task.id),
+                "is_done": "on",
+                "return_to": "https://evil.example/",
+            },
+        )
+
+        self.assertRedirects(response, "/tasks/")
+
+
 class CalendarFetchSafetyTests(TestCase):
     def public_dns_result(self):
         return [(None, None, None, "", ("93.184.216.34", 443))]
@@ -1978,6 +2889,645 @@ class ScheduledAutomationTests(TestCase):
         self.assertIn("Kalender: 1 synchronisiert", output.getvalue())
 
 
+@override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
+class NotificationCenterTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="mira@example.com",
+            email="mira@example.com",
+            password="secret-12345",
+        )
+        Profile.objects.create(user=self.user, display_name="Mira")
+        self.other = User.objects.create_user(
+            username="lukas@example.com",
+            email="lukas@example.com",
+            password="secret-12345",
+        )
+        Profile.objects.create(user=self.other, display_name="Lukas")
+
+    def test_notification_center_requires_login(self):
+        response = self.client.get("/notifications/")
+
+        self.assertRedirects(response, "/login/?next=/notifications/")
+
+    def test_due_tasks_and_reminders_are_materialized_once_and_appear_in_badge(self):
+        now = timezone.now()
+        Task.objects.create(user=self.user, title="Präsentation", due_at=now - timedelta(minutes=2))
+        CalendarReminder.objects.create(user=self.user, title="Arzt anrufen", due_at=now - timedelta(minutes=1))
+        self.client.force_login(self.user)
+
+        first_response = self.client.get("/notifications/?status=all")
+        second_response = self.client.get("/notifications/?status=all")
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertContains(first_response, "Aufgabe fällig: Präsentation")
+        self.assertContains(first_response, "Erinnerung fällig: Arzt anrufen")
+        self.assertContains(first_response, "2 ungelesen")
+        self.assertEqual(first_response.context["unread_notification_count"], 2)
+        self.assertEqual(second_response.context["total_notification_count"], 2)
+        self.assertEqual(UserNotification.objects.filter(recipient=self.user).count(), 2)
+
+    def test_existing_invitations_and_note_activity_are_backfilled(self):
+        event = CalendarEvent.objects.create(
+            user=self.other,
+            title="Projektmeeting",
+            start_at=timezone.now() + timedelta(days=1),
+            end_at=timezone.now() + timedelta(days=1, hours=1),
+        )
+        invitation = CalendarEventAttendee.objects.create(
+            event=event,
+            user=self.user,
+            invited_by=self.other,
+        )
+        note = Note.objects.create(owner=self.other, title="Ideen")
+        share = NoteShare.objects.create(note=note, user=self.user, role=NoteShare.ROLE_READER)
+        activity = NoteActivityNotification.objects.create(
+            note=note,
+            recipient=self.user,
+            actor=self.other,
+            kind=NoteActivityNotification.KIND_MENTION,
+            excerpt="Hallo @Mira",
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get("/notifications/?status=all")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Einladung: Projektmeeting")
+        self.assertContains(response, "Lukas hat dich erwähnt")
+        self.assertContains(response, "Lukas hat eine Notiz mit dir geteilt")
+        self.assertTrue(
+            UserNotification.objects.filter(
+                recipient=self.user,
+                source_key=f"event-invitation:{invitation.id}",
+            ).exists()
+        )
+        self.assertTrue(
+            UserNotification.objects.filter(
+                recipient=self.user,
+                source_key=f"note-activity:{activity.id}",
+            ).exists()
+        )
+        self.assertTrue(
+            UserNotification.objects.filter(
+                recipient=self.user,
+                source_key=f"note-share:{share.id}",
+            ).exists()
+        )
+
+    def test_new_note_share_creates_inbox_notification_immediately(self):
+        note = Note.objects.create(owner=self.other, title="Roadmap")
+
+        share = share_note(self.other, note.id, self.user.id, NoteShare.ROLE_EDITOR)
+        share_note(self.other, note.id, self.user.id, NoteShare.ROLE_READER)
+
+        notification = UserNotification.objects.get(
+            recipient=self.user,
+            source_key=f"note-share:{share.id}",
+        )
+        self.assertEqual(notification.kind, UserNotification.KIND_NOTE_SHARE)
+        self.assertEqual(notification.actor, self.other)
+        self.assertEqual(notification.url, f"/notes/{note.id}/")
+        self.assertEqual(UserNotification.objects.filter(recipient=self.user).count(), 1)
+
+    def test_opening_and_toggling_notification_are_user_scoped(self):
+        notification = UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_TASK_DUE,
+            title="Aufgabe fällig",
+            url="/tasks/",
+            source_key="task:1001",
+        )
+        other_notification = UserNotification.objects.create(
+            recipient=self.other,
+            kind=UserNotification.KIND_TASK_DUE,
+            title="Privat",
+            url="/tasks/",
+            source_key="task:1002",
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(f"/notifications/{notification.id}/open/")
+
+        self.assertRedirects(response, "/tasks/")
+        notification.refresh_from_db()
+        self.assertIsNotNone(notification.read_at)
+
+        response = self.client.post(f"/notifications/{notification.id}/toggle-read/", {"status": "all"})
+        self.assertRedirects(response, "/notifications/?status=all")
+        notification.refresh_from_db()
+        self.assertIsNone(notification.read_at)
+
+        response = self.client.post(f"/notifications/{other_notification.id}/toggle-read/")
+        self.assertEqual(response.status_code, 404)
+
+    def test_toggle_read_redirects_to_safe_return_to_url(self):
+        notification = UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_TASK_DUE,
+            title="Aufgabe fällig",
+            url="/tasks/",
+            source_key="task:2001",
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            f"/notifications/{notification.id}/toggle-read/",
+            {"return_to": "/home/"},
+        )
+
+        self.assertRedirects(response, "/home/")
+        notification.refresh_from_db()
+        self.assertIsNotNone(notification.read_at)
+
+    def test_toggle_read_ignores_unsafe_return_to_url(self):
+        notification = UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_TASK_DUE,
+            title="Aufgabe fällig",
+            url="/tasks/",
+            source_key="task:2002",
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            f"/notifications/{notification.id}/toggle-read/",
+            {"return_to": "https://evil.example/"},
+        )
+
+        self.assertRedirects(response, "/notifications/?status=unread")
+
+    def test_filters_and_mark_all_read(self):
+        unread = UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_NOTE_COMMENT,
+            title="Neuer Kommentar",
+            source_key="note-activity:1001",
+        )
+        UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_EVENT_INVITATION,
+            title="Gelesene Einladung",
+            source_key="event-invitation:1002",
+            read_at=timezone.now(),
+        )
+        self.client.force_login(self.user)
+
+        unread_response = self.client.get("/notifications/")
+        all_response = self.client.get("/notifications/?status=all")
+
+        self.assertContains(unread_response, "Neuer Kommentar")
+        self.assertNotContains(unread_response, "Gelesene Einladung")
+        self.assertContains(all_response, "Neuer Kommentar")
+        self.assertContains(all_response, "Gelesene Einladung")
+
+        response = self.client.post("/notifications/mark-all-read/")
+
+        self.assertRedirects(response, "/notifications/?status=all")
+        unread.refresh_from_db()
+        self.assertIsNotNone(unread.read_at)
+        self.assertFalse(UserNotification.objects.filter(recipient=self.user, read_at__isnull=True).exists())
+
+    def test_inbox_category_preference_hides_items_badge_and_bulk_read(self):
+        hidden = UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_TASK_DUE,
+            title="Verborgene Aufgabe",
+            source_key="task:hidden-category",
+        )
+        visible = UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_NOTE_COMMENT,
+            title="Sichtbarer Kommentar",
+            source_key="note-comment:visible-category",
+        )
+        NotificationPreference.objects.create(
+            user=self.user,
+            category=NotificationPreference.CATEGORY_TASKS,
+            inbox_enabled=False,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get("/notifications/?status=all")
+
+        self.assertNotContains(response, "Verborgene Aufgabe")
+        self.assertContains(response, "Sichtbarer Kommentar")
+        self.assertEqual(response.context["unread_notification_count"], 1)
+        self.assertEqual(response.context["total_notification_count"], 1)
+
+        self.client.post("/notifications/mark-all-read/")
+        hidden.refresh_from_db()
+        visible.refresh_from_db()
+        self.assertIsNone(hidden.read_at)
+        self.assertIsNotNone(visible.read_at)
+
+    def test_inbox_backed_email_is_sent_once_and_respects_category(self):
+        self.user.profile.notify_email = True
+        self.user.profile.save(update_fields=["notify_email"])
+        sent_notification = UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_NOTE_SHARE,
+            title="Neue Notizfreigabe",
+            body="Lukas hat Roadmap mit dir geteilt.",
+            source_key="note-share:email-enabled",
+        )
+
+        first_result = send_pending_user_notification_emails()
+        second_result = send_pending_user_notification_emails()
+
+        self.assertEqual(first_result, {"sent": 1, "failed": 0})
+        self.assertEqual(second_result, {"sent": 0, "failed": 0})
+        self.assertEqual(len(mail.outbox), 1)
+        sent_notification.refresh_from_db()
+        self.assertIsNotNone(sent_notification.email_notified_at)
+
+        NotificationPreference.objects.create(
+            user=self.user,
+            category=NotificationPreference.CATEGORY_WEATHER,
+            email_enabled=False,
+        )
+        muted_notification = UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_WEATHER_ALERT,
+            title="Gewitterwarnung",
+            source_key="weather-alert:email-disabled",
+        )
+
+        muted_result = send_pending_user_notification_emails()
+
+        self.assertEqual(muted_result, {"sent": 0, "failed": 0})
+        self.assertEqual(len(mail.outbox), 1)
+        muted_notification.refresh_from_db()
+        self.assertIsNone(muted_notification.email_notified_at)
+
+
+@override_settings(
+    PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"],
+    WEB_PUSH_ENABLED=True,
+    WEB_PUSH_VAPID_PUBLIC_KEY="B" * 87,
+    WEB_PUSH_VAPID_PRIVATE_KEY="test-private-key",
+    WEB_PUSH_VAPID_SUBJECT="mailto:push@example.com",
+    WEB_PUSH_ALLOWED_ENDPOINT_HOSTS=[
+        "fcm.googleapis.com",
+        "updates.push.services.mozilla.com",
+        "notify.windows.com",
+        "push.apple.com",
+    ],
+    WEB_PUSH_TTL_SECONDS=600,
+    WEB_PUSH_TIMEOUT_SECONDS=10,
+    WEB_PUSH_MAX_ATTEMPTS=5,
+)
+class WebPushTests(TestCase):
+    endpoint = "https://fcm.googleapis.com/fcm/send/test-device-token"
+    subscription_payload = {
+        "endpoint": endpoint,
+        "keys": {"p256dh": "A" * 87, "auth": "B" * 22},
+    }
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="push@example.com",
+            email="push@example.com",
+            password="secret-12345",
+        )
+        Profile.objects.create(
+            user=self.user,
+            display_name="Push",
+            notify_desktop=True,
+        )
+        self.other = User.objects.create_user(
+            username="other-push@example.com",
+            email="other-push@example.com",
+            password="secret-12345",
+        )
+        Profile.objects.create(user=self.other, display_name="Other Push", notify_desktop=True)
+
+    def create_subscription(self, user=None):
+        subscription, _created = register_web_push_subscription(
+            user or self.user,
+            self.subscription_payload,
+            user_agent="Test Browser",
+        )
+        return subscription
+
+    def test_subscription_endpoint_requires_login_and_stores_current_device(self):
+        anonymous_response = self.client.post(
+            "/notifications/push-subscription/",
+            data=json.dumps(self.subscription_payload),
+            content_type="application/json",
+        )
+        self.assertRedirects(
+            anonymous_response,
+            "/login/?next=/notifications/push-subscription/",
+        )
+
+        self.client.force_login(self.user)
+        response = self.client.post(
+            "/notifications/push-subscription/",
+            data=json.dumps(self.subscription_payload),
+            content_type="application/json",
+            HTTP_USER_AGENT="Test Browser 1.0",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        subscription = WebPushSubscription.objects.get(user=self.user)
+        self.assertEqual(subscription.endpoint, self.endpoint)
+        self.assertEqual(subscription.user_agent, "Test Browser 1.0")
+        self.assertNotEqual(subscription.endpoint_hash, self.endpoint)
+
+    def test_subscription_endpoint_rejects_untrusted_push_host(self):
+        self.client.force_login(self.user)
+        payload = {
+            **self.subscription_payload,
+            "endpoint": "https://127.0.0.1/internal-service",
+        }
+
+        response = self.client.post(
+            "/notifications/push-subscription/",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(WebPushSubscription.objects.exists())
+
+    @override_settings(WEB_PUSH_ENABLED=False)
+    def test_subscription_endpoint_reports_missing_server_configuration(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            "/notifications/push-subscription/",
+            data=json.dumps(self.subscription_payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("nicht eingerichtet", response.json()["error"])
+
+    def test_settings_exposes_public_key_and_device_activation(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get("/settings/")
+
+        self.assertContains(response, f'data-web-push-public-key="{"B" * 87}"')
+        self.assertContains(response, "Auf diesem Gerät aktivieren")
+        self.assertNotContains(response, "test-private-key")
+
+    def test_subscription_delete_is_user_scoped(self):
+        self.create_subscription(self.other)
+        self.client.force_login(self.user)
+
+        response = self.client.delete(
+            "/notifications/push-subscription/",
+            data=json.dumps({"endpoint": self.endpoint}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["removed"])
+        self.assertTrue(WebPushSubscription.objects.filter(user=self.other).exists())
+
+    def test_pending_notification_is_sent_once_per_registered_device(self):
+        subscription = self.create_subscription()
+        notification = UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_TASK_DUE,
+            title="Aufgabe fällig: Rechnung",
+            body="Fällig heute um 12:00 Uhr",
+            url="/tasks/",
+            source_key="task:push-1",
+        )
+
+        with patch("app.services.web_push.webpush") as send_push:
+            first_result = send_pending_web_push_notifications()
+            second_result = send_pending_web_push_notifications()
+
+        self.assertEqual(first_result, {"sent": 1, "failed": 0, "removed": 0, "queued": 1, "deferred": 0})
+        self.assertEqual(second_result, {"sent": 0, "failed": 0, "removed": 0, "queued": 0, "deferred": 0})
+        send_push.assert_called_once()
+        payload = json.loads(send_push.call_args.kwargs["data"])
+        self.assertEqual(payload["title"], notification.title)
+        self.assertEqual(payload["url"], "/tasks/")
+        self.assertEqual(send_push.call_args.kwargs["ttl"], 600)
+        delivery = WebPushDelivery.objects.get(subscription=subscription, notification=notification)
+        self.assertIsNotNone(delivery.delivered_at)
+        self.assertEqual(delivery.attempt_count, 1)
+        subscription.refresh_from_db()
+        self.assertIsNotNone(subscription.last_success_at)
+
+    def test_notifications_created_before_device_registration_are_not_backfilled(self):
+        UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_NOTE_SHARE,
+            title="Alte Freigabe",
+            source_key="note-share:old",
+        )
+        self.create_subscription()
+
+        with patch("app.services.web_push.webpush") as send_push:
+            result = send_pending_web_push_notifications()
+
+        self.assertEqual(result["queued"], 0)
+        send_push.assert_not_called()
+
+    def test_expired_subscription_is_removed_after_gone_response(self):
+        subscription = self.create_subscription()
+        UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_EVENT_INVITATION,
+            title="Einladung",
+            source_key="event-invitation:push-1",
+        )
+        response = SimpleNamespace(status_code=410)
+
+        from pywebpush import WebPushException
+
+        with patch(
+            "app.services.web_push.webpush",
+            side_effect=WebPushException("Gone", response=response),
+        ):
+            result = send_pending_web_push_notifications()
+
+        self.assertEqual(result["removed"], 1)
+        self.assertFalse(WebPushSubscription.objects.filter(pk=subscription.pk).exists())
+        self.assertFalse(WebPushDelivery.objects.exists())
+
+    def test_transient_delivery_failure_remains_retryable(self):
+        subscription = self.create_subscription()
+        notification = UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_NOTE_COMMENT,
+            title="Neuer Kommentar",
+            source_key="note-comment:push-1",
+        )
+        response = SimpleNamespace(status_code=503)
+
+        from pywebpush import WebPushException
+
+        with patch(
+            "app.services.web_push.webpush",
+            side_effect=WebPushException("Unavailable", response=response),
+        ):
+            result = send_pending_web_push_notifications()
+
+        self.assertEqual(result["failed"], 1)
+        delivery = WebPushDelivery.objects.get(subscription=subscription, notification=notification)
+        self.assertEqual(delivery.attempt_count, 1)
+        self.assertEqual(delivery.last_status_code, 503)
+        self.assertIsNone(delivery.delivered_at)
+        subscription.refresh_from_db()
+        self.assertEqual(subscription.failure_count, 1)
+
+    def test_category_preference_prevents_web_push_delivery(self):
+        self.create_subscription()
+        NotificationPreference.objects.create(
+            user=self.user,
+            category=NotificationPreference.CATEGORY_TASKS,
+            web_push_enabled=False,
+        )
+        UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_TASK_DUE,
+            title="Stille Aufgabe",
+            source_key="task:push-category-disabled",
+        )
+
+        with patch("app.services.web_push.webpush") as send_push:
+            result = send_pending_web_push_notifications()
+
+        self.assertEqual(result["queued"], 0)
+        self.assertEqual(result["sent"], 0)
+        send_push.assert_not_called()
+        self.assertFalse(WebPushDelivery.objects.exists())
+
+    def test_quiet_hours_defer_web_push_until_the_window_ends(self):
+        subscription = self.create_subscription()
+        profile = self.user.profile
+        profile.timezone_name = "UTC"
+        profile.notification_quiet_hours_enabled = True
+        profile.notification_quiet_start = time(22, 0)
+        profile.notification_quiet_end = time(7, 0)
+        profile.save(
+            update_fields=[
+                "timezone_name",
+                "notification_quiet_hours_enabled",
+                "notification_quiet_start",
+                "notification_quiet_end",
+            ]
+        )
+        notification = UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_NOTE_COMMENT,
+            title="Später zustellen",
+            source_key="note-comment:quiet-hours",
+        )
+        during_quiet_hours = datetime(2026, 8, 28, 23, 0, tzinfo=ZoneInfo("UTC"))
+        after_quiet_hours = datetime(2026, 8, 29, 8, 0, tzinfo=ZoneInfo("UTC"))
+
+        with patch("app.services.web_push.webpush") as send_push:
+            deferred_result = send_pending_web_push_notifications(now=during_quiet_hours)
+            sent_result = send_pending_web_push_notifications(now=after_quiet_hours)
+
+        self.assertEqual(deferred_result["deferred"], 1)
+        self.assertEqual(deferred_result["sent"], 0)
+        self.assertEqual(sent_result["sent"], 1)
+        send_push.assert_called_once()
+        delivery = WebPushDelivery.objects.get(subscription=subscription, notification=notification)
+        self.assertEqual(delivery.delivered_at, after_quiet_hours)
+
+    def test_test_push_endpoint_sends_to_current_users_device(self):
+        self.create_subscription()
+        NotificationPreference.objects.create(
+            user=self.user,
+            category=NotificationPreference.CATEGORY_TASKS,
+            web_push_enabled=False,
+        )
+        profile = self.user.profile
+        profile.notification_quiet_hours_enabled = True
+        profile.notification_quiet_start = time(0, 0)
+        profile.notification_quiet_end = time(23, 59)
+        profile.save(
+            update_fields=[
+                "notification_quiet_hours_enabled",
+                "notification_quiet_start",
+                "notification_quiet_end",
+            ]
+        )
+        self.client.force_login(self.user)
+
+        with patch("app.services.web_push.webpush") as send_push:
+            response = self.client.post(
+                "/notifications/push-test/",
+                data=json.dumps({"endpoint": self.endpoint}),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["ok"])
+        send_push.assert_called_once()
+        payload = json.loads(send_push.call_args.kwargs["data"])
+        self.assertEqual(payload["title"], "Lunora-Testbenachrichtigung")
+
+    def test_test_push_endpoint_is_user_scoped(self):
+        self.create_subscription(self.other)
+        self.client.force_login(self.user)
+
+        with patch("app.services.web_push.webpush") as send_push:
+            response = self.client.post(
+                "/notifications/push-test/",
+                data=json.dumps({"endpoint": self.endpoint}),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 404)
+        send_push.assert_not_called()
+
+    def test_weather_alerts_are_checked_once_per_user_with_multiple_devices(self):
+        self.create_subscription()
+        second_payload = {
+            **self.subscription_payload,
+            "endpoint": "https://updates.push.services.mozilla.com/wpush/v2/second-device",
+        }
+        register_web_push_subscription(self.user, second_payload)
+        WeatherLocation.objects.create(
+            user=self.user,
+            query="Berlin,de",
+            name="Berlin",
+            label="Berlin",
+        )
+
+        with patch("app.services.notifications.materialize_due_weather_alerts", return_value=[{"id": "alert"}]) as claim:
+            result = materialize_web_push_weather_alerts()
+
+        self.assertEqual(result, {"created": 1, "failed": 0})
+        claim.assert_called_once()
+
+    def test_weather_alert_detection_supports_inbox_only_preferences(self):
+        profile = self.user.profile
+        profile.notify_desktop = False
+        profile.notify_email = False
+        profile.save(update_fields=["notify_desktop", "notify_email"])
+        NotificationPreference.objects.create(
+            user=self.user,
+            category=NotificationPreference.CATEGORY_WEATHER,
+            inbox_enabled=True,
+            email_enabled=False,
+            web_push_enabled=False,
+        )
+        WeatherLocation.objects.create(
+            user=self.user,
+            query="Berlin,de",
+            name="Berlin",
+            label="Berlin",
+        )
+
+        with patch("app.services.notifications.materialize_due_weather_alerts", return_value=[{"id": "alert"}]) as detect:
+            result = materialize_web_push_weather_alerts()
+
+        self.assertEqual(result, {"created": 1, "failed": 0})
+        detect.assert_called_once_with(self.user, now=None)
+
+
 class WeatherMapTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
@@ -1999,6 +3549,12 @@ class WeatherMapTests(TestCase):
         self.assertContains(response, "data-weather-map-canvas")
         self.assertContains(response, "data-weather-map-reset")
         self.assertContains(response, "data-weather-map-fullscreen")
+        self.assertContains(response, "data-hourly-carousel")
+        self.assertContains(response, "data-hourly-scroll")
+        self.assertContains(response, "data-hourly-previous")
+        self.assertContains(response, "data-hourly-next")
+        self.assertContains(response, "Frühere Stunden anzeigen")
+        self.assertContains(response, "Spätere Stunden anzeigen")
         self.assertContains(response, 'data-weather-map-point-url="/weather/point/"')
         self.assertContains(response, "per Klick die Temperatur eines Ortes abrufen")
         self.assertContains(response, "Keine Einfärbung bedeutet aktuell kein Niederschlag.")
@@ -2144,12 +3700,12 @@ class WeatherMapTests(TestCase):
 
     @override_settings(WEATHER_API_KEY="test-key")
     def test_weather_map_service_rejects_invalid_layer_and_coordinates(self):
-        with self.assertRaisesMessage(ValueError, "Ungueltige Wetterkarten-Ebene"):
+        with self.assertRaisesMessage(ValueError, "Ungültige Wetterkarten-Ebene"):
             fetch_weather_map_tile(7, 67, 43, layer="snow")
 
         for coordinates in [(0, 0, 0), (11, 0, 0), (7, 128, 43), (7, 67, 128)]:
             with self.subTest(coordinates=coordinates):
-                with self.assertRaisesMessage(ValueError, "Ungueltige Wetterkarten-Kachel"):
+                with self.assertRaisesMessage(ValueError, "Ungültige Wetterkarten-Kachel"):
                     fetch_weather_map_tile(*coordinates, layer="temperature")
 
     @override_settings(WEATHER_API_KEY="")
@@ -2372,6 +3928,18 @@ class MessagesPageTests(TestCase):
         response = self.client.get("/messages/")
 
         self.assertRedirects(response, "/login/?next=/messages/")
+
+    def test_messages_empty_state_offers_direct_start_action(self):
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get("/messages/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "data-new-chat-card")
+        self.assertContains(response, "data-open-new-chat", count=2)
+        self.assertContains(response, "Neue Unterhaltung starten", count=2)
+        self.assertNotContains(response, "Starte links")
+        self.assertNotContains(response, "Starte oben")
 
     def test_start_conversation_excludes_inactive_users(self):
         self.anna.is_active = False
@@ -3101,7 +4669,24 @@ class GlobalSearchTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Wonach suchst du?")
+        self.assertContains(response, "Notizen öffnen")
+        self.assertContains(response, "Nachrichten öffnen")
+        self.assertContains(response, "Kalender öffnen")
         self.assertNotContains(response, "Irgendeine Notiz")
+
+    def test_global_search_no_results_offers_reset_and_shortcuts(self):
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get("/search/?q=Unauffindbar")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context["has_search_results"])
+        self.assertContains(response, "Keine Treffer für")
+        self.assertContains(response, "Unauffindbar")
+        self.assertContains(response, "Suche zurücksetzen")
+        self.assertContains(response, "Notizen öffnen")
+        self.assertContains(response, "Nachrichten öffnen")
+        self.assertContains(response, "Kalender öffnen")
 
     def test_global_search_does_not_leak_other_users_private_data(self):
         Note.objects.create(owner=self.lukas, title="Raketengeheimnis")
@@ -3429,6 +5014,246 @@ class NoteSearchViewTests(TestCase):
 
 
 @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
+class DashboardCustomizationTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="mira@example.com",
+            email="mira@example.com",
+            password="secret-12345",
+        )
+        self.profile = Profile.objects.create(user=self.user, display_name="Mira")
+
+    def _login(self):
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+    def _layout(self, *, order=None, hidden=None):
+        return {
+            "version": 1,
+            "order": order or list(DASHBOARD_WIDGET_IDS),
+            "hidden": hidden or [],
+        }
+
+    def test_home_uses_default_layout_and_creates_missing_profile(self):
+        self.profile.delete()
+        self._login()
+
+        response = self.client.get("/home/")
+
+        self.assertEqual(response.status_code, 200)
+        profile = Profile.objects.get(user=self.user)
+        self.assertEqual(profile.dashboard_layout, default_dashboard_layout())
+        self.assertEqual(
+            [widget["id"] for widget in response.context["dashboard_widgets"]],
+            list(DASHBOARD_WIDGET_IDS),
+        )
+
+    def test_home_renders_saved_order(self):
+        order = ["clock", "welcome", "quick_actions", "recent_tools", "upcoming_events", "weather", "tasks", "notifications"]
+        self.profile.dashboard_layout = self._layout(order=order)
+        self.profile.save(update_fields=["dashboard_layout"])
+        self._login()
+
+        response = self.client.get("/home/")
+
+        self.assertEqual(
+            [widget["id"] for widget in response.context["dashboard_widgets"]],
+            order,
+        )
+
+    def test_home_keeps_hidden_widgets_for_edit_mode_and_shows_empty_state(self):
+        self.profile.dashboard_layout = self._layout(hidden=list(DASHBOARD_WIDGET_IDS))
+        self.profile.save(update_fields=["dashboard_layout"])
+        self._login()
+
+        response = self.client.get("/home/")
+
+        self.assertFalse(response.context["dashboard_visible_widgets"])
+        self.assertContains(response, "Dein Dashboard ist leer")
+        self.assertContains(response, 'data-widget-id="welcome"')
+        self.assertContains(response, "hidden")
+
+    def test_normalization_adds_missing_widgets_and_drops_obsolete_entries(self):
+        broken_layout = {
+            "version": 1,
+            "order": ["clock", "unknown", "clock", "welcome"],
+            "hidden": ["removed", "weather", "weather"],
+        }
+
+        normalized = normalize_dashboard_layout(broken_layout)
+
+        self.assertEqual(normalized["order"][:2], ["clock", "welcome"])
+        self.assertEqual(set(normalized["order"]), set(DASHBOARD_WIDGET_IDS))
+        self.assertEqual(normalized["hidden"], ["weather"])
+
+    def test_saved_hidden_layout_is_ignored_when_customization_is_disabled(self):
+        SystemSettings.objects.create(dashboard_customization_enabled=False)
+        self.profile.dashboard_layout = self._layout(hidden=list(DASHBOARD_WIDGET_IDS))
+        self.profile.save(update_fields=["dashboard_layout"])
+        self._login()
+
+        response = self.client.get("/home/")
+
+        self.assertNotContains(response, "Dashboard anpassen")
+        self.assertContains(response, "Willkommen zurück")
+        self.assertContains(response, "Nächste Termine")
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.dashboard_layout["hidden"], list(DASHBOARD_WIDGET_IDS))
+
+    def test_dashboard_layout_api_requires_login(self):
+        response = self.client.patch(
+            "/home/dashboard-layout/",
+            data=json.dumps(default_dashboard_layout()),
+            content_type="application/json",
+        )
+
+        self.assertRedirects(response, "/login/?next=/home/dashboard-layout/")
+
+    def test_dashboard_layout_api_requires_csrf(self):
+        csrf_client = Client(enforce_csrf_checks=True)
+        csrf_client.login(username="mira@example.com", password="secret-12345")
+
+        response = csrf_client.patch(
+            "/home/dashboard-layout/",
+            data=json.dumps(default_dashboard_layout()),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+        csrf_client.get("/home/")
+        token = csrf_client.cookies["csrftoken"].value
+        response = csrf_client.patch(
+            "/home/dashboard-layout/",
+            data=json.dumps(default_dashboard_layout()),
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=token,
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_dashboard_layout_api_saves_valid_layout_for_current_user_only(self):
+        other = User.objects.create_user(username="lukas@example.com", email="lukas@example.com", password="secret-12345")
+        other_profile = Profile.objects.create(user=other, display_name="Lukas")
+        layout = self._layout(
+            order=["recent_tools", "quick_actions", "upcoming_events", "weather", "clock", "welcome", "tasks", "notifications"],
+            hidden=["clock", "weather"],
+        )
+        self._login()
+
+        response = self.client.patch(
+            "/home/dashboard-layout/",
+            data=json.dumps(layout),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"ok": True, "layout": layout})
+        self.profile.refresh_from_db()
+        other_profile.refresh_from_db()
+        self.assertEqual(self.profile.dashboard_layout, layout)
+        self.assertEqual(other_profile.dashboard_layout, default_dashboard_layout())
+
+    def test_dashboard_layout_api_rejects_invalid_layouts_without_saving(self):
+        original_layout = self.profile.dashboard_layout
+        invalid_layouts = [
+            {"version": 1, "order": ["welcome"], "hidden": []},
+            self._layout(order=["welcome", "welcome", "clock", "weather", "upcoming_events", "quick_actions"]),
+            self._layout(order=["welcome", "clock", "weather", "upcoming_events", "quick_actions", "bogus"]),
+            {"version": 1, "order": list(DASHBOARD_WIDGET_IDS), "hidden": "weather"},
+            ["welcome", "clock"],
+        ]
+        self._login()
+
+        for layout in invalid_layouts:
+            response = self.client.patch(
+                "/home/dashboard-layout/",
+                data=json.dumps(layout),
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 400)
+            self.profile.refresh_from_db()
+            self.assertEqual(self.profile.dashboard_layout, original_layout)
+
+    def test_dashboard_layout_api_respects_feature_flag(self):
+        SystemSettings.objects.create(dashboard_customization_enabled=False)
+        layout = self._layout(hidden=["welcome"])
+        self._login()
+
+        response = self.client.patch(
+            "/home/dashboard-layout/",
+            data=json.dumps(layout),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.dashboard_layout, default_dashboard_layout())
+
+    def test_disabled_weather_or_messages_are_not_restored_by_dashboard_layout(self):
+        SystemSettings.objects.create(weather_enabled=False, messages_enabled=False)
+        self.profile.dashboard_layout = self._layout(order=["weather", "quick_actions", "recent_tools", "welcome", "clock", "upcoming_events"])
+        self.profile.save(update_fields=["dashboard_layout"])
+        self._login()
+
+        response = self.client.get("/home/")
+
+        self.assertNotContains(response, 'data-widget-id="weather"')
+        self.assertNotContains(response, "Nachrichten")
+        self.assertContains(response, "Schnellzugriff")
+
+
+@override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
+class DashboardNotificationWidgetTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="mira@example.com",
+            email="mira@example.com",
+            password="secret-12345",
+        )
+        Profile.objects.create(user=self.user, display_name="Mira")
+
+    def _login(self):
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+    def test_dashboard_shows_latest_unread_notifications_and_todays_tasks(self):
+        now = timezone.now()
+        UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_NOTE_SHARE,
+            title="Notiz geteilt",
+            source_key="note-share:9001",
+        )
+        UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_NOTE_SHARE,
+            title="Bereits gelesen",
+            source_key="note-share:9002",
+            read_at=now,
+        )
+        Task.objects.create(user=self.user, title="Heute fällig", due_at=now + timedelta(hours=1))
+        Task.objects.create(user=self.user, title="Nächste Woche", due_at=now + timedelta(days=3))
+        self._login()
+
+        response = self.client.get("/home/")
+
+        self.assertContains(response, "Notiz geteilt")
+        self.assertNotContains(response, "Bereits gelesen")
+        self.assertContains(response, "Heute fällig")
+        self.assertEqual(len(response.context["dashboard_notifications"]), 1)
+        self.assertEqual(len(response.context["dashboard_today_tasks"]), 1)
+        self.assertEqual(response.context["dashboard_today_tasks"][0]["title"], "Heute fällig")
+
+    def test_dashboard_hides_task_section_when_tasks_disabled(self):
+        SystemSettings.objects.create(tasks_enabled=False)
+        self._login()
+
+        response = self.client.get("/home/")
+
+        self.assertContains(response, "Neueste Hinweise")
+        self.assertNotContains(response, "Heutige Aufgaben")
+        self.assertFalse(response.context["dashboard_tasks_enabled"])
+
+
 class AdministrationFeatureFlagTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
@@ -3500,7 +5325,7 @@ class AdministrationFeatureFlagTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.wsgi_request.user.is_authenticated)
-        self.assertContains(response, "Der Login ist fuer Nutzer voruebergehend deaktiviert")
+        self.assertContains(response, "Der Login ist für Nutzer vorübergehend deaktiviert")
 
         response = self.client.post(
             "/register/",
@@ -3564,6 +5389,16 @@ class AdministrationFeatureFlagTests(TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertTrue(CalendarEvent.objects.filter(pk=event.id).exists())
 
+    def test_disabled_calendar_event_creation_hides_empty_state_actions(self):
+        SystemSettings.objects.create(calendar_event_creation_enabled=False)
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get("/calendar/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'data-calendar-empty-action="event-today"')
+        self.assertNotContains(response, 'data-calendar-empty-action="event-upcoming"')
+
     def test_disabled_reminders_block_direct_post(self):
         SystemSettings.objects.create(calendar_reminders_enabled=False)
         self.client.login(username="mira@example.com", password="secret-12345")
@@ -3596,7 +5431,7 @@ class AdministrationFeatureFlagTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, "/home/")
+        self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-calendar")
         self.assertFalse(CalendarSource.objects.filter(user=self.user, name="Privat").exists())
 
     def test_disabled_messages_and_weather_return_unavailable(self):
@@ -4165,6 +6000,34 @@ class NotesTests(TestCase):
         self.assertEqual(changed.status_code, 200, changed.content)
         note.refresh_from_db()
         self.assertEqual(note.plain_text, "Vom Bearbeiter")
+
+    def test_note_style_is_personal_and_validated(self):
+        note = self.create_note()
+        NoteShare.objects.create(note=note, user=self.reader, role=NoteShare.ROLE_READER)
+        reader_client = Client()
+        reader_client.login(username="reader@example.com", password="secret-12345")
+
+        styled = reader_client.post(
+            f"/notes/api/{note.id}/actions/",
+            data=json.dumps({"action": "style", "color": "violet", "icon": "rocket"}),
+            content_type="application/json",
+        )
+        self.assertEqual(styled.status_code, 200, styled.content)
+        self.assertEqual(styled.json()["note"]["color"], "violet")
+        self.assertEqual(styled.json()["note"]["icon"], "rocket")
+        reader_state = NoteUserState.objects.get(note=note, user=self.reader)
+        self.assertEqual(reader_state.color, "violet")
+        self.assertEqual(reader_state.icon, "rocket")
+        owner_state, _created = NoteUserState.objects.get_or_create(note=note, user=self.owner)
+        self.assertEqual(owner_state.color, "")
+        self.assertEqual(owner_state.icon, "")
+
+        invalid = self.client.post(
+            f"/notes/api/{note.id}/actions/",
+            data=json.dumps({"action": "style", "color": "gold", "icon": ""}),
+            content_type="application/json",
+        )
+        self.assertEqual(invalid.status_code, 400)
 
     def test_only_owner_can_manage_shares_and_trash(self):
         note = self.create_note()
@@ -4827,6 +6690,13 @@ class NotesTests(TestCase):
         notification = NoteActivityNotification.objects.get(note=note, recipient=self.reader)
         self.assertEqual(notification.kind, NoteActivityNotification.KIND_MENTION)
         self.assertEqual(notification.actor, self.owner)
+        self.assertTrue(
+            UserNotification.objects.filter(
+                recipient=self.reader,
+                source_key=f"note-activity:{notification.id}",
+                kind=UserNotification.KIND_NOTE_MENTION,
+            ).exists()
+        )
 
         # Saving again without a new mention must not create a duplicate notification.
         response = self.client.patch(
@@ -4836,6 +6706,7 @@ class NotesTests(TestCase):
         )
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(NoteActivityNotification.objects.filter(note=note, recipient=self.reader).count(), 1)
+        self.assertEqual(UserNotification.objects.filter(recipient=self.reader).count(), 1)
 
     def test_mentioning_user_without_access_is_rejected(self):
         note = self.create_note()
@@ -5183,6 +7054,27 @@ class VacationPlannerTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         self.assertContains(response, "Eigener Hinweis")
         self.assertNotContains(response, "Fremder Hinweis")
+
+    def test_empty_planner_with_saved_year_offers_vacation_action(self):
+        response = self.client.get("/vacation-planner/?year=2026")
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertContains(response, 'id="vacation-period-editor"')
+        self.assertContains(response, 'data-vacation-focus="period"')
+        self.assertContains(response, "Urlaub planen")
+        self.assertNotContains(response, "Jahr zuerst einrichten")
+
+    def test_empty_planner_without_year_points_to_year_setup(self):
+        self.vacation_year.delete()
+
+        response = self.client.get("/vacation-planner/?year=2027")
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertContains(response, 'id="vacation-year-settings"')
+        self.assertContains(response, 'data-vacation-focus="year"', count=3)
+        self.assertContains(response, "Jahr zuerst einrichten")
+        self.assertContains(response, "Jahr einrichten")
+        self.assertNotContains(response, 'data-vacation-focus="period"')
 
     def test_public_holiday_import_command_is_idempotent(self):
         stale = OfficialHoliday.objects.create(

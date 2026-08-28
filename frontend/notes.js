@@ -492,9 +492,11 @@ const COMMAND_DEFAULTS = {
   focusSearch: { label: "Suche fokussieren", shortcut: "Mod+Alt+F" },
   pin: { label: "Anpinnen/Loslösen", shortcut: "Mod+Alt+P" },
   archive: { label: "Archivieren/Wiederherstellen", shortcut: "Mod+Alt+A" },
+  style: { label: "Farbe & Icon", shortcut: "Mod+Alt+I" },
   duplicate: { label: "Duplizieren", shortcut: "Mod+Alt+D" },
   trash: { label: "In Papierkorb", shortcut: "Mod+Alt+Backspace" },
   share: { label: "Teilen", shortcut: "Mod+Alt+H" },
+  outline: { label: "Inhaltsverzeichnis anzeigen/verbergen", shortcut: "Mod+Alt+O" },
   versions: { label: "Versionsverlauf", shortcut: "Mod+Alt+V" },
   exportPdf: { label: "Als PDF exportieren", shortcut: "Mod+Alt+E" },
   exportMarkdown: { label: "Als Markdown exportieren", shortcut: "Mod+Alt+Shift+E" },
@@ -522,6 +524,7 @@ function initNotesApp() {
   let contextNoteCard = null;
   let contextFolder = null;
   let movingNoteCard = null;
+  let stylingNoteCard = null;
   let draggedTreeItem = null;
   let treeDropDescriptor = null;
   let hoveredDropFolder = null;
@@ -543,6 +546,8 @@ function initNotesApp() {
   const wordCount = document.querySelector("[data-word-count]");
   const shareDialog = document.querySelector("[data-share-dialog]");
   const versionsDialog = document.querySelector("[data-versions-dialog]");
+  const outlinePanel = document.querySelector("[data-note-outline-panel]");
+  const outlineList = document.querySelector("[data-note-outline-list]");
   const shortcutDialog = document.querySelector("[data-shortcut-dialog]");
   const conflictDialog = document.querySelector("[data-conflict-dialog]");
   const tableDialog = document.querySelector("[data-table-dialog]");
@@ -556,6 +561,9 @@ function initNotesApp() {
   const templateDialog = document.querySelector("[data-template-dialog]");
   const noteMoveDialog = document.querySelector("[data-note-move-dialog]");
   const noteMoveFolder = document.querySelector("[data-note-move-folder]");
+  const noteStyleDialog = document.querySelector("[data-style-dialog]");
+  const noteColorGrid = document.querySelector("[data-note-color-grid]");
+  const noteIconGrid = document.querySelector("[data-note-icon-grid]");
   const noteContextMenu = document.querySelector("[data-note-context-menu]");
   const folderContextMenu = document.querySelector("[data-folder-context-menu]");
   const notesList = document.querySelector("[data-notes-list]");
@@ -631,6 +639,7 @@ function initNotesApp() {
         updateCounts();
         updateToolbarState();
         markDirty();
+        if (outlinePanel && !outlinePanel.hidden) updateOutline();
       },
       onSelectionUpdate: updateToolbarState,
     });
@@ -665,6 +674,7 @@ function initNotesApp() {
   initializeNoteTreeDragAndDrop();
   initializeBulkSelection();
   initializeEditorZoom();
+  initToolbarTabs();
 
   titleInput?.addEventListener("input", markDirty);
   titleInput?.addEventListener("change", markDirty);
@@ -676,6 +686,20 @@ function initNotesApp() {
 
   document.querySelector("[data-note-move-confirm]")?.addEventListener("click", moveNoteFromDialog);
   noteMoveDialog?.addEventListener("close", () => { movingNoteCard = null; });
+  document.querySelector("[data-note-style-confirm]")?.addEventListener("click", applyStyleFromDialog);
+  noteStyleDialog?.addEventListener("close", () => { stylingNoteCard = null; });
+  noteIconGrid?.addEventListener("click", (event) => {
+    const option = event.target.closest("[data-note-icon-value]");
+    if (!option) return;
+    noteIconGrid.querySelectorAll("[data-note-icon-value]").forEach((button) => button.classList.toggle("is-active", button === option));
+  });
+  noteColorGrid?.addEventListener("change", (event) => {
+    const input = event.target.closest("input[name='note-style-color']");
+    if (!input) return;
+    noteColorGrid.querySelectorAll(".note-color-dot").forEach((dot) => {
+      dot.classList.toggle("is-active", dot.querySelector("input") === input);
+    });
+  });
   document.querySelector("[data-table-dialog-open]")?.addEventListener("click", () => tableDialog?.showModal());
   mathInput?.addEventListener("input", renderMathPreview);
   mathBlockToggle?.addEventListener("change", renderMathPreview);
@@ -829,10 +853,12 @@ function initNotesApp() {
       focusSearch: () => document.querySelector("[data-notes-search]")?.focus(),
       pin: () => performAction(note?.is_pinned ? "unpin" : "pin"),
       archive: () => performAction(note?.is_archived ? "unarchive" : "archive"),
+      style: () => openStyleDialog(null),
       duplicate: () => performAction("duplicate"),
       trash: trashCurrentNote,
       share: openShareDialog,
       comments: openCommentsDialog,
+      outline: toggleOutlinePanel,
       versions: openVersionsDialog,
       exportPdf: exportPdf,
       exportMarkdown: exportMarkdown,
@@ -922,8 +948,54 @@ function initNotesApp() {
 
   function openFormatControl(format) {
     const control = document.querySelector(`[data-format="${format}"]`);
-    control?.focus();
-    control?.click();
+    if (!control) return;
+    const panel = control.closest("[data-toolbar-panel]");
+    if (panel?.hidden) activateToolbarTab(panel.dataset.toolbarPanel);
+    control.focus();
+    control.click();
+  }
+
+  function activateToolbarTab(name, { focusTab = false } = {}) {
+    const tabs = Array.from(document.querySelectorAll("[data-toolbar-tab]"));
+    const panels = Array.from(document.querySelectorAll("[data-toolbar-panel]"));
+    const activeTab = tabs.find((tab) => tab.dataset.toolbarTab === name);
+    if (!activeTab) return;
+
+    tabs.forEach((tab) => {
+      const isActive = tab === activeTab;
+      tab.classList.toggle("is-active", isActive);
+      tab.setAttribute("aria-selected", String(isActive));
+      tab.tabIndex = isActive ? 0 : -1;
+    });
+    panels.forEach((panel) => {
+      panel.hidden = panel.dataset.toolbarPanel !== name;
+    });
+    if (focusTab) activeTab.focus();
+  }
+
+  function initToolbarTabs() {
+    const tabsContainer = document.querySelector("[data-toolbar-tabs]");
+    const tabs = Array.from(document.querySelectorAll("[data-toolbar-tab]"));
+    if (!tabsContainer || !tabs.length) return;
+
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => activateToolbarTab(tab.dataset.toolbarTab));
+    });
+
+    tabsContainer.addEventListener("keydown", (event) => {
+      const currentIndex = tabs.indexOf(document.activeElement);
+      if (currentIndex === -1) return;
+
+      let nextIndex = currentIndex;
+      if (event.key === "ArrowRight" || event.key === "ArrowDown") nextIndex = (currentIndex + 1) % tabs.length;
+      else if (event.key === "ArrowLeft" || event.key === "ArrowUp") nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+      else if (event.key === "Home") nextIndex = 0;
+      else if (event.key === "End") nextIndex = tabs.length - 1;
+      else return;
+
+      event.preventDefault();
+      activateToolbarTab(tabs[nextIndex].dataset.toolbarTab, { focusTab: true });
+    });
   }
 
   function sinkCurrentListItem() {
@@ -951,11 +1023,26 @@ function initNotesApp() {
     }
   }
 
+  function currentSelectionElement() {
+    if (!editor) return null;
+    try {
+      const dom = editor.view.domAtPos(editor.state.selection.$from.pos).node;
+      return dom.nodeType === window.Node.TEXT_NODE ? dom.parentElement : dom;
+    } catch (_error) {
+      return null;
+    }
+  }
+
   function updateToolbarState() {
     if (!editor) return;
     const inCodeBlock = editor.isActive("codeBlock");
+    const selectionElement = currentSelectionElement();
+    const computedStyle = selectionElement ? window.getComputedStyle(selectionElement) : null;
+    const effectivelyBold = computedStyle
+      ? computedStyle.fontWeight === "bold" || Number.parseInt(computedStyle.fontWeight, 10) >= 600
+      : false;
     const active = {
-      bold: editor.isActive("bold"), italic: editor.isActive("italic"), underline: editor.isActive("underline"),
+      bold: editor.isActive("bold") || effectivelyBold, italic: editor.isActive("italic"), underline: editor.isActive("underline"),
       strike: editor.isActive("strike"), superscript: editor.isActive("superscript"), subscript: editor.isActive("subscript"),
       bulletList: editor.isActive("bulletList"), orderedList: editor.isActive("orderedList"),
       taskList: editor.isActive("taskList"), alignLeft: editor.isActive({ textAlign: "left" }),
@@ -972,6 +1059,36 @@ function initNotesApp() {
     if (languageSelect && inCodeBlock) {
       languageSelect.value = editor.getAttributes("codeBlock").language || "";
     }
+
+    const blockSelect = document.querySelector('[data-format="block"]');
+    if (blockSelect) {
+      const headingLevel = [1, 2, 3].find((level) => editor.isActive("heading", { level }));
+      blockSelect.value = headingLevel ? `heading${headingLevel}` : "paragraph";
+    }
+
+    const textStyle = editor.getAttributes("textStyle");
+    const fontFamilySelect = document.querySelector('[data-format="fontFamily"]');
+    if (fontFamilySelect) fontFamilySelect.value = textStyle.fontFamily || "Inter";
+    const fontSizeSelect = document.querySelector('[data-format="fontSize"]');
+    if (fontSizeSelect) {
+      if (textStyle.fontSize) {
+        fontSizeSelect.value = textStyle.fontSize;
+      } else {
+        const computedPx = computedStyle ? Number.parseFloat(computedStyle.fontSize) : 16;
+        const available = Array.from(fontSizeSelect.options, (option) => Number.parseInt(option.value, 10));
+        const nearest = available.reduce(
+          (best, size) => (Math.abs(size - computedPx) < Math.abs(best - computedPx) ? size : best),
+          available[0],
+        );
+        fontSizeSelect.value = `${nearest}px`;
+      }
+    }
+    const lineHeightSelect = document.querySelector('[data-format="lineHeight"]');
+    if (lineHeightSelect) lineHeightSelect.value = textStyle.lineHeight || "1.5";
+    const textColorInput = document.querySelector('[data-format="textColor"]');
+    if (textColorInput) textColorInput.value = textStyle.color || "#40372f";
+    const highlightInput = document.querySelector('[data-format="highlight"]');
+    if (highlightInput) highlightInput.value = editor.getAttributes("highlight").color || "#f1d99e";
   }
 
   function updateCounts() {
@@ -979,6 +1096,59 @@ function initNotesApp() {
     const words = editor.storage.characterCount.words();
     const characters = editor.storage.characterCount.characters();
     wordCount.textContent = `${words} ${words === 1 ? "Wort" : "Wörter"} · ${characters} Zeichen`;
+  }
+
+  function toggleOutlinePanel() {
+    if (!outlinePanel) return;
+    const willShow = outlinePanel.hidden;
+    outlinePanel.hidden = !willShow;
+    document.querySelectorAll('[data-command="outline"]').forEach((button) => button.setAttribute("aria-pressed", String(willShow)));
+    if (willShow) updateOutline();
+  }
+
+  function buildOutlineTree(headings) {
+    const root = [];
+    const stack = [{ level: 0, children: root }];
+    headings.forEach((heading) => {
+      const level = Number(heading.tagName.slice(1));
+      while (stack.length > 1 && stack[stack.length - 1].level >= level) stack.pop();
+      const node = { heading, level, children: [] };
+      stack[stack.length - 1].children.push(node);
+      stack.push(node);
+    });
+    return root;
+  }
+
+  function renderOutlineNodes(nodes, container) {
+    nodes.forEach((node) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "note-outline-item";
+      item.textContent = node.heading.textContent.trim() || "Ohne Titel";
+      item.addEventListener("click", () => node.heading.scrollIntoView({ behavior: "smooth", block: "start" }));
+      container.appendChild(item);
+      if (node.children.length) {
+        const childWrap = document.createElement("div");
+        childWrap.className = "note-outline-children";
+        renderOutlineNodes(node.children, childWrap);
+        container.appendChild(childWrap);
+      }
+    });
+  }
+
+  function updateOutline() {
+    if (!outlineList) return;
+    const editorElement = document.querySelector("[data-note-editor]");
+    const headings = editorElement ? Array.from(editorElement.querySelectorAll("h1, h2, h3")) : [];
+    outlineList.innerHTML = "";
+    if (!headings.length) {
+      const empty = document.createElement("p");
+      empty.className = "note-outline-empty";
+      empty.textContent = "Noch keine Überschriften in dieser Notiz.";
+      outlineList.appendChild(empty);
+      return;
+    }
+    renderOutlineNodes(buildOutlineTree(headings), outlineList);
   }
 
   function currentPayload() {
@@ -1679,6 +1849,7 @@ function initNotesApp() {
     setContextItem(noteContextMenu, "rename", { hidden: isDeleted || !canEdit });
     setContextItem(noteContextMenu, "duplicate", { hidden: isDeleted });
     setContextItem(noteContextMenu, "move", { hidden: isDeleted });
+    setContextItem(noteContextMenu, "style", { hidden: isDeleted });
     setContextItem(noteContextMenu, "archive", {
       hidden: isDeleted,
       label: isArchived ? "Aus Archiv holen" : "Archivieren",
@@ -1763,6 +1934,48 @@ function initNotesApp() {
     noteMoveDialog?.showModal();
   }
 
+  function openStyleDialog(card) {
+    const noteId = card ? Number.parseInt(card.dataset.noteCard, 10) : note?.id;
+    if (!noteStyleDialog || !noteId) return;
+    stylingNoteCard = card;
+    const currentColor = card ? (card.dataset.noteColor || "") : (note?.color || "");
+    const currentIcon = card ? (card.dataset.noteIcon || "") : (note?.icon || "");
+    noteColorGrid?.querySelectorAll(".note-color-dot").forEach((dot) => {
+      const input = dot.querySelector("input");
+      const matches = input?.value === currentColor;
+      if (input) input.checked = matches;
+      dot.classList.toggle("is-active", matches);
+    });
+    noteIconGrid?.querySelectorAll("[data-note-icon-value]").forEach((button) => {
+      button.classList.toggle("is-active", button.dataset.noteIconValue === currentIcon);
+    });
+    noteStyleDialog.showModal();
+  }
+
+  async function performNoteStyleAction(noteId, { color, icon }) {
+    if (!await ensureCurrentNoteSaved(noteId)) return false;
+    const { response, data } = await requestJson(`/notes/api/${noteId}/actions/`, {
+      method: "POST",
+      body: JSON.stringify({ action: "style", color, icon }),
+    });
+    if (!response.ok || !data.ok) {
+      window.alert(data.error || "Die Farbe/das Icon konnte nicht gespeichert werden.");
+      return false;
+    }
+    return true;
+  }
+
+  async function applyStyleFromDialog() {
+    const noteId = stylingNoteCard ? Number.parseInt(stylingNoteCard.dataset.noteCard, 10) : note?.id;
+    if (!noteId) return;
+    const color = noteColorGrid?.querySelector("input[name='note-style-color']:checked")?.value ?? "";
+    const icon = noteIconGrid?.querySelector(".is-active")?.dataset.noteIconValue ?? "";
+    if (!await performNoteStyleAction(noteId, { color, icon })) return;
+    stylingNoteCard = null;
+    noteStyleDialog?.close();
+    window.location.reload();
+  }
+
   async function moveNoteFromDialog() {
     if (!movingNoteCard) return;
     const card = movingNoteCard;
@@ -1805,6 +2018,10 @@ function initNotesApp() {
     }
     if (action === "move") {
       openMoveNoteDialog(card);
+      return;
+    }
+    if (action === "style") {
+      openStyleDialog(card);
       return;
     }
     if (action === "archive") {

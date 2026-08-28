@@ -14,6 +14,8 @@ SQLite in Verwendung; Produktion verwendet die frische PostgreSQL-Datenbank.
   und wird über `--token-file` geladen
 - Passwort des initialen Django-Superusers `yannik` (interaktiv festlegen)
 - optional später: OpenWeather API Key
+- persistentes VAPID-Schlüsselpaar für Web Push; nur der öffentliche Schlüssel darf
+  im Browser sichtbar sein
 
 Keiner dieser Werte gehört in Git. Die produktive Datei liegt ausschließlich unter
 `/etc/lunora/lunora.env` mit Besitzer `root:lunora` und Modus `0640`.
@@ -31,6 +33,29 @@ Keiner dieser Werte gehört in Git. Die produktive Datei liegt ausschließlich u
 9. Cloudflare Turnstile und anschließend den Tunnel zu `http://localhost:8080` einrichten.
 10. Django-, E-Mail-, Upload-, Automations-, Backup- und externen HTTPS-Test durchführen.
 11. Erst nach erfolgreichem Test Passwort-SSH deaktivieren und die Firewall festziehen.
+
+## Web Push vorbereiten
+
+Nach Installation der Python-Abhängigkeiten als `yunnik` ein VAPID-Schlüsselpaar in
+einem privaten temporären Verzeichnis erzeugen. Die private Datei niemals im
+Repository oder in einem Diagnose-Output ablegen:
+
+```bash
+umask 077
+mkdir -p /home/yunnik/lunora-vapid
+cd /home/yunnik/lunora-vapid
+/srv/lunora/venv/bin/vapid --gen
+/srv/lunora/venv/bin/vapid --applicationServerKey --private-key private_key.pem
+sudo install -o root -g lunora -m 0640 private_key.pem /etc/lunora/vapid_private.pem
+```
+
+Nur den ausgegebenen Application-Server-Key als `WEB_PUSH_VAPID_PUBLIC_KEY` nach
+`/etc/lunora/lunora.env` übernehmen. Dort außerdem
+`WEB_PUSH_VAPID_PRIVATE_KEY=/etc/lunora/vapid_private.pem` und
+`WEB_PUSH_VAPID_SUBJECT=mailto:webmaster@yfserver.de` setzen. Anschließend das private
+temporäre Verzeichnis sicher entfernen und `lunora-web` sowie `lunora-automations`
+neu starten. Der Automationsdienst stellt neue Inbox-Einträge zu und entfernt
+abgelaufene Browser-Abonnements automatisch.
 
 ## Installation der versionierten Systemdateien
 
@@ -139,6 +164,6 @@ sudo journalctl -u lunora-backup.service --no-pager -n 50
 ```
 
 Extern müssen `https://lunora.yfserver.de/login/`, Registrierung, Passwort-Reset,
-Profilbild, privater Notizanhang, E-Mail-Versand und ein Neustart des Servers getestet
+Profilbild, privater Notizanhang, E-Mail-Versand, Web Push bei geschlossenem Tab und ein Neustart des Servers getestet
 werden. Lokale Backups schützen nicht vor einem Defekt oder Verlust des Servers; später
 sollte mindestens eine verschlüsselte Kopie auf ein zweites System ergänzt werden.

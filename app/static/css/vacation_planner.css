@@ -411,6 +411,27 @@
     margin: 0;
 }
 
+.vacation-empty-card {
+    align-items: start;
+}
+
+.vacation-empty-card .vacation-empty-action {
+    margin-top: 0.35rem;
+    width: fit-content;
+}
+
+.vacation-empty-card .vacation-empty-action i {
+    display: inline;
+    width: auto;
+    height: auto;
+    place-items: normal;
+    color: inherit;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    font-size: 0.95rem;
+}
+
 .official-list article.is-disabled {
     opacity: 0.55;
 }
@@ -472,5 +493,9 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+    }
+
+    .vacation-empty-card .vacation-empty-action {
+        width: 100%;
     }
 }

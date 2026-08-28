@@ -1,4 +1,5 @@
 import uuid
+from datetime import time
 
 from django.conf import settings
 from django.db import models
@@ -6,6 +7,7 @@ from django.db.models import Count, Exists, OuterRef, Prefetch
 from django.utils import timezone
 
 from app.services.chat_files import chat_upload_to
+from app.services.dashboard import default_dashboard_layout
 from app.services.image_uploads import validate_profile_image_file
 from app.services.note_content import empty_note_document
 from app.services.note_files import note_upload_to, private_note_storage
@@ -20,6 +22,8 @@ class SystemSettings(models.Model):
     notes_enabled = models.BooleanField(default=True)
     vacation_planner_enabled = models.BooleanField(default=True)
     weather_enabled = models.BooleanField(default=True)
+    dashboard_customization_enabled = models.BooleanField(default=True)
+    tasks_enabled = models.BooleanField(default=True)
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -96,10 +100,14 @@ class Profile(models.Model):
     notify_email = models.BooleanField(default=False)
     notify_reminders = models.BooleanField(default=True)
     notify_desktop = models.BooleanField(default=False)
+    notification_quiet_hours_enabled = models.BooleanField(default=False)
+    notification_quiet_start = models.TimeField(default=time(22, 0))
+    notification_quiet_end = models.TimeField(default=time(7, 0))
     weekly_summary = models.BooleanField(default=False)
     analytics_enabled = models.BooleanField(default=True)
     usage_data_enabled = models.BooleanField(default=False)
     note_shortcuts = models.JSONField(default=dict, blank=True)
+    dashboard_layout = models.JSONField(default=default_dashboard_layout, blank=True)
     weather_default_city = models.CharField(max_length=120, blank=True, default="Bünde,de")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -354,7 +362,7 @@ class ChatMessageAttachment(models.Model):
 class CalendarSource(models.Model):
     COLOR_CHOICES = [
         ("blue", "Blau"),
-        ("green", "Gruen"),
+        ("green", "Grün"),
         ("red", "Rot"),
         ("sand", "Sand"),
         ("violet", "Violett"),
@@ -473,6 +481,251 @@ class CalendarReminder(models.Model):
 
     def __str__(self):
         return self.title
+
+
+TASK_COLOR_CHOICES = [
+    ("blue", "Blau"),
+    ("green", "Grün"),
+    ("red", "Rot"),
+    ("sand", "Sand"),
+    ("violet", "Violett"),
+]
+
+
+class TaskList(models.Model):
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="task_lists")
+    name = models.CharField(max_length=80)
+    color = models.CharField(max_length=12, choices=TASK_COLOR_CHOICES, default="blue")
+    position = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["position", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["owner", "name"], name="unique_task_list_name_per_owner"),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class TaskLabel(models.Model):
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="task_labels")
+    name = models.CharField(max_length=40)
+    color = models.CharField(max_length=12, choices=TASK_COLOR_CHOICES, default="blue")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["owner", "name"], name="unique_task_label_name_per_owner"),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class Task(models.Model):
+    PRIORITY_NONE = "none"
+    PRIORITY_LOW = "low"
+    PRIORITY_MEDIUM = "medium"
+    PRIORITY_HIGH = "high"
+    PRIORITY_CHOICES = [
+        (PRIORITY_NONE, "Keine"),
+        (PRIORITY_LOW, "Niedrig"),
+        (PRIORITY_MEDIUM, "Mittel"),
+        (PRIORITY_HIGH, "Hoch"),
+    ]
+
+    RECURRENCE_NONE = "none"
+    RECURRENCE_CHOICES = [
+        (RECURRENCE_NONE, "Keine"),
+        ("DAILY", "Täglich"),
+        ("WEEKLY", "Wöchentlich"),
+        ("MONTHLY", "Monatlich"),
+        ("YEARLY", "Jährlich"),
+    ]
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="tasks")
+    task_list = models.ForeignKey(
+        TaskList, on_delete=models.SET_NULL, blank=True, null=True, related_name="tasks"
+    )
+    parent = models.ForeignKey(
+        "self", on_delete=models.CASCADE, blank=True, null=True, related_name="subtasks"
+    )
+    title = models.CharField(max_length=180)
+    due_at = models.DateTimeField(blank=True, null=True)
+    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default=PRIORITY_NONE, blank=True)
+    recurrence_rule = models.CharField(max_length=10, choices=RECURRENCE_CHOICES, default=RECURRENCE_NONE, blank=True)
+    labels = models.ManyToManyField(TaskLabel, blank=True, related_name="tasks")
+    is_done = models.BooleanField(default=False)
+    email_notified_at = models.DateTimeField(blank=True, null=True)
+    desktop_notified_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["is_done", "-created_at"]
+
+    def __str__(self):
+        return self.title
+
+
+class UserNotification(models.Model):
+    KIND_CALENDAR_REMINDER = "calendar_reminder"
+    KIND_TASK_DUE = "task_due"
+    KIND_EVENT_INVITATION = "event_invitation"
+    KIND_NOTE_MENTION = "note_mention"
+    KIND_NOTE_COMMENT = "note_comment"
+    KIND_NOTE_SHARE = "note_share"
+    KIND_WEATHER_ALERT = "weather_alert"
+    KIND_CHOICES = [
+        (KIND_CALENDAR_REMINDER, "Kalendererinnerung"),
+        (KIND_TASK_DUE, "Fällige Aufgabe"),
+        (KIND_EVENT_INVITATION, "Termineinladung"),
+        (KIND_NOTE_MENTION, "Notizerwähnung"),
+        (KIND_NOTE_COMMENT, "Notizkommentar"),
+        (KIND_NOTE_SHARE, "Notizfreigabe"),
+        (KIND_WEATHER_ALERT, "Wetterwarnung"),
+    ]
+
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="notifications",
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="+",
+    )
+    kind = models.CharField(max_length=24, choices=KIND_CHOICES)
+    title = models.CharField(max_length=300)
+    body = models.CharField(max_length=500, blank=True)
+    url = models.CharField(max_length=500, blank=True)
+    source_key = models.CharField(max_length=180)
+    read_at = models.DateTimeField(blank=True, null=True)
+    email_notified_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["recipient", "source_key"],
+                name="unique_user_notification_source",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["recipient", "read_at", "-created_at"],
+                name="notification_inbox_idx",
+            ),
+        ]
+
+    @property
+    def is_read(self):
+        return self.read_at is not None
+
+    def __str__(self):
+        return self.title
+
+
+class NotificationPreference(models.Model):
+    CATEGORY_CALENDAR = "calendar"
+    CATEGORY_TASKS = "tasks"
+    CATEGORY_NOTES = "notes"
+    CATEGORY_WEATHER = "weather"
+    CATEGORY_CHOICES = [
+        (CATEGORY_CALENDAR, "Kalender"),
+        (CATEGORY_TASKS, "Aufgaben"),
+        (CATEGORY_NOTES, "Notizen"),
+        (CATEGORY_WEATHER, "Wetter"),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="notification_preferences",
+    )
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES)
+    inbox_enabled = models.BooleanField(default=True)
+    email_enabled = models.BooleanField(default=True)
+    web_push_enabled = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["user_id", "category"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "category"],
+                name="unique_notification_preference",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.user} – {self.get_category_display()}"
+
+
+class WebPushSubscription(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="web_push_subscriptions",
+    )
+    endpoint = models.TextField()
+    endpoint_hash = models.CharField(max_length=64, unique=True, editable=False)
+    p256dh = models.CharField(max_length=512)
+    auth = models.CharField(max_length=256)
+    user_agent = models.CharField(max_length=500, blank=True)
+    last_success_at = models.DateTimeField(blank=True, null=True)
+    failure_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at", "-id"]
+
+    def __str__(self):
+        return f"Web Push für {self.user}"
+
+
+class WebPushDelivery(models.Model):
+    subscription = models.ForeignKey(
+        WebPushSubscription,
+        on_delete=models.CASCADE,
+        related_name="deliveries",
+    )
+    notification = models.ForeignKey(
+        UserNotification,
+        on_delete=models.CASCADE,
+        related_name="web_push_deliveries",
+    )
+    attempt_count = models.PositiveSmallIntegerField(default=0)
+    last_status_code = models.PositiveSmallIntegerField(blank=True, null=True)
+    attempted_at = models.DateTimeField(blank=True, null=True)
+    delivered_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["subscription", "notification"],
+                name="unique_web_push_delivery",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["delivered_at", "created_at"],
+                name="web_push_pending_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Push-Zustellung {self.pk or 'neu'}"
 
 
 class WeeklySummaryDelivery(models.Model):
@@ -712,6 +965,30 @@ class NoteShare(models.Model):
 
 
 class NoteUserState(models.Model):
+    COLOR_CHOICES = [
+        ("", "Keine"),
+        ("blue", "Blau"),
+        ("green", "Grün"),
+        ("red", "Rot"),
+        ("sand", "Sand"),
+        ("violet", "Violett"),
+    ]
+    ICON_CHOICES = [
+        ("", "Kein Icon"),
+        ("star", "Stern"),
+        ("flag", "Flagge"),
+        ("lightbulb", "Idee"),
+        ("bookmark", "Lesezeichen"),
+        ("rocket", "Rakete"),
+        ("heart", "Herz"),
+        ("circle-exclamation", "Achtung"),
+        ("circle-check", "Erledigt"),
+        ("book", "Buch"),
+        ("briefcase", "Arbeit"),
+        ("house", "Privat"),
+        ("code", "Code"),
+    ]
+
     note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name="user_states")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="note_states")
     folder = models.ForeignKey(
@@ -726,6 +1003,8 @@ class NoteUserState(models.Model):
     pinned_at = models.DateTimeField(blank=True, null=True)
     is_archived = models.BooleanField(default=False)
     archived_at = models.DateTimeField(blank=True, null=True)
+    color = models.CharField(max_length=12, choices=COLOR_CHOICES, default="", blank=True)
+    icon = models.CharField(max_length=24, choices=ICON_CHOICES, default="", blank=True)
 
     class Meta:
         constraints = [

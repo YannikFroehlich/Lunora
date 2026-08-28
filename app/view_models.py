@@ -4,9 +4,17 @@ from datetime import datetime, time, timedelta
 from django.db.models import F, Q
 from django.utils import timezone
 
-from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, NoteShare
+from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, NoteShare, Task
+from app.services.dashboard import (
+    available_dashboard_widgets,
+    dashboard_widgets_for_layout,
+    default_dashboard_layout,
+    normalize_dashboard_layout,
+)
 from app.services.message_queries import unread_total_for_user
+from app.services.notifications import dashboard_latest_notifications, materialize_user_notification_sources
 from app.services.system_settings import feature_enabled, feature_flags
+from app.services.tasks import dashboard_open_tasks, dashboard_today_tasks
 from app.services.user_preferences import (
     format_user_date,
     format_user_datetime,
@@ -24,21 +32,57 @@ from app.services.weather_service import get_weather_context
 def get_dashboard_context(user=None):
     now = localtime_for_user(profile_or_user=user)
     flags = feature_flags()
+    profile = getattr(user, "profile", None) if user else None
+    stored_layout = getattr(profile, "dashboard_layout", None) if profile else None
+    dashboard_customization_enabled = flags["dashboard_customization"]
+    dashboard_layout = normalize_dashboard_layout(stored_layout)
+    rendered_dashboard_layout = dashboard_layout if dashboard_customization_enabled else default_dashboard_layout()
+    dashboard_widgets = dashboard_widgets_for_layout(
+        rendered_dashboard_layout,
+        flags,
+        include_hidden=dashboard_customization_enabled,
+    )
+    dashboard_visible_widgets = [widget for widget in dashboard_widgets if not widget["hidden"]]
     dashboard_weather = _dashboard_weather_context(user) if flags["weather"] else {}
     unread_messages_total = _dashboard_unread_message_count(user) if flags["messages"] else 0
     new_note_shares = _dashboard_new_note_share_count(user) if flags["notes"] else 0
     upcoming_dashboard_events = _dashboard_upcoming_events(user, now) if user else []
-    nav_tiles = _dashboard_nav_tiles(user, unread_messages_total, new_note_shares, flags)
+    dashboard_tasks = dashboard_open_tasks(user, now) if flags["tasks"] and user else []
+    open_tasks_count = Task.objects.filter(user=user, is_done=False).count() if flags["tasks"] and user else 0
+    nav_tiles = _dashboard_nav_tiles(user, unread_messages_total, new_note_shares, open_tasks_count, flags)
+    if user:
+        materialize_user_notification_sources(
+            user,
+            include_reminders=flags["calendar_reminders"],
+            include_tasks=flags["tasks"],
+        )
+        dashboard_notifications = dashboard_latest_notifications(user)
+    else:
+        dashboard_notifications = []
+    dashboard_today_open_tasks = dashboard_today_tasks(user, now) if flags["tasks"] and user else []
 
     return {
         "active_page": "home",
+        "dashboard_greeting": _dashboard_greeting(now),
+        "dashboard_moment_icon": _dashboard_moment_icon(now),
+        "dashboard_moment_label": _dashboard_moment_label(now),
         "today_label": format_user_date(now, user),
         "time_label": format_user_time(now, user),
         "dashboard_weather": dashboard_weather,
         "dashboard_weather_enabled": flags["weather"],
         "dashboard_messages_enabled": flags["messages"],
         "dashboard_notes_enabled": flags["notes"],
+        "dashboard_customization_enabled": dashboard_customization_enabled,
+        "dashboard_layout": dashboard_layout,
+        "dashboard_default_layout": default_dashboard_layout(),
+        "dashboard_widgets": dashboard_widgets,
+        "dashboard_visible_widgets": dashboard_visible_widgets,
+        "dashboard_available_widgets": available_dashboard_widgets(flags),
         "dashboard_new_note_shares": new_note_shares,
+        "dashboard_tasks": dashboard_tasks,
+        "dashboard_tasks_enabled": flags["tasks"],
+        "dashboard_notifications": dashboard_notifications,
+        "dashboard_today_tasks": dashboard_today_open_tasks,
         "clock": {
             "time": format_user_time(now, user),
             "weekday": get_user_weekday_name(now, user),
@@ -60,6 +104,37 @@ def get_dashboard_context(user=None):
     }
 
 
+def _dashboard_greeting(now):
+    hour = now.hour
+    if 5 <= hour < 11:
+        return "Guten Morgen"
+    if 11 <= hour < 17:
+        return "Guten Tag"
+    if 17 <= hour < 22:
+        return "Guten Abend"
+    return "Gute Nacht"
+
+
+def _dashboard_moment_label(now):
+    hour = now.hour
+    if 5 <= hour < 11:
+        return "Ruhiger Start"
+    if 11 <= hour < 17:
+        return "Fokussierter Tag"
+    if 17 <= hour < 22:
+        return "Ruhiger Abend"
+    return "Nachtruhe"
+
+
+def _dashboard_moment_icon(now):
+    hour = now.hour
+    if 5 <= hour < 17:
+        return "fa-regular fa-sun"
+    if 17 <= hour < 22:
+        return "fa-solid fa-cloud-sun"
+    return "fa-regular fa-moon"
+
+
 def _preference_row(preferences_form, field_name, label, hint):
     return {
         "field": preferences_form[field_name] if preferences_form else None,
@@ -78,7 +153,7 @@ def _dashboard_new_note_share_count(user):
     return NoteShare.objects.filter(user=user, first_opened_at__isnull=True, note__deleted_at__isnull=True).count()
 
 
-def _dashboard_nav_tiles(user, unread_messages_total, new_note_shares, flags):
+def _dashboard_nav_tiles(user, unread_messages_total, new_note_shares, open_tasks_count, flags):
     tiles = [
         {"label": "Dashboard", "icon": "fa-table-cells-large", "url_name": "home"},
         {"label": "Kalender", "icon": "fa-calendar-days", "url_name": "calendar"},
@@ -108,6 +183,17 @@ def _dashboard_nav_tiles(user, unread_messages_total, new_note_shares, flags):
                 "badge_count": new_note_shares,
             },
         )
+    if flags["tasks"]:
+        tiles.insert(
+            -1,
+            {
+                "label": "Aufgaben",
+                "icon": "fa-list-check",
+                "url_name": "tasks",
+                "badge_key": "tasks_due",
+                "badge_count": open_tasks_count,
+            },
+        )
     if flags["vacation_planner"]:
         tiles.insert(-1, {"label": "Urlaubsplaner", "icon": "fa-umbrella-beach", "url_name": "vacation_planner"})
     if user and getattr(user, "is_superuser", False):
@@ -117,12 +203,12 @@ def _dashboard_nav_tiles(user, unread_messages_total, new_note_shares, flags):
 
 def _dashboard_tool_shortcuts(upcoming_events, unread_messages_total, dashboard_weather, new_note_shares, flags):
     event_count = len(upcoming_events)
-    event_subtitle = f"{event_count} kommende Termine" if event_count else "Kalender oeffnen"
-    unread_subtitle = f"{unread_messages_total} ungelesen" if unread_messages_total else "Inbox oeffnen"
+    event_subtitle = f"{event_count} kommende Termine" if event_count else "Kalender öffnen"
+    unread_subtitle = f"{unread_messages_total} ungelesen" if unread_messages_total else "Inbox öffnen"
     weather_city = dashboard_weather.get("today", {}).get("city", "Standardort")
     tools = [
         {"title": "Kalender", "subtitle": event_subtitle, "icon": "fa-calendar-check", "url_name": "calendar"},
-        {"title": "Einstellungen", "subtitle": "Profil & Praeferenzen", "icon": "fa-gear", "url_name": "settings"},
+        {"title": "Einstellungen", "subtitle": "Profil & Präferenzen", "icon": "fa-gear", "url_name": "settings"},
     ]
     if flags["weather"]:
         tools.insert(1, {"title": "Wetter", "subtitle": weather_city, "icon": "fa-cloud-sun", "url_name": "weather"})
@@ -161,7 +247,7 @@ def _dashboard_weather_context(user=None):
     }
 
 
-def get_settings_context(preferences_form=None):
+def get_settings_context(notification_form=None, notification_preferences_form=None):
     context = {
         "active_page": "settings",
         "accent_colors": ["#c2a276", "#7f916b", "#a5aa74", "#9eb1b6", "#aaa2be", "#c1a09a"],
@@ -179,11 +265,14 @@ def get_settings_context(preferences_form=None):
         ],
     }
     context["notification_rows"] = [
-        _preference_row(preferences_form, "notify_reminders", "Erinnerungszustellung", "Fällige Erinnerungen automatisch zustellen"),
-        _preference_row(preferences_form, "notify_email", "E-Mail-Versand", "Fällige Erinnerungen per E-Mail erhalten"),
-        _preference_row(preferences_form, "notify_desktop", "Desktop-Hinweise", "Bei geöffnetem Lunora-Tab im Browser anzeigen"),
-        _preference_row(preferences_form, "weekly_summary", "Wöchentliche Zusammenfassung", "Montags einen Überblick per E-Mail erhalten"),
+        _preference_row(notification_form, "notify_reminders", "Erinnerungszustellung", "Fällige Erinnerungen automatisch zustellen"),
+        _preference_row(notification_form, "notify_email", "E-Mail-Versand", "Fällige Erinnerungen per E-Mail erhalten"),
+        _preference_row(notification_form, "notify_desktop", "Web-Push-Zustellung", "Auch bei geschlossener App auf registrierten Geräten anzeigen"),
+        _preference_row(notification_form, "weekly_summary", "Wöchentliche Zusammenfassung", "Montags einen Überblick per E-Mail erhalten"),
     ]
+    context["notification_category_rows"] = (
+        notification_preferences_form.category_rows if notification_preferences_form else []
+    )
     return context
 
 
@@ -440,12 +529,12 @@ def _calendar_reminder_due_label(reminder, now, user):
     if reminder.is_done:
         return "Erledigt"
     if not reminder.due_at:
-        return "Ohne Faelligkeitsdatum"
+        return "Ohne Fälligkeitsdatum"
 
     due_at = localtime_for_user(reminder.due_at, user)
     today = now.date()
     if due_at < now:
-        return f"Ueberfaellig seit {format_user_datetime(due_at, user)}"
+        return f"Überfällig seit {format_user_datetime(due_at, user)}"
     if due_at.date() == today:
         return f"Heute {format_user_time(due_at, user)}"
     if due_at.date() == today + timedelta(days=1):

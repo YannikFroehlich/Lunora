@@ -1,10 +1,10 @@
 {% extends 'app/base.html' %}
-{% load static %}
+{% load static static_versioning %}
 
 {% block title %}Administration | Lunora{% endblock %}
 
 {% block page_css %}
-<link rel="stylesheet" href="{% static 'css/administration.css' %}?v=switches-1">
+<link rel="stylesheet" href="{% versioned_static 'css/administration.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -71,7 +71,7 @@
                     <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
                     <h2>Sitzungen beenden</h2>
                 </div>
-                <p>Loggt alle aktuell angemeldeten Nutzer und Geraete aus. Deine aktuelle Admin-Sitzung bleibt aktiv.</p>
+                <p>Loggt alle aktuell angemeldeten Nutzer und Geräte aus. Deine aktuelle Admin-Sitzung bleibt aktiv.</p>
                 <form method="post" onsubmit="return confirm('Alle anderen aktiven Sitzungen wirklich ausloggen?');">
                     {% csrf_token %}
                     <input type="hidden" name="form_name" value="force_logout_all">

@@ -1,0 +1,23 @@
+<div data-home-clock
+     data-clock-timezone="{{ clock.timezone }}"
+     data-clock-time-format="{{ clock.time_format }}">
+    <div class="panel-title panel-title-between">
+        <span><i class="fa-regular fa-clock"></i> Jetzt</span>
+        <span class="clock-zone">{{ clock.timezone }}</span>
+    </div>
+    <div class="clock-face">
+        <strong data-clock-time>{{ clock.time }}</strong>
+        <span data-clock-weekday>{{ clock.weekday }}</span>
+    </div>
+    <div class="date-strip">
+        <span class="date-number" data-clock-day>{{ clock.day }}</span>
+        <div class="date-block">
+            <strong data-clock-month>{{ clock.month }}</strong>
+            <span data-clock-year>{{ clock.year }}</span>
+        </div>
+    </div>
+    <div class="clock-details">
+        <span><i class="fa-regular fa-calendar"></i> {{ today_label }}</span>
+        <span><i class="{{ dashboard_moment_icon }}" aria-hidden="true"></i> {{ dashboard_moment_label }}</span>
+    </div>
+</div>

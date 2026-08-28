@@ -355,6 +355,33 @@ LOGGING = {
 LUNORA_AUTOMATION_INTERVAL_SECONDS = env_int("LUNORA_AUTOMATION_INTERVAL_SECONDS", 60)
 LUNORA_WEEKLY_SUMMARY_HOUR = env_int("LUNORA_WEEKLY_SUMMARY_HOUR", 8)
 
+WEB_PUSH_VAPID_PUBLIC_KEY = os.getenv("WEB_PUSH_VAPID_PUBLIC_KEY", "").strip()
+WEB_PUSH_VAPID_PRIVATE_KEY = os.getenv("WEB_PUSH_VAPID_PRIVATE_KEY", "").strip()
+WEB_PUSH_VAPID_SUBJECT = os.getenv("WEB_PUSH_VAPID_SUBJECT", "").strip()
+WEB_PUSH_ALLOWED_ENDPOINT_HOSTS = env_list(
+    "WEB_PUSH_ALLOWED_ENDPOINT_HOSTS",
+    "fcm.googleapis.com,updates.push.services.mozilla.com,notify.windows.com,push.apple.com",
+)
+WEB_PUSH_TTL_SECONDS = env_int("WEB_PUSH_TTL_SECONDS", 600)
+WEB_PUSH_TIMEOUT_SECONDS = env_int("WEB_PUSH_TIMEOUT_SECONDS", 10)
+WEB_PUSH_MAX_ATTEMPTS = env_int("WEB_PUSH_MAX_ATTEMPTS", 5)
+if WEB_PUSH_TTL_SECONDS <= 0 or WEB_PUSH_TIMEOUT_SECONDS <= 0 or WEB_PUSH_MAX_ATTEMPTS <= 0:
+    raise ImproperlyConfigured(
+        "WEB_PUSH_TTL_SECONDS, WEB_PUSH_TIMEOUT_SECONDS und WEB_PUSH_MAX_ATTEMPTS müssen größer als 0 sein."
+    )
+WEB_PUSH_ENABLED = bool(
+    WEB_PUSH_VAPID_PUBLIC_KEY
+    and WEB_PUSH_VAPID_PRIVATE_KEY
+    and WEB_PUSH_VAPID_SUBJECT
+)
+if any((WEB_PUSH_VAPID_PUBLIC_KEY, WEB_PUSH_VAPID_PRIVATE_KEY, WEB_PUSH_VAPID_SUBJECT)) and not WEB_PUSH_ENABLED:
+    raise ImproperlyConfigured(
+        "WEB_PUSH_VAPID_PUBLIC_KEY, WEB_PUSH_VAPID_PRIVATE_KEY und "
+        "WEB_PUSH_VAPID_SUBJECT müssen gemeinsam gesetzt werden."
+    )
+if WEB_PUSH_VAPID_SUBJECT and not WEB_PUSH_VAPID_SUBJECT.startswith(("mailto:", "https://")):
+    raise ImproperlyConfigured("WEB_PUSH_VAPID_SUBJECT muss mit mailto: oder https:// beginnen.")
+
 if env_bool("DJANGO_USE_X_FORWARDED_PROTO", False):
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 USE_X_FORWARDED_HOST = env_bool("DJANGO_USE_X_FORWARDED_HOST", False)

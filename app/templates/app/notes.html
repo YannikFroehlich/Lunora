@@ -1,11 +1,11 @@
 {% extends 'app/base.html' %}
-{% load static %}
+{% load static static_versioning %}
 
 {% block title %}Notizen | Lunora{% endblock %}
 
 {% block page_css %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.47/dist/katex.min.css">
-<link rel="stylesheet" href="{% static 'css/notes.css' %}?v=notes-22">
+<link rel="stylesheet" href="{% versioned_static 'css/notes.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -144,6 +144,8 @@
                 <button type="button" data-command="archive" aria-label="{% if selected_note_data.is_archived %}Aus Archiv holen{% else %}Archivieren{% endif %}">
                     <i class="fa-solid fa-box-archive"></i>
                 </button>
+                <button type="button" data-command="style" aria-label="Farbe & Icon"><i class="fa-solid fa-palette"></i></button>
+                <button type="button" data-command="outline" aria-label="Inhaltsverzeichnis" aria-pressed="false"><i class="fa-solid fa-bars-staggered"></i></button>
                 <button type="button" data-command="comments" aria-label="Kommentare"><i class="fa-regular fa-comment"></i></button>
                 <button type="button" data-command="versions" aria-label="Versionsverlauf"><i class="fa-solid fa-clock-rotate-left"></i></button>
                 {% if selected_note_data.can_manage %}<button type="button" data-command="share" aria-label="Teilen"><i class="fa-solid fa-user-plus"></i></button>{% endif %}
@@ -171,35 +173,11 @@
                     <button type="button" data-command="redo" aria-label="Wiederholen"><i class="fa-solid fa-rotate-right"></i></button>
                     <button type="button" data-command="save" aria-label="Speichern"><i class="fa-solid fa-floppy-disk"></i></button>
                 </div>
-                <div class="toolbar-group toolbar-selects">
-                    <select data-format="block" aria-label="Absatzformat">
-                        <option value="paragraph">Absatz</option><option value="heading1">Überschrift 1</option><option value="heading2">Überschrift 2</option><option value="heading3">Überschrift 3</option>
-                    </select>
-                    <select data-format="fontFamily" aria-label="Schriftart">
-                        <option>Inter</option><option>Arial</option><option>Georgia</option><option>Times New Roman</option><option>Courier New</option>
-                    </select>
-                    <select data-format="fontSize" aria-label="Schriftgröße">
-                        <option value="10px">10</option><option value="12px">12</option><option value="14px">14</option><option value="16px" selected>16</option><option value="18px">18</option><option value="24px">24</option><option value="32px">32</option><option value="48px">48</option>
-                    </select>
-                    <select data-format="lineHeight" aria-label="Zeilenabstand">
-                        <option value="1">1,0</option><option value="1.15">1,15</option><option value="1.5" selected>1,5</option><option value="2">2,0</option>
-                    </select>
-                </div>
                 <div class="toolbar-group">
                     <button type="button" data-command="bold" aria-label="Fett"><strong>B</strong></button>
                     <button type="button" data-command="italic" aria-label="Kursiv"><em>I</em></button>
                     <button type="button" data-command="underline" aria-label="Unterstrichen"><u>U</u></button>
                     <button type="button" data-command="strike" aria-label="Durchgestrichen"><s>S</s></button>
-                    <button type="button" data-command="superscript" aria-label="Hochgestellt">x<sup>2</sup></button>
-                    <button type="button" data-command="subscript" aria-label="Tiefgestellt">x<sub>2</sub></button>
-                    <label class="toolbar-color" aria-label="Textfarbe"><i class="fa-solid fa-font"></i><input type="color" value="#40372f" data-format="textColor"></label>
-                    <label class="toolbar-color" aria-label="Markierfarbe"><i class="fa-solid fa-highlighter"></i><input type="color" value="#f1d99e" data-format="highlight"></label>
-                </div>
-                <div class="toolbar-group">
-                    <button type="button" data-command="alignLeft" aria-label="Linksbündig"><i class="fa-solid fa-align-left"></i></button>
-                    <button type="button" data-command="alignCenter" aria-label="Zentriert"><i class="fa-solid fa-align-center"></i></button>
-                    <button type="button" data-command="alignRight" aria-label="Rechtsbündig"><i class="fa-solid fa-align-right"></i></button>
-                    <button type="button" data-command="alignJustify" aria-label="Blocksatz"><i class="fa-solid fa-align-justify"></i></button>
                 </div>
                 <div class="toolbar-group">
                     <button type="button" data-command="bulletList" aria-label="Aufzählung"><i class="fa-solid fa-list-ul"></i></button>
@@ -208,15 +186,54 @@
                     <button type="button" data-command="outdent" aria-label="Einzug verkleinern"><i class="fa-solid fa-outdent"></i></button>
                     <button type="button" data-command="indent" aria-label="Einzug vergrößern"><i class="fa-solid fa-indent"></i></button>
                 </div>
-                <div class="toolbar-group">
-                    <button type="button" data-command="link" aria-label="Link"><i class="fa-solid fa-link"></i></button>
-                    <button type="button" data-command="horizontalRule" aria-label="Trennlinie"><i class="fa-solid fa-minus"></i></button>
-                    <button type="button" data-command="image" aria-label="Bild"><i class="fa-regular fa-image"></i></button>
-                    <button type="button" data-command="attachment" aria-label="Datei"><i class="fa-solid fa-paperclip"></i></button>
-                    <button type="button" data-command="codeBlock" aria-label="Codeblock"><i class="fa-solid fa-code"></i></button>
-                    <button type="button" data-command="insertMath" aria-label="Formel einfügen"><i class="fa-solid fa-square-root-variable"></i></button>
-                    <button type="button" data-command="addComment" aria-label="Kommentar zur Auswahl hinzufügen"><i class="fa-solid fa-comment-medical"></i></button>
-                    <button type="button" data-command="clearFormat" aria-label="Formatierung entfernen"><i class="fa-solid fa-eraser"></i></button>
+                <div class="toolbar-tabs" role="tablist" aria-label="Weitere Werkzeuge" data-toolbar-tabs>
+                    <button type="button" class="toolbar-tab is-active" role="tab" id="toolbar-tab-text" aria-selected="true" aria-controls="toolbar-panel-text" tabindex="0" data-toolbar-tab="text">Text</button>
+                    <button type="button" class="toolbar-tab" role="tab" id="toolbar-tab-insert" aria-selected="false" aria-controls="toolbar-panel-insert" tabindex="-1" data-toolbar-tab="insert">Einfügen</button>
+                </div>
+                <div class="toolbar-panel" role="tabpanel" id="toolbar-panel-text" aria-labelledby="toolbar-tab-text" data-toolbar-panel="text">
+                    <div class="toolbar-group toolbar-selects">
+                        <select data-format="block" aria-label="Absatzformat">
+                            <option value="paragraph">Absatz</option><option value="heading1">Überschrift 1</option><option value="heading2">Überschrift 2</option><option value="heading3">Überschrift 3</option>
+                        </select>
+                        <select data-format="fontFamily" aria-label="Schriftart">
+                            <option>Inter</option><option>Arial</option><option>Georgia</option><option>Times New Roman</option><option>Courier New</option>
+                        </select>
+                        <select data-format="fontSize" aria-label="Schriftgröße">
+                            <option value="10px">10</option><option value="12px">12</option><option value="14px">14</option><option value="16px" selected>16</option><option value="18px">18</option><option value="24px">24</option><option value="32px">32</option><option value="48px">48</option>
+                        </select>
+                        <select data-format="lineHeight" aria-label="Zeilenabstand">
+                            <option value="1">1,0</option><option value="1.15">1,15</option><option value="1.5" selected>1,5</option><option value="2">2,0</option>
+                        </select>
+                    </div>
+                    <div class="toolbar-group">
+                        <button type="button" data-command="superscript" aria-label="Hochgestellt">x<sup>2</sup></button>
+                        <button type="button" data-command="subscript" aria-label="Tiefgestellt">x<sub>2</sub></button>
+                        <label class="toolbar-color" aria-label="Textfarbe"><i class="fa-solid fa-font"></i><input type="color" value="#40372f" data-format="textColor"></label>
+                        <label class="toolbar-color" aria-label="Markierfarbe"><i class="fa-solid fa-highlighter"></i><input type="color" value="#f1d99e" data-format="highlight"></label>
+                    </div>
+                    <div class="toolbar-group">
+                        <button type="button" data-command="alignLeft" aria-label="Linksbündig"><i class="fa-solid fa-align-left"></i></button>
+                        <button type="button" data-command="alignCenter" aria-label="Zentriert"><i class="fa-solid fa-align-center"></i></button>
+                        <button type="button" data-command="alignRight" aria-label="Rechtsbündig"><i class="fa-solid fa-align-right"></i></button>
+                        <button type="button" data-command="alignJustify" aria-label="Blocksatz"><i class="fa-solid fa-align-justify"></i></button>
+                    </div>
+                    <div class="toolbar-group">
+                        <button type="button" data-command="clearFormat" aria-label="Formatierung entfernen"><i class="fa-solid fa-eraser"></i></button>
+                    </div>
+                </div>
+                <div class="toolbar-panel" role="tabpanel" id="toolbar-panel-insert" aria-labelledby="toolbar-tab-insert" data-toolbar-panel="insert" hidden>
+                    <div class="toolbar-group">
+                        <button type="button" data-command="link" aria-label="Link"><i class="fa-solid fa-link"></i></button>
+                        <button type="button" data-command="horizontalRule" aria-label="Trennlinie"><i class="fa-solid fa-minus"></i></button>
+                        <button type="button" data-command="image" aria-label="Bild"><i class="fa-regular fa-image"></i></button>
+                        <button type="button" data-command="attachment" aria-label="Datei"><i class="fa-solid fa-paperclip"></i></button>
+                        <button type="button" data-command="codeBlock" aria-label="Codeblock"><i class="fa-solid fa-code"></i></button>
+                        <button type="button" data-command="insertMath" aria-label="Formel einfügen"><i class="fa-solid fa-square-root-variable"></i></button>
+                        <button type="button" data-command="addComment" aria-label="Kommentar zur Auswahl hinzufügen"><i class="fa-solid fa-comment-medical"></i></button>
+                        <button type="button" data-table-dialog-open aria-label="Tabellenwerkzeuge öffnen" aria-haspopup="dialog" title="Tabellenwerkzeuge">
+                            <i class="fa-solid fa-table-cells"></i>
+                        </button>
+                    </div>
                 </div>
                 <div class="toolbar-group" data-code-language-group hidden>
                     <select data-format="codeLanguage" aria-label="Programmiersprache">
@@ -243,14 +260,20 @@
                         <option value="diff">Diff</option>
                     </select>
                 </div>
-                <button type="button" data-table-dialog-open aria-label="Tabellenwerkzeuge öffnen" aria-haspopup="dialog" title="Tabellenwerkzeuge">
-                    <i class="fa-solid fa-table-cells"></i>
-                </button>
             </div>
-            <div class="note-editor-scroll soft-scrollbar">
-                <div class="note-editor-zoom-frame" data-note-zoom-frame>
-                    <div class="note-editor-page" data-note-editor></div>
+            <div class="note-editor-body">
+                <div class="note-editor-scroll soft-scrollbar">
+                    <div class="note-editor-zoom-frame" data-note-zoom-frame>
+                        <div class="note-editor-page" data-note-editor></div>
+                    </div>
                 </div>
+                <aside class="note-outline-panel soft-scrollbar" data-note-outline-panel hidden>
+                    <header class="note-outline-header">
+                        <span><i class="fa-solid fa-bars-staggered" aria-hidden="true"></i> Inhaltsverzeichnis</span>
+                        <button type="button" data-command="outline" aria-label="Inhaltsverzeichnis schließen"><i class="fa-solid fa-xmark"></i></button>
+                    </header>
+                    <div class="note-outline-list" data-note-outline-list></div>
+                </aside>
             </div>
             <button type="button" class="note-editor-zoom-indicator" data-editor-zoom-level aria-label="Zoomstufe des Editors, klicken zum Zurücksetzen">100%</button>
             {% if selected_note_data.backlinks %}
@@ -414,12 +437,47 @@
     </form>
 </dialog>
 
+<dialog class="notes-dialog note-style-dialog" data-style-dialog>
+    <form method="dialog" class="dialog-card">
+        <header>
+            <div><span class="eyebrow">Kennzeichnung</span><h2>Farbe & Icon</h2></div>
+            <button value="cancel" aria-label="Schließen"><i class="fa-solid fa-xmark"></i></button>
+        </header>
+        <div class="note-style-section">
+            <span class="note-style-label">Farbe</span>
+            <div class="note-color-grid" data-note-color-grid>
+                {% for color, label in note_color_choices %}
+                <label class="note-color-dot {% if not color %}is-none{% endif %} tone-{{ color|default:'none' }}" aria-label="{{ label }}" title="{{ label }}">
+                    <input type="radio" name="note-style-color" value="{{ color }}">
+                    {% if not color %}<i class="fa-solid fa-slash" aria-hidden="true"></i>{% endif %}
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="note-style-section">
+            <span class="note-style-label">Icon</span>
+            <div class="note-icon-grid" data-note-icon-grid>
+                {% for icon, label in note_icon_choices %}
+                <button type="button" class="note-icon-option" data-note-icon-value="{{ icon }}" aria-label="{{ label }}" title="{{ label }}">
+                    {% if icon %}<i class="fa-solid fa-{{ icon }}" aria-hidden="true"></i>{% else %}<i class="fa-solid fa-slash" aria-hidden="true"></i>{% endif %}
+                </button>
+                {% endfor %}
+            </div>
+        </div>
+        <footer>
+            <button class="ghost-button" value="cancel">Abbrechen</button>
+            <button class="primary-button" type="button" data-note-style-confirm>Übernehmen</button>
+        </footer>
+    </form>
+</dialog>
+
 <div class="notes-context-menu" role="menu" data-note-context-menu hidden>
     <button type="button" role="menuitem" data-note-context-action="open"><i class="fa-solid fa-arrow-up-right-from-square"></i><span>Öffnen</span></button>
     <button type="button" role="menuitem" data-note-context-action="pin"><i class="fa-solid fa-thumbtack"></i><span data-note-context-label>Anpinnen</span></button>
     <button type="button" role="menuitem" data-note-context-action="rename"><i class="fa-solid fa-pen"></i><span>Umbenennen</span></button>
     <button type="button" role="menuitem" data-note-context-action="duplicate"><i class="fa-regular fa-copy"></i><span>Duplizieren</span></button>
     <button type="button" role="menuitem" data-note-context-action="move"><i class="fa-solid fa-folder-tree"></i><span>Verschieben</span></button>
+    <button type="button" role="menuitem" data-note-context-action="style"><i class="fa-solid fa-palette"></i><span>Farbe & Icon</span></button>
     <button class="context-menu-separator" type="button" role="menuitem" data-note-context-action="archive"><i class="fa-solid fa-box-archive"></i><span data-note-context-label>Archivieren</span></button>
     <button type="button" role="menuitem" data-note-context-action="restore"><i class="fa-solid fa-rotate-left"></i><span>Wiederherstellen</span></button>
     <button class="is-danger" type="button" role="menuitem" data-note-context-action="delete"><i class="fa-solid fa-trash-can"></i><span data-note-context-label>In Papierkorb</span></button>
@@ -439,5 +497,5 @@
 {% endblock %}
 
 {% block page_js %}
-<script src="{% static 'js/bundles/notes.js' %}?v=notes-22" defer></script>
+<script src="{% versioned_static 'js/bundles/notes.js' %}" defer></script>
 {% endblock %}

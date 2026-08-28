@@ -1,0 +1,109 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}Benachrichtigungen | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/notifications.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell notifications-shell">
+    <header class="page-hero notification-hero">
+        <div>
+            <h1>Benachrichtigungen</h1>
+            <p>Alle wichtigen Ereignisse aus Lunora an einem Ort.</p>
+        </div>
+        <span class="notification-hero-icon" aria-hidden="true">
+            <i class="fa-regular fa-bell"></i>
+        </span>
+    </header>
+
+    <section class="glass-panel notification-panel">
+        <div class="notification-toolbar">
+            <nav class="notification-filters" aria-label="Benachrichtigungen filtern">
+                <a class="notification-filter {% if selected_filter == 'unread' %}is-active{% endif %}" href="{% url 'notification_center' %}?status=unread">
+                    Ungelesen <span>{{ unread_notification_count }}</span>
+                </a>
+                <a class="notification-filter {% if selected_filter == 'all' %}is-active{% endif %}" href="{% url 'notification_center' %}?status=all">
+                    Alle <span>{{ total_notification_count }}</span>
+                </a>
+            </nav>
+
+            <form method="post" action="{% url 'notification_mark_all_read' %}">
+                {% csrf_token %}
+                <button class="mark-all-button" type="submit" {% if not unread_notification_count %}disabled{% endif %}>
+                    <i class="fa-solid fa-check-double" aria-hidden="true"></i>
+                    Alle als gelesen markieren
+                </button>
+            </form>
+        </div>
+
+        {% if notification_page.object_list %}
+        <div class="notification-list">
+            {% for item in notification_page.object_list %}
+            <article class="notification-row is-{{ item.tone }} {% if not item.notification.is_read %}is-unread{% endif %}">
+                <form class="notification-open-form" method="post" action="{% url 'notification_open' item.notification.id %}">
+                    {% csrf_token %}
+                    <button class="notification-open-button" type="submit" aria-label="{{ item.notification.title }} öffnen">
+                        <span class="notification-kind-icon" aria-hidden="true">
+                            <i class="fa-solid {{ item.icon }}"></i>
+                        </span>
+                        <span class="notification-copy">
+                            <span class="notification-meta">
+                                <span class="notification-kind-label">{{ item.label }}</span>
+                                <time datetime="{{ item.notification.created_at|date:'c' }}">{{ item.created_label }}</time>
+                            </span>
+                            <strong>{{ item.notification.title }}</strong>
+                            {% if item.notification.body %}<span class="notification-body">{{ item.notification.body }}</span>{% endif %}
+                        </span>
+                        {% if not item.notification.is_read %}<span class="unread-dot" title="Ungelesen"></span>{% endif %}
+                        <i class="fa-solid fa-chevron-right notification-chevron" aria-hidden="true"></i>
+                    </button>
+                </form>
+
+                <form class="notification-state-form" method="post" action="{% url 'notification_toggle_read' item.notification.id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="{{ selected_filter }}">
+                    <button type="submit" aria-label="Als {% if item.notification.is_read %}ungelesen{% else %}gelesen{% endif %} markieren" title="Als {% if item.notification.is_read %}ungelesen{% else %}gelesen{% endif %} markieren">
+                        <i class="fa-{% if item.notification.is_read %}regular fa-envelope{% else %}solid fa-envelope-open{% endif %}" aria-hidden="true"></i>
+                    </button>
+                </form>
+            </article>
+            {% endfor %}
+        </div>
+
+        {% if notification_page.has_other_pages %}
+        <nav class="notification-pagination" aria-label="Seitennavigation">
+            {% if notification_page.has_previous %}
+            <a href="?status={{ selected_filter }}&page={{ notification_page.previous_page_number }}" aria-label="Vorherige Seite">
+                <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                Zurück
+            </a>
+            {% else %}<span></span>{% endif %}
+            <span>Seite {{ notification_page.number }} von {{ notification_page.paginator.num_pages }}</span>
+            {% if notification_page.has_next %}
+            <a href="?status={{ selected_filter }}&page={{ notification_page.next_page_number }}" aria-label="Nächste Seite">
+                Weiter
+                <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+            </a>
+            {% else %}<span></span>{% endif %}
+        </nav>
+        {% endif %}
+        {% else %}
+        <div class="notification-empty-state">
+            <span aria-hidden="true"><i class="fa-regular fa-circle-check"></i></span>
+            <div>
+                {% if selected_filter == 'unread' %}
+                <strong>Alles erledigt</strong>
+                <p>Du hast aktuell keine ungelesenen Benachrichtigungen.</p>
+                {% else %}
+                <strong>Noch keine Benachrichtigungen</strong>
+                <p>Einladungen, fällige Aufgaben und Aktivitäten erscheinen künftig hier.</p>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </section>
+</section>
+{% endblock %}

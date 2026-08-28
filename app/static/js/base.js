@@ -293,11 +293,27 @@ if (document.readyState === "loading") {
 
 window.addEventListener("pageshow", initFlashMessages);
 
-function initDesktopReminderNotifications() {
+async function hasActiveWebPushSubscription() {
+  const pushUrl = document.documentElement.dataset.webPushSubscriptionUrl;
+  if (!pushUrl || !("serviceWorker" in navigator) || !("PushManager" in window)) return false;
+  try {
+    const registration = await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise((resolve) => window.setTimeout(() => resolve(null), 4000)),
+    ]);
+    if (!registration) return false;
+    return Boolean(await registration.pushManager.getSubscription());
+  } catch (error) {
+    return false;
+  }
+}
+
+async function initDesktopReminderNotifications() {
   const claimUrl = document.documentElement.dataset.notificationClaimUrl;
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
   if (!isAuthenticated || !claimUrl || !csrfToken || !("Notification" in window)) return;
   if (Notification.permission !== "granted") return;
+  if (await hasActiveWebPushSubscription()) return;
 
   let claimInProgress = false;
   const claimNotifications = async () => {
@@ -341,3 +357,72 @@ if (document.readyState === "loading") {
 } else {
   initDesktopReminderNotifications();
 }
+
+const pwaInstallState = {
+  deferredPrompt: null,
+  installed: window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true,
+};
+
+function announcePwaState() {
+  window.dispatchEvent(new CustomEvent("lunora:pwa-state-change", {
+    detail: {
+      installable: Boolean(pwaInstallState.deferredPrompt),
+      installed: pwaInstallState.installed,
+    },
+  }));
+}
+
+window.lunoraPwa = {
+  isInstalled() {
+    return pwaInstallState.installed;
+  },
+  isInstallable() {
+    return Boolean(pwaInstallState.deferredPrompt);
+  },
+  async install() {
+    if (!pwaInstallState.deferredPrompt) {
+      return { outcome: "unavailable" };
+    }
+
+    const prompt = pwaInstallState.deferredPrompt;
+    await prompt.prompt();
+    const choice = await prompt.userChoice;
+    pwaInstallState.deferredPrompt = null;
+    announcePwaState();
+    return choice;
+  },
+};
+
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  pwaInstallState.deferredPrompt = event;
+  announcePwaState();
+});
+
+window.addEventListener("appinstalled", () => {
+  pwaInstallState.deferredPrompt = null;
+  pwaInstallState.installed = true;
+  announcePwaState();
+});
+
+function registerLunoraServiceWorker() {
+  const serviceWorkerUrl = document.documentElement.dataset.serviceWorkerUrl;
+  if (!serviceWorkerUrl || !("serviceWorker" in navigator) || !window.isSecureContext) return;
+
+  const register = () => {
+    navigator.serviceWorker.register(serviceWorkerUrl, {
+      scope: "/",
+      updateViaCache: "none",
+    }).catch(() => {
+      // The app remains fully usable online if registration is blocked.
+    });
+  };
+
+  if (document.readyState === "complete") {
+    register();
+  } else {
+    window.addEventListener("load", register, { once: true });
+  }
+}
+
+registerLunoraServiceWorker();

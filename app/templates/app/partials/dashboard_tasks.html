@@ -1,0 +1,25 @@
+<div class="panel-title panel-title-between">
+    <span><i class="fa-solid fa-list-check"></i> Aufgaben</span>
+    <a class="icon-button" href="{% url 'tasks' %}" aria-label="Aufgaben öffnen">
+        <i class="fa-solid fa-arrow-right"></i>
+    </a>
+</div>
+<ul class="event-list">
+    {% if dashboard_tasks %}
+    {% for task in dashboard_tasks %}
+    <li>
+        <span class="event-dot tone-violet"></span>
+        <span>
+            <strong>
+                {{ task.title }}
+                {% if task.priority != "none" %}<i class="fa-solid fa-flag task-priority-flag is-{{ task.priority }}" aria-hidden="true"></i>{% endif %}
+            </strong>
+            <small class="{{ task.due_state }}">{{ task.due_label }}</small>
+        </span>
+    </li>
+    {% endfor %}
+    {% else %}
+    <li class="empty-events">Keine offenen Aufgaben.</li>
+    {% endif %}
+</ul>
+<a class="panel-link" href="{% url 'tasks' %}">Aufgaben ansehen <i class="fa-solid fa-chevron-right"></i></a>

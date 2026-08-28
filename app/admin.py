@@ -13,13 +13,20 @@ from app.models import (
     NoteShare,
     NoteUserState,
     NoteVersion,
+    NotificationPreference,
     CustomHoliday,
     HolidayOverride,
     OfficialHoliday,
     Profile,
     SystemSettings,
+    Task,
+    TaskLabel,
+    TaskList,
+    UserNotification,
     VacationPeriod,
     VacationYear,
+    WebPushDelivery,
+    WebPushSubscription,
     WeeklySummaryDelivery,
 )
 
@@ -42,6 +49,7 @@ class SystemSettingsAdmin(admin.ModelAdmin):
         "notes_enabled",
         "vacation_planner_enabled",
         "weather_enabled",
+        "dashboard_customization_enabled",
         "updated_at",
     )
     readonly_fields = ("created_at", "updated_at")
@@ -104,6 +112,86 @@ class CalendarReminderAdmin(admin.ModelAdmin):
     list_display = ("title", "user", "is_done", "due_at", "email_notified_at", "desktop_notified_at")
     list_filter = ("is_done", "created_at")
     search_fields = ("title", "user__username")
+
+
+@admin.register(TaskList)
+class TaskListAdmin(admin.ModelAdmin):
+    list_display = ("name", "owner", "color", "position")
+    search_fields = ("name", "owner__username")
+
+
+@admin.register(TaskLabel)
+class TaskLabelAdmin(admin.ModelAdmin):
+    list_display = ("name", "owner", "color")
+    search_fields = ("name", "owner__username")
+
+
+@admin.register(Task)
+class TaskAdmin(admin.ModelAdmin):
+    list_display = ("title", "user", "task_list", "priority", "is_done", "due_at", "email_notified_at", "desktop_notified_at")
+    list_filter = ("is_done", "priority", "recurrence_rule", "created_at")
+    search_fields = ("title", "user__username")
+
+
+@admin.register(UserNotification)
+class UserNotificationAdmin(admin.ModelAdmin):
+    list_display = ("title", "recipient", "kind", "read_at", "email_notified_at", "created_at")
+    list_filter = ("kind", "read_at", "created_at")
+    search_fields = ("title", "body", "recipient__username", "recipient__email")
+    autocomplete_fields = ("recipient", "actor")
+    readonly_fields = ("source_key", "created_at")
+
+
+@admin.register(NotificationPreference)
+class NotificationPreferenceAdmin(admin.ModelAdmin):
+    list_display = ("user", "category", "inbox_enabled", "email_enabled", "web_push_enabled", "updated_at")
+    list_filter = ("category", "inbox_enabled", "email_enabled", "web_push_enabled")
+    search_fields = ("user__username", "user__email")
+    autocomplete_fields = ("user",)
+
+
+@admin.register(WebPushSubscription)
+class WebPushSubscriptionAdmin(admin.ModelAdmin):
+    list_display = ("user", "last_success_at", "failure_count", "created_at", "updated_at")
+    list_filter = ("created_at", "last_success_at")
+    search_fields = ("user__username", "user__email")
+    fields = ("user", "user_agent", "last_success_at", "failure_count", "created_at", "updated_at")
+    readonly_fields = (
+        "user",
+        "user_agent",
+        "last_success_at",
+        "failure_count",
+        "created_at",
+        "updated_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+
+@admin.register(WebPushDelivery)
+class WebPushDeliveryAdmin(admin.ModelAdmin):
+    list_display = (
+        "notification",
+        "subscription",
+        "attempt_count",
+        "last_status_code",
+        "delivered_at",
+    )
+    list_filter = ("delivered_at", "last_status_code", "created_at")
+    search_fields = ("notification__title", "subscription__user__username")
+    readonly_fields = (
+        "notification",
+        "subscription",
+        "attempt_count",
+        "last_status_code",
+        "attempted_at",
+        "delivered_at",
+        "created_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
 
 
 @admin.register(WeeklySummaryDelivery)

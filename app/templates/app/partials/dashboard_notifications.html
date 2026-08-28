@@ -1,0 +1,65 @@
+<div class="panel-title panel-title-between">
+    <span><i class="fa-solid fa-bell"></i> Neueste Hinweise</span>
+    <a class="icon-button" href="{% url 'notification_center' %}" aria-label="Postfach öffnen">
+        <i class="fa-solid fa-arrow-right"></i>
+    </a>
+</div>
+<ul class="notice-list">
+    {% if dashboard_notifications %}
+    {% for item in dashboard_notifications %}
+    <li>
+        <span class="event-dot tone-{{ item.tone }}"></span>
+        <span class="notice-content">
+            <strong>{{ item.notification.title }}</strong>
+            <small>{{ item.created_label }}</small>
+        </span>
+        <form method="post" action="{% url 'notification_toggle_read' item.notification.id %}" class="notice-action-form">
+            {% csrf_token %}
+            <input type="hidden" name="return_to" value="{% url 'home' %}">
+            <button type="submit" class="notice-action" aria-label="Als gelesen markieren" title="Als gelesen markieren">
+                <i class="fa-solid fa-check" aria-hidden="true"></i>
+            </button>
+        </form>
+    </li>
+    {% endfor %}
+    {% else %}
+    <li class="empty-events">Keine neuen Hinweise.</li>
+    {% endif %}
+</ul>
+
+{% if dashboard_tasks_enabled %}
+<div class="panel-title panel-title-between panel-title-secondary">
+    <span><i class="fa-solid fa-calendar-day"></i> Heutige Aufgaben</span>
+    <a class="icon-button" href="{% url 'tasks' %}" aria-label="Aufgaben öffnen">
+        <i class="fa-solid fa-arrow-right"></i>
+    </a>
+</div>
+<ul class="notice-list">
+    {% if dashboard_today_tasks %}
+    {% for task in dashboard_today_tasks %}
+    <li>
+        <span class="event-dot tone-violet"></span>
+        <span class="notice-content">
+            <strong>
+                {{ task.title }}
+                {% if task.priority != "none" %}<i class="fa-solid fa-flag task-priority-flag is-{{ task.priority }}" aria-hidden="true"></i>{% endif %}
+            </strong>
+            <small class="{{ task.due_state }}">{{ task.due_label }}</small>
+        </span>
+        <form method="post" action="{% url 'tasks' %}" class="notice-action-form">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="task_toggle">
+            <input type="hidden" name="task_id" value="{{ task.id }}">
+            <input type="hidden" name="is_done" value="on">
+            <input type="hidden" name="return_to" value="{% url 'home' %}">
+            <button type="submit" class="notice-action" aria-label="Als erledigt markieren" title="Als erledigt markieren">
+                <i class="fa-solid fa-check" aria-hidden="true"></i>
+            </button>
+        </form>
+    </li>
+    {% endfor %}
+    {% else %}
+    <li class="empty-events">Keine Aufgaben für heute.</li>
+    {% endif %}
+</ul>
+{% endif %}

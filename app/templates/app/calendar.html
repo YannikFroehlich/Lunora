@@ -1,10 +1,10 @@
 {% extends 'app/base.html' %}
-{% load static %}
+{% load static static_versioning %}
 
 {% block title %}Kalender | Lunora{% endblock %}
 
 {% block page_css %}
-<link rel="stylesheet" href="{% static 'css/calendar.css' %}?v=event-edit-1">
+<link rel="stylesheet" href="{% versioned_static 'css/calendar.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -116,6 +116,12 @@
                         <strong>Noch kein Kalender</strong>
                         <p>Füge deine privaten iCal-Links in den Einstellungen hinzu.</p>
                     </div>
+                    {% if calendar_sync_enabled %}
+                    <a class="ghost-button calendar-empty-action" href="{% url 'settings' %}?next={{ request.get_full_path|urlencode }}" data-calendar-empty-action="connect">
+                        <i class="fa-solid fa-link" aria-hidden="true"></i>
+                        Kalender verbinden
+                    </a>
+                    {% endif %}
                 </div>
                 {% endif %}
             </section>
@@ -173,6 +179,12 @@
                         {% else %}
                         <strong>Heute ist frei</strong>
                         <p>Für heute stehen keine Termine an.</p>
+                        {% if calendar_event_creation_enabled %}
+                        <button class="ghost-button calendar-empty-action" type="button" data-event-dialog-open data-calendar-empty-action="event-today">
+                            <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                            Termin anlegen
+                        </button>
+                        {% endif %}
                         {% endif %}
                     </div>
                 </div>
@@ -229,7 +241,21 @@
                         <p>Aktiviere mindestens eine Checkbox, um kommende Termine zu sehen.</p>
                         {% else %}
                         <strong>Keine kommenden Termine</strong>
-                        <p>Hinterlege deine Kalender-Links in den Einstellungen, um die nächsten Termine hier zu sehen.</p>
+                        <p>{% if calendar_sources %}Deine sichtbaren Kalender haben aktuell keine kommenden Termine.{% elif calendar_sync_enabled %}Verbinde einen Kalender, um deine nächsten Termine hier zu sehen.{% else %}Sobald Termine vorhanden sind, erscheinen sie hier.{% endif %}</p>
+                        <div class="calendar-empty-actions">
+                            {% if not calendar_sources and calendar_sync_enabled %}
+                            <a class="ghost-button calendar-empty-action" href="{% url 'settings' %}?next={{ request.get_full_path|urlencode }}" data-calendar-empty-action="connect-upcoming">
+                                <i class="fa-solid fa-link" aria-hidden="true"></i>
+                                Kalender verbinden
+                            </a>
+                            {% endif %}
+                            {% if calendar_event_creation_enabled %}
+                            <button class="ghost-button calendar-empty-action" type="button" data-event-dialog-open data-calendar-empty-action="event-upcoming">
+                                <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                                Termin anlegen
+                            </button>
+                            {% endif %}
+                        </div>
                         {% endif %}
                     </div>
                 </div>
@@ -477,8 +503,8 @@
 
 {% block page_js %}
 {% if calendar_event_creation_enabled %}
-<script src="{% static 'js/calendar.js' %}?v=event-edit-1"></script>
+<script src="{% versioned_static 'js/calendar.js' %}"></script>
 {% else %}
-<script src="{% static 'js/calendar.js' %}?v=event-edit-1"></script>
+<script src="{% versioned_static 'js/calendar.js' %}"></script>
 {% endif %}
 {% endblock %}

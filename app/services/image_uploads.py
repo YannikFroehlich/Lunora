@@ -34,13 +34,13 @@ def validate_profile_image_file(image):
     size = getattr(image, "size", None)
 
     if size and size > max_bytes:
-        raise ValidationError(f"Profilbilder duerfen maximal {max_bytes // (1024 * 1024)} MB gross sein.")
+        raise ValidationError(f"Profilbilder dürfen maximal {max_bytes // (1024 * 1024)} MB groß sein.")
 
     data = _read_image_bytes(image, max_bytes)
     image_type, width, height = _detect_image_type_and_size(data)
     allowed = PROFILE_IMAGE_ALLOWED_TYPES.get(image_type)
     if not allowed:
-        raise ValidationError("Bitte lade ein gueltiges JPG-, PNG- oder WebP-Bild hoch.")
+        raise ValidationError("Bitte lade ein gültiges JPG-, PNG- oder WebP-Bild hoch.")
 
     extension = Path(getattr(image, "name", "")).suffix.lower()
     if extension not in allowed["extensions"]:
@@ -51,9 +51,9 @@ def validate_profile_image_file(image):
         raise ValidationError("Der Dateityp passt nicht zum erkannten Bildformat.")
 
     if width < 1 or height < 1:
-        raise ValidationError("Das Profilbild hat ungueltige Abmessungen.")
+        raise ValidationError("Das Profilbild hat ungültige Abmessungen.")
     if width > max_width or height > max_height:
-        raise ValidationError(f"Profilbilder duerfen maximal {max_width}x{max_height} Pixel gross sein.")
+        raise ValidationError(f"Profilbilder dürfen maximal {max_width}x{max_height} Pixel groß sein.")
 
 
 def _read_image_bytes(image, max_bytes):
@@ -72,7 +72,7 @@ def _read_image_bytes(image, max_bytes):
     except OSError as error:
         raise ValidationError("Das Profilbild konnte nicht gelesen werden.") from error
     if len(data) > max_bytes:
-        raise ValidationError(f"Profilbilder duerfen maximal {max_bytes // (1024 * 1024)} MB gross sein.")
+        raise ValidationError(f"Profilbilder dürfen maximal {max_bytes // (1024 * 1024)} MB groß sein.")
 
     try:
         image.seek(original_position or 0)
@@ -94,7 +94,7 @@ def _detect_image_type_and_size(data):
 
 def _png_size(data):
     if len(data) < 33 or data[12:16] != b"IHDR":
-        raise ValidationError("Das PNG-Bild ist unvollstaendig oder beschaedigt.")
+        raise ValidationError("Das PNG-Bild ist unvollständig oder beschädigt.")
     return "png", int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
 
 
@@ -145,12 +145,12 @@ def _jpeg_size(data):
 
         index += segment_length
 
-    raise ValidationError("Das JPG-Bild ist unvollstaendig oder beschaedigt.")
+    raise ValidationError("Das JPG-Bild ist unvollständig oder beschädigt.")
 
 
 def _webp_size(data):
     if len(data) < 30:
-        raise ValidationError("Das WebP-Bild ist unvollstaendig oder beschaedigt.")
+        raise ValidationError("Das WebP-Bild ist unvollständig oder beschädigt.")
 
     chunk_type = data[12:16]
     if chunk_type == b"VP8X":
@@ -160,7 +160,7 @@ def _webp_size(data):
 
     if chunk_type == b"VP8L":
         if data[20] != 0x2F:
-            raise ValidationError("Das WebP-Bild ist unvollstaendig oder beschaedigt.")
+            raise ValidationError("Das WebP-Bild ist unvollständig oder beschädigt.")
         bits = int.from_bytes(data[21:25], "little")
         width = (bits & 0x3FFF) + 1
         height = ((bits >> 14) & 0x3FFF) + 1
@@ -168,9 +168,9 @@ def _webp_size(data):
 
     if chunk_type == b"VP8 ":
         if data[23:26] != b"\x9d\x01\x2a":
-            raise ValidationError("Das WebP-Bild ist unvollstaendig oder beschaedigt.")
+            raise ValidationError("Das WebP-Bild ist unvollständig oder beschädigt.")
         width = int.from_bytes(data[26:28], "little") & 0x3FFF
         height = int.from_bytes(data[28:30], "little") & 0x3FFF
         return "webp", width, height
 
-    raise ValidationError("Das WebP-Bild ist unvollstaendig oder beschaedigt.")
+    raise ValidationError("Das WebP-Bild ist unvollständig oder beschädigt.")

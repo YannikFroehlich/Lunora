@@ -6,7 +6,20 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.files.base import ContentFile
 from django.db import IntegrityError, transaction
-from django.db.models import BooleanField, Case, Exists, IntegerField, Max, OuterRef, Q, Subquery, Sum, Value, When
+from django.db.models import (
+    BooleanField,
+    Case,
+    CharField,
+    Exists,
+    IntegerField,
+    Max,
+    OuterRef,
+    Q,
+    Subquery,
+    Sum,
+    Value,
+    When,
+)
 from django.utils import timezone
 
 from app.models import (
@@ -81,6 +94,8 @@ def accessible_notes(user, *, include_deleted=False):
         state_is_archived=Exists(state_query.filter(is_archived=True)),
         state_folder_id=Subquery(state_query.values("folder_id")[:1], output_field=IntegerField()),
         state_position=Subquery(state_query.values("position")[:1], output_field=IntegerField()),
+        state_color=Subquery(state_query.values("color")[:1], output_field=CharField()),
+        state_icon=Subquery(state_query.values("icon")[:1], output_field=CharField()),
         is_shared_with_user=Case(
             When(owner=user, then=Value(False)),
             default=Value(True),
@@ -369,12 +384,16 @@ def serialize_note(note, user, *, include_document=True):
         is_archived = note.state_is_archived
         folder_id = note.state_folder_id
         position = note.state_position
+        color = note.state_color or ""
+        icon = note.state_icon or ""
     else:
         state = get_note_state(note, user)
         is_pinned = state.is_pinned
         is_archived = state.is_archived
         folder_id = state.folder_id
         position = state.position
+        color = state.color
+        icon = state.icon
     payload = {
         "id": note.id,
         "title": note.title,
@@ -386,6 +405,8 @@ def serialize_note(note, user, *, include_document=True):
         "can_manage": permission == "owner",
         "is_pinned": is_pinned,
         "is_archived": is_archived,
+        "color": color,
+        "icon": icon,
         "folder_id": folder_id,
         "position": position,
         "is_deleted": bool(note.deleted_at),
@@ -513,13 +534,16 @@ def get_note_backlinks(note, user):
 
 def _create_note_activity_notifications(note, actor, recipient_ids, kind):
     excerpt = note.plain_text[:200]
-    NoteActivityNotification.objects.bulk_create(
+    notification_rows = NoteActivityNotification.objects.bulk_create(
         [
             NoteActivityNotification(note=note, recipient_id=recipient_id, actor=actor, kind=kind, excerpt=excerpt)
             for recipient_id in recipient_ids
             if recipient_id != actor.id
         ]
     )
+    from app.services.notifications import materialize_note_activity_notifications
+
+    materialize_note_activity_notifications(notification_rows)
 
 
 def _create_interval_version(note, user):
@@ -611,6 +635,24 @@ def set_personal_state(user, note_id, *, action):
     else:
         raise ValidationError("Unbekannte Notizaktion.")
     state.save(update_fields=["is_pinned", "pinned_at", "is_archived", "archived_at"])
+    return note
+
+
+@transaction.atomic
+def set_note_style(user, note_id, *, color, icon):
+    valid_colors = dict(NoteUserState.COLOR_CHOICES)
+    valid_icons = dict(NoteUserState.ICON_CHOICES)
+    color = color or ""
+    icon = icon or ""
+    if color not in valid_colors:
+        raise ValidationError("Unbekannte Notizfarbe.")
+    if icon not in valid_icons:
+        raise ValidationError("Unbekanntes Notiz-Icon.")
+    note = get_accessible_note(user, note_id, allow_deleted=True, for_update=True)
+    state = get_note_state(note, user)
+    state.color = color
+    state.icon = icon
+    state.save(update_fields=["color", "icon"])
     return note
 
 
@@ -820,6 +862,10 @@ def share_note(owner, note_id, target_user_id, role):
         share.role = role
         share.save(update_fields=["role"])
     NoteUserState.objects.get_or_create(note=note, user=target)
+    if created:
+        from app.services.notifications import materialize_note_share_notifications
+
+        materialize_note_share_notifications([share])
     return share
 
 

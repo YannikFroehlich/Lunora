@@ -8,9 +8,18 @@ from .auth_views import (
     register,
 )
 from .calendar_views import calendar
-from .core_views import home, settings
+from .core_views import dashboard_layout_update, home, settings
 from .message_views import chat_attachment_download, chat_typing_ping, messages, messages_live_updates
-from .notification_views import claim_desktop_notifications
+from .notification_views import (
+    claim_desktop_notifications,
+    notification_center,
+    notification_mark_all_read,
+    notification_open,
+    notification_toggle_read,
+    web_push_test,
+    web_push_subscription,
+)
+from .pwa_views import offline, service_worker
 from .note_views import (
     note_action_api,
     note_attachment_download,
@@ -39,6 +48,7 @@ from .note_views import (
     notes,
 )
 from .search_views import global_search
+from .tasks_views import tasks
 from .vacation_planner_views import (
     custom_holiday_delete,
     custom_holiday_save,
@@ -56,11 +66,20 @@ __all__ = [
     "calendar",
     "administration",
     "home",
+    "dashboard_layout_update",
     "messages",
     "messages_live_updates",
     "chat_typing_ping",
     "chat_attachment_download",
     "claim_desktop_notifications",
+    "notification_center",
+    "notification_mark_all_read",
+    "notification_open",
+    "notification_toggle_read",
+    "web_push_test",
+    "web_push_subscription",
+    "offline",
+    "service_worker",
     "notes",
     "note_create_api",
     "note_detail_api",
@@ -87,6 +106,7 @@ __all__ = [
     "note_template_detail_api",
     "note_tree_move_api",
     "global_search",
+    "tasks",
     "vacation_planner",
     "vacation_year_save",
     "vacation_period_save",

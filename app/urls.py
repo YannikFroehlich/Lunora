@@ -8,6 +8,8 @@ login_view = view.LunoraLoginView.as_view()
 
 urlpatterns = [
     path("", RedirectView.as_view(url="/home/", permanent=False)),
+    path("service-worker.js", view.service_worker, name="service_worker"),
+    path("offline/", view.offline, name="offline"),
     path("login/", login_view, name="login"),
     path("accounts/login/", login_view, name="accounts_login"),
     path("logout/", LogoutView.as_view(), name="logout"),
@@ -22,6 +24,7 @@ urlpatterns = [
     path("reset/done/", view.LunoraPasswordResetCompleteView.as_view(), name="password_reset_complete"),
     path("administration/", view.administration, name="administration"),
     path("home/", view.home, name="home"),
+    path("home/dashboard-layout/", view.dashboard_layout_update, name="dashboard_layout_update"),
     path("search/", view.global_search, name="global_search"),
     path("settings/", view.settings, name="settings"),
     path("weather/", view.weather, name="weather"),
@@ -33,6 +36,7 @@ urlpatterns = [
         name="weather_map_tile",
     ),
     path("calendar/", view.calendar, name="calendar"),
+    path("tasks/", view.tasks, name="tasks"),
     path("vacation-planner/", view.vacation_planner, name="vacation_planner"),
     path("vacation-planner/year/", view.vacation_year_save, name="vacation_year_save"),
     path("vacation-planner/period/save/", view.vacation_period_save, name="vacation_period_save"),
@@ -51,6 +55,28 @@ urlpatterns = [
         name="official_holiday_override_reset",
     ),
     path("notifications/claim/", view.claim_desktop_notifications, name="notification_claim"),
+    path(
+        "notifications/push-subscription/",
+        view.web_push_subscription,
+        name="web_push_subscription",
+    ),
+    path("notifications/push-test/", view.web_push_test, name="web_push_test"),
+    path("notifications/", view.notification_center, name="notification_center"),
+    path(
+        "notifications/mark-all-read/",
+        view.notification_mark_all_read,
+        name="notification_mark_all_read",
+    ),
+    path(
+        "notifications/<int:notification_id>/open/",
+        view.notification_open,
+        name="notification_open",
+    ),
+    path(
+        "notifications/<int:notification_id>/toggle-read/",
+        view.notification_toggle_read,
+        name="notification_toggle_read",
+    ),
     path("messages/", view.messages, name="messages"),
     path("messages/live/", view.messages_live_updates, name="messages_live_updates"),
     path(

@@ -14,6 +14,37 @@ from app.views.message_views import _build_inbox_items, _conversation_ids_matchi
 SEARCH_RESULT_LIMIT = 20
 
 
+def _search_shortcuts(flags):
+    shortcuts = []
+    if flags["notes"]:
+        shortcuts.append(
+            {
+                "label": "Notizen öffnen",
+                "description": "Gedanken, Listen und Anhänge",
+                "icon": "fa-regular fa-note-sticky",
+                "url_name": "notes",
+            }
+        )
+    if flags["messages"]:
+        shortcuts.append(
+            {
+                "label": "Nachrichten öffnen",
+                "description": "Chats, Gruppen und Antworten",
+                "icon": "fa-regular fa-comments",
+                "url_name": "messages",
+            }
+        )
+    shortcuts.append(
+        {
+            "label": "Kalender öffnen",
+            "description": "Termine, Orte und Erinnerungen",
+            "icon": "fa-regular fa-calendar",
+            "url_name": "calendar",
+        }
+    )
+    return shortcuts
+
+
 @login_required
 def global_search(request):
     query = request.GET.get("q", "").strip()
@@ -62,12 +93,16 @@ def global_search(request):
             for event in events
         ]
 
+    has_search_results = bool(notes_results or message_results or event_results)
+
     return render(
         request,
         "app/search.html",
         {
             "active_page": "search",
             "query": query,
+            "has_search_results": has_search_results,
+            "search_shortcuts": _search_shortcuts(flags),
             "notes_results": notes_results,
             "message_results": message_results,
             "event_results": event_results,

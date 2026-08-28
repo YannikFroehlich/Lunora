@@ -386,11 +386,7 @@
 
 .note-folder-contents .note-list-card {
   padding: 6px 10px;
-  border-radius: 9px;
-}
-
-.note-folder-contents .note-list-card.is-active {
-  padding-left: 7px;
+  border-radius: 11px;
 }
 
 .notes-tree-item {
@@ -441,6 +437,7 @@
 }
 
 .note-list-card {
+  position: relative;
   min-height: 36px;
   display: flex;
   align-items: center;
@@ -450,7 +447,7 @@
   text-decoration: none;
   background: color-mix(in srgb, var(--surface-control) 68%, transparent);
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: 12px;
   transition: 160ms ease;
 }
 
@@ -462,9 +459,15 @@
   box-shadow: var(--shadow-soft);
 }
 
-.note-list-card.is-active {
-  padding-left: 8px;
-  border-left: 3px solid var(--color-accent-strong);
+.note-list-card.is-active::after {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 3px;
+  width: 2px;
+  content: "";
+  background: var(--color-accent-strong);
+  border-radius: 999px;
 }
 
 .note-list-card-link {
@@ -498,6 +501,23 @@
   margin-right: 6px;
   color: var(--color-accent-strong);
   font-size: 0.7rem;
+}
+
+.tone-blue { --tone: #8bb3cf; }
+.tone-green { --tone: #91a87c; }
+.tone-red { --tone: #d29a97; }
+.tone-sand { --tone: #c5a67d; }
+.tone-violet { --tone: #b5a2c9; }
+
+.note-list-card[class*="tone-"] {
+  box-shadow: inset 3px 0 0 0 var(--tone);
+}
+
+.note-card-icon {
+  flex: 0 0 auto;
+  margin-right: 6px;
+  color: var(--tone, var(--color-accent-strong));
+  font-size: 0.72rem;
 }
 
 .notes-bulk-bar[hidden] {
@@ -768,6 +788,52 @@
   border-right: 1px solid var(--glass-border-soft);
 }
 
+.toolbar-tabs {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface-control);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: 10px;
+}
+
+.toolbar-tab {
+  height: 30px;
+  padding: 0 12px;
+  color: var(--color-muted);
+  background: transparent;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+/* Higher-specificity overrides of the generic `.note-toolbar button:hover/.is-active`
+   rule below, which would otherwise win on specificity and mute these tab colors. */
+.note-toolbar .toolbar-tab:hover {
+  color: var(--color-heading);
+  background: transparent;
+}
+
+.note-toolbar .toolbar-tab.is-active {
+  color: #fff;
+  background: var(--color-accent);
+}
+
+.toolbar-panel {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 7px;
+}
+
+.toolbar-panel[hidden] {
+  display: none;
+}
+
 .note-toolbar button,
 .toolbar-color {
   min-width: 34px;
@@ -950,11 +1016,101 @@
   border-color: #b05b4f;
 }
 
+.note-editor-body {
+  min-height: 0;
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
 .note-editor-scroll {
   min-height: 0;
   flex: 1;
   overflow: auto;
   padding: 24px clamp(18px, 4vw, 56px) 48px;
+}
+
+.note-outline-panel {
+  flex: 0 0 240px;
+  overflow-y: auto;
+  padding: 16px 14px 24px;
+  border-left: 1px solid var(--glass-border-soft);
+  background: color-mix(in srgb, var(--surface-panel) 94%, transparent);
+}
+
+.note-outline-panel[hidden] {
+  display: none;
+}
+
+.note-outline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  color: var(--color-heading);
+  border-bottom: 1px solid var(--glass-border-soft);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.note-outline-header button {
+  width: 26px;
+  height: 26px;
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 8px;
+}
+
+.note-outline-header button:hover {
+  color: var(--color-accent-strong);
+  background: var(--surface-control);
+}
+
+.note-outline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.note-outline-empty {
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.note-outline-item {
+  display: block;
+  width: 100%;
+  padding: 5px 8px;
+  color: var(--color-text);
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.note-outline-item:hover {
+  color: var(--color-accent-strong);
+  background: color-mix(in srgb, var(--surface-control) 72%, transparent);
+}
+
+.note-outline-list > .note-outline-item {
+  color: var(--color-heading);
+  font-weight: 600;
+}
+
+.note-outline-children {
+  margin-left: 12px;
+  padding: 2px 0 2px 8px;
+  border-left: 1px solid color-mix(in srgb, var(--color-accent-strong) 18%, transparent);
 }
 
 .note-editor-zoom-frame {
@@ -1000,15 +1156,22 @@
   padding: 68px 72px 72px;
   color: #332d27;
   background: #fffdf9;
-  border: 1px solid rgba(128, 103, 74, 0.13);
-  border-radius: 5px;
+  border: 1px solid rgba(128, 103, 74, 0.1);
+  border-radius: 10px;
   box-shadow: 0 18px 48px rgba(73, 56, 38, 0.12);
 }
 
 [data-theme="dark"] .note-editor-page {
   color: #e9e1d8;
   background: #2d2925;
-  border-color: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+/* Focus ring belongs on the rounded page, not the borderless contenteditable
+   area — see the "Focus rings on wrapped inputs" rule in base.css. */
+.note-editor-page:focus-within {
+  border-color: rgba(181, 150, 104, 0.55);
+  box-shadow: 0 0 0 2px rgba(181, 150, 104, 0.14);
 }
 
 .note-editor-page .tiptap {
@@ -1016,6 +1179,10 @@
   min-height: 580px;
   outline: 0;
   line-height: 1.5;
+}
+
+.note-editor-page .tiptap:focus-visible {
+  box-shadow: none;
 }
 
 .note-editor-page .tiptap p { margin: 0.5em 0; }
@@ -1462,6 +1629,10 @@
 .notes-dialog header button { width: 36px; height: 36px; border-radius: 50%; }
 .notes-dialog header button:hover { background: var(--surface-control); }
 
+.template-dialog header + .table-operation-grid {
+  margin-top: 18px;
+}
+
 .dialog-search {
   display: grid;
   gap: 7px;
@@ -1614,8 +1785,84 @@
   .note-editor-page { min-height: calc(100dvh - 290px); padding: 24px 18px; }
   .note-editor-page .tiptap { min-height: calc(100dvh - 350px); }
   .note-toolbar { flex-wrap: nowrap; overflow-x: auto; padding-inline: 7px; }
+  .toolbar-panel { flex-wrap: nowrap; }
   .table-operation-grid { grid-template-columns: 1fr; }
   .shortcut-row { grid-template-columns: 1fr 1fr 36px; }
+  .note-outline-panel { display: none !important; }
+}
+
+.note-style-section + .note-style-section {
+  margin-top: 16px;
+}
+
+.note-style-label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--color-muted);
+  font-size: 0.8rem;
+}
+
+.note-color-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.note-color-dot {
+  position: relative;
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  background: var(--tone, var(--surface-control));
+  border: 3px solid rgba(255, 255, 255, 0.62);
+  border-radius: 50%;
+  box-shadow: 0 3px 10px rgba(75, 56, 31, 0.16);
+  cursor: pointer;
+}
+
+.note-color-dot input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.note-color-dot.is-active {
+  outline: 3px solid color-mix(in srgb, var(--tone, var(--color-accent)) 70%, #ffffff);
+  outline-offset: 3px;
+}
+
+.note-color-dot.is-none {
+  background: var(--surface-control);
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+.note-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+  gap: 8px;
+}
+
+.note-icon-option {
+  display: grid;
+  height: 38px;
+  color: var(--color-text);
+  background: color-mix(in srgb, var(--surface-control) 68%, transparent);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: 9px;
+  place-items: center;
+  cursor: pointer;
+}
+
+.note-icon-option:hover {
+  background: var(--surface-control-hover);
+}
+
+.note-icon-option.is-active {
+  color: var(--color-accent-strong);
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+  border-color: var(--color-accent-strong);
 }
 
 @media print {
@@ -1624,6 +1871,7 @@
   .note-toolbar,
   .note-trash-banner,
   .note-editor-zoom-indicator,
+  .note-outline-panel,
   .note-backlinks {
     display: none !important;
   }

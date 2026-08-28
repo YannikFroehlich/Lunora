@@ -1,0 +1,373 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}Aufgaben | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tasks.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell tasks-shell">
+    <header class="page-hero">
+        <div class="task-hero-copy">
+            <h1>Aufgaben</h1>
+            <p>Behalte deine Projekte, Fristen und Unteraufgaben im Blick.</p>
+        </div>
+        <span class="task-hero-icon" aria-hidden="true">
+            <i class="fa-solid fa-list-check"></i>
+        </span>
+    </header>
+
+    <div class="task-layout">
+        <aside class="glass-panel task-sidebar">
+            <nav class="task-views" aria-label="Ansichten" data-task-views>
+                <button type="button" class="task-view-link is-active" data-task-view-link="all">
+                    <i class="fa-solid fa-inbox" aria-hidden="true"></i>
+                    <span>Alle</span>
+                    <em>{{ task_counts.all }}</em>
+                </button>
+                <button type="button" class="task-view-link" data-task-view-link="today">
+                    <i class="fa-solid fa-sun" aria-hidden="true"></i>
+                    <span>Heute</span>
+                    <em>{{ task_counts.today }}</em>
+                </button>
+                <button type="button" class="task-view-link" data-task-view-link="upcoming">
+                    <i class="fa-solid fa-calendar-week" aria-hidden="true"></i>
+                    <span>Demnächst</span>
+                    <em>{{ task_counts.upcoming }}</em>
+                </button>
+            </nav>
+
+            <div class="task-lists-section">
+                <div class="task-lists-heading">
+                    <span>Listen</span>
+                    <details class="task-inline-add">
+                        <summary aria-label="Liste hinzufügen"><i class="fa-solid fa-plus" aria-hidden="true"></i></summary>
+                        <form method="post" class="task-inline-add-form">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_name" value="task_list_add">
+                            {{ task_list_form.name }}
+                            <div class="task-color-grid">
+                                {% for value, label in task_list_form.fields.color.choices %}
+                                <label class="task-color-dot tone-{{ value }}" title="{{ label }}">
+                                    <input type="radio" name="color" value="{{ value }}" {% if forloop.first %}checked{% endif %}>
+                                </label>
+                                {% endfor %}
+                            </div>
+                            <button type="submit">Liste erstellen</button>
+                        </form>
+                    </details>
+                </div>
+
+                <ul class="task-list-nav">
+                    <li>
+                        <button type="button" class="task-view-link" data-task-view-link="list" data-task-view-list="">
+                            <span class="task-list-dot tone-sand" aria-hidden="true"></span>
+                            <span>Eingang</span>
+                            <em>{{ inbox_open_count }}</em>
+                        </button>
+                    </li>
+                    {% for list in task_lists %}
+                    <li class="task-list-nav-item">
+                        <button type="button" class="task-view-link" data-task-view-link="list" data-task-view-list="{{ list.id }}">
+                            <span class="task-list-dot tone-{{ list.color }}" aria-hidden="true"></span>
+                            <span>{{ list.name }}</span>
+                            <em>{{ list.open_count }}</em>
+                        </button>
+                        <details class="task-list-manage">
+                            <summary aria-label="{{ list.name }} verwalten"><i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i></summary>
+                            <div class="task-list-manage-popover">
+                                <form method="post" class="task-list-rename-form">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="form_name" value="task_list_rename">
+                                    <input type="hidden" name="task_list_id" value="{{ list.id }}">
+                                    <input type="text" name="name" value="{{ list.name }}" maxlength="80" required>
+                                    <button type="submit"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>
+                                </form>
+                                <form method="post">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="form_name" value="task_list_delete">
+                                    <input type="hidden" name="task_list_id" value="{{ list.id }}">
+                                    <button type="submit" class="task-list-delete-button">
+                                        <i class="fa-solid fa-trash" aria-hidden="true"></i> Liste löschen
+                                    </button>
+                                </form>
+                            </div>
+                        </details>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </aside>
+
+        <section class="glass-panel task-panel">
+            <div class="panel-title task-panel-title">
+                <h2>Aufgaben</h2>
+            </div>
+
+            <form id="task-add-form" class="task-add-form" method="post">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="task_add">
+                {{ task_form.parent }}
+
+                <div class="task-add-row">
+                    <div class="task-title-field">
+                        {{ task_form.title }}
+                    </div>
+                    <label class="task-date-field" for="{{ task_form.due_at.id_for_label }}">
+                        <i class="fa-regular fa-calendar" aria-hidden="true"></i>
+                        <span data-task-date-label>Fälligkeitsdatum</span>
+                        <i class="fa-solid fa-chevron-down task-date-chevron" aria-hidden="true"></i>
+                        {{ task_form.due_at }}
+                    </label>
+                    <button class="task-add-button" type="submit">
+                        <span>Hinzufügen</span>
+                        <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                    </button>
+                </div>
+
+                <details class="task-add-more">
+                    <summary>Weitere Optionen <i class="fa-solid fa-chevron-down" aria-hidden="true"></i></summary>
+                    <div class="task-add-more-grid">
+                        <label class="task-add-more-field">
+                            <span>Liste</span>
+                            {{ task_form.task_list }}
+                        </label>
+                        <label class="task-add-more-field">
+                            <span>Priorität</span>
+                            {{ task_form.priority }}
+                        </label>
+                        <label class="task-add-more-field">
+                            <span>Wiederholung</span>
+                            {{ task_form.recurrence_rule }}
+                        </label>
+                        <div class="task-add-more-field task-add-labels">
+                            <span>Labels</span>
+                            <div class="task-label-checks">
+                                {{ task_form.labels }}
+                            </div>
+                            <details class="task-inline-add">
+                                <summary><i class="fa-solid fa-plus" aria-hidden="true"></i> Neues Label</summary>
+                                <div class="task-inline-add-form">
+                                    <input type="text" name="name" form="task-label-quick-add" placeholder="Neues Label …" autocomplete="off" maxlength="40" required>
+                                    <div class="task-color-grid">
+                                        {% for value, label in task_label_form.fields.color.choices %}
+                                        <label class="task-color-dot tone-{{ value }}" title="{{ label }}">
+                                            <input type="radio" name="color" form="task-label-quick-add" value="{{ value }}" {% if forloop.first %}checked{% endif %}>
+                                        </label>
+                                        {% endfor %}
+                                    </div>
+                                    <button type="submit" form="task-label-quick-add">Label erstellen</button>
+                                </div>
+                            </details>
+                        </div>
+                    </div>
+                </details>
+
+                {% if task_form.errors %}
+                <div class="task-form-errors" role="alert">
+                    {{ task_form.errors }}
+                </div>
+                {% endif %}
+            </form>
+
+            {% comment %}
+            A form can't nest inside #task-add-form above (invalid HTML -- browsers silently drop the
+            inner form tag), so the "new label" controls reference this sibling form via form="".
+            {% endcomment %}
+            <form id="task-label-quick-add" method="post">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="task_label_add">
+            </form>
+
+            <div class="task-toolbar">
+                <div class="task-filters" role="group" aria-label="Aufgaben filtern">
+                    <button class="task-filter is-active" type="button" data-task-filter="all" aria-pressed="true">
+                        Alle <span>{{ task_counts.all }}</span>
+                    </button>
+                    <button class="task-filter" type="button" data-task-filter="open" aria-pressed="false">
+                        Offen <span>{{ task_counts.open }}</span>
+                    </button>
+                    <button class="task-filter" type="button" data-task-filter="done" aria-pressed="false">
+                        Erledigt <span>{{ task_counts.done }}</span>
+                    </button>
+                    <button class="task-filter" type="button" data-task-filter="overdue" aria-pressed="false">
+                        Überfällig <span>{{ task_counts.overdue }}</span>
+                    </button>
+                </div>
+
+                <div class="task-view-actions">
+                    <label class="task-sort-control">
+                        <i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i>
+                        <span>Sortieren</span>
+                        <select data-task-sort aria-label="Aufgaben sortieren">
+                            <option value="due">Fälligkeit</option>
+                            <option value="priority">Priorität</option>
+                            <option value="newest">Neueste zuerst</option>
+                            <option value="oldest">Älteste zuerst</option>
+                            <option value="title">Titel A–Z</option>
+                        </select>
+                        <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                    </label>
+
+                    <details class="task-more-menu">
+                        <summary aria-label="Weitere Ansichtsoptionen">
+                            <i class="fa-solid fa-ellipsis" aria-hidden="true"></i>
+                        </summary>
+                        <div class="task-more-popover">
+                            <button type="button" data-task-reset>
+                                <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
+                                Ansicht zurücksetzen
+                            </button>
+                        </div>
+                    </details>
+                </div>
+            </div>
+
+            {% if tasks %}
+            <div class="task-list" data-task-list>
+            {% for item in tasks %}
+            <div class="task-group" data-task-group>
+                <form
+                    class="task-row {{ item.due_state }} {% if item.is_done %}is-done{% endif %}"
+                    method="post"
+                    data-task-row
+                    data-task-state="{{ item.state }}"
+                    data-task-title="{{ item.title|lower }}"
+                    data-task-due="{{ item.due_sort }}"
+                    data-task-created="{{ item.created_sort }}"
+                    data-task-priority="{{ item.priority }}"
+                    data-task-view="{{ item.filter_view }}"
+                    data-task-list="{{ item.filter_task_list_id|default_if_none:'' }}"
+                >
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="task_toggle">
+                    <input type="hidden" name="task_id" value="{{ item.task.id }}">
+
+                    <input
+                        class="task-checkbox"
+                        type="checkbox"
+                        name="is_done"
+                        aria-label="{{ item.title }} als {% if item.is_done %}offen{% else %}erledigt{% endif %} markieren"
+                        {% if item.is_done %}checked{% endif %}
+                        onchange="this.form.submit()"
+                    >
+
+                    <div class="task-copy">
+                        <strong>{{ item.title }}</strong>
+                        <small>
+                            <i class="fa-regular fa-calendar" aria-hidden="true"></i>
+                            {{ item.due_label }}
+                        </small>
+                        {% if item.task_list_name or item.labels or item.subtask_count %}
+                        <span class="task-chips">
+                            {% if item.task_list_name %}
+                            <span class="task-list-badge tone-{{ item.task_list_color }}">{{ item.task_list_name }}</span>
+                            {% endif %}
+                            {% for label in item.labels %}
+                            <span class="task-label-chip tone-{{ label.color }}">{{ label.name }}</span>
+                            {% endfor %}
+                        </span>
+                        {% endif %}
+                    </div>
+
+                    {% if item.priority != "none" %}
+                    <i class="fa-solid fa-flag task-priority-flag is-{{ item.priority }}" title="Priorität: {{ item.task.get_priority_display }}" aria-hidden="true"></i>
+                    {% endif %}
+
+                    <span class="task-status is-{{ item.status_tone }}">{{ item.status_label }}</span>
+
+                    {% if item.subtask_count %}
+                    <button type="button" class="task-subtask-toggle" data-task-subtask-toggle aria-expanded="true" aria-label="Unteraufgaben ein-/ausblenden">
+                        <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                        <span>{{ item.open_subtask_count }}/{{ item.subtask_count }}</span>
+                    </button>
+                    {% endif %}
+
+                    <button class="task-delete-button" type="submit" name="form_name" value="task_delete" aria-label="Aufgabe löschen">
+                        <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                    </button>
+                </form>
+
+                {% for child in item.subtasks %}
+                <form
+                    class="task-row is-subtask {{ child.due_state }} {% if child.is_done %}is-done{% endif %}"
+                    method="post"
+                    data-task-row
+                    data-task-subtask
+                    data-task-state="{{ child.state }}"
+                    data-task-title="{{ child.title|lower }}"
+                    data-task-due="{{ child.due_sort }}"
+                    data-task-created="{{ child.created_sort }}"
+                    data-task-priority="{{ child.priority }}"
+                    data-task-view="{{ child.filter_view }}"
+                    data-task-list="{{ child.filter_task_list_id|default_if_none:'' }}"
+                >
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="task_toggle">
+                    <input type="hidden" name="task_id" value="{{ child.task.id }}">
+
+                    <input
+                        class="task-checkbox"
+                        type="checkbox"
+                        name="is_done"
+                        aria-label="{{ child.title }} als {% if child.is_done %}offen{% else %}erledigt{% endif %} markieren"
+                        {% if child.is_done %}checked{% endif %}
+                        onchange="this.form.submit()"
+                    >
+
+                    <div class="task-copy">
+                        <strong>{{ child.title }}</strong>
+                        <small>
+                            <i class="fa-regular fa-calendar" aria-hidden="true"></i>
+                            {{ child.due_label }}
+                        </small>
+                    </div>
+
+                    {% if child.priority != "none" %}
+                    <i class="fa-solid fa-flag task-priority-flag is-{{ child.priority }}" title="Priorität: {{ child.task.get_priority_display }}" aria-hidden="true"></i>
+                    {% endif %}
+
+                    <span class="task-status is-{{ child.status_tone }}">{{ child.status_label }}</span>
+
+                    <button class="task-delete-button" type="submit" name="form_name" value="task_delete" aria-label="Unteraufgabe löschen">
+                        <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                    </button>
+                </form>
+                {% endfor %}
+
+                <form method="post" class="task-subtask-add-form" data-task-subtask-add>
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="task_add">
+                    <input type="hidden" name="parent" value="{{ item.task.id }}">
+                    <input type="text" name="title" placeholder="Unteraufgabe hinzufügen …" autocomplete="off" maxlength="180">
+                    <button type="submit" aria-label="Unteraufgabe hinzufügen"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
+                </form>
+            </div>
+            {% endfor %}
+            </div>
+
+            <div class="task-filter-empty" data-task-filter-empty hidden>
+                <i class="fa-solid fa-filter-circle-xmark" aria-hidden="true"></i>
+                <strong>Keine passenden Aufgaben</strong>
+                <span>Wähle eine andere Ansicht oder setze die Filter zurück.</span>
+            </div>
+            <p class="task-results-status" data-task-results-status aria-live="polite"></p>
+            {% else %}
+            <div class="task-empty-state">
+                <i class="fa-regular fa-square-check" aria-hidden="true"></i>
+                <div>
+                    <strong>Keine Aufgaben</strong>
+                    <p>Füge oben deine erste Aufgabe hinzu. Du kannst sie später direkt hier abhaken.</p>
+                </div>
+            </div>
+            {% endif %}
+        </section>
+    </div>
+</section>
+{% endblock %}
+
+{% block page_js %}
+<script src="{% versioned_static 'js/tasks.js' %}"></script>
+{% endblock %}

@@ -47,9 +47,13 @@ class Command(BaseCommand):
         sync = result["calendar_sync"]
         reminders = result["reminder_emails"]
         weekly = result["weekly_summaries"]
+        notification_emails = result.get("notification_emails", {"sent": 0, "failed": 0})
+        web_push = result.get("web_push", {"sent": 0, "failed": 0})
         return (
             f"Kalender: {sync['synced']} synchronisiert, {sync['failed']} fehlgeschlagen, "
             f"{sync['skipped']} übersprungen | Erinnerungen: {reminders['sent']} gesendet, "
             f"{reminders['failed']} fehlgeschlagen | Wochenberichte: {weekly['sent']} gesendet, "
-            f"{weekly['failed']} fehlgeschlagen"
+            f"{weekly['failed']} fehlgeschlagen | Weitere E-Mails: {notification_emails['sent']} gesendet, "
+            f"{notification_emails['failed']} fehlgeschlagen | Web Push: {web_push['sent']} gesendet, "
+            f"{web_push['failed']} fehlgeschlagen, {web_push.get('deferred', 0)} zurückgestellt"
         )
