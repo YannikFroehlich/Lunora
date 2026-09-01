@@ -22,9 +22,9 @@ from app.services.user_preferences import (
     get_user_date_format,
     get_user_month_name,
     get_user_time_format,
+    get_user_timezone_name,
     get_user_weekday_name,
     get_user_zoneinfo,
-    get_user_timezone_name,
     localtime_for_user,
 )
 from app.services.weather_service import get_weather_context
@@ -37,7 +37,9 @@ def get_dashboard_context(user=None):
     stored_layout = getattr(profile, "dashboard_layout", None) if profile else None
     dashboard_customization_enabled = flags["dashboard_customization"]
     dashboard_layout = normalize_dashboard_layout(stored_layout)
-    rendered_dashboard_layout = dashboard_layout if dashboard_customization_enabled else default_dashboard_layout()
+    rendered_dashboard_layout = (
+        dashboard_layout if dashboard_customization_enabled else default_dashboard_layout()
+    )
     dashboard_widgets = dashboard_widgets_for_layout(
         rendered_dashboard_layout,
         flags,
@@ -152,7 +154,9 @@ def _dashboard_unread_message_count(user):
 def _dashboard_new_note_share_count(user):
     if not user:
         return 0
-    return NoteShare.objects.filter(user=user, first_opened_at__isnull=True, note__deleted_at__isnull=True).count()
+    return NoteShare.objects.filter(
+        user=user, first_opened_at__isnull=True, note__deleted_at__isnull=True
+    ).count()
 
 
 def _dashboard_nav_tiles(user, unread_messages_total, new_note_shares, open_tasks_count, flags):
@@ -197,30 +201,64 @@ def _dashboard_nav_tiles(user, unread_messages_total, new_note_shares, open_task
             },
         )
     if flags["vacation_planner"]:
-        tiles.insert(-1, {"label": "Urlaubsplaner", "icon": "fa-umbrella-beach", "url_name": "vacation_planner"})
+        tiles.insert(
+            -1, {"label": "Urlaubsplaner", "icon": "fa-umbrella-beach", "url_name": "vacation_planner"}
+        )
     if user and getattr(user, "is_superuser", False):
         tiles.append({"label": "Administration", "icon": "fa-shield-halved", "url_name": "administration"})
     return tiles
 
 
-def _dashboard_tool_shortcuts(upcoming_events, unread_messages_total, dashboard_weather, new_note_shares, flags):
+def _dashboard_tool_shortcuts(
+    upcoming_events, unread_messages_total, dashboard_weather, new_note_shares, flags
+):
     event_count = len(upcoming_events)
     event_subtitle = f"{event_count} kommende Termine" if event_count else "Kalender öffnen"
     unread_subtitle = f"{unread_messages_total} ungelesen" if unread_messages_total else "Inbox öffnen"
     weather_city = dashboard_weather.get("today", {}).get("city", "Standardort")
     tools = [
-        {"title": "Kalender", "subtitle": event_subtitle, "icon": "fa-calendar-check", "url_name": "calendar"},
-        {"title": "Einstellungen", "subtitle": "Profil & Präferenzen", "icon": "fa-gear", "url_name": "settings"},
+        {
+            "title": "Kalender",
+            "subtitle": event_subtitle,
+            "icon": "fa-calendar-check",
+            "url_name": "calendar",
+        },
+        {
+            "title": "Einstellungen",
+            "subtitle": "Profil & Präferenzen",
+            "icon": "fa-gear",
+            "url_name": "settings",
+        },
     ]
     if flags["weather"]:
-        tools.insert(1, {"title": "Wetter", "subtitle": weather_city, "icon": "fa-cloud-sun", "url_name": "weather"})
+        tools.insert(
+            1, {"title": "Wetter", "subtitle": weather_city, "icon": "fa-cloud-sun", "url_name": "weather"}
+        )
     if flags["messages"]:
-        tools.insert(2, {"title": "Nachrichten", "subtitle": unread_subtitle, "icon": "fa-message", "url_name": "messages"})
+        tools.insert(
+            2,
+            {
+                "title": "Nachrichten",
+                "subtitle": unread_subtitle,
+                "icon": "fa-message",
+                "url_name": "messages",
+            },
+        )
     if flags["notes"]:
         note_subtitle = f"{new_note_shares} neue Freigabe(n)" if new_note_shares else "Notizen öffnen"
-        tools.insert(-1, {"title": "Notizen", "subtitle": note_subtitle, "icon": "fa-note-sticky", "url_name": "notes"})
+        tools.insert(
+            -1, {"title": "Notizen", "subtitle": note_subtitle, "icon": "fa-note-sticky", "url_name": "notes"}
+        )
     if flags["vacation_planner"]:
-        tools.insert(-1, {"title": "Urlaubsplaner", "subtitle": "Tage & Feiertage", "icon": "fa-umbrella-beach", "url_name": "vacation_planner"})
+        tools.insert(
+            -1,
+            {
+                "title": "Urlaubsplaner",
+                "subtitle": "Tage & Feiertage",
+                "icon": "fa-umbrella-beach",
+                "url_name": "vacation_planner",
+            },
+        )
     return tools
 
 
@@ -267,10 +305,27 @@ def get_settings_context(notification_form=None, notification_preferences_form=N
         ],
     }
     context["notification_rows"] = [
-        _preference_row(notification_form, "notify_reminders", "Erinnerungszustellung", "Fällige Erinnerungen automatisch zustellen"),
-        _preference_row(notification_form, "notify_email", "E-Mail-Versand", "Fällige Erinnerungen per E-Mail erhalten"),
-        _preference_row(notification_form, "notify_desktop", "Web-Push-Zustellung", "Auch bei geschlossener App auf registrierten Geräten anzeigen"),
-        _preference_row(notification_form, "weekly_summary", "Wöchentliche Zusammenfassung", "Montags einen Überblick per E-Mail erhalten"),
+        _preference_row(
+            notification_form,
+            "notify_reminders",
+            "Erinnerungszustellung",
+            "Fällige Erinnerungen automatisch zustellen",
+        ),
+        _preference_row(
+            notification_form, "notify_email", "E-Mail-Versand", "Fällige Erinnerungen per E-Mail erhalten"
+        ),
+        _preference_row(
+            notification_form,
+            "notify_desktop",
+            "Web-Push-Zustellung",
+            "Auch bei geschlossener App auf registrierten Geräten anzeigen",
+        ),
+        _preference_row(
+            notification_form,
+            "weekly_summary",
+            "Wöchentliche Zusammenfassung",
+            "Montags einen Überblick per E-Mail erhalten",
+        ),
     ]
     context["notification_category_rows"] = (
         notification_preferences_form.category_rows if notification_preferences_form else []

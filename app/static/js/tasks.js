@@ -83,11 +83,9 @@
     if (sortMode === "manual") return 0;
 
     if (sortMode === "title") {
-      return (first.dataset.taskTitle || "").localeCompare(
-        second.dataset.taskTitle || "",
-        "de",
-        { sensitivity: "base" }
-      );
+      return (first.dataset.taskTitle || "").localeCompare(second.dataset.taskTitle || "", "de", {
+        sensitivity: "base",
+      });
     }
 
     if (sortMode === "newest") return createdValue(second) - createdValue(first);
@@ -110,15 +108,19 @@
     if (!taskList) return;
 
     const groups = Array.from(taskList.querySelectorAll("[data-task-group]"));
-    groups.sort((firstGroup, secondGroup) =>
-      compareRows(firstGroup.querySelector("[data-task-row]"), secondGroup.querySelector("[data-task-row]"))
-    ).forEach((group) => taskList.appendChild(group));
+    groups
+      .sort((firstGroup, secondGroup) =>
+        compareRows(firstGroup.querySelector("[data-task-row]"), secondGroup.querySelector("[data-task-row]")),
+      )
+      .forEach((group) => taskList.appendChild(group));
 
     let visibleCount = 0;
     groups.forEach((group) => {
       const parentRow = group.querySelector("[data-task-row]:not([data-task-subtask])");
       const subtaskRows = Array.from(group.querySelectorAll("[data-task-row][data-task-subtask]"));
-      subtaskRows.sort(compareRows).forEach((row) => group.insertBefore(row, group.querySelector(".task-subtask-add-form")));
+      subtaskRows
+        .sort(compareRows)
+        .forEach((row) => group.insertBefore(row, group.querySelector(".task-subtask-add-form")));
 
       const parentVisible = taskMatchesFilter(parentRow) && taskMatchesView(parentRow);
       let anySubtaskVisible = false;
@@ -138,9 +140,8 @@
 
     if (filterEmpty) filterEmpty.hidden = visibleCount !== 0;
     if (resultsStatus) {
-      resultsStatus.textContent = visibleCount === 1
-        ? "Eine Aufgabe wird angezeigt."
-        : `${visibleCount} Aufgaben werden angezeigt.`;
+      resultsStatus.textContent =
+        visibleCount === 1 ? "Eine Aufgabe wird angezeigt." : `${visibleCount} Aufgaben werden angezeigt.`;
     }
 
     syncDragAffordance();
@@ -221,7 +222,7 @@
         try {
           if (typeof dateInput.showPicker === "function") dateInput.showPicker();
           else dateInput.focus();
-        } catch (error) {
+        } catch (_error) {
           dateInput.focus();
         }
       });
@@ -289,7 +290,7 @@
           recurrence: button.dataset.editRecurrence,
           labels: button.dataset.editLabels,
           parent: button.dataset.editParent,
-        })
+        }),
       );
     });
 

@@ -6,7 +6,6 @@ from django import template
 from django.contrib.staticfiles import finders
 from django.templatetags.static import static
 
-
 register = template.Library()
 
 

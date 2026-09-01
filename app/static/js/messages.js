@@ -73,7 +73,7 @@
     });
 
     const focusTarget = newChatCard.querySelector(
-      'input[name="recipient"]:not(:disabled), textarea:not(:disabled), button[type="submit"]:not(:disabled)'
+      'input[name="recipient"]:not(:disabled), textarea:not(:disabled), button[type="submit"]:not(:disabled)',
     );
     window.setTimeout(() => focusTarget?.focus({ preventScroll: true }), reduceMotion ? 0 : 220);
   });
@@ -100,9 +100,7 @@
     return params;
   };
 
-  const isNearBottom = (element) => (
-    element.scrollHeight - element.scrollTop - element.clientHeight < 130
-  );
+  const isNearBottom = (element) => element.scrollHeight - element.scrollTop - element.clientHeight < 130;
 
   const replaceOuterHtml = (selector, html) => {
     const element = document.querySelector(selector);
@@ -148,7 +146,7 @@
         credentials: "same-origin",
         headers: {
           "X-Requested-With": "XMLHttpRequest",
-          "Accept": "application/json",
+          Accept: "application/json",
         },
       });
 
@@ -201,7 +199,7 @@
           messageStream.scrollTop = previousTop + (messageStream.scrollHeight - previousHeight);
         }
       }
-    } catch (error) {
+    } catch (_error) {
       // Beim lokalen Entwickeln soll ein kurzer Verbindungsfehler den Chat nicht stören.
     }
   };

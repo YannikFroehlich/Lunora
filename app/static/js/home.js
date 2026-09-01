@@ -1,13 +1,5 @@
 (function () {
-  const GERMAN_WEEKDAY_NAMES = [
-    "Sonntag",
-    "Montag",
-    "Dienstag",
-    "Mittwoch",
-    "Donnerstag",
-    "Freitag",
-    "Samstag",
-  ];
+  const GERMAN_WEEKDAY_NAMES = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
 
   const GERMAN_MONTH_NAMES = [
     "Januar",
@@ -50,7 +42,7 @@
         month: "2-digit",
         year: "numeric",
       });
-    } catch (error) {
+    } catch (_error) {
       // Unknown/unsupported timezone identifier: fall back to the browser's local time.
       partsFormatter = new Intl.DateTimeFormat("en-US", {
         hourCycle: "h23",
@@ -186,7 +178,7 @@
           credentials: "same-origin",
           headers: {
             "X-Requested-With": "XMLHttpRequest",
-            "Accept": "application/json",
+            Accept: "application/json",
           },
         });
 
@@ -200,7 +192,7 @@
         }
 
         setBadgeCount(data.unread_total);
-      } catch (error) {
+      } catch (_error) {
         // Lokale Netzwerk-/Reload-Unterbrechungen sollen die Home-Seite nicht stören.
       }
     };
@@ -220,7 +212,7 @@
     }
     try {
       return JSON.parse(el.textContent);
-    } catch (error) {
+    } catch (_error) {
       return null;
     }
   }
@@ -388,7 +380,7 @@
           method: "PATCH",
           credentials: "same-origin",
           headers: {
-            "Accept": "application/json",
+            Accept: "application/json",
             "Content-Type": "application/json",
             "X-CSRFToken": csrfToken,
             "X-Requested-With": "XMLHttpRequest",
@@ -437,20 +429,24 @@
       });
     });
 
-    grid.addEventListener("click", (event) => {
-      if (!editing) {
-        return;
-      }
-      const moveButton = event.target.closest("[data-dashboard-move]");
-      if (moveButton) {
-        const widget = moveButton.closest("[data-dashboard-widget]");
-        moveAvailableWidget(widget.dataset.widgetId, Number(moveButton.dataset.dashboardMove));
-        return;
-      }
-      if (event.target.closest("a")) {
-        event.preventDefault();
-      }
-    }, true);
+    grid.addEventListener(
+      "click",
+      (event) => {
+        if (!editing) {
+          return;
+        }
+        const moveButton = event.target.closest("[data-dashboard-move]");
+        if (moveButton) {
+          const widget = moveButton.closest("[data-dashboard-widget]");
+          moveAvailableWidget(widget.dataset.widgetId, Number(moveButton.dataset.dashboardMove));
+          return;
+        }
+        if (event.target.closest("a")) {
+          event.preventDefault();
+        }
+      },
+      true,
+    );
 
     grid.addEventListener("dragstart", (event) => {
       if (!editing) {

@@ -1,5 +1,5 @@
-from django.contrib.auth import login
 from django.conf import settings
+from django.contrib.auth import login
 from django.contrib.auth.views import (
     LoginView,
     PasswordResetCompleteView,
@@ -61,9 +61,7 @@ def register(request):
     if request.method == "POST":
         form = RegistrationForm(request.POST)
         form_is_valid = form.is_valid()
-        turnstile_is_valid = verify_registration_token(
-            request.POST.get("cf-turnstile-response")
-        )
+        turnstile_is_valid = verify_registration_token(request.POST.get("cf-turnstile-response"))
         if not turnstile_is_valid:
             form.add_error(
                 None,
@@ -82,9 +80,7 @@ def register(request):
         {
             "form": form,
             "turnstile_site_key": (
-                settings.CLOUDFLARE_TURNSTILE_SITE_KEY
-                if settings.CLOUDFLARE_TURNSTILE_REQUIRED
-                else ""
+                settings.CLOUDFLARE_TURNSTILE_SITE_KEY if settings.CLOUDFLARE_TURNSTILE_REQUIRED else ""
             ),
         },
     )

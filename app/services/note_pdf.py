@@ -23,7 +23,6 @@ from reportlab.platypus import (
 )
 from reportlab.platypus.xpreformatted import XPreformatted
 
-
 PAGE_WIDTH, PAGE_HEIGHT = A4
 PAGE_MARGIN = 19 * mm
 CONTENT_WIDTH = PAGE_WIDTH - (2 * PAGE_MARGIN)
@@ -120,7 +119,9 @@ class NotePdfRenderer:
             elif node_type == "codeBlock":
                 flowables.append(self.code_block(node))
             elif node_type == "horizontalRule":
-                rule = HRFlowable(width="100%", thickness=0.7, color=LIGHT_BORDER, spaceBefore=8, spaceAfter=12)
+                rule = HRFlowable(
+                    width="100%", thickness=0.7, color=LIGHT_BORDER, spaceBefore=8, spaceAfter=12
+                )
                 rule.keepWithNext = True
                 flowables.append(rule)
             elif node_type == "table":
@@ -259,7 +260,9 @@ class NotePdfRenderer:
         return table
 
     def code_block(self, node):
-        text = "".join(child.get("text", "") for child in node.get("content") or [] if child.get("type") == "text")
+        text = "".join(
+            child.get("text", "") for child in node.get("content") or [] if child.get("type") == "text"
+        )
         code_style = self._style(
             fontName="Courier",
             fontSize=8.5,
@@ -344,9 +347,7 @@ class NotePdfRenderer:
                 data[row_index][column] = cell_content
                 if colspan > 1 or rowspan > 1:
                     final_row = min(len(rows) - 1, row_index + rowspan - 1)
-                    commands.append(
-                        ("SPAN", (column, row_index), (column + colspan - 1, final_row))
-                    )
+                    commands.append(("SPAN", (column, row_index), (column + colspan - 1, final_row)))
                 for target_row in range(row_index, min(len(rows), row_index + rowspan)):
                     for target_column in range(column, column + colspan):
                         if target_row != row_index or target_column != column:
@@ -354,23 +355,47 @@ class NotePdfRenderer:
                 if cell.get("type") == "tableHeader":
                     commands.extend(
                         [
-                            ("BACKGROUND", (column, row_index), (column + colspan - 1, row_index), colors.HexColor("#eee5d9")),
-                            ("FONTNAME", (column, row_index), (column + colspan - 1, row_index), "Helvetica-Bold"),
+                            (
+                                "BACKGROUND",
+                                (column, row_index),
+                                (column + colspan - 1, row_index),
+                                colors.HexColor("#eee5d9"),
+                            ),
+                            (
+                                "FONTNAME",
+                                (column, row_index),
+                                (column + colspan - 1, row_index),
+                                "Helvetica-Bold",
+                            ),
                         ]
                     )
                 if attrs.get("backgroundColor"):
                     commands.append(
-                        ("BACKGROUND", (column, row_index), (column + colspan - 1, row_index), colors.HexColor(attrs["backgroundColor"]))
+                        (
+                            "BACKGROUND",
+                            (column, row_index),
+                            (column + colspan - 1, row_index),
+                            colors.HexColor(attrs["backgroundColor"]),
+                        )
                     )
                 if attrs.get("align"):
-                    commands.append(("ALIGN", (column, row_index), (column + colspan - 1, row_index), attrs["align"].upper()))
+                    commands.append(
+                        (
+                            "ALIGN",
+                            (column, row_index),
+                            (column + colspan - 1, row_index),
+                            attrs["align"].upper(),
+                        )
+                    )
                 column += colspan
                 max_columns = max(max_columns, column)
         max_columns = max(1, max_columns)
         for row in data:
             row.extend([""] * (max_columns - len(row)))
         column_widths = [CONTENT_WIDTH / max_columns] * max_columns
-        table = Table(data or [[""]], colWidths=column_widths, repeatRows=1 if has_header_row else 0, hAlign="LEFT")
+        table = Table(
+            data or [[""]], colWidths=column_widths, repeatRows=1 if has_header_row else 0, hAlign="LEFT"
+        )
         table.setStyle(TableStyle(commands))
         table.spaceBefore = 8
         table.spaceAfter = 12
@@ -405,7 +430,13 @@ class NotePdfRenderer:
                 result.append(
                     Paragraph(
                         escape(alt),
-                        self._style(fontSize=8.5, leading=11, textColor=MUTED_COLOR, alignment=TA_CENTER, spaceAfter=10),
+                        self._style(
+                            fontSize=8.5,
+                            leading=11,
+                            textColor=MUTED_COLOR,
+                            alignment=TA_CENTER,
+                            spaceAfter=10,
+                        ),
                     )
                 )
             return result
@@ -457,7 +488,7 @@ class NotePdfRenderer:
             font_attrs.append(f'name="{FONT_MAP.get(attrs["fontFamily"], "Helvetica")}"')
         if attrs.get("fontSize"):
             font_attrs.append(f'size="{self._css_size(attrs["fontSize"], 12):g}"')
-        return f'<font {" ".join(font_attrs)}>{markup}</font>' if font_attrs else markup
+        return f"<font {' '.join(font_attrs)}>{markup}</font>" if font_attrs else markup
 
     def _first_text_style(self, node):
         for child in node.get("content") or []:

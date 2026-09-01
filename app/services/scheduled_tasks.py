@@ -19,7 +19,6 @@ from app.services.web_push import (
     send_pending_web_push_notifications,
 )
 
-
 logger = logging.getLogger(__name__)
 
 

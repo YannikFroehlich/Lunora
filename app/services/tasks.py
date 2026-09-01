@@ -9,7 +9,6 @@ from django.utils import timezone
 from app.models import Task, TaskLabel, TaskList
 from app.services.user_preferences import format_user_datetime, format_user_time, localtime_for_user
 
-
 UPCOMING_WINDOW_DAYS = 7
 TASK_POSITION_STEP = 1000
 
@@ -286,7 +285,11 @@ def dashboard_today_tasks(user, now, limit=5):
 def get_tasks_context(user, *, now=None, sort=None):
     now = now or localtime_for_user(profile_or_user=user)
 
-    order_by = ("is_done", "position", "id") if sort == "manual" else ("is_done", F("due_at").asc(nulls_last=True), "-created_at")
+    order_by = (
+        ("is_done", "position", "id")
+        if sort == "manual"
+        else ("is_done", F("due_at").asc(nulls_last=True), "-created_at")
+    )
     all_tasks = list(
         Task.objects.filter(user=user)
         .select_related("task_list")
@@ -331,7 +334,9 @@ def get_tasks_context(user, *, now=None, sort=None):
             "task_list_id": task.task_list_id,
             "task_list_name": task.task_list.name if task.task_list else "",
             "task_list_color": task.task_list.color if task.task_list else "",
-            "labels": [{"id": label.id, "name": label.name, "color": label.color} for label in task.labels.all()],
+            "labels": [
+                {"id": label.id, "name": label.name, "color": label.color} for label in task.labels.all()
+            ],
             "is_subtask": is_subtask,
             "parent_id": task.parent_id,
             "view": view_bucket,
@@ -346,7 +351,9 @@ def get_tasks_context(user, *, now=None, sort=None):
         children = subtasks_by_parent.get(task.id, [])
         item = build_item(task, is_subtask=False)
         item["subtasks"] = [
-            build_item(child, is_subtask=True, filter_view=item["view"], filter_task_list_id=item["task_list_id"])
+            build_item(
+                child, is_subtask=True, filter_view=item["view"], filter_task_list_id=item["task_list_id"]
+            )
             for child in children
         ]
         item["subtask_count"] = len(children)

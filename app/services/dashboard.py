@@ -1,7 +1,6 @@
 from copy import deepcopy
 from dataclasses import dataclass
 
-
 DASHBOARD_LAYOUT_VERSION = 1
 
 

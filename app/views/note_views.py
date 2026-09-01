@@ -16,7 +16,6 @@ from app.models import (
     NoteAttachment,
     NoteCommentThread,
     NoteFolder,
-    NoteShare,
     NoteTemplate,
     NoteUserState,
     NoteVersion,
@@ -67,16 +66,61 @@ from app.services.notes import (
 )
 from app.services.system_settings import disabled_feature_response, feature_enabled
 
-
 SHORTCUT_ACTIONS = {
-    "save", "undo", "redo", "bold", "italic", "underline", "strike", "link",
-    "paragraph", "heading1", "heading2", "heading3", "alignLeft", "alignCenter",
-    "alignRight", "alignJustify", "bulletList", "orderedList", "taskList", "indent",
-    "outdent", "fontFamily", "fontSize", "textColor", "highlight", "lineHeight",
-    "image", "attachment", "horizontalRule", "insertMath", "insertTable", "addRowBefore", "addRowAfter",
-    "addColumnBefore", "addColumnAfter", "deleteRow", "deleteColumn", "deleteTable",
-    "mergeCells", "splitCell", "clearFormat", "newNote", "focusSearch", "pin", "archive", "style",
-    "duplicate", "trash", "share", "versions", "exportPdf", "exportMarkdown", "saveAsTemplate", "shortcutSettings",
+    "save",
+    "undo",
+    "redo",
+    "bold",
+    "italic",
+    "underline",
+    "strike",
+    "link",
+    "paragraph",
+    "heading1",
+    "heading2",
+    "heading3",
+    "alignLeft",
+    "alignCenter",
+    "alignRight",
+    "alignJustify",
+    "bulletList",
+    "orderedList",
+    "taskList",
+    "indent",
+    "outdent",
+    "fontFamily",
+    "fontSize",
+    "textColor",
+    "highlight",
+    "lineHeight",
+    "image",
+    "attachment",
+    "horizontalRule",
+    "insertMath",
+    "insertTable",
+    "addRowBefore",
+    "addRowAfter",
+    "addColumnBefore",
+    "addColumnAfter",
+    "deleteRow",
+    "deleteColumn",
+    "deleteTable",
+    "mergeCells",
+    "splitCell",
+    "clearFormat",
+    "newNote",
+    "focusSearch",
+    "pin",
+    "archive",
+    "style",
+    "duplicate",
+    "trash",
+    "share",
+    "versions",
+    "exportPdf",
+    "exportMarkdown",
+    "saveAsTemplate",
+    "shortcutSettings",
 }
 RESERVED_SHORTCUTS = {"Mod+W", "Mod+T", "Mod+N", "Mod+L", "Mod+R", "Mod+Shift+N"}
 SHORTCUT_RE = re.compile(r"^(?=.{3,40}$)(?=.*(?:Mod|Ctrl|Alt|Shift)\+)[A-Za-z0-9+\[\]\\\-]+$")
@@ -153,7 +197,11 @@ def _build_note_navigation(user, note_items, selected_folder_id=None, *, custom_
     def tree_sort_key(item):
         if custom_order:
             position = item.get("position")
-            return (position if position is not None else 2**31, 0 if item["kind"] == "note" else 1, item["id"])
+            return (
+                position if position is not None else 2**31,
+                0 if item["kind"] == "note" else 1,
+                item["id"],
+            )
         if item["kind"] == "note":
             return (0, item["view_rank"], item["id"])
         return (1, item["name"].casefold(), item["id"])
@@ -287,7 +335,7 @@ def note_pdf_export(request, note_id):
     try:
         note = get_accessible_note(request.user, note_id, allow_deleted=True)
     except Note.DoesNotExist:
-        raise Http404("Notiz nicht gefunden.")
+        raise Http404("Notiz nicht gefunden.") from None
     response = FileResponse(
         render_note_pdf(note),
         as_attachment=True,
@@ -308,7 +356,7 @@ def note_markdown_export(request, note_id):
     try:
         note = get_accessible_note(request.user, note_id, allow_deleted=True)
     except Note.DoesNotExist:
-        raise Http404("Notiz nicht gefunden.")
+        raise Http404("Notiz nicht gefunden.") from None
     response = FileResponse(
         BytesIO(render_note_markdown(note).encode("utf-8")),
         as_attachment=True,
@@ -466,9 +514,7 @@ def note_tree_move_api(request):
             target_id=target_id,
         )
         serialized = (
-            serialize_note(item, request.user)
-            if item_type == "note"
-            else serialize_note_folder(item)
+            serialize_note(item, request.user) if item_type == "note" else serialize_note_folder(item)
         )
         return JsonResponse({"ok": True, "item_type": item_type, "item": serialized})
     except Note.DoesNotExist:
@@ -627,7 +673,8 @@ def note_share_candidates_api(request):
     if len(query) < 2:
         return JsonResponse({"ok": True, "users": []})
     users = (
-        get_user_model().objects.filter(is_active=True)
+        get_user_model()
+        .objects.filter(is_active=True)
         .exclude(pk=request.user.id)
         .filter(Q(first_name__icontains=query) | Q(username__icontains=query) | Q(email__icontains=query))
         .select_related("profile")[:10]
@@ -653,12 +700,15 @@ def note_mention_candidates_api(request, note_id):
 
     query = request.GET.get("q", "").strip()
     users = (
-        get_user_model().objects.filter(is_active=True, pk__in=note_accessible_user_ids(note))
+        get_user_model()
+        .objects.filter(is_active=True, pk__in=note_accessible_user_ids(note))
         .exclude(pk=request.user.id)
         .select_related("profile")
     )
     if query:
-        users = users.filter(Q(first_name__icontains=query) | Q(username__icontains=query) | Q(email__icontains=query))
+        users = users.filter(
+            Q(first_name__icontains=query) | Q(username__icontains=query) | Q(email__icontains=query)
+        )
     return JsonResponse(
         {
             "ok": True,
@@ -685,7 +735,9 @@ def note_link_candidates_api(request, note_id):
     return JsonResponse(
         {
             "ok": True,
-            "notes": [{"id": note.id, "title": note.title} for note in notes_queryset.order_by("-updated_at")[:10]],
+            "notes": [
+                {"id": note.id, "title": note.title} for note in notes_queryset.order_by("-updated_at")[:10]
+            ],
         }
     )
 
@@ -813,7 +865,9 @@ def note_versions_api(request, note_id):
         return disabled
     try:
         note = get_accessible_note(request.user, note_id)
-        return JsonResponse({"ok": True, "versions": [serialize_version(item) for item in note.versions.all()[:100]]})
+        return JsonResponse(
+            {"ok": True, "versions": [serialize_version(item) for item in note.versions.all()[:100]]}
+        )
     except Note.DoesNotExist:
         return _error_response("Notiz nicht gefunden.", status=404)
 
@@ -847,7 +901,8 @@ def note_version_restore_api(request, note_id, version_id):
         return JsonResponse({"ok": True, "note": serialize_note(note, request.user)})
     except NoteConflictError as error:
         return JsonResponse(
-            {"ok": False, "error": "revision_conflict", "note": serialize_note(error.note, request.user)}, status=409
+            {"ok": False, "error": "revision_conflict", "note": serialize_note(error.note, request.user)},
+            status=409,
         )
     except (Note.DoesNotExist, NoteVersion.DoesNotExist):
         return _error_response("Notiz oder Version nicht gefunden.", status=404)

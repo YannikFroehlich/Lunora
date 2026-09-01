@@ -7,7 +7,13 @@ export function eventToShortcut(event) {
   if (event.shiftKey) modifiers.push("Shift");
   let key = event.key;
   if (["Control", "Alt", "Shift", "Meta"].includes(key)) return "";
-  const aliases = { " ": "Space", ArrowUp: "ArrowUp", ArrowDown: "ArrowDown", ArrowLeft: "ArrowLeft", ArrowRight: "ArrowRight" };
+  const aliases = {
+    " ": "Space",
+    ArrowUp: "ArrowUp",
+    ArrowDown: "ArrowDown",
+    ArrowLeft: "ArrowLeft",
+    ArrowRight: "ArrowRight",
+  };
   key = aliases[key] || (key.length === 1 ? key.toUpperCase() : key);
   if (!modifiers.length) return "";
   return [...modifiers, key].join("+");
@@ -31,12 +37,19 @@ export function mergeShortcuts(defaults, overrides) {
   return Object.fromEntries(
     Object.entries(defaults).map(([action, config]) => [
       action,
-      { ...config, shortcut: Object.prototype.hasOwnProperty.call(overrides || {}, action) ? overrides[action] : config.shortcut },
-    ])
+      {
+        ...config,
+        shortcut: Object.prototype.hasOwnProperty.call(overrides || {}, action) ? overrides[action] : config.shortcut,
+      },
+    ]),
   );
 }
 
 export function findShortcutConflict(commands, action, shortcut) {
   if (!shortcut) return null;
-  return Object.entries(commands).find(([candidate, config]) => candidate !== action && config.shortcut?.toLowerCase() === shortcut.toLowerCase())?.[0] || null;
+  return (
+    Object.entries(commands).find(
+      ([candidate, config]) => candidate !== action && config.shortcut?.toLowerCase() === shortcut.toLowerCase(),
+    )?.[0] || null
+  );
 }

@@ -7,8 +7,8 @@ from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
-from django.views.decorators.http import require_http_methods
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.http import require_http_methods
 
 from app.forms import (
     AppearanceForm,
@@ -111,10 +111,14 @@ def _calendar_source_status(source, user):
 def _calendar_source_form_items(sources, user, bound_form=None, bound_source_id=None):
     items = []
     for source in sources:
-        form = bound_form if source.id == bound_source_id else CalendarSourceForm(
-            instance=source,
-            user=user,
-            prefix=f"source-{source.id}",
+        form = (
+            bound_form
+            if source.id == bound_source_id
+            else CalendarSourceForm(
+                instance=source,
+                user=user,
+                prefix=f"source-{source.id}",
+            )
         )
         items.append({"source": source, "form": form, "status": _calendar_source_status(source, user)})
     return items
@@ -210,7 +214,9 @@ def settings(request):
         if not calendar_sync_enabled:
             django_messages.warning(request, "Kalendersynchronisierung ist vorübergehend deaktiviert.")
             return redirect(_settings_section_url("calendar", return_to))
-        calendar_source = CalendarSource.objects.filter(user=request.user, pk=request.POST.get("source_id")).first()
+        calendar_source = CalendarSource.objects.filter(
+            user=request.user, pk=request.POST.get("source_id")
+        ).first()
         if not calendar_source:
             django_messages.error(request, "Kalender wurde nicht gefunden.")
             return redirect(_settings_section_url("calendar", return_to))
@@ -239,7 +245,9 @@ def settings(request):
                         f"{calendar_source.name} gespeichert. Neue Synchronisierung wurde vorgemerkt.",
                     )
                 else:
-                    django_messages.success(request, f"{calendar_source.name} gespeichert. Sync ist deaktiviert.")
+                    django_messages.success(
+                        request, f"{calendar_source.name} gespeichert. Sync ist deaktiviert."
+                    )
             elif calendar_source.enabled and not was_enabled:
                 queue_calendar_sources([calendar_source])
                 django_messages.success(

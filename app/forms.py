@@ -30,9 +30,8 @@ from app.services.calendar_service import expand_manual_recurrence
 from app.services.chat_files import infer_attachment_kind, validate_note_upload
 from app.services.image_uploads import PROFILE_IMAGE_ACCEPT, validate_profile_image_file
 from app.services.notification_preferences import CATEGORY_DEFINITIONS
-from app.services.user_preferences import get_user_zoneinfo, localtime_for_user
 from app.services.url_safety import validate_calendar_url
-
+from app.services.user_preferences import get_user_zoneinfo, localtime_for_user
 
 LOGIN_ATTEMPT_LIMIT = 5
 LOGIN_ATTEMPT_LOCKOUT_SECONDS = 15 * 60
@@ -266,8 +265,12 @@ class HolidayOverrideForm(forms.ModelForm):
 
 
 class RegistrationForm(UserCreationForm):
-    name = forms.CharField(label="Name", max_length=120, widget=forms.TextInput(attrs={"placeholder": "Dein Name"}))
-    email = forms.EmailField(label="E-Mail", widget=forms.EmailInput(attrs={"placeholder": "you@example.com"}))
+    name = forms.CharField(
+        label="Name", max_length=120, widget=forms.TextInput(attrs={"placeholder": "Dein Name"})
+    )
+    email = forms.EmailField(
+        label="E-Mail", widget=forms.EmailInput(attrs={"placeholder": "you@example.com"})
+    )
 
     class Meta:
         model = User
@@ -275,7 +278,10 @@ class RegistrationForm(UserCreationForm):
 
     def clean_email(self):
         email = self.cleaned_data["email"].strip().lower()
-        if User.objects.filter(username__iexact=email).exists() or User.objects.filter(email__iexact=email).exists():
+        if (
+            User.objects.filter(username__iexact=email).exists()
+            or User.objects.filter(email__iexact=email).exists()
+        ):
             raise forms.ValidationError("Diese E-Mail-Adresse ist bereits registriert.")
         return email
 
@@ -320,9 +326,7 @@ class ProfileForm(forms.ModelForm):
         old_image_name = ""
         if self.instance.pk:
             old_image_name = (
-                Profile.objects.filter(pk=self.instance.pk)
-                .values_list("profile_image", flat=True)
-                .first()
+                Profile.objects.filter(pk=self.instance.pk).values_list("profile_image", flat=True).first()
                 or ""
             )
 
@@ -453,17 +457,24 @@ class NotificationPreferencesForm(forms.ModelForm):
         self.fields["notification_quiet_end"].required = False
 
     def clean_notification_quiet_start(self):
-        return self.cleaned_data.get("notification_quiet_start") or self.instance.notification_quiet_start or time(22, 0)
+        return (
+            self.cleaned_data.get("notification_quiet_start")
+            or self.instance.notification_quiet_start
+            or time(22, 0)
+        )
 
     def clean_notification_quiet_end(self):
-        return self.cleaned_data.get("notification_quiet_end") or self.instance.notification_quiet_end or time(7, 0)
+        return (
+            self.cleaned_data.get("notification_quiet_end")
+            or self.instance.notification_quiet_end
+            or time(7, 0)
+        )
 
     def clean(self):
         cleaned_data = super().clean()
-        if (
-            cleaned_data.get("notification_quiet_hours_enabled")
-            and cleaned_data.get("notification_quiet_start") == cleaned_data.get("notification_quiet_end")
-        ):
+        if cleaned_data.get("notification_quiet_hours_enabled") and cleaned_data.get(
+            "notification_quiet_start"
+        ) == cleaned_data.get("notification_quiet_end"):
             self.add_error(
                 "notification_quiet_end",
                 "Beginn und Ende der Ruhezeit müssen unterschiedlich sein.",
@@ -500,8 +511,7 @@ class NotificationCategoryPreferencesForm(forms.Form):
         self.user = user
         super().__init__(*args, **kwargs)
         saved_preferences = {
-            preference.category: preference
-            for preference in NotificationPreference.objects.filter(user=user)
+            preference.category: preference for preference in NotificationPreference.objects.filter(user=user)
         }
         self.category_rows = []
         for category in CATEGORY_DEFINITIONS:
@@ -589,7 +599,9 @@ class ConversationStartForm(forms.Form):
         label="Gruppenname (optional)",
         max_length=140,
         required=False,
-        widget=forms.TextInput(attrs={"placeholder": "z. B. Familie oder Projektteam", "autocomplete": "off"}),
+        widget=forms.TextInput(
+            attrs={"placeholder": "z. B. Familie oder Projektteam", "autocomplete": "off"}
+        ),
     )
     body = forms.CharField(
         label="Erste Nachricht",
@@ -620,7 +632,9 @@ class CalendarSourceForm(forms.ModelForm):
     name = forms.CharField(
         label="Kalendername",
         max_length=120,
-        widget=forms.TextInput(attrs={"placeholder": "z. B. Arbeit, Familie oder Geburtstage", "autocomplete": "off"}),
+        widget=forms.TextInput(
+            attrs={"placeholder": "z. B. Arbeit, Familie oder Geburtstage", "autocomplete": "off"}
+        ),
     )
 
     ical_url = forms.CharField(
@@ -949,7 +963,9 @@ class CalendarEventForm(_CalendarEventDateTimeForm):
             occurrence_starts = [start_at]
             recurrence_id = None
         else:
-            occurrence_starts = expand_manual_recurrence(start_at, repeat, self.cleaned_data["repeat_until_at"])
+            occurrence_starts = expand_manual_recurrence(
+                start_at, repeat, self.cleaned_data["repeat_until_at"]
+            )
             recurrence_id = uuid.uuid4()
 
         events = CalendarEvent.objects.bulk_create(

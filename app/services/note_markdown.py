@@ -6,7 +6,6 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.text import slugify
 
-
 ESCAPE_RE = re.compile(r"([\\`*_\[\]<>|])")
 
 
@@ -107,7 +106,9 @@ class NoteMarkdownRenderer:
         language = (node.get("attrs") or {}).get("language") or ""
         if language == "plaintext":
             language = ""
-        text = "".join(child.get("text", "") for child in node.get("content") or [] if child.get("type") == "text")
+        text = "".join(
+            child.get("text", "") for child in node.get("content") or [] if child.get("type") == "text"
+        )
         fence = self._code_fence(text)
         return f"{fence}{language}\n{text}\n{fence}"
 

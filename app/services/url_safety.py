@@ -2,7 +2,6 @@ import ipaddress
 import socket
 from urllib.parse import urlparse
 
-
 BLOCKED_HOSTS = {
     "localhost",
     "localhost.localdomain",
@@ -74,7 +73,7 @@ def _validate_hostname(host):
         address = ipaddress.ip_address(host)
     except ValueError:
         if "." not in host:
-            raise ValueError("Der Kalenderlink muss auf einen öffentlichen Hostnamen zeigen.")
+            raise ValueError("Der Kalenderlink muss auf einen öffentlichen Hostnamen zeigen.") from None
         return
 
     _validate_ip_address(address)

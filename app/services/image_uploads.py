@@ -3,7 +3,6 @@ from pathlib import Path
 from django.conf import settings
 from django.core.exceptions import ValidationError
 
-
 PROFILE_IMAGE_ALLOWED_TYPES = {
     "jpeg": {
         "content_types": {"image/jpeg", "image/pjpeg"},

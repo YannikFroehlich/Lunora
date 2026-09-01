@@ -84,18 +84,14 @@ def database_config(debug):
             "DJANGO_DB_USER": os.getenv("DJANGO_DB_USER", "").strip(),
         }
         if not debug:
-            required_values["DJANGO_DB_PASSWORD"] = os.getenv(
-                "DJANGO_DB_PASSWORD", ""
-            ).strip()
+            required_values["DJANGO_DB_PASSWORD"] = os.getenv("DJANGO_DB_PASSWORD", "").strip()
         missing = [
             name
             for name, value in required_values.items()
             if not value or (not debug and value == "change-me")
         ]
         if missing:
-            raise ImproperlyConfigured(
-                f"{', '.join(missing)} muss für PostgreSQL gesetzt sein."
-            )
+            raise ImproperlyConfigured(f"{', '.join(missing)} muss für PostgreSQL gesetzt sein.")
 
         options = {
             "connect_timeout": env_int("DJANGO_DB_CONNECT_TIMEOUT", 10),
@@ -118,9 +114,7 @@ def database_config(debug):
             }
         }
 
-    raise ImproperlyConfigured(
-        "DJANGO_DATABASE_ENGINE muss sqlite oder postgresql sein."
-    )
+    raise ImproperlyConfigured("DJANGO_DATABASE_ENGINE muss sqlite oder postgresql sein.")
 
 
 load_env_file(BASE_DIR / ".env")
@@ -202,9 +196,7 @@ elif DEBUG:
         }
     }
 else:
-    raise ImproperlyConfigured(
-        "DJANGO_CACHE_URL muss gesetzt sein, wenn DJANGO_DEBUG=false ist."
-    )
+    raise ImproperlyConfigured("DJANGO_CACHE_URL muss gesetzt sein, wenn DJANGO_DEBUG=false ist.")
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -290,18 +282,10 @@ ADMINS = env_admins("DJANGO_ADMINS")
 MANAGERS = ADMINS
 SERVER_EMAIL = os.getenv("DJANGO_SERVER_EMAIL", DEFAULT_FROM_EMAIL)
 
-CLOUDFLARE_TURNSTILE_REQUIRED = env_bool(
-    "CLOUDFLARE_TURNSTILE_REQUIRED", not DEBUG
-)
-CLOUDFLARE_TURNSTILE_SITE_KEY = os.getenv(
-    "CLOUDFLARE_TURNSTILE_SITE_KEY", ""
-).strip()
-CLOUDFLARE_TURNSTILE_SECRET_KEY = os.getenv(
-    "CLOUDFLARE_TURNSTILE_SECRET_KEY", ""
-).strip()
-CLOUDFLARE_TURNSTILE_EXPECTED_HOSTNAME = os.getenv(
-    "CLOUDFLARE_TURNSTILE_EXPECTED_HOSTNAME", ""
-).strip()
+CLOUDFLARE_TURNSTILE_REQUIRED = env_bool("CLOUDFLARE_TURNSTILE_REQUIRED", not DEBUG)
+CLOUDFLARE_TURNSTILE_SITE_KEY = os.getenv("CLOUDFLARE_TURNSTILE_SITE_KEY", "").strip()
+CLOUDFLARE_TURNSTILE_SECRET_KEY = os.getenv("CLOUDFLARE_TURNSTILE_SECRET_KEY", "").strip()
+CLOUDFLARE_TURNSTILE_EXPECTED_HOSTNAME = os.getenv("CLOUDFLARE_TURNSTILE_EXPECTED_HOSTNAME", "").strip()
 CLOUDFLARE_TURNSTILE_TIMEOUT = env_int("CLOUDFLARE_TURNSTILE_TIMEOUT", 5)
 
 if CLOUDFLARE_TURNSTILE_REQUIRED:
@@ -319,6 +303,7 @@ if CLOUDFLARE_TURNSTILE_REQUIRED:
             f"{', '.join(missing_turnstile_settings)} muss für die geschützte Registrierung gesetzt sein."
         )
 
+
 def _skip_disabled_feature_response(record):
     # 503 in this app only ever means "feature disabled" (see disabled_feature_response) -
     # expected, routine traffic, not a server error worth paging an admin about.
@@ -330,7 +315,10 @@ LOGGING = {
     "disable_existing_loggers": False,
     "filters": {
         "require_debug_false": {"()": "django.utils.log.RequireDebugFalse"},
-        "skip_disabled_feature_response": {"()": "django.utils.log.CallbackFilter", "callback": _skip_disabled_feature_response},
+        "skip_disabled_feature_response": {
+            "()": "django.utils.log.CallbackFilter",
+            "callback": _skip_disabled_feature_response,
+        },
     },
     "handlers": {
         "console": {
@@ -369,12 +357,11 @@ if WEB_PUSH_TTL_SECONDS <= 0 or WEB_PUSH_TIMEOUT_SECONDS <= 0 or WEB_PUSH_MAX_AT
     raise ImproperlyConfigured(
         "WEB_PUSH_TTL_SECONDS, WEB_PUSH_TIMEOUT_SECONDS und WEB_PUSH_MAX_ATTEMPTS müssen größer als 0 sein."
     )
-WEB_PUSH_ENABLED = bool(
-    WEB_PUSH_VAPID_PUBLIC_KEY
-    and WEB_PUSH_VAPID_PRIVATE_KEY
-    and WEB_PUSH_VAPID_SUBJECT
-)
-if any((WEB_PUSH_VAPID_PUBLIC_KEY, WEB_PUSH_VAPID_PRIVATE_KEY, WEB_PUSH_VAPID_SUBJECT)) and not WEB_PUSH_ENABLED:
+WEB_PUSH_ENABLED = bool(WEB_PUSH_VAPID_PUBLIC_KEY and WEB_PUSH_VAPID_PRIVATE_KEY and WEB_PUSH_VAPID_SUBJECT)
+if (
+    any((WEB_PUSH_VAPID_PUBLIC_KEY, WEB_PUSH_VAPID_PRIVATE_KEY, WEB_PUSH_VAPID_SUBJECT))
+    and not WEB_PUSH_ENABLED
+):
     raise ImproperlyConfigured(
         "WEB_PUSH_VAPID_PUBLIC_KEY, WEB_PUSH_VAPID_PRIVATE_KEY und "
         "WEB_PUSH_VAPID_SUBJECT müssen gemeinsam gesetzt werden."

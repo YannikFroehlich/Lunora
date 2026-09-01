@@ -3,16 +3,16 @@ from __future__ import annotations
 import calendar
 import re
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta, timezone as datetime_timezone
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from datetime import UTC, datetime, time, timedelta
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin
 from urllib.request import HTTPRedirectHandler, Request, build_opener
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.db import transaction
 from django.utils import timezone
 
-from app.models import CalendarEvent, CalendarSource
+from app.models import CalendarEvent
 from app.services.url_safety import validate_calendar_url
 
 SYNC_LOOKBACK_DAYS = 45
@@ -83,11 +83,11 @@ def fetch_ical(url):
             if error.code not in REDIRECT_STATUS_CODES:
                 raise
             if redirect_count >= MAX_ICAL_REDIRECTS:
-                raise ValueError("Der Kalenderlink hat zu viele Weiterleitungen.")
+                raise ValueError("Der Kalenderlink hat zu viele Weiterleitungen.") from error
 
             location = error.headers.get("Location")
             if not location:
-                raise ValueError("Der Kalenderlink leitet ohne Ziel weiter.")
+                raise ValueError("Der Kalenderlink leitet ohne Ziel weiter.") from error
             current_url = validate_calendar_url(urljoin(current_url, location), resolve_dns=True)
 
     raise ValueError("Der Kalenderlink hat zu viele Weiterleitungen.")
@@ -252,11 +252,13 @@ def _parse_datetime(prop):
 
     if params.get("VALUE") == "DATE" or re.fullmatch(r"\d{8}", value):
         parsed_date = datetime.strptime(value[:8], "%Y%m%d").date()
-        return timezone.make_aware(datetime.combine(parsed_date, time.min), timezone.get_current_timezone()), True
+        return timezone.make_aware(
+            datetime.combine(parsed_date, time.min), timezone.get_current_timezone()
+        ), True
 
     tzinfo = timezone.get_current_timezone()
     if value.endswith("Z"):
-        tzinfo = datetime_timezone.utc
+        tzinfo = UTC
         value = value[:-1]
     elif params.get("TZID"):
         try:
@@ -306,7 +308,11 @@ def _expand_starts(start_at, rrule, window_start, window_end, exclusions):
             generated += 1
             if count and generated > count:
                 break
-            if candidate not in exclusions and candidate < window_end and candidate >= window_start - timedelta(days=1):
+            if (
+                candidate not in exclusions
+                and candidate < window_end
+                and candidate >= window_start - timedelta(days=1)
+            ):
                 starts.append(candidate)
 
         if freq == "DAILY":
@@ -334,7 +340,7 @@ def _parse_rrule(rrule):
 
 def _parse_rrule_until(value, tzinfo):
     if value.endswith("Z"):
-        parsed = datetime.strptime(value[:-1], "%Y%m%dT%H%M%S").replace(tzinfo=datetime_timezone.utc)
+        parsed = datetime.strptime(value[:-1], "%Y%m%dT%H%M%S").replace(tzinfo=UTC)
     elif "T" in value:
         parsed = datetime.strptime(value[:15], "%Y%m%dT%H%M%S").replace(tzinfo=tzinfo)
     else:

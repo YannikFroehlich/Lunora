@@ -3,12 +3,13 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 
-from django.db.models import Q
-from django.utils import timezone
-
 from app.models import CustomHoliday, HolidayOverride, OfficialHoliday, VacationPeriod, VacationYear
-from app.services.user_preferences import format_user_date, get_user_month_name, get_user_weekday_name, localtime_for_user
-
+from app.services.user_preferences import (
+    format_user_date,
+    get_user_month_name,
+    get_user_weekday_name,
+    localtime_for_user,
+)
 
 DEFAULT_SUBDIVISION = "NW"
 HALF_DAY = Decimal("0.5")
@@ -112,7 +113,9 @@ def import_public_holidays(from_year, to_year, subdivisions=None):
                 )
                 imported += 1
                 seen_ids.add(obj.pk)
-            OfficialHoliday.objects.filter(subdivision=subdivision, date__year=year).exclude(pk__in=seen_ids).update(active=False)
+            OfficialHoliday.objects.filter(subdivision=subdivision, date__year=year).exclude(
+                pk__in=seen_ids
+            ).update(active=False)
 
     return imported
 
@@ -131,10 +134,23 @@ def _fallback_public_holidays(year, subdivision):
         date(year, 12, 26): "2. Weihnachtstag",
     }
     state_specific = {
-        "BW": [(date(year, 1, 6), "Heilige Drei Könige"), (easter + timedelta(days=60), "Fronleichnam"), (date(year, 11, 1), "Allerheiligen")],
-        "BY": [(date(year, 1, 6), "Heilige Drei Könige"), (easter + timedelta(days=60), "Fronleichnam"), (date(year, 8, 15), "Mariä Himmelfahrt"), (date(year, 11, 1), "Allerheiligen")],
+        "BW": [
+            (date(year, 1, 6), "Heilige Drei Könige"),
+            (easter + timedelta(days=60), "Fronleichnam"),
+            (date(year, 11, 1), "Allerheiligen"),
+        ],
+        "BY": [
+            (date(year, 1, 6), "Heilige Drei Könige"),
+            (easter + timedelta(days=60), "Fronleichnam"),
+            (date(year, 8, 15), "Mariä Himmelfahrt"),
+            (date(year, 11, 1), "Allerheiligen"),
+        ],
         "BE": [(date(year, 3, 8), "Internationaler Frauentag")],
-        "BB": [(easter, "Ostersonntag"), (easter + timedelta(days=49), "Pfingstsonntag"), (date(year, 10, 31), "Reformationstag")],
+        "BB": [
+            (easter, "Ostersonntag"),
+            (easter + timedelta(days=49), "Pfingstsonntag"),
+            (date(year, 10, 31), "Reformationstag"),
+        ],
         "HB": [(date(year, 10, 31), "Reformationstag")],
         "HE": [(easter + timedelta(days=60), "Fronleichnam")],
         "HH": [(date(year, 10, 31), "Reformationstag")],
@@ -142,7 +158,11 @@ def _fallback_public_holidays(year, subdivision):
         "NI": [(date(year, 10, 31), "Reformationstag")],
         "NW": [(easter + timedelta(days=60), "Fronleichnam"), (date(year, 11, 1), "Allerheiligen")],
         "RP": [(easter + timedelta(days=60), "Fronleichnam"), (date(year, 11, 1), "Allerheiligen")],
-        "SL": [(easter + timedelta(days=60), "Fronleichnam"), (date(year, 8, 15), "Mariä Himmelfahrt"), (date(year, 11, 1), "Allerheiligen")],
+        "SL": [
+            (easter + timedelta(days=60), "Fronleichnam"),
+            (date(year, 8, 15), "Mariä Himmelfahrt"),
+            (date(year, 11, 1), "Allerheiligen"),
+        ],
         "SN": [(date(year, 10, 31), "Reformationstag"), (_saxony_day_of_repentance(year), "Buß- und Bettag")],
         "ST": [(date(year, 1, 6), "Heilige Drei Könige"), (date(year, 10, 31), "Reformationstag")],
         "SH": [(date(year, 10, 31), "Reformationstag")],
@@ -165,10 +185,10 @@ def _easter_sunday(year):
     h = (19 * a + b - d - g + 15) % 30
     i = c // 4
     k = c % 4
-    l = (32 + 2 * e + 2 * i - h - k) % 7
-    m = (a + 11 * h + 22 * l) // 451
-    month = (h + l - 7 * m + 114) // 31
-    day = ((h + l - 7 * m + 114) % 31) + 1
+    ll = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * ll) // 451
+    month = (h + ll - 7 * m + 114) // 31
+    day = ((h + ll - 7 * m + 114) % 31) + 1
     return date(year, month, day)
 
 
@@ -188,7 +208,9 @@ def effective_holidays_for_year(vacation_year):
     )
     overrides = {
         override.official_holiday_id: override
-        for override in HolidayOverride.objects.filter(vacation_year=vacation_year).select_related("official_holiday")
+        for override in HolidayOverride.objects.filter(vacation_year=vacation_year).select_related(
+            "official_holiday"
+        )
     }
     grouped = {}
     for row in official_rows:
@@ -200,7 +222,9 @@ def effective_holidays_for_year(vacation_year):
         _merge_holiday(grouped, row.date, name, day_value, is_custom=False)
 
     for custom_holiday in CustomHoliday.objects.filter(vacation_year=vacation_year):
-        _merge_holiday(grouped, custom_holiday.date, custom_holiday.name, custom_holiday.day_value, is_custom=True)
+        _merge_holiday(
+            grouped, custom_holiday.date, custom_holiday.name, custom_holiday.day_value, is_custom=True
+        )
 
     return grouped
 
@@ -229,12 +253,13 @@ def calculate_period(user, start_date, end_date, *, exclude_period_id=None):
 
     vacation_years = {
         row.year: row
-        for row in VacationYear.objects.filter(user=user, year__in=list(years_for_range(start_date, end_date)))
+        for row in VacationYear.objects.filter(
+            user=user, year__in=list(years_for_range(start_date, end_date))
+        )
     }
 
     holiday_maps = {
-        year: effective_holidays_for_year(vacation_year)
-        for year, vacation_year in vacation_years.items()
+        year: effective_holidays_for_year(vacation_year) for year, vacation_year in vacation_years.items()
     }
 
     for year in years_for_range(start_date, end_date):
@@ -298,7 +323,12 @@ def overlapping_periods(user, start_date, end_date, *, exclude_period_id=None):
     if exclude_period_id:
         queryset = queryset.exclude(pk=exclude_period_id)
     return [
-        {"id": period.id, "name": period.get_name_display(), "start_date": period.start_date, "end_date": period.end_date}
+        {
+            "id": period.id,
+            "name": period.get_name_display(),
+            "start_date": period.start_date,
+            "end_date": period.end_date,
+        }
         for period in queryset.order_by("start_date", "name")
     ]
 
@@ -317,8 +347,12 @@ def annual_summary(user, year):
         return _with_summary_labels(summary)
     holidays = effective_holidays_for_year(vacation_year)
     used_dates = set()
-    for period in VacationPeriod.objects.filter(user=user, start_date__lte=date(year, 12, 31), end_date__gte=date(year, 1, 1)):
-        for current in date_range(max(period.start_date, date(year, 1, 1)), min(period.end_date, date(year, 12, 31))):
+    for period in VacationPeriod.objects.filter(
+        user=user, start_date__lte=date(year, 12, 31), end_date__gte=date(year, 1, 1)
+    ):
+        for current in date_range(
+            max(period.start_date, date(year, 1, 1)), min(period.end_date, date(year, 12, 31))
+        ):
             used_dates.add(current)
 
     planned_days = ZERO_DAY
@@ -329,7 +363,9 @@ def annual_summary(user, year):
         planned_days += max(ZERO_DAY, FULL_DAY - min(FULL_DAY, holiday.day_value)) if holiday else FULL_DAY
 
     remaining_days = vacation_year.allowance_days - planned_days
-    usage_percent = int((planned_days / vacation_year.allowance_days) * 100) if vacation_year.allowance_days else 0
+    usage_percent = (
+        int((planned_days / vacation_year.allowance_days) * 100) if vacation_year.allowance_days else 0
+    )
     summary = {
         "allowance_days": vacation_year.allowance_days,
         "planned_days": planned_days,
@@ -356,7 +392,9 @@ def month_summary(user, year, month):
 
     used_dates = set()
     period_count = 0
-    for period in VacationPeriod.objects.filter(user=user, start_date__lte=month_end, end_date__gte=month_start):
+    for period in VacationPeriod.objects.filter(
+        user=user, start_date__lte=month_end, end_date__gte=month_start
+    ):
         period_count += 1
         for current in date_range(max(period.start_date, month_start), min(period.end_date, month_end)):
             used_dates.add(current)
@@ -382,7 +420,9 @@ def month_summary(user, year, month):
 
 def period_items(user, year):
     now_date = localtime_for_user(profile_or_user=user).date()
-    periods = VacationPeriod.objects.filter(user=user, start_date__lte=date(year, 12, 31), end_date__gte=date(year, 1, 1))
+    periods = VacationPeriod.objects.filter(
+        user=user, start_date__lte=date(year, 12, 31), end_date__gte=date(year, 1, 1)
+    )
     return [
         {
             "period": period,
@@ -418,10 +458,14 @@ def holiday_items(vacation_year):
     ensure_official_holidays(vacation_year.year, vacation_year.subdivision)
     overrides = {
         override.official_holiday_id: override
-        for override in HolidayOverride.objects.filter(vacation_year=vacation_year).select_related("official_holiday")
+        for override in HolidayOverride.objects.filter(vacation_year=vacation_year).select_related(
+            "official_holiday"
+        )
     }
     official = []
-    for holiday in OfficialHoliday.objects.filter(subdivision=vacation_year.subdivision, date__year=vacation_year.year, active=True):
+    for holiday in OfficialHoliday.objects.filter(
+        subdivision=vacation_year.subdivision, date__year=vacation_year.year, active=True
+    ):
         override = overrides.get(holiday.id)
         value = override.day_value if override else holiday.day_value
         official.append(
@@ -443,7 +487,13 @@ def month_calendar(user, year, month):
     now = localtime_for_user(profile_or_user=user).date()
     vacation_year = VacationYear.objects.filter(user=user, year=year).first()
     holidays = effective_holidays_for_year(vacation_year) if vacation_year else {}
-    periods = list(VacationPeriod.objects.filter(user=user, start_date__lte=date(year, month, calendar.monthrange(year, month)[1]), end_date__gte=date(year, month, 1)))
+    periods = list(
+        VacationPeriod.objects.filter(
+            user=user,
+            start_date__lte=date(year, month, calendar.monthrange(year, month)[1]),
+            end_date__gte=date(year, month, 1),
+        )
+    )
     weeks = calendar.Calendar(firstweekday=0).monthdatescalendar(year, month)
     rows = []
     for week in weeks:
@@ -492,7 +542,15 @@ def vacation_planner_context(user, *, year=None, month=None):
     vacation_year = year_context["vacation_year"]
     summary = annual_summary(user, selected_year)
     holidays = holiday_items(vacation_year)
-    year_options = sorted({now.year, selected_year, selected_year - 1, selected_year + 1, *(VacationYear.objects.filter(user=user).values_list("year", flat=True))})
+    year_options = sorted(
+        {
+            now.year,
+            selected_year,
+            selected_year - 1,
+            selected_year + 1,
+            *(VacationYear.objects.filter(user=user).values_list("year", flat=True)),
+        }
+    )
     return {
         "active_page": "vacation_planner",
         "selected_year": selected_year,

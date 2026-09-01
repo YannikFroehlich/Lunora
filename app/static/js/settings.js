@@ -58,7 +58,7 @@ if (settingsShell && settingsTabsContainer && settingsTabList && settingsTabs.le
     const currentIndex = settingsTabs.indexOf(document.activeElement);
     if (currentIndex === -1) return;
 
-    let nextIndex = currentIndex;
+    let nextIndex;
     if (event.key === "ArrowRight" || event.key === "ArrowDown") {
       nextIndex = (currentIndex + 1) % settingsTabs.length;
     } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
@@ -93,9 +93,7 @@ document.querySelectorAll("[data-file-input]").forEach((input) => {
   }
 
   input.addEventListener("change", () => {
-    const fileName = input.files && input.files.length > 0
-      ? input.files[0].name
-      : "Keine neue Datei ausgewählt";
+    const fileName = input.files && input.files.length > 0 ? input.files[0].name : "Keine neue Datei ausgewählt";
 
     fileNameLabel.textContent = fileName;
     fileNameLabel.classList.toggle("has-file", Boolean(input.files && input.files.length));
@@ -142,10 +140,7 @@ function syncDesktopNotificationSwitch() {
 }
 
 function supportsWebPush() {
-  return window.isSecureContext
-    && "Notification" in window
-    && "serviceWorker" in navigator
-    && "PushManager" in window;
+  return window.isSecureContext && "Notification" in window && "serviceWorker" in navigator && "PushManager" in window;
 }
 
 function applicationServerKeyBytes(value) {
@@ -160,8 +155,10 @@ function subscriptionUsesCurrentKey(subscription) {
   if (!currentKey) return true;
   const subscribedBytes = new Uint8Array(currentKey);
   const configuredBytes = applicationServerKeyBytes(webPushPublicKey);
-  return subscribedBytes.length === configuredBytes.length
-    && subscribedBytes.every((value, index) => value === configuredBytes[index]);
+  return (
+    subscribedBytes.length === configuredBytes.length &&
+    subscribedBytes.every((value, index) => value === configuredBytes[index])
+  );
 }
 
 async function getServiceWorkerRegistration() {
@@ -273,7 +270,9 @@ async function initializeWebPushSettings() {
   if (!desktopNotificationInput) return;
   if (!supportsWebPush()) {
     desktopNotificationPermissionButton?.setAttribute("hidden", "");
-    setDesktopNotificationStatus("Dieser Browser unterstützt Web Push nicht oder die Verbindung ist nicht sicher.", { isError: true });
+    setDesktopNotificationStatus("Dieser Browser unterstützt Web Push nicht oder die Verbindung ist nicht sicher.", {
+      isError: true,
+    });
     return;
   }
   if (!webPushPublicKey || !webPushSubscriptionUrl || !serviceWorkerUrl || !csrfToken) {
@@ -299,7 +298,7 @@ async function initializeWebPushSettings() {
     if (activeWebPushSubscription && desktopNotificationInput.checked) {
       await saveWebPushSubscription(activeWebPushSubscription);
     }
-  } catch (error) {
+  } catch (_error) {
     setDesktopNotificationStatus("Der Benachrichtigungsdienst konnte nicht geladen werden.", { isError: true });
     return;
   }
@@ -309,7 +308,7 @@ async function initializeWebPushSettings() {
     setDesktopNotificationStatus(
       desktopNotificationInput.checked
         ? "Web Push ist auf diesem Gerät aktiv."
-        : "Dieses Gerät ist registriert; die Zustellung ist im Konto deaktiviert."
+        : "Dieses Gerät ist registriert; die Zustellung ist im Konto deaktiviert.",
     );
   } else {
     setDesktopNotificationStatus("Dieses Gerät ist noch nicht für Web Push registriert.");
@@ -347,7 +346,9 @@ if (desktopNotificationInput) {
     try {
       await sendWebPushTest();
     } catch (error) {
-      setDesktopNotificationStatus(error.message || "Die Testbenachrichtigung konnte nicht gesendet werden.", { isError: true });
+      setDesktopNotificationStatus(error.message || "Die Testbenachrichtigung konnte nicht gesendet werden.", {
+        isError: true,
+      });
     } finally {
       webPushTestButton.disabled = false;
     }
@@ -414,7 +415,7 @@ pwaInstallButton?.addEventListener("click", async () => {
     } else {
       setPwaInstallStatus("Installation aktuell nicht verfügbar.", { isError: true });
     }
-  } catch (error) {
+  } catch (_error) {
     setPwaInstallStatus("Installation konnte nicht geöffnet werden.", { isError: true });
   } finally {
     pwaInstallButton.disabled = false;

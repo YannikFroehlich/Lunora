@@ -11,6 +11,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods, require_POST
 
 from app.models import UserNotification
+from app.services.notification_preferences import CHANNEL_INBOX, enabled_notification_kinds
 from app.services.notifications import (
     claim_due_desktop_reminders,
     claim_due_desktop_tasks,
@@ -21,7 +22,6 @@ from app.services.notifications import (
     notification_display_items,
 )
 from app.services.system_settings import feature_enabled, feature_flags
-from app.services.notification_preferences import CHANNEL_INBOX, enabled_notification_kinds
 from app.services.web_push import (
     WebPushTestError,
     register_web_push_subscription,
@@ -177,9 +177,7 @@ def web_push_test(request):
         send_test_web_push(request.user, endpoint)
     except WebPushTestError as error:
         return JsonResponse({"ok": False, "error": str(error)}, status=error.status_code)
-    return JsonResponse(
-        {"ok": True, "message": "Testbenachrichtigung wurde an dieses Gerät gesendet."}
-    )
+    return JsonResponse({"ok": True, "message": "Testbenachrichtigung wurde an dieses Gerät gesendet."})
 
 
 @login_required
