@@ -1,7 +1,11 @@
 {% load static static_versioning %}
 const CACHE_PREFIX = "lunora-pwa";
-const STATIC_CACHE = `${CACHE_PREFIX}-static-{% static_version 'css/base.css' 'css/offline.css' 'js/base.js' %}`;
+const CACHE_VERSION = "{% static_version 'css/base.css' 'css/offline.css' 'js/base.js' %}";
+const STATIC_CACHE = `${CACHE_PREFIX}-static-${CACHE_VERSION}`;
+const PAGES_CACHE = `${CACHE_PREFIX}-pages-${CACHE_VERSION}`;
+const MAX_CACHED_PAGES = 60;
 const OFFLINE_URL = "{% url 'offline' %}";
+const LOGOUT_URL = "{% url 'logout' %}";
 const APP_SHELL_URLS = [
   OFFLINE_URL,
   "{% versioned_static 'css/base.css' %}",
@@ -24,11 +28,12 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
+  const keepCaches = new Set([STATIC_CACHE, PAGES_CACHE]);
   event.waitUntil(
     caches.keys()
       .then((cacheNames) => Promise.all(
         cacheNames
-          .filter((cacheName) => cacheName.startsWith(CACHE_PREFIX) && cacheName !== STATIC_CACHE)
+          .filter((cacheName) => cacheName.startsWith(CACHE_PREFIX) && !keepCaches.has(cacheName))
           .map((cacheName) => caches.delete(cacheName))
       ))
       .then(() => self.clients.claim())
@@ -47,17 +52,51 @@ async function serveStaticAsset(request) {
   return networkResponse;
 }
 
+async function trimPagesCache(cache) {
+  const keys = await cache.keys();
+  const overflow = keys.length - MAX_CACHED_PAGES;
+  if (overflow <= 0) return;
+  await Promise.all(keys.slice(0, overflow).map((key) => cache.delete(key)));
+}
+
+// Network-first so a signed-in user always sees live content when online; the last
+// successfully rendered copy of each page is kept so it can still open while offline.
+async function servePage(request) {
+  try {
+    const networkResponse = await fetch(request);
+    if (networkResponse.ok) {
+      const cache = await caches.open(PAGES_CACHE);
+      await cache.put(request, networkResponse.clone());
+      await trimPagesCache(cache);
+    }
+    return networkResponse;
+  } catch (_error) {
+    const cachedResponse = await caches.match(request, { cacheName: PAGES_CACHE });
+    return cachedResponse || caches.match(OFFLINE_URL);
+  }
+}
+
 self.addEventListener("fetch", (event) => {
   const { request } = event;
-  if (request.method !== "GET") return;
-
   const requestUrl = new URL(request.url);
   if (requestUrl.origin !== self.location.origin) return;
 
-  if (request.mode === "navigate") {
+  // Logging out ends the session, so any pages cached for it must not outlive it
+  // on a shared device.
+  if (request.method === "POST" && requestUrl.pathname === LOGOUT_URL) {
     event.respondWith(
-      fetch(request).catch(() => caches.match(OFFLINE_URL))
+      fetch(request).then((response) => {
+        event.waitUntil(caches.delete(PAGES_CACHE));
+        return response;
+      })
     );
+    return;
+  }
+
+  if (request.method !== "GET") return;
+
+  if (request.mode === "navigate") {
+    event.respondWith(servePage(request));
     return;
   }
 
