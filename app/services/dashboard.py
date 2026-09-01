@@ -1,7 +1,7 @@
 from copy import deepcopy
 from dataclasses import dataclass
 
-DASHBOARD_LAYOUT_VERSION = 1
+DASHBOARD_LAYOUT_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -76,7 +76,18 @@ def default_dashboard_layout():
         "version": DASHBOARD_LAYOUT_VERSION,
         "order": list(DASHBOARD_WIDGET_IDS),
         "hidden": [],
+        "wide": [],
     }
+
+
+def _clean_known_ids(values):
+    cleaned = []
+    seen = set()
+    for widget_id in values:
+        if isinstance(widget_id, str) and widget_id in DASHBOARD_WIDGET_BY_ID and widget_id not in seen:
+            cleaned.append(widget_id)
+            seen.add(widget_id)
+    return cleaned
 
 
 def normalize_dashboard_layout(layout):
@@ -85,7 +96,8 @@ def normalize_dashboard_layout(layout):
 
     order = layout.get("order")
     hidden = layout.get("hidden")
-    if not isinstance(order, list) or not isinstance(hidden, list):
+    wide = layout.get("wide", [])
+    if not isinstance(order, list) or not isinstance(hidden, list) or not isinstance(wide, list):
         return default_dashboard_layout()
 
     normalized_order = []
@@ -100,21 +112,11 @@ def normalize_dashboard_layout(layout):
     if not normalized_order:
         normalized_order = list(DASHBOARD_WIDGET_IDS)
 
-    normalized_hidden = []
-    hidden_seen = set()
-    for widget_id in hidden:
-        if (
-            isinstance(widget_id, str)
-            and widget_id in DASHBOARD_WIDGET_BY_ID
-            and widget_id not in hidden_seen
-        ):
-            normalized_hidden.append(widget_id)
-            hidden_seen.add(widget_id)
-
     return {
         "version": DASHBOARD_LAYOUT_VERSION,
         "order": normalized_order,
-        "hidden": normalized_hidden,
+        "hidden": _clean_known_ids(hidden),
+        "wide": _clean_known_ids(wide),
     }
 
 
@@ -126,10 +128,13 @@ def validate_dashboard_layout(layout):
 
     order = layout.get("order")
     hidden = layout.get("hidden")
+    wide = layout.get("wide")
     if not isinstance(order, list) or not all(isinstance(widget_id, str) for widget_id in order):
         return False, "Die Reihenfolge muss eine Liste aus Widget-IDs sein."
     if not isinstance(hidden, list) or not all(isinstance(widget_id, str) for widget_id in hidden):
         return False, "Die ausgeblendeten Widgets müssen eine Liste aus Widget-IDs sein."
+    if not isinstance(wide, list) or not all(isinstance(widget_id, str) for widget_id in wide):
+        return False, "Die verbreiterten Widgets müssen eine Liste aus Widget-IDs sein."
 
     if len(order) != len(DASHBOARD_WIDGET_IDS):
         return False, "Die Reihenfolge muss alle Dashboard-Widgets enthalten."
@@ -141,6 +146,10 @@ def validate_dashboard_layout(layout):
         return False, "Die ausgeblendeten Widgets enthalten doppelte Widget-IDs."
     if not set(hidden).issubset(DASHBOARD_WIDGET_BY_ID):
         return False, "Die ausgeblendeten Widgets enthalten unbekannte Widget-IDs."
+    if len(set(wide)) != len(wide):
+        return False, "Die verbreiterten Widgets enthalten doppelte Widget-IDs."
+    if not set(wide).issubset(DASHBOARD_WIDGET_BY_ID):
+        return False, "Die verbreiterten Widgets enthalten unbekannte Widget-IDs."
 
     return True, ""
 
@@ -157,6 +166,7 @@ def dashboard_widgets_for_layout(layout, flags, *, include_hidden=False):
     normalized_layout = normalize_dashboard_layout(layout)
     available_ids = {widget.id for widget in available_dashboard_widgets(flags)}
     hidden_ids = set(normalized_layout["hidden"])
+    wide_ids = set(normalized_layout["wide"])
     widgets = []
 
     for widget_id in normalized_layout["order"]:
@@ -172,6 +182,7 @@ def dashboard_widgets_for_layout(layout, flags, *, include_hidden=False):
                 "template": widget.template,
                 "class_name": widget.class_name,
                 "hidden": widget.id in hidden_ids,
+                "wide": widget.id in wide_ids,
             }
         )
 

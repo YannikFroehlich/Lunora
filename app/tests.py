@@ -5536,11 +5536,12 @@ class DashboardCustomizationTests(TestCase):
     def _login(self):
         self.client.login(username="mira@example.com", password="secret-12345")
 
-    def _layout(self, *, order=None, hidden=None):
+    def _layout(self, *, order=None, hidden=None, wide=None):
         return {
-            "version": 1,
+            "version": 2,
             "order": order or list(DASHBOARD_WIDGET_IDS),
             "hidden": hidden or [],
+            "wide": wide or [],
         }
 
     def test_home_uses_default_layout_and_creates_missing_profile(self):
@@ -5579,6 +5580,20 @@ class DashboardCustomizationTests(TestCase):
             order,
         )
 
+    def test_home_renders_wide_widgets_with_span_class(self):
+        self.profile.dashboard_layout = self._layout(wide=["weather", "clock"])
+        self.profile.save(update_fields=["dashboard_layout"])
+        self._login()
+
+        response = self.client.get("/home/")
+
+        widgets_by_id = {widget["id"]: widget for widget in response.context["dashboard_widgets"]}
+        self.assertTrue(widgets_by_id["weather"]["wide"])
+        self.assertTrue(widgets_by_id["clock"]["wide"])
+        self.assertFalse(widgets_by_id["welcome"]["wide"])
+        self.assertContains(response, "dashboard-widget--wide")
+        self.assertContains(response, 'aria-pressed="true"')
+
     def test_home_keeps_hidden_widgets_for_edit_mode_and_shows_empty_state(self):
         self.profile.dashboard_layout = self._layout(hidden=list(DASHBOARD_WIDGET_IDS))
         self.profile.save(update_fields=["dashboard_layout"])
@@ -5596,12 +5611,27 @@ class DashboardCustomizationTests(TestCase):
             "version": 1,
             "order": ["clock", "unknown", "clock", "welcome"],
             "hidden": ["removed", "weather", "weather"],
+            "wide": ["removed", "clock", "clock"],
         }
 
         normalized = normalize_dashboard_layout(broken_layout)
 
+        self.assertEqual(normalized["version"], 2)
         self.assertEqual(normalized["order"][:2], ["clock", "welcome"])
         self.assertEqual(set(normalized["order"]), set(DASHBOARD_WIDGET_IDS))
+        self.assertEqual(normalized["hidden"], ["weather"])
+        self.assertEqual(normalized["wide"], ["clock"])
+
+    def test_normalization_defaults_wide_for_layouts_saved_before_the_feature_existed(self):
+        pre_existing_layout = {
+            "version": 1,
+            "order": list(DASHBOARD_WIDGET_IDS),
+            "hidden": ["weather"],
+        }
+
+        normalized = normalize_dashboard_layout(pre_existing_layout)
+
+        self.assertEqual(normalized["wide"], [])
         self.assertEqual(normalized["hidden"], ["weather"])
 
     def test_saved_hidden_layout_is_ignored_when_customization_is_disabled(self):
@@ -5667,6 +5697,7 @@ class DashboardCustomizationTests(TestCase):
                 "notifications",
             ],
             hidden=["clock", "weather"],
+            wide=["recent_tools", "weather"],
         )
         self._login()
 
@@ -5686,12 +5717,15 @@ class DashboardCustomizationTests(TestCase):
     def test_dashboard_layout_api_rejects_invalid_layouts_without_saving(self):
         original_layout = self.profile.dashboard_layout
         invalid_layouts = [
-            {"version": 1, "order": ["welcome"], "hidden": []},
+            {"version": 2, "order": ["welcome"], "hidden": [], "wide": []},
             self._layout(
                 order=["welcome", "welcome", "clock", "weather", "upcoming_events", "quick_actions"]
             ),
             self._layout(order=["welcome", "clock", "weather", "upcoming_events", "quick_actions", "bogus"]),
-            {"version": 1, "order": list(DASHBOARD_WIDGET_IDS), "hidden": "weather"},
+            {"version": 2, "order": list(DASHBOARD_WIDGET_IDS), "hidden": "weather", "wide": []},
+            {"version": 2, "order": list(DASHBOARD_WIDGET_IDS), "hidden": [], "wide": "weather"},
+            self._layout(wide=["welcome", "welcome"]),
+            self._layout(wide=["bogus"]),
             ["welcome", "clock"],
         ]
         self._login()

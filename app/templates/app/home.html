@@ -46,7 +46,7 @@
 
     <div class="dashboard-grid" data-dashboard-grid>
         {% for widget in dashboard_widgets %}
-        <section class="glass-panel dashboard-widget {{ widget.class_name }} {% if widget.hidden %}is-hidden-by-user{% endif %}"
+        <section class="glass-panel dashboard-widget {{ widget.class_name }} {% if widget.wide %}dashboard-widget--wide{% endif %} {% if widget.hidden %}is-hidden-by-user{% endif %}"
                  data-dashboard-widget
                  data-widget-id="{{ widget.id }}"
                  data-widget-label="{{ widget.label }}"
@@ -60,6 +60,9 @@
                 </button>
                 <button type="button" data-dashboard-move="1" aria-label="{{ widget.label }} nach hinten schieben">
                     <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
+                </button>
+                <button type="button" data-dashboard-resize aria-pressed="{% if widget.wide %}true{% else %}false{% endif %}" aria-label="{{ widget.label }} Breite umschalten">
+                    <i class="fa-solid fa-arrows-left-right" aria-hidden="true"></i>
                 </button>
             </div>
             {% endif %}
