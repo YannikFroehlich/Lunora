@@ -383,6 +383,8 @@ def get_calendar_context(user, *, year=None, month=None):
     busy_days = {localtime_for_user(event.start_at, user).date() for event in month_events}
     calendar_reminders_enabled = feature_enabled("calendar_reminders")
     reminder_items = _calendar_reminder_items(user, now) if calendar_reminders_enabled else []
+    tasks_enabled = feature_enabled("tasks")
+    due_tasks = dashboard_today_tasks(user, now, limit=8) if tasks_enabled else []
     chart_bars = _calendar_chart_bars(month_events, year, month, user)
     prev_month = _shift_month(year, month, -1)
     next_month = _shift_month(year, month, 1)
@@ -407,6 +409,8 @@ def get_calendar_context(user, *, year=None, month=None):
         "calendar_reminders_enabled": calendar_reminders_enabled,
         "calendar_event_creation_enabled": feature_enabled("calendar_event_creation"),
         "calendar_sync_enabled": feature_enabled("calendar_sync"),
+        "tasks_enabled": tasks_enabled,
+        "due_tasks": due_tasks,
     }
 
 

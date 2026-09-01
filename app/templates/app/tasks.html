@@ -285,6 +285,19 @@
                     </button>
                     {% endif %}
 
+                    <button type="button" class="task-edit-button" data-task-edit-open
+                        data-task-id="{{ item.task.id }}"
+                        data-edit-title="{{ item.title }}"
+                        data-edit-due="{{ item.task.due_at|date:'Y-m-d\TH:i' }}"
+                        data-edit-priority="{{ item.priority }}"
+                        data-edit-list="{{ item.task_list_id|default_if_none:'' }}"
+                        data-edit-recurrence="{{ item.task.recurrence_rule }}"
+                        data-edit-labels="{% for label in item.labels %}{{ label.id }}{% if not forloop.last %},{% endif %}{% endfor %}"
+                        data-edit-parent="{{ item.parent_id|default_if_none:'' }}"
+                        aria-label="Aufgabe bearbeiten">
+                        <i class="fa-solid fa-pen" aria-hidden="true"></i>
+                    </button>
+
                     <button class="task-delete-button" type="submit" name="form_name" value="task_delete" aria-label="Aufgabe löschen">
                         <i class="fa-solid fa-trash" aria-hidden="true"></i>
                     </button>
@@ -331,6 +344,19 @@
 
                     <span class="task-status is-{{ child.status_tone }}">{{ child.status_label }}</span>
 
+                    <button type="button" class="task-edit-button" data-task-edit-open
+                        data-task-id="{{ child.task.id }}"
+                        data-edit-title="{{ child.title }}"
+                        data-edit-due="{{ child.task.due_at|date:'Y-m-d\TH:i' }}"
+                        data-edit-priority="{{ child.priority }}"
+                        data-edit-list="{{ child.task_list_id|default_if_none:'' }}"
+                        data-edit-recurrence="{{ child.task.recurrence_rule }}"
+                        data-edit-labels="{% for label in child.labels %}{{ label.id }}{% if not forloop.last %},{% endif %}{% endfor %}"
+                        data-edit-parent="{{ child.parent_id|default_if_none:'' }}"
+                        aria-label="Unteraufgabe bearbeiten">
+                        <i class="fa-solid fa-pen" aria-hidden="true"></i>
+                    </button>
+
                     <button class="task-delete-button" type="submit" name="form_name" value="task_delete" aria-label="Unteraufgabe löschen">
                         <i class="fa-solid fa-trash" aria-hidden="true"></i>
                     </button>
@@ -366,6 +392,69 @@
         </section>
     </div>
 </section>
+
+<dialog class="task-edit-dialog" data-task-edit-dialog data-has-errors="{{ edit_form.errors|yesno:'true,false' }}" aria-labelledby="task-edit-dialog-title">
+    <section class="glass-panel task-edit-dialog-card">
+        <header class="task-edit-dialog-header">
+            <h2 id="task-edit-dialog-title">Aufgabe bearbeiten</h2>
+            <button class="icon-button" type="button" data-task-edit-dialog-close aria-label="Dialog schließen">
+                <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+            </button>
+        </header>
+
+        <form method="post" data-task-edit-form>
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="task_edit">
+            <input type="hidden" name="task_id" value="{{ editing_task_id|default:'' }}" data-task-edit-id-input>
+            {{ edit_form.parent }}
+            {% if edit_form.non_field_errors %}
+            <div class="task-form-errors is-wide" role="alert">{{ edit_form.non_field_errors }}</div>
+            {% endif %}
+
+            <label class="task-edit-field is-wide">
+                <span>Titel</span>
+                {{ edit_form.title }}
+                {{ edit_form.title.errors }}
+            </label>
+
+            <label class="task-edit-field is-wide" for="{{ edit_form.due_at.id_for_label }}">
+                <span>{{ edit_form.due_at.label }}</span>
+                {{ edit_form.due_at }}
+                {{ edit_form.due_at.errors }}
+            </label>
+
+            <label class="task-add-more-field">
+                <span>{{ edit_form.task_list.label }}</span>
+                {{ edit_form.task_list }}
+            </label>
+
+            <label class="task-add-more-field">
+                <span>{{ edit_form.priority.label }}</span>
+                {{ edit_form.priority }}
+            </label>
+
+            <label class="task-add-more-field">
+                <span>{{ edit_form.recurrence_rule.label }}</span>
+                {{ edit_form.recurrence_rule }}
+            </label>
+
+            <div class="task-edit-field is-wide task-add-labels">
+                <span>{{ edit_form.labels.label }}</span>
+                <div class="task-label-checks">
+                    {{ edit_form.labels }}
+                </div>
+            </div>
+
+            <div class="task-edit-dialog-actions is-wide">
+                <button class="ghost-button" type="button" data-task-edit-dialog-close>Abbrechen</button>
+                <button class="primary-button" type="submit">
+                    <i class="fa-solid fa-check" aria-hidden="true"></i>
+                    Änderungen speichern
+                </button>
+            </div>
+        </form>
+    </section>
+</dialog>
 {% endblock %}
 
 {% block page_js %}

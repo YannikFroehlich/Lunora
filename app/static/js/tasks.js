@@ -218,5 +218,72 @@
     });
   }
 
+  const editDialog = document.querySelector("[data-task-edit-dialog]");
+
+  if (editDialog) {
+    const editForm = editDialog.querySelector("[data-task-edit-form]");
+    const idInput = editForm?.querySelector("[data-task-edit-id-input]");
+    const titleInput = editForm?.querySelector("input[name='title']");
+    const dueInput = editForm?.querySelector("input[name='due_at']");
+    const listSelect = editForm?.querySelector("select[name='task_list']");
+    const prioritySelect = editForm?.querySelector("select[name='priority']");
+    const recurrenceSelect = editForm?.querySelector("select[name='recurrence_rule']");
+    const parentInput = editForm?.querySelector("input[name='parent']");
+    const labelInputs = editForm?.querySelectorAll("input[name='labels']") || [];
+
+    const openEditDialog = (data) => {
+      if (idInput) idInput.value = data.taskId || "";
+      if (titleInput) titleInput.value = data.title || "";
+      if (dueInput) dueInput.value = data.due || "";
+      if (listSelect) listSelect.value = data.list || "";
+      if (prioritySelect) prioritySelect.value = data.priority || "none";
+      if (recurrenceSelect) recurrenceSelect.value = data.recurrence || "none";
+      if (parentInput) parentInput.value = data.parent || "";
+
+      const labelIds = (data.labels || "").split(",").filter(Boolean);
+      labelInputs.forEach((input) => {
+        input.checked = labelIds.includes(input.value);
+      });
+
+      if (!editDialog.open) {
+        editDialog.showModal();
+      }
+
+      window.setTimeout(() => titleInput?.focus(), 0);
+    };
+
+    document.querySelectorAll("[data-task-edit-open]").forEach((button) => {
+      button.addEventListener("click", () =>
+        openEditDialog({
+          taskId: button.dataset.taskId,
+          title: button.dataset.editTitle,
+          due: button.dataset.editDue,
+          list: button.dataset.editList,
+          priority: button.dataset.editPriority,
+          recurrence: button.dataset.editRecurrence,
+          labels: button.dataset.editLabels,
+          parent: button.dataset.editParent,
+        })
+      );
+    });
+
+    editDialog.querySelectorAll("[data-task-edit-dialog-close]").forEach((button) => {
+      button.addEventListener("click", () => editDialog.close());
+    });
+
+    editDialog.addEventListener("click", (event) => {
+      if (event.target === editDialog) {
+        editDialog.close();
+      }
+    });
+
+    if (editDialog.dataset.hasErrors === "true") {
+      if (!editDialog.open) {
+        editDialog.showModal();
+      }
+      window.setTimeout(() => titleInput?.focus(), 0);
+    }
+  }
+
   applyTaskView();
 })();

@@ -1881,6 +1881,33 @@ class SettingsProfileTests(TestCase):
         event.refresh_from_db()
         self.assertEqual(event.title, "Termin")
 
+    def test_calendar_context_includes_due_tasks(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        now = timezone.now()
+        Task.objects.create(user=user, title="Heute fällig", due_at=now)
+        Task.objects.create(user=user, title="Überfällig", due_at=now - timedelta(days=1))
+        Task.objects.create(user=user, title="Erledigt", due_at=now, is_done=True)
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get("/calendar/")
+
+        due_task_titles = {item["title"] for item in response.context["due_tasks"]}
+        self.assertEqual(due_task_titles, {"Heute fällig", "Überfällig"})
+        self.assertContains(response, "Fällige Aufgaben")
+
+    def test_calendar_due_tasks_hidden_when_tasks_disabled(self):
+        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=user, display_name="Mira")
+        Task.objects.create(user=user, title="Heute fällig", due_at=timezone.now())
+        SystemSettings.objects.create(tasks_enabled=False)
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get("/calendar/")
+
+        self.assertEqual(response.context["due_tasks"], [])
+        self.assertNotContains(response, "Fällige Aufgaben")
+
     def test_calendar_sync_request_is_queued_and_visible(self):
         user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
         Profile.objects.create(user=user, display_name="Mira")
@@ -2340,6 +2367,67 @@ class TaskTests(TestCase):
 
         response = self.client.get("/tasks/")
         self.assertNotContains(response, "Privat")
+
+    def test_task_edit_updates_fields(self):
+        self._login()
+        task_list = TaskList.objects.create(owner=self.user, name="Projekt")
+        label = TaskLabel.objects.create(owner=self.user, name="Wichtig")
+        task = Task.objects.create(user=self.user, title="Alter Titel")
+        due_at = timezone.localtime(timezone.now() + timedelta(days=2)).replace(second=0, microsecond=0)
+
+        response = self.client.post(
+            "/tasks/",
+            {
+                "form_name": "task_edit",
+                "task_id": str(task.id),
+                "title": "Neuer Titel",
+                "due_at": due_at.strftime("%Y-%m-%dT%H:%M"),
+                "task_list": str(task_list.id),
+                "priority": "high",
+                "recurrence_rule": "WEEKLY",
+                "labels": [str(label.id)],
+            },
+        )
+
+        self.assertRedirects(response, "/tasks/")
+        task.refresh_from_db()
+        self.assertEqual(task.title, "Neuer Titel")
+        self.assertEqual(
+            timezone.localtime(task.due_at).strftime("%Y-%m-%dT%H:%M"),
+            due_at.strftime("%Y-%m-%dT%H:%M"),
+        )
+        self.assertEqual(task.task_list_id, task_list.id)
+        self.assertEqual(task.priority, "high")
+        self.assertEqual(task.recurrence_rule, "WEEKLY")
+        self.assertEqual(list(task.labels.all()), [label])
+
+    def test_task_edit_cannot_target_another_users_task(self):
+        other = User.objects.create_user(
+            username="lukas@example.com", email="lukas@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=other, display_name="Lukas")
+        task = Task.objects.create(user=other, title="Fremde Aufgabe")
+        self._login()
+
+        self.client.post(
+            "/tasks/",
+            {"form_name": "task_edit", "task_id": str(task.id), "title": "Übernommen"},
+        )
+
+        task.refresh_from_db()
+        self.assertEqual(task.title, "Fremde Aufgabe")
+
+    def test_task_edit_rejects_blank_title(self):
+        self._login()
+        task = Task.objects.create(user=self.user, title="Bleibt gleich")
+
+        self.client.post(
+            "/tasks/",
+            {"form_name": "task_edit", "task_id": str(task.id), "title": ""},
+        )
+
+        task.refresh_from_db()
+        self.assertEqual(task.title, "Bleibt gleich")
 
     def test_due_task_reminder_email_is_sent_only_once(self):
         task = Task.objects.create(
