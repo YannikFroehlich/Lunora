@@ -14,6 +14,8 @@ from app.services.tasks import (
     delete_task_label,
     delete_task_list,
     get_tasks_context,
+    move_task,
+    move_task_list,
     rename_task_list,
     toggle_task,
 )
@@ -128,8 +130,32 @@ def tasks(request):
         except TaskLabel.DoesNotExist:
             pass
         return redirect(request.get_full_path())
+    elif form_name == "task_reorder":
+        try:
+            move_task(
+                request.user,
+                task_id=request.POST.get("task_id"),
+                target_id=request.POST.get("target_id"),
+                placement=request.POST.get("placement"),
+            )
+        except (Task.DoesNotExist, ValidationError):
+            pass
+        return redirect(f"{request.path}?sort=manual")
+    elif form_name == "task_list_reorder":
+        try:
+            move_task_list(
+                request.user,
+                task_list_id=request.POST.get("task_list_id"),
+                target_id=request.POST.get("target_id"),
+                placement=request.POST.get("placement"),
+            )
+        except (TaskList.DoesNotExist, ValidationError):
+            pass
+        return redirect(request.get_full_path())
 
-    context = get_tasks_context(request.user)
+    sort = request.GET.get("sort")
+    context = get_tasks_context(request.user, sort=sort)
+    context["sort"] = sort
     context["task_form"] = task_form
     context["task_list_form"] = TaskListForm()
     context["task_label_form"] = TaskLabelForm()

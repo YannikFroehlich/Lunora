@@ -66,8 +66,21 @@
     return PRIORITY_RANK[row.dataset.taskPriority] ?? 0;
   }
 
+  function dragEnabled() {
+    return sortSelect ? sortSelect.value === "manual" : false;
+  }
+
+  function syncDragAffordance() {
+    const enabled = dragEnabled();
+    document.querySelectorAll("[data-task-row]").forEach((row) => {
+      row.classList.toggle("is-drag-enabled", enabled);
+    });
+  }
+
   function compareRows(first, second) {
     const sortMode = sortSelect ? sortSelect.value : "due";
+
+    if (sortMode === "manual") return 0;
 
     if (sortMode === "title") {
       return (first.dataset.taskTitle || "").localeCompare(
@@ -129,6 +142,8 @@
         ? "Eine Aufgabe wird angezeigt."
         : `${visibleCount} Aufgaben werden angezeigt.`;
     }
+
+    syncDragAffordance();
   }
 
   filterButtons.forEach((button) => {
@@ -152,7 +167,18 @@
     });
   });
 
-  if (sortSelect) sortSelect.addEventListener("change", applyTaskView);
+  if (sortSelect) {
+    sortSelect.addEventListener("change", () => {
+      // Manual mode reorders relative to the true saved position order, which can differ
+      // from whatever sort was on screen a moment ago — reload so the display (and thus
+      // what dragging appears to operate on) matches that true order before anyone drags.
+      if (sortSelect.value === "manual" && sortSelect.dataset.initialSort !== "manual") {
+        window.location.href = `${window.location.pathname}?sort=manual`;
+        return;
+      }
+      applyTaskView();
+    });
+  }
 
   if (resetButton) {
     resetButton.addEventListener("click", () => {
@@ -284,6 +310,116 @@
       window.setTimeout(() => titleInput?.focus(), 0);
     }
   }
+
+  if (sortSelect && sortSelect.dataset.initialSort === "manual") {
+    sortSelect.value = "manual";
+  }
+
+  let draggedTaskRow = null;
+
+  document.addEventListener("dragstart", (event) => {
+    const row = event.target.closest("[data-task-row]");
+    if (!row) return;
+    const handle = event.target.closest(".task-drag-handle");
+    if (!handle || !dragEnabled()) {
+      event.preventDefault();
+      return;
+    }
+    draggedTaskRow = row;
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", row.dataset.taskId || "");
+  });
+
+  document.addEventListener("dragend", () => {
+    draggedTaskRow = null;
+    document.querySelectorAll(".is-drop-before, .is-drop-after").forEach((el) => {
+      el.classList.remove("is-drop-before", "is-drop-after");
+    });
+  });
+
+  let draggedTaskListItem = null;
+
+  document.addEventListener("dragstart", (event) => {
+    const item = event.target.closest("[data-task-list-item]");
+    if (!item) return;
+    const handle = event.target.closest(".task-drag-handle");
+    if (!handle) {
+      event.preventDefault();
+      return;
+    }
+    draggedTaskListItem = item;
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", item.dataset.taskListId || "");
+  });
+
+  document.addEventListener("dragend", () => {
+    draggedTaskListItem = null;
+    document.querySelectorAll(".is-drop-before, .is-drop-after").forEach((el) => {
+      el.classList.remove("is-drop-before", "is-drop-after");
+    });
+  });
+
+  document.addEventListener("dragover", (event) => {
+    if (draggedTaskRow) {
+      const row = event.target.closest("[data-task-row]");
+      if (!row || row === draggedTaskRow || row.dataset.taskParent !== draggedTaskRow.dataset.taskParent) return;
+      event.preventDefault();
+      const rect = row.getBoundingClientRect();
+      const isBefore = event.clientY < rect.top + rect.height / 2;
+      document.querySelectorAll(".is-drop-before, .is-drop-after").forEach((el) => {
+        if (el !== row) el.classList.remove("is-drop-before", "is-drop-after");
+      });
+      row.classList.toggle("is-drop-before", isBefore);
+      row.classList.toggle("is-drop-after", !isBefore);
+      return;
+    }
+
+    if (draggedTaskListItem) {
+      const item = event.target.closest("[data-task-list-item]");
+      if (!item || item === draggedTaskListItem) return;
+      event.preventDefault();
+      const rect = item.getBoundingClientRect();
+      const isBefore = event.clientY < rect.top + rect.height / 2;
+      document.querySelectorAll(".is-drop-before, .is-drop-after").forEach((el) => {
+        if (el !== item) el.classList.remove("is-drop-before", "is-drop-after");
+      });
+      item.classList.toggle("is-drop-before", isBefore);
+      item.classList.toggle("is-drop-after", !isBefore);
+    }
+  });
+
+  document.addEventListener("drop", (event) => {
+    if (draggedTaskRow) {
+      const row = event.target.closest("[data-task-row]");
+      if (row && row !== draggedTaskRow && row.dataset.taskParent === draggedTaskRow.dataset.taskParent) {
+        event.preventDefault();
+        const placement = row.classList.contains("is-drop-before") ? "before" : "after";
+        const reorderForm = document.getElementById("task-reorder-form");
+        if (reorderForm) {
+          reorderForm.querySelector("[data-reorder-task-id]").value = draggedTaskRow.dataset.taskId;
+          reorderForm.querySelector("[data-reorder-target-id]").value = row.dataset.taskId;
+          reorderForm.querySelector("[data-reorder-placement]").value = placement;
+          reorderForm.submit();
+        }
+      }
+      return;
+    }
+
+    if (draggedTaskListItem) {
+      const item = event.target.closest("[data-task-list-item]");
+      if (item && item !== draggedTaskListItem) {
+        event.preventDefault();
+        const placement = item.classList.contains("is-drop-before") ? "before" : "after";
+        const reorderForm = document.getElementById("task-list-reorder-form");
+        if (reorderForm) {
+          reorderForm.querySelector("[data-list-reorder-task-list-id]").value = draggedTaskListItem.dataset.taskListId;
+          reorderForm.querySelector("[data-list-reorder-target-id]").value = item.dataset.taskListId;
+          reorderForm.querySelector("[data-list-reorder-placement]").value = placement;
+          reorderForm.submit();
+        }
+      }
+    }
+  });
 
   applyTaskView();
 })();

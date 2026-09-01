@@ -558,6 +558,7 @@ class Task(models.Model):
     priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default=PRIORITY_NONE, blank=True)
     recurrence_rule = models.CharField(max_length=10, choices=RECURRENCE_CHOICES, default=RECURRENCE_NONE, blank=True)
     labels = models.ManyToManyField(TaskLabel, blank=True, related_name="tasks")
+    position = models.PositiveIntegerField(default=0)
     is_done = models.BooleanField(default=False)
     email_notified_at = models.DateTimeField(blank=True, null=True)
     desktop_notified_at = models.DateTimeField(blank=True, null=True)

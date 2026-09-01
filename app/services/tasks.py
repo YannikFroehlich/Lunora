@@ -2,6 +2,7 @@ import calendar
 from datetime import timedelta
 
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.db.models import F, Max
 from django.utils import timezone
 
@@ -10,6 +11,7 @@ from app.services.user_preferences import format_user_datetime, format_user_time
 
 
 UPCOMING_WINDOW_DAYS = 7
+TASK_POSITION_STEP = 1000
 
 
 def _add_months(value, months):
@@ -59,6 +61,62 @@ def toggle_task(user, task_id, is_done, *, now=None):
 def delete_task(user, task_id):
     deleted, _details = Task.objects.filter(user=user, pk=task_id).delete()
     return bool(deleted)
+
+
+def _reindex_tasks(tasks):
+    for index, task in enumerate(tasks, start=1):
+        task.position = index * TASK_POSITION_STEP
+    Task.objects.bulk_update(tasks, ["position"])
+
+
+@transaction.atomic
+def move_task(user, *, task_id, target_id, placement):
+    """Reorder a task relative to a sibling. Only tasks at the same level (both
+    top-level, or both subtasks of the same parent) can be reordered against
+    each other — dragging across levels would silently change the hierarchy.
+    """
+    if placement not in {"before", "after"}:
+        raise ValidationError("Das Verschiebeziel ist ungültig.")
+    task = Task.objects.select_for_update().get(user=user, pk=task_id)
+    target = Task.objects.select_for_update().get(user=user, pk=target_id)
+    if task.parent_id != target.parent_id:
+        raise ValidationError("Aufgaben können nur innerhalb derselben Ebene sortiert werden.")
+
+    siblings = list(
+        Task.objects.filter(user=user, parent_id=task.parent_id)
+        .exclude(pk=task.id)
+        .select_for_update()
+        .order_by("position", "id")
+    )
+    target_index = next(index for index, sibling in enumerate(siblings) if sibling.id == target.id)
+    insertion_index = target_index if placement == "before" else target_index + 1
+    siblings.insert(insertion_index, task)
+    _reindex_tasks(siblings)
+
+
+def _reindex_task_lists(task_lists):
+    for index, task_list in enumerate(task_lists, start=1):
+        task_list.position = index * TASK_POSITION_STEP
+    TaskList.objects.bulk_update(task_lists, ["position"])
+
+
+@transaction.atomic
+def move_task_list(user, *, task_list_id, target_id, placement):
+    if placement not in {"before", "after"}:
+        raise ValidationError("Das Verschiebeziel ist ungültig.")
+    task_list = TaskList.objects.select_for_update().get(owner=user, pk=task_list_id)
+    target = TaskList.objects.select_for_update().get(owner=user, pk=target_id)
+
+    siblings = list(
+        TaskList.objects.filter(owner=user)
+        .exclude(pk=task_list.id)
+        .select_for_update()
+        .order_by("position", "id")
+    )
+    target_index = next(index for index, sibling in enumerate(siblings) if sibling.id == target.id)
+    insertion_index = target_index if placement == "before" else target_index + 1
+    siblings.insert(insertion_index, task_list)
+    _reindex_task_lists(siblings)
 
 
 def create_task_list(user, *, name, color=None):
@@ -225,14 +283,15 @@ def dashboard_today_tasks(user, now, limit=5):
     ]
 
 
-def get_tasks_context(user, *, now=None):
+def get_tasks_context(user, *, now=None, sort=None):
     now = now or localtime_for_user(profile_or_user=user)
 
+    order_by = ("is_done", "position", "id") if sort == "manual" else ("is_done", F("due_at").asc(nulls_last=True), "-created_at")
     all_tasks = list(
         Task.objects.filter(user=user)
         .select_related("task_list")
         .prefetch_related("labels")
-        .order_by("is_done", F("due_at").asc(nulls_last=True), "-created_at")
+        .order_by(*order_by)
     )
 
     subtasks_by_parent = {}

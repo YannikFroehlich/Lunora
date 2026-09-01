@@ -2429,6 +2429,90 @@ class TaskTests(TestCase):
         task.refresh_from_db()
         self.assertEqual(task.title, "Bleibt gleich")
 
+    def test_task_reorder_updates_positions(self):
+        self._login()
+        first = Task.objects.create(user=self.user, title="Erstens")
+        second = Task.objects.create(user=self.user, title="Zweitens")
+        third = Task.objects.create(user=self.user, title="Drittens")
+
+        response = self.client.post(
+            "/tasks/",
+            {"form_name": "task_reorder", "task_id": str(third.id), "target_id": str(first.id), "placement": "before"},
+        )
+
+        self.assertRedirects(response, "/tasks/?sort=manual")
+        ordered_ids = list(
+            Task.objects.filter(user=self.user).order_by("position", "id").values_list("id", flat=True)
+        )
+        self.assertEqual(ordered_ids, [third.id, first.id, second.id])
+
+    def test_task_reorder_rejects_cross_parent_move(self):
+        self._login()
+        parent_a = Task.objects.create(user=self.user, title="Eltern A")
+        parent_b = Task.objects.create(user=self.user, title="Eltern B")
+        subtask = Task.objects.create(user=self.user, title="Unteraufgabe", parent=parent_a)
+
+        self.client.post(
+            "/tasks/",
+            {"form_name": "task_reorder", "task_id": str(subtask.id), "target_id": str(parent_b.id), "placement": "after"},
+        )
+
+        subtask.refresh_from_db()
+        self.assertEqual(subtask.parent_id, parent_a.id)
+
+    def test_task_reorder_cannot_target_another_users_task(self):
+        other = User.objects.create_user(
+            username="lukas@example.com", email="lukas@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=other, display_name="Lukas")
+        mine = Task.objects.create(user=self.user, title="Meine Aufgabe", position=1000)
+        theirs = Task.objects.create(user=other, title="Fremde Aufgabe", position=2000)
+        self._login()
+
+        self.client.post(
+            "/tasks/",
+            {"form_name": "task_reorder", "task_id": str(mine.id), "target_id": str(theirs.id), "placement": "before"},
+        )
+
+        mine.refresh_from_db()
+        theirs.refresh_from_db()
+        self.assertEqual(mine.position, 1000)
+        self.assertEqual(theirs.position, 2000)
+
+    def test_task_list_reorder_updates_positions(self):
+        self._login()
+        first = TaskList.objects.create(owner=self.user, name="Erste")
+        second = TaskList.objects.create(owner=self.user, name="Zweite")
+        third = TaskList.objects.create(owner=self.user, name="Dritte")
+
+        response = self.client.post(
+            "/tasks/",
+            {
+                "form_name": "task_list_reorder",
+                "task_list_id": str(third.id),
+                "target_id": str(first.id),
+                "placement": "before",
+            },
+        )
+
+        self.assertRedirects(response, "/tasks/")
+        ordered_ids = list(
+            TaskList.objects.filter(owner=self.user).order_by("position", "id").values_list("id", flat=True)
+        )
+        self.assertEqual(ordered_ids, [third.id, first.id, second.id])
+
+    def test_manual_sort_orders_tasks_by_position(self):
+        self._login()
+        now = timezone.now()
+        # due_at order would put "Später fällig" first; position order should reverse that.
+        Task.objects.create(user=self.user, title="Früher fällig", due_at=now + timedelta(days=1), position=2000)
+        Task.objects.create(user=self.user, title="Später fällig", due_at=now + timedelta(days=5), position=1000)
+
+        response = self.client.get("/tasks/?sort=manual")
+
+        titles = [item["title"] for item in response.context["tasks"]]
+        self.assertEqual(titles, ["Später fällig", "Früher fällig"])
+
     def test_due_task_reminder_email_is_sent_only_once(self):
         task = Task.objects.create(
             user=self.user,
