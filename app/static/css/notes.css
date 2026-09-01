@@ -1141,6 +1141,7 @@
 
 .note-editor-page {
   /* A4 at 96dpi (210mm x 297mm), padding matching the PDF export's margins (19mm sides/bottom, 18mm top) */
+  position: relative;
   width: min(100%, 794px);
   min-height: 1123px;
   display: flex;
@@ -1562,12 +1563,115 @@
   color: #d8b26a;
 }
 
-.note-image {
+.note-image-wrapper {
+  position: relative;
   display: block;
   max-width: 100%;
-  height: auto;
   margin: 18px auto;
+}
+
+.note-image-wrapper .note-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0;
   border-radius: 10px;
+}
+
+.note-image-wrapper.is-selected .note-image {
+  outline: 1px solid color-mix(in srgb, var(--color-accent-strong) 30%, transparent);
+  outline-offset: 2px;
+}
+
+.note-image-wrapper.is-resizing {
+  outline: 1px dashed var(--color-accent-strong);
+  outline-offset: 4px;
+}
+
+.note-image-resize-handle {
+  position: absolute;
+  z-index: 5;
+  width: 12px;
+  height: 12px;
+  background: var(--color-accent-strong);
+  border: 2px solid var(--surface-panel);
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.note-image-wrapper.is-selected .note-image-resize-handle {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.note-image-resize-handle-nw { top: -6px; left: -6px; cursor: nwse-resize; }
+.note-image-resize-handle-ne { top: -6px; right: -6px; cursor: nesw-resize; }
+.note-image-resize-handle-se { bottom: -6px; right: -6px; cursor: nwse-resize; }
+.note-image-resize-handle-sw { bottom: -6px; left: -6px; cursor: nesw-resize; }
+.note-image-resize-handle-w { top: 50%; left: -6px; margin-top: -6px; cursor: ew-resize; }
+.note-image-resize-handle-e { top: 50%; right: -6px; margin-top: -6px; cursor: ew-resize; }
+
+.note-image-wrapper.is-floating {
+  position: absolute;
+  z-index: 20;
+  margin: 0;
+}
+
+.note-image-wrapper.is-floating .note-image {
+  cursor: move;
+}
+
+.note-image-wrapper.is-moving {
+  opacity: 0.85;
+}
+
+.note-image-layout-menu {
+  position: absolute;
+  top: -38px;
+  left: 50%;
+  z-index: 6;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  transform: translateX(-50%);
+  background: color-mix(in srgb, var(--surface-panel) 94%, transparent);
+  border: 1px solid var(--glass-border);
+  border-radius: 9px;
+  box-shadow: 0 10px 28px rgba(35, 29, 23, 0.2);
+  backdrop-filter: blur(14px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.note-image-wrapper.is-selected .note-image-layout-menu {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.note-image-layout-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  color: var(--color-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.note-image-layout-option:hover {
+  background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+  color: var(--color-text);
+}
+
+.note-image-layout-option.is-active {
+  color: var(--color-accent-strong);
+  background: color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
 
 .note-attachment {
@@ -2064,8 +2168,17 @@
   .note-editor-page .tiptap pre,
   .note-editor-page .tiptap table,
   .note-editor-page .note-math-block,
-  .note-editor-page .note-image,
+  .note-editor-page .note-image-wrapper,
   .note-editor-page .note-attachment {
     break-inside: avoid;
+  }
+
+  .note-editor-page .note-image-wrapper.is-floating {
+    position: static !important;
+    margin: 18px auto !important;
+  }
+
+  .note-image-layout-menu {
+    display: none !important;
   }
 }

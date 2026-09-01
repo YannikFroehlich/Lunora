@@ -56,17 +56,183 @@ function attachmentUrl(id, disposition) {
 
 const lowlight = createLowlight(common);
 
+const NOTE_IMAGE_MIN_WIDTH = 120;
+const NOTE_IMAGE_MAX_WIDTH = 1600;
+
+function createNoteImageNodeView() {
+  return ({ node, getPos, editor, extension }) => {
+    const getZoom = () => extension.options.getZoom?.() || 1;
+    const wrapper = document.createElement("span");
+    wrapper.className = "note-image-wrapper";
+
+    const img = document.createElement("img");
+    img.className = "note-image";
+
+    function dispatchAttrs(attrs) {
+      const pos = typeof getPos === "function" ? getPos() : null;
+      if (typeof pos !== "number") return;
+      const tr = editor.view.state.tr;
+      Object.entries(attrs).forEach(([key, value]) => tr.setNodeAttribute(pos, key, value));
+      editor.view.dispatch(tr);
+    }
+
+    function syncFromNode() {
+      wrapper.style.width = `${node.attrs.width}px`;
+      img.setAttribute("data-note-image", "true");
+      img.setAttribute("data-attachment-id", node.attrs.attachmentId || "");
+      img.src = attachmentUrl(node.attrs.attachmentId, "inline");
+      img.alt = node.attrs.alt || "";
+      if (node.attrs.title) img.title = node.attrs.title;
+      wrapper.classList.toggle("is-floating", !!node.attrs.float);
+      wrapper.style.left = node.attrs.float ? `${node.attrs.floatX}px` : "";
+      wrapper.style.top = node.attrs.float ? `${node.attrs.floatY}px` : "";
+      img.draggable = !node.attrs.float;
+      if (layoutInlineBtn && layoutFloatBtn) {
+        layoutInlineBtn.classList.toggle("is-active", !node.attrs.float);
+        layoutFloatBtn.classList.toggle("is-active", !!node.attrs.float);
+      }
+    }
+
+    let layoutInlineBtn = null;
+    let layoutFloatBtn = null;
+
+    wrapper.append(img);
+
+    function startResize(event, corner) {
+      event.preventDefault();
+      event.stopPropagation();
+      const direction = corner.includes("w") ? -1 : 1;
+      const startX = event.clientX;
+      const startWidth = node.attrs.width;
+      let currentWidth = startWidth;
+      wrapper.classList.add("is-resizing");
+
+      function onMove(moveEvent) {
+        const delta = ((moveEvent.clientX - startX) * direction) / getZoom();
+        currentWidth = Math.min(NOTE_IMAGE_MAX_WIDTH, Math.max(NOTE_IMAGE_MIN_WIDTH, Math.round(startWidth + delta)));
+        wrapper.style.width = `${currentWidth}px`;
+      }
+      function onUp() {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        wrapper.classList.remove("is-resizing");
+        dispatchAttrs({ width: Math.round(currentWidth) });
+      }
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp, { once: true });
+    }
+
+    function startMove(event) {
+      if (!node.attrs.float) return;
+      event.preventDefault();
+      const startClientX = event.clientX;
+      const startClientY = event.clientY;
+      const startFloatX = node.attrs.floatX;
+      const startFloatY = node.attrs.floatY;
+      let currentX = startFloatX;
+      let currentY = startFloatY;
+      wrapper.classList.add("is-moving");
+
+      function onMove(moveEvent) {
+        const zoom = getZoom();
+        currentX = Math.round(startFloatX + (moveEvent.clientX - startClientX) / zoom);
+        currentY = Math.round(startFloatY + (moveEvent.clientY - startClientY) / zoom);
+        wrapper.style.left = `${currentX}px`;
+        wrapper.style.top = `${currentY}px`;
+      }
+      function onUp() {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        wrapper.classList.remove("is-moving");
+        dispatchAttrs({ floatX: currentX, floatY: currentY });
+      }
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp, { once: true });
+    }
+
+    if (editor.isEditable) {
+      img.addEventListener("pointerdown", (event) => startMove(event));
+
+      ["nw", "w", "sw", "ne", "e", "se"].forEach((corner) => {
+        const handle = document.createElement("span");
+        handle.className = `note-image-resize-handle note-image-resize-handle-${corner}`;
+        handle.addEventListener("pointerdown", (event) => startResize(event, corner));
+        wrapper.append(handle);
+      });
+
+      const layoutMenu = document.createElement("span");
+      layoutMenu.className = "note-image-layout-menu";
+
+      layoutInlineBtn = document.createElement("button");
+      layoutInlineBtn.type = "button";
+      layoutInlineBtn.className = "note-image-layout-option";
+      layoutInlineBtn.title = "Mit Text verschieben";
+      layoutInlineBtn.innerHTML = '<i class="fa-solid fa-align-left"></i>';
+      layoutInlineBtn.addEventListener("pointerdown", (event) => event.stopPropagation());
+      layoutInlineBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        if (node.attrs.float) dispatchAttrs({ float: false });
+      });
+
+      layoutFloatBtn = document.createElement("button");
+      layoutFloatBtn.type = "button";
+      layoutFloatBtn.className = "note-image-layout-option";
+      layoutFloatBtn.title = "Frei verschiebbar";
+      layoutFloatBtn.innerHTML = '<i class="fa-solid fa-arrows-up-down-left-right"></i>';
+      layoutFloatBtn.addEventListener("pointerdown", (event) => event.stopPropagation());
+      layoutFloatBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        if (node.attrs.float) return;
+        const pageEl = document.querySelector(".note-editor-page");
+        if (!pageEl) return;
+        const pageRect = pageEl.getBoundingClientRect();
+        const wrapperRect = wrapper.getBoundingClientRect();
+        const zoom = getZoom();
+        dispatchAttrs({
+          float: true,
+          floatX: Math.round((wrapperRect.left - pageRect.left) / zoom),
+          floatY: Math.round((wrapperRect.top - pageRect.top) / zoom),
+        });
+      });
+
+      layoutMenu.append(layoutInlineBtn, layoutFloatBtn);
+      wrapper.append(layoutMenu);
+    }
+
+    syncFromNode();
+
+    return {
+      dom: wrapper,
+      update(updatedNode) {
+        if (updatedNode.type.name !== node.type.name) return false;
+        node = updatedNode;
+        syncFromNode();
+        return true;
+      },
+      selectNode() { wrapper.classList.add("is-selected"); },
+      deselectNode() { wrapper.classList.remove("is-selected"); },
+      ignoreMutation: () => true,
+    };
+  };
+}
+
 const NoteImage = Node.create({
   name: "noteImage",
   group: "block",
   atom: true,
   draggable: true,
+  addOptions() {
+    return { getZoom: () => 1 };
+  },
   addAttributes() {
     return {
       attachmentId: { default: null, parseHTML: (element) => element.dataset.attachmentId },
       alt: { default: "", parseHTML: (element) => element.getAttribute("alt") || "" },
       title: { default: null, parseHTML: (element) => element.getAttribute("title") },
       width: { default: 720, parseHTML: (element) => Number(element.getAttribute("width")) || 720 },
+      float: { default: false, parseHTML: (element) => element.dataset.float === "true" },
+      floatX: { default: 0, parseHTML: (element) => Number(element.dataset.floatX) || 0 },
+      floatY: { default: 0, parseHTML: (element) => Number(element.dataset.floatY) || 0 },
     };
   },
   parseHTML() {
@@ -78,11 +244,17 @@ const NoteImage = Node.create({
       mergeAttributes(HTMLAttributes, {
         "data-note-image": "true",
         "data-attachment-id": HTMLAttributes.attachmentId,
+        "data-float": HTMLAttributes.float ? "true" : "false",
+        "data-float-x": HTMLAttributes.floatX,
+        "data-float-y": HTMLAttributes.floatY,
         src: attachmentUrl(HTMLAttributes.attachmentId, "inline"),
         width: HTMLAttributes.width,
         class: "note-image",
       }),
     ];
+  },
+  addNodeView() {
+    return createNoteImageNodeView();
   },
 });
 
@@ -689,7 +861,7 @@ function initNotesApp() {
         TaskList,
         TaskItem.configure({ nested: true }),
         CharacterCount,
-        NoteImage,
+        NoteImage.configure({ getZoom: () => editorZoom }),
         NoteAttachmentNode,
         MathInline.configure({ onEdit: openMathDialog }),
         MathBlock.configure({ onEdit: openMathDialog }),
@@ -770,27 +942,6 @@ function initNotesApp() {
         if (outlinePanel && !outlinePanel.hidden) updateOutline();
       },
       onSelectionUpdate: updateToolbarState,
-    });
-    document.querySelector("[data-note-editor]")?.addEventListener("dblclick", (event) => {
-      const image = event.target.closest("img[data-note-image]");
-      if (!image || !note.can_edit || note.is_deleted) return;
-
-      const currentWidth = Number(image.getAttribute("width")) || 720;
-      const requestedWidth = window.prompt("Bildbreite in Pixeln (120–1600)", String(currentWidth));
-      if (requestedWidth === null) return;
-
-      const width = Number.parseInt(requestedWidth, 10);
-      if (!Number.isInteger(width) || width < 120 || width > 1600) {
-        setStatus("Bitte eine Bildbreite zwischen 120 und 1600 Pixeln eingeben.", "error");
-        return;
-      }
-
-      try {
-        const position = editor.view.posAtDOM(image, 0);
-        editor.chain().focus().setNodeSelection(position).updateAttributes("noteImage", { width }).run();
-      } catch (_error) {
-        setStatus("Die Bildgröße konnte nicht geändert werden.", "error");
-      }
     });
     restoreLocalDraft();
     updateCounts();
@@ -2374,8 +2525,7 @@ function initNotesApp() {
     }
     const item = data.attachment;
     if (kind === "image") {
-      const alt = window.prompt("Alternativtext für das Bild", file.name) ?? file.name;
-      editor.chain().focus().insertContent({ type: "noteImage", attrs: { attachmentId: item.id, alt, title: file.name, width: 720 } }).run();
+      editor.chain().focus().insertContent({ type: "noteImage", attrs: { attachmentId: item.id, alt: file.name, title: file.name, width: 720 } }).run();
     } else {
       editor.chain().focus().insertContent({ type: "noteAttachment", attrs: { attachmentId: item.id, name: item.name, size: item.size } }).run();
     }

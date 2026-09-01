@@ -206,7 +206,7 @@ def _validate_node_attrs(node_type, attrs, state):
         "taskItem": {"checked"},
         "tableCell": {"colspan", "rowspan", "colwidth", "backgroundColor", "align"},
         "tableHeader": {"colspan", "rowspan", "colwidth", "backgroundColor", "align"},
-        "noteImage": {"attachmentId", "alt", "title", "width"},
+        "noteImage": {"attachmentId", "alt", "title", "width", "float", "floatX", "floatY"},
         "noteAttachment": {"attachmentId", "name", "size"},
         "mention": {"userId", "label"},
         "noteLink": {"noteId", "label"},
@@ -247,6 +247,11 @@ def _validate_node_attrs(node_type, attrs, state):
             raise ValidationError("Dateiname oder Alternativtext ist zu lang.")
         if "width" in attrs and (not isinstance(attrs["width"], int) or not 120 <= attrs["width"] <= 1600):
             raise ValidationError("Die Bildbreite ist ungültig.")
+        if "float" in attrs and not isinstance(attrs["float"], bool):
+            raise ValidationError("Die Bildplatzierung ist ungültig.")
+        for key in ("floatX", "floatY"):
+            if key in attrs and (not isinstance(attrs[key], int) or not -2000 <= attrs[key] <= 4000):
+                raise ValidationError("Die Bildposition ist ungültig.")
     if node_type == "mention":
         user_id = attrs.get("userId")
         if not isinstance(user_id, int) or user_id <= 0:
