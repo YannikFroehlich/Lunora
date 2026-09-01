@@ -21,6 +21,7 @@ import { SLASH_MENU_ITEMS, filterSlashMenuItems } from "./slash-menu.js";
 
 
 const app = document.querySelector("[data-notes-app]");
+const READING_WORDS_PER_MINUTE = 200;
 
 function readJsonScript(id, fallback) {
   const element = document.getElementById(id);
@@ -818,6 +819,7 @@ function initNotesApp() {
   const wordCount = document.querySelector("[data-word-count]");
   const shareDialog = document.querySelector("[data-share-dialog]");
   const versionsDialog = document.querySelector("[data-versions-dialog]");
+  const versionDiffDialog = document.querySelector("[data-version-diff-dialog]");
   const outlinePanel = document.querySelector("[data-note-outline-panel]");
   const outlineList = document.querySelector("[data-note-outline-list]");
   const shortcutDialog = document.querySelector("[data-shortcut-dialog]");
@@ -1463,7 +1465,12 @@ function initNotesApp() {
     if (!editor || !wordCount) return;
     const words = editor.storage.characterCount.words();
     const characters = editor.storage.characterCount.characters();
-    wordCount.textContent = `${words} ${words === 1 ? "Wort" : "Wörter"} · ${characters} Zeichen`;
+    const readingLabel = words > 0
+      ? ` · ${Math.max(1, Math.round(words / READING_WORDS_PER_MINUTE))} Min. Lesezeit`
+      : "";
+    const label = `${words} ${words === 1 ? "Wort" : "Wörter"} · ${characters} Zeichen${readingLabel}`;
+    wordCount.textContent = label;
+    wordCount.title = label;
   }
 
   function toggleOutlinePanel() {
@@ -2750,11 +2757,40 @@ function initNotesApp() {
     data.versions.forEach((version) => {
       const row = document.createElement("div");
       row.className = "version-row";
-      row.innerHTML = `<span><strong></strong><small></small></span>${note.can_edit ? '<button class="ghost-button" type="button">Wiederherstellen</button>' : ''}`;
+      row.innerHTML = `<span><strong></strong><small></small></span><button class="ghost-button" type="button" data-version-compare>Vergleichen</button>${note.can_edit ? '<button class="ghost-button" type="button" data-version-restore>Wiederherstellen</button>' : ''}`;
       row.querySelector("strong").textContent = version.title;
       row.querySelector("small").textContent = `${new Date(version.created_at).toLocaleString()} · ${version.created_by} · Revision ${version.revision}`;
-      row.querySelector("button")?.addEventListener("click", () => restoreVersion(version.id));
+      row.querySelector("[data-version-compare]").addEventListener("click", () => openVersionDiffDialog(version.id));
+      row.querySelector("[data-version-restore]")?.addEventListener("click", () => restoreVersion(version.id));
       target.append(row);
+    });
+  }
+
+  async function openVersionDiffDialog(versionId) {
+    if (!versionDiffDialog || !note) return;
+    const summary = document.querySelector("[data-version-diff-summary]");
+    const content = document.querySelector("[data-version-diff-content]");
+    summary.textContent = "";
+    content.innerHTML = '<p class="dialog-hint">Vergleich wird geladen …</p>';
+    versionDiffDialog.showModal();
+    const { response, data } = await requestJson(`/notes/api/${note.id}/versions/${versionId}/diff/`);
+    if (!response.ok) {
+      content.textContent = data.error || "Vergleich konnte nicht geladen werden.";
+      return;
+    }
+    const { added_words: added, removed_words: removed } = data;
+    summary.textContent = added || removed
+      ? `${added} Wort${added === 1 ? "" : "e"} hinzugefügt · ${removed} Wort${removed === 1 ? "" : "e"} entfernt seit dieser Version.`
+      : "Keine inhaltlichen Änderungen seit dieser Version.";
+    content.innerHTML = "";
+    data.segments.forEach((segment) => {
+      if (segment.type === "equal") {
+        content.append(document.createTextNode(segment.text));
+        return;
+      }
+      const mark = document.createElement(segment.type === "insert" ? "ins" : "del");
+      mark.textContent = segment.text;
+      content.append(mark);
     });
   }
 

@@ -1,4 +1,6 @@
 import copy
+import difflib
+import re
 import uuid
 from datetime import timedelta
 
@@ -612,6 +614,41 @@ def serialize_version(version):
         "created_at": version.created_at.isoformat(),
         "created_by": display_name(version.created_by) if version.created_by else "Unbekannt",
         "reason": version.reason,
+    }
+
+
+_DIFF_TOKEN_RE = re.compile(r"\s+|\S+")
+
+
+def diff_note_version(user, note_id, version_id):
+    """Word-level diff between a stored version and the note's current content."""
+    note = get_accessible_note(user, note_id)
+    version = note.versions.filter(pk=version_id).first()
+    if not version:
+        raise NoteVersion.DoesNotExist
+    old_tokens = _DIFF_TOKEN_RE.findall(document_plain_text(version.document))
+    new_tokens = _DIFF_TOKEN_RE.findall(note.plain_text)
+    matcher = difflib.SequenceMatcher(a=old_tokens, b=new_tokens, autojunk=False)
+    segments = []
+    added_words = removed_words = 0
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            segments.append({"type": "equal", "text": "".join(new_tokens[j1:j2])})
+            continue
+        if tag in ("delete", "replace"):
+            removed = old_tokens[i1:i2]
+            segments.append({"type": "delete", "text": "".join(removed)})
+            removed_words += sum(1 for token in removed if token.strip())
+        if tag in ("insert", "replace"):
+            inserted = new_tokens[j1:j2]
+            segments.append({"type": "insert", "text": "".join(inserted)})
+            added_words += sum(1 for token in inserted if token.strip())
+    return {
+        "version": serialize_version(version),
+        "current_title": note.title,
+        "segments": segments,
+        "added_words": added_words,
+        "removed_words": removed_words,
     }
 
 

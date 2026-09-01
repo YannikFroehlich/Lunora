@@ -41,6 +41,7 @@ from app.services.notes import (
     delete_comment_thread,
     delete_note_folder,
     delete_note_template,
+    diff_note_version,
     display_name,
     duplicate_note,
     get_accessible_note,
@@ -815,6 +816,18 @@ def note_versions_api(request, note_id):
         return JsonResponse({"ok": True, "versions": [serialize_version(item) for item in note.versions.all()[:100]]})
     except Note.DoesNotExist:
         return _error_response("Notiz nicht gefunden.", status=404)
+
+
+@login_required
+@require_http_methods(["GET"])
+def note_version_diff_api(request, note_id, version_id):
+    disabled = _feature_guard(request, json_response=True)
+    if disabled:
+        return disabled
+    try:
+        return JsonResponse({"ok": True, **diff_note_version(request.user, note_id, version_id)})
+    except (Note.DoesNotExist, NoteVersion.DoesNotExist):
+        return _error_response("Notiz oder Version nicht gefunden.", status=404)
 
 
 @login_required

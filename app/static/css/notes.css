@@ -1139,6 +1139,15 @@
   color: var(--color-accent-strong);
 }
 
+.note-editor-statusbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 24px;
+  color: var(--color-muted);
+  font-size: 0.72rem;
+  border-top: 1px solid var(--glass-border-soft);
+}
+
 .note-editor-page {
   /* A4 at 96dpi (210mm x 297mm), padding matching the PDF export's margins (19mm sides/bottom, 18mm top) */
   position: relative;
@@ -1922,6 +1931,33 @@
 .share-row select { width: 118px; }
 
 .dialog-hint { color: var(--color-muted); line-height: 1.45; }
+
+.version-diff-dialog { width: min(92vw, 760px); }
+
+.version-diff-content {
+  margin-top: 16px;
+  padding: 16px;
+  overflow-y: auto;
+  color: var(--color-text);
+  white-space: pre-wrap;
+  background: var(--surface-control);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: 13px;
+  line-height: 1.6;
+}
+
+.version-diff-content ins {
+  color: #2f6b45;
+  background: rgba(63, 138, 89, 0.16);
+  text-decoration: none;
+}
+
+.version-diff-content del {
+  color: #a64d3d;
+  background: rgba(166, 77, 61, 0.14);
+  text-decoration: line-through;
+}
+
 .comment-thread-list { display: grid; gap: 10px; min-height: 200px; max-height: 60dvh; overflow-y: auto; }
 
 .comment-thread-row {
@@ -2017,8 +2053,8 @@
   .notes-mobile-back { display: inline-grid; }
   .note-document-header { min-height: auto; padding: 12px; }
   .note-title-wrap { width: calc(100% - 56px); }
-  .note-meta-line span:nth-child(n+3) { display: none; }
   .note-header-actions { overflow-x: auto; justify-content: flex-start; }
+  .note-editor-statusbar { display: none; }
   .note-editor-scroll { padding: 12px 8px 28px; }
   .note-editor-page { min-height: calc(100dvh - 290px); padding: 24px 18px; }
   .note-editor-page .tiptap { min-height: calc(100dvh - 350px); }
@@ -2027,6 +2063,40 @@
   .table-operation-grid { grid-template-columns: 1fr; }
   .shortcut-row { grid-template-columns: 1fr 1fr 36px; }
   .note-outline-panel { display: none !important; }
+}
+
+/* Notes-only layout: the shared floating-nav moves to a left-side column so the
+   editor gains vertical room instead of losing it to the top offset every other
+   page reserves. Scoped to body[data-page="notes"] (set in base.html) so no
+   other page is affected; reverts to the shared horizontal nav on narrow
+   viewports where notes.html already switches to its own mobile layout. */
+@media (min-width: 761px) {
+  body[data-page="notes"] .floating-nav {
+    top: 16px;
+    left: 12px;
+    flex-direction: column;
+  }
+
+  body[data-page="notes"] .site-main {
+    padding: clamp(20px, 2vw, 28px) clamp(24px, 3vw, 56px) clamp(24px, 3vw, 40px) clamp(76px, 6vw, 96px);
+  }
+
+  body[data-page="notes"] .notes-shell {
+    height: calc(100dvh - 60px);
+  }
+
+  /* The left nav column eats into the same width the title/actions row was
+     already tight on, so give the title its own row here (normally this only
+     kicks in below 1100px, see the shared @media above). */
+  body[data-page="notes"] .note-document-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  body[data-page="notes"] .note-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
 }
 
 .note-style-section + .note-style-section {
@@ -2109,6 +2179,7 @@
   .note-toolbar,
   .note-trash-banner,
   .note-editor-zoom-indicator,
+  .note-editor-statusbar,
   .note-outline-panel,
   .note-backlinks {
     display: none !important;

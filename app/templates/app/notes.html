@@ -133,7 +133,6 @@
                 <div class="note-meta-line">
                     <span data-save-status>Gespeichert</span>
                     <span>Bearbeitet von {{ selected_note_data.updated_by }}</span>
-                    <span data-word-count>0 Wörter · 0 Zeichen</span>
                     {% if selected_note_data.permission != 'owner' %}<span class="shared-role">{{ selected_note_data.permission|capfirst }}</span>{% endif %}
                 </div>
             </div>
@@ -275,6 +274,9 @@
                     <div class="note-outline-list" data-note-outline-list></div>
                 </aside>
             </div>
+            <footer class="note-editor-statusbar">
+                <span data-word-count>0 Wörter · 0 Zeichen</span>
+            </footer>
             <button type="button" class="note-editor-zoom-indicator" data-editor-zoom-level aria-label="Zoomstufe des Editors, klicken zum Zurücksetzen">100%</button>
             {% if selected_note_data.backlinks %}
             <footer class="note-backlinks">
@@ -364,6 +366,14 @@
     <form method="dialog" class="dialog-card">
         <header><div><span class="eyebrow">Sicherheit</span><h2>Versionsverlauf</h2></div><button value="cancel" aria-label="Schließen"><i class="fa-solid fa-xmark"></i></button></header>
         <div class="version-list" data-version-list></div>
+    </form>
+</dialog>
+
+<dialog class="notes-dialog version-diff-dialog" data-version-diff-dialog>
+    <form method="dialog" class="dialog-card">
+        <header><div><span class="eyebrow">Sicherheit</span><h2>Änderungen seit dieser Version</h2></div><button value="cancel" aria-label="Schließen"><i class="fa-solid fa-xmark"></i></button></header>
+        <p class="dialog-hint" data-version-diff-summary></p>
+        <div class="version-diff-content soft-scrollbar" data-version-diff-content></div>
     </form>
 </dialog>
 
