@@ -880,13 +880,6 @@
   opacity: 0;
 }
 
-.table-dialog-hint {
-  margin: 18px 0 12px;
-  color: var(--color-muted);
-  font-size: 0.86rem;
-  line-height: 1.5;
-}
-
 .table-operation-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(130px, 1fr));
@@ -1146,8 +1139,18 @@
   color: var(--color-accent-strong);
 }
 
+.note-editor-statusbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 24px;
+  color: var(--color-muted);
+  font-size: 0.72rem;
+  border-top: 1px solid var(--glass-border-soft);
+}
+
 .note-editor-page {
   /* A4 at 96dpi (210mm x 297mm), padding matching the PDF export's margins (19mm sides/bottom, 18mm top) */
+  position: relative;
   width: min(100%, 794px);
   min-height: 1123px;
   display: flex;
@@ -1428,12 +1431,256 @@
   color: #e9e1d8;
 }
 
-.note-image {
+.slash-menu-popup {
+  position: fixed;
+  z-index: 9999;
+  display: grid;
+  min-width: 220px;
+  max-width: 280px;
+  max-height: 320px;
+  padding: 6px;
+  overflow-y: auto;
+  background: rgba(255, 250, 242, 0.98);
+  border: 1px solid rgba(181, 150, 104, 0.28);
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(58, 45, 29, 0.18);
+  backdrop-filter: blur(18px);
+}
+
+.slash-menu-popup[hidden] {
+  display: none;
+}
+
+.slash-menu-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  color: #332d27;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.slash-menu-option.is-active,
+.slash-menu-option:hover {
+  background: rgba(194, 162, 118, 0.22);
+}
+
+.slash-menu-option-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.slash-menu-option-label {
+  flex: 1;
+}
+
+[data-theme="dark"] .slash-menu-popup {
+  background: rgba(45, 41, 37, 0.98);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+[data-theme="dark"] .slash-menu-option {
+  color: #e9e1d8;
+}
+
+.table-size-picker {
+  position: fixed;
+  z-index: 9999;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  background: rgba(255, 250, 242, 0.98);
+  border: 1px solid rgba(181, 150, 104, 0.28);
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(58, 45, 29, 0.18);
+  backdrop-filter: blur(18px);
+}
+
+.table-size-picker-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #332d27;
+  text-align: center;
+}
+
+.table-size-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--table-picker-cols), 16px);
+  gap: 3px;
+}
+
+.table-size-picker-cell {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: rgba(181, 150, 104, 0.14);
+  border: 1px solid rgba(181, 150, 104, 0.32);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.table-size-picker-cell.is-active {
+  background: rgba(194, 162, 118, 0.75);
+  border-color: rgba(154, 116, 68, 0.85);
+}
+
+.table-size-picker-custom {
+  padding: 6px 8px;
+  color: #332d27;
+  text-align: center;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid rgba(181, 150, 104, 0.2);
+  cursor: pointer;
+}
+
+.table-size-picker-custom:hover {
+  color: #9a7444;
+}
+
+[data-theme="dark"] .table-size-picker {
+  background: rgba(45, 41, 37, 0.98);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+[data-theme="dark"] .table-size-picker-label,
+[data-theme="dark"] .table-size-picker-custom {
+  color: #e9e1d8;
+}
+
+[data-theme="dark"] .table-size-picker-cell {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+[data-theme="dark"] .table-size-picker-cell.is-active {
+  background: rgba(194, 162, 118, 0.55);
+  border-color: rgba(194, 162, 118, 0.75);
+}
+
+[data-theme="dark"] .table-size-picker-custom:hover {
+  color: #d8b26a;
+}
+
+.note-image-wrapper {
+  position: relative;
   display: block;
   max-width: 100%;
-  height: auto;
   margin: 18px auto;
+}
+
+.note-image-wrapper .note-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0;
   border-radius: 10px;
+}
+
+.note-image-wrapper.is-selected .note-image {
+  outline: 1px solid color-mix(in srgb, var(--color-accent-strong) 30%, transparent);
+  outline-offset: 2px;
+}
+
+.note-image-wrapper.is-resizing {
+  outline: 1px dashed var(--color-accent-strong);
+  outline-offset: 4px;
+}
+
+.note-image-resize-handle {
+  position: absolute;
+  z-index: 5;
+  width: 12px;
+  height: 12px;
+  background: var(--color-accent-strong);
+  border: 2px solid var(--surface-panel);
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.note-image-wrapper.is-selected .note-image-resize-handle {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.note-image-resize-handle-nw { top: -6px; left: -6px; cursor: nwse-resize; }
+.note-image-resize-handle-ne { top: -6px; right: -6px; cursor: nesw-resize; }
+.note-image-resize-handle-se { bottom: -6px; right: -6px; cursor: nwse-resize; }
+.note-image-resize-handle-sw { bottom: -6px; left: -6px; cursor: nesw-resize; }
+.note-image-resize-handle-w { top: 50%; left: -6px; margin-top: -6px; cursor: ew-resize; }
+.note-image-resize-handle-e { top: 50%; right: -6px; margin-top: -6px; cursor: ew-resize; }
+
+.note-image-wrapper.is-floating {
+  position: absolute;
+  z-index: 20;
+  margin: 0;
+}
+
+.note-image-wrapper.is-floating .note-image {
+  cursor: move;
+}
+
+.note-image-wrapper.is-moving {
+  opacity: 0.85;
+}
+
+.note-image-layout-menu {
+  position: absolute;
+  top: -38px;
+  left: 50%;
+  z-index: 6;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  transform: translateX(-50%);
+  background: color-mix(in srgb, var(--surface-panel) 94%, transparent);
+  border: 1px solid var(--glass-border);
+  border-radius: 9px;
+  box-shadow: 0 10px 28px rgba(35, 29, 23, 0.2);
+  backdrop-filter: blur(14px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.note-image-wrapper.is-selected .note-image-layout-menu {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.note-image-layout-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  color: var(--color-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.note-image-layout-option:hover {
+  background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+  color: var(--color-text);
+}
+
+.note-image-layout-option.is-active {
+  color: var(--color-accent-strong);
+  background: color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
 
 .note-attachment {
@@ -1684,6 +1931,33 @@
 .share-row select { width: 118px; }
 
 .dialog-hint { color: var(--color-muted); line-height: 1.45; }
+
+.version-diff-dialog { width: min(92vw, 760px); }
+
+.version-diff-content {
+  margin-top: 16px;
+  padding: 16px;
+  overflow-y: auto;
+  color: var(--color-text);
+  white-space: pre-wrap;
+  background: var(--surface-control);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: 13px;
+  line-height: 1.6;
+}
+
+.version-diff-content ins {
+  color: #2f6b45;
+  background: rgba(63, 138, 89, 0.16);
+  text-decoration: none;
+}
+
+.version-diff-content del {
+  color: #a64d3d;
+  background: rgba(166, 77, 61, 0.14);
+  text-decoration: line-through;
+}
+
 .comment-thread-list { display: grid; gap: 10px; min-height: 200px; max-height: 60dvh; overflow-y: auto; }
 
 .comment-thread-row {
@@ -1779,8 +2053,8 @@
   .notes-mobile-back { display: inline-grid; }
   .note-document-header { min-height: auto; padding: 12px; }
   .note-title-wrap { width: calc(100% - 56px); }
-  .note-meta-line span:nth-child(n+3) { display: none; }
   .note-header-actions { overflow-x: auto; justify-content: flex-start; }
+  .note-editor-statusbar { display: none; }
   .note-editor-scroll { padding: 12px 8px 28px; }
   .note-editor-page { min-height: calc(100dvh - 290px); padding: 24px 18px; }
   .note-editor-page .tiptap { min-height: calc(100dvh - 350px); }
@@ -1789,6 +2063,40 @@
   .table-operation-grid { grid-template-columns: 1fr; }
   .shortcut-row { grid-template-columns: 1fr 1fr 36px; }
   .note-outline-panel { display: none !important; }
+}
+
+/* Notes-only layout: the shared floating-nav moves to a left-side column so the
+   editor gains vertical room instead of losing it to the top offset every other
+   page reserves. Scoped to body[data-page="notes"] (set in base.html) so no
+   other page is affected; reverts to the shared horizontal nav on narrow
+   viewports where notes.html already switches to its own mobile layout. */
+@media (min-width: 761px) {
+  body[data-page="notes"] .floating-nav {
+    top: 16px;
+    left: 12px;
+    flex-direction: column;
+  }
+
+  body[data-page="notes"] .site-main {
+    padding: clamp(20px, 2vw, 28px) clamp(24px, 3vw, 56px) clamp(24px, 3vw, 40px) clamp(76px, 6vw, 96px);
+  }
+
+  body[data-page="notes"] .notes-shell {
+    height: calc(100dvh - 60px);
+  }
+
+  /* The left nav column eats into the same width the title/actions row was
+     already tight on, so give the title its own row here (normally this only
+     kicks in below 1100px, see the shared @media above). */
+  body[data-page="notes"] .note-document-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  body[data-page="notes"] .note-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
 }
 
 .note-style-section + .note-style-section {
@@ -1871,6 +2179,7 @@
   .note-toolbar,
   .note-trash-banner,
   .note-editor-zoom-indicator,
+  .note-editor-statusbar,
   .note-outline-panel,
   .note-backlinks {
     display: none !important;
@@ -1930,8 +2239,17 @@
   .note-editor-page .tiptap pre,
   .note-editor-page .tiptap table,
   .note-editor-page .note-math-block,
-  .note-editor-page .note-image,
+  .note-editor-page .note-image-wrapper,
   .note-editor-page .note-attachment {
     break-inside: avoid;
+  }
+
+  .note-editor-page .note-image-wrapper.is-floating {
+    position: static !important;
+    margin: 18px auto !important;
+  }
+
+  .note-image-layout-menu {
+    display: none !important;
   }
 }

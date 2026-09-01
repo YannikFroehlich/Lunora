@@ -1,4 +1,4 @@
-import { Editor, Mark, Node, mergeAttributes } from "@tiptap/core";
+import { Editor, Extension, Mark, Node, mergeAttributes } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { CodeBlockLowlight } from "@tiptap/extension-code-block-lowlight";
 import { Highlight } from "@tiptap/extension-highlight";
@@ -17,9 +17,11 @@ import katex from "katex";
 
 import { normalizeLinkHref } from "./link-utils.js";
 import { eventToShortcut, findShortcutConflict, mergeShortcuts, shortcutMatches } from "./shortcut-utils.js";
+import { SLASH_MENU_ITEMS, filterSlashMenuItems } from "./slash-menu.js";
 
 
 const app = document.querySelector("[data-notes-app]");
+const READING_WORDS_PER_MINUTE = 200;
 
 function readJsonScript(id, fallback) {
   const element = document.getElementById(id);
@@ -55,17 +57,183 @@ function attachmentUrl(id, disposition) {
 
 const lowlight = createLowlight(common);
 
+const NOTE_IMAGE_MIN_WIDTH = 120;
+const NOTE_IMAGE_MAX_WIDTH = 1600;
+
+function createNoteImageNodeView() {
+  return ({ node, getPos, editor, extension }) => {
+    const getZoom = () => extension.options.getZoom?.() || 1;
+    const wrapper = document.createElement("span");
+    wrapper.className = "note-image-wrapper";
+
+    const img = document.createElement("img");
+    img.className = "note-image";
+
+    function dispatchAttrs(attrs) {
+      const pos = typeof getPos === "function" ? getPos() : null;
+      if (typeof pos !== "number") return;
+      const tr = editor.view.state.tr;
+      Object.entries(attrs).forEach(([key, value]) => tr.setNodeAttribute(pos, key, value));
+      editor.view.dispatch(tr);
+    }
+
+    function syncFromNode() {
+      wrapper.style.width = `${node.attrs.width}px`;
+      img.setAttribute("data-note-image", "true");
+      img.setAttribute("data-attachment-id", node.attrs.attachmentId || "");
+      img.src = attachmentUrl(node.attrs.attachmentId, "inline");
+      img.alt = node.attrs.alt || "";
+      if (node.attrs.title) img.title = node.attrs.title;
+      wrapper.classList.toggle("is-floating", !!node.attrs.float);
+      wrapper.style.left = node.attrs.float ? `${node.attrs.floatX}px` : "";
+      wrapper.style.top = node.attrs.float ? `${node.attrs.floatY}px` : "";
+      img.draggable = !node.attrs.float;
+      if (layoutInlineBtn && layoutFloatBtn) {
+        layoutInlineBtn.classList.toggle("is-active", !node.attrs.float);
+        layoutFloatBtn.classList.toggle("is-active", !!node.attrs.float);
+      }
+    }
+
+    let layoutInlineBtn = null;
+    let layoutFloatBtn = null;
+
+    wrapper.append(img);
+
+    function startResize(event, corner) {
+      event.preventDefault();
+      event.stopPropagation();
+      const direction = corner.includes("w") ? -1 : 1;
+      const startX = event.clientX;
+      const startWidth = node.attrs.width;
+      let currentWidth = startWidth;
+      wrapper.classList.add("is-resizing");
+
+      function onMove(moveEvent) {
+        const delta = ((moveEvent.clientX - startX) * direction) / getZoom();
+        currentWidth = Math.min(NOTE_IMAGE_MAX_WIDTH, Math.max(NOTE_IMAGE_MIN_WIDTH, Math.round(startWidth + delta)));
+        wrapper.style.width = `${currentWidth}px`;
+      }
+      function onUp() {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        wrapper.classList.remove("is-resizing");
+        dispatchAttrs({ width: Math.round(currentWidth) });
+      }
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp, { once: true });
+    }
+
+    function startMove(event) {
+      if (!node.attrs.float) return;
+      event.preventDefault();
+      const startClientX = event.clientX;
+      const startClientY = event.clientY;
+      const startFloatX = node.attrs.floatX;
+      const startFloatY = node.attrs.floatY;
+      let currentX = startFloatX;
+      let currentY = startFloatY;
+      wrapper.classList.add("is-moving");
+
+      function onMove(moveEvent) {
+        const zoom = getZoom();
+        currentX = Math.round(startFloatX + (moveEvent.clientX - startClientX) / zoom);
+        currentY = Math.round(startFloatY + (moveEvent.clientY - startClientY) / zoom);
+        wrapper.style.left = `${currentX}px`;
+        wrapper.style.top = `${currentY}px`;
+      }
+      function onUp() {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        wrapper.classList.remove("is-moving");
+        dispatchAttrs({ floatX: currentX, floatY: currentY });
+      }
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp, { once: true });
+    }
+
+    if (editor.isEditable) {
+      img.addEventListener("pointerdown", (event) => startMove(event));
+
+      ["nw", "w", "sw", "ne", "e", "se"].forEach((corner) => {
+        const handle = document.createElement("span");
+        handle.className = `note-image-resize-handle note-image-resize-handle-${corner}`;
+        handle.addEventListener("pointerdown", (event) => startResize(event, corner));
+        wrapper.append(handle);
+      });
+
+      const layoutMenu = document.createElement("span");
+      layoutMenu.className = "note-image-layout-menu";
+
+      layoutInlineBtn = document.createElement("button");
+      layoutInlineBtn.type = "button";
+      layoutInlineBtn.className = "note-image-layout-option";
+      layoutInlineBtn.title = "Mit Text verschieben";
+      layoutInlineBtn.innerHTML = '<i class="fa-solid fa-align-left"></i>';
+      layoutInlineBtn.addEventListener("pointerdown", (event) => event.stopPropagation());
+      layoutInlineBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        if (node.attrs.float) dispatchAttrs({ float: false });
+      });
+
+      layoutFloatBtn = document.createElement("button");
+      layoutFloatBtn.type = "button";
+      layoutFloatBtn.className = "note-image-layout-option";
+      layoutFloatBtn.title = "Frei verschiebbar";
+      layoutFloatBtn.innerHTML = '<i class="fa-solid fa-arrows-up-down-left-right"></i>';
+      layoutFloatBtn.addEventListener("pointerdown", (event) => event.stopPropagation());
+      layoutFloatBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        if (node.attrs.float) return;
+        const pageEl = document.querySelector(".note-editor-page");
+        if (!pageEl) return;
+        const pageRect = pageEl.getBoundingClientRect();
+        const wrapperRect = wrapper.getBoundingClientRect();
+        const zoom = getZoom();
+        dispatchAttrs({
+          float: true,
+          floatX: Math.round((wrapperRect.left - pageRect.left) / zoom),
+          floatY: Math.round((wrapperRect.top - pageRect.top) / zoom),
+        });
+      });
+
+      layoutMenu.append(layoutInlineBtn, layoutFloatBtn);
+      wrapper.append(layoutMenu);
+    }
+
+    syncFromNode();
+
+    return {
+      dom: wrapper,
+      update(updatedNode) {
+        if (updatedNode.type.name !== node.type.name) return false;
+        node = updatedNode;
+        syncFromNode();
+        return true;
+      },
+      selectNode() { wrapper.classList.add("is-selected"); },
+      deselectNode() { wrapper.classList.remove("is-selected"); },
+      ignoreMutation: () => true,
+    };
+  };
+}
+
 const NoteImage = Node.create({
   name: "noteImage",
   group: "block",
   atom: true,
   draggable: true,
+  addOptions() {
+    return { getZoom: () => 1 };
+  },
   addAttributes() {
     return {
       attachmentId: { default: null, parseHTML: (element) => element.dataset.attachmentId },
       alt: { default: "", parseHTML: (element) => element.getAttribute("alt") || "" },
       title: { default: null, parseHTML: (element) => element.getAttribute("title") },
       width: { default: 720, parseHTML: (element) => Number(element.getAttribute("width")) || 720 },
+      float: { default: false, parseHTML: (element) => element.dataset.float === "true" },
+      floatX: { default: 0, parseHTML: (element) => Number(element.dataset.floatX) || 0 },
+      floatY: { default: 0, parseHTML: (element) => Number(element.dataset.floatY) || 0 },
     };
   },
   parseHTML() {
@@ -77,11 +245,17 @@ const NoteImage = Node.create({
       mergeAttributes(HTMLAttributes, {
         "data-note-image": "true",
         "data-attachment-id": HTMLAttributes.attachmentId,
+        "data-float": HTMLAttributes.float ? "true" : "false",
+        "data-float-x": HTMLAttributes.floatX,
+        "data-float-y": HTMLAttributes.floatY,
         src: attachmentUrl(HTMLAttributes.attachmentId, "inline"),
         width: HTMLAttributes.width,
         class: "note-image",
       }),
     ];
+  },
+  addNodeView() {
+    return createNoteImageNodeView();
   },
 });
 
@@ -328,6 +502,16 @@ const NoteLink = Node.create({
   },
 });
 
+const SlashCommand = Extension.create({
+  name: "slashCommand",
+  addOptions() {
+    return { suggestion: { char: "/" } };
+  },
+  addProseMirrorPlugins() {
+    return [Suggestion({ editor: this.editor, pluginKey: new PluginKey("slashCommand"), ...this.options.suggestion })];
+  },
+});
+
 const CommentThread = Mark.create({
   name: "commentThread",
   addAttributes() {
@@ -441,6 +625,95 @@ function createLinkSuggestionRenderer() {
   return createSuggestionRenderer({ className: "note-link-suggestion", getLabel: (item) => item.title });
 }
 
+function createSlashMenuRenderer() {
+  let popup = null;
+  let items = [];
+  let selectedIndex = 0;
+  let command = null;
+
+  function renderOptions() {
+    if (!popup) return;
+    popup.innerHTML = "";
+    if (!items.length) {
+      popup.hidden = true;
+      return;
+    }
+    popup.hidden = false;
+    items.forEach((item, index) => {
+      const option = document.createElement("button");
+      option.type = "button";
+      option.className = `slash-menu-option${index === selectedIndex ? " is-active" : ""}`;
+      const icon = document.createElement("span");
+      icon.className = "slash-menu-option-icon";
+      if (item.iconClass) icon.innerHTML = `<i class="${item.iconClass}"></i>`;
+      else icon.textContent = item.iconText || "";
+      const label = document.createElement("span");
+      label.className = "slash-menu-option-label";
+      label.textContent = item.label;
+      option.append(icon, label);
+      option.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+        command(item);
+      });
+      popup.append(option);
+    });
+  }
+
+  function positionPopup(clientRect) {
+    const rect = clientRect?.();
+    if (!popup || !rect) return;
+    popup.style.left = `${rect.left}px`;
+    popup.style.top = `${rect.bottom + 6}px`;
+  }
+
+  return {
+    onStart(props) {
+      popup = document.createElement("div");
+      popup.className = "slash-menu-popup";
+      document.body.append(popup);
+      items = props.items;
+      selectedIndex = 0;
+      command = props.command;
+      positionPopup(props.clientRect);
+      renderOptions();
+    },
+    onUpdate(props) {
+      items = props.items;
+      selectedIndex = Math.min(selectedIndex, Math.max(0, items.length - 1));
+      command = props.command;
+      positionPopup(props.clientRect);
+      renderOptions();
+    },
+    onKeyDown(props) {
+      if (!items.length) return false;
+      if (props.event.key === "ArrowDown") {
+        selectedIndex = (selectedIndex + 1) % items.length;
+        renderOptions();
+        return true;
+      }
+      if (props.event.key === "ArrowUp") {
+        selectedIndex = (selectedIndex - 1 + items.length) % items.length;
+        renderOptions();
+        return true;
+      }
+      if (props.event.key === "Enter") {
+        command(items[selectedIndex]);
+        return true;
+      }
+      if (props.event.key === "Escape") {
+        popup?.remove();
+        popup = null;
+        return true;
+      }
+      return false;
+    },
+    onExit() {
+      popup?.remove();
+      popup = null;
+    },
+  };
+}
+
 const COMMAND_DEFAULTS = {
   save: { label: "Speichern", shortcut: "Mod+S" },
   undo: { label: "Rückgängig", shortcut: "Mod+Z" },
@@ -546,11 +819,11 @@ function initNotesApp() {
   const wordCount = document.querySelector("[data-word-count]");
   const shareDialog = document.querySelector("[data-share-dialog]");
   const versionsDialog = document.querySelector("[data-versions-dialog]");
+  const versionDiffDialog = document.querySelector("[data-version-diff-dialog]");
   const outlinePanel = document.querySelector("[data-note-outline-panel]");
   const outlineList = document.querySelector("[data-note-outline-list]");
   const shortcutDialog = document.querySelector("[data-shortcut-dialog]");
   const conflictDialog = document.querySelector("[data-conflict-dialog]");
-  const tableDialog = document.querySelector("[data-table-dialog]");
   const mathDialog = document.querySelector("[data-math-dialog]");
   const mathInput = document.querySelector("[data-math-input]");
   const mathPreview = document.querySelector("[data-math-preview]");
@@ -566,6 +839,7 @@ function initNotesApp() {
   const noteIconGrid = document.querySelector("[data-note-icon-grid]");
   const noteContextMenu = document.querySelector("[data-note-context-menu]");
   const folderContextMenu = document.querySelector("[data-folder-context-menu]");
+  const editorContextMenu = document.querySelector("[data-editor-context-menu]");
   const notesList = document.querySelector("[data-notes-list]");
   const bulkBar = document.querySelector("[data-notes-bulk-bar]");
   const bulkCount = document.querySelector("[data-notes-bulk-count]");
@@ -589,7 +863,7 @@ function initNotesApp() {
         TaskList,
         TaskItem.configure({ nested: true }),
         CharacterCount,
-        NoteImage,
+        NoteImage.configure({ getZoom: () => editorZoom }),
         NoteAttachmentNode,
         MathInline.configure({ onEdit: openMathDialog }),
         MathBlock.configure({ onEdit: openMathDialog }),
@@ -634,7 +908,35 @@ function initNotesApp() {
             render: createLinkSuggestionRenderer,
           },
         }),
+        SlashCommand.configure({
+          suggestion: {
+            items: ({ query }) => filterSlashMenuItems(SLASH_MENU_ITEMS, query),
+            command: ({ editor: slashEditor, range, props }) => {
+              slashEditor.chain().focus().deleteRange(range).run();
+              runCommand(props.action);
+            },
+            render: createSlashMenuRenderer,
+          },
+        }),
       ],
+      editorProps: {
+        handlePaste(_view, event) {
+          const files = Array.from(event.clipboardData?.files || []);
+          if (!files.length || !note?.can_edit || note?.is_deleted) return false;
+          event.preventDefault();
+          uploadFiles(files);
+          return true;
+        },
+        handleDrop(view, event) {
+          const files = Array.from(event.dataTransfer?.files || []);
+          if (!files.length || !note?.can_edit || note?.is_deleted) return false;
+          event.preventDefault();
+          const pos = view.posAtCoords({ left: event.clientX, top: event.clientY });
+          if (pos) editor.chain().setTextSelection(pos.pos).run();
+          uploadFiles(files);
+          return true;
+        },
+      },
       onUpdate: () => {
         updateCounts();
         updateToolbarState();
@@ -642,27 +944,6 @@ function initNotesApp() {
         if (outlinePanel && !outlinePanel.hidden) updateOutline();
       },
       onSelectionUpdate: updateToolbarState,
-    });
-    document.querySelector("[data-note-editor]")?.addEventListener("dblclick", (event) => {
-      const image = event.target.closest("img[data-note-image]");
-      if (!image || !note.can_edit || note.is_deleted) return;
-
-      const currentWidth = Number(image.getAttribute("width")) || 720;
-      const requestedWidth = window.prompt("Bildbreite in Pixeln (120–1600)", String(currentWidth));
-      if (requestedWidth === null) return;
-
-      const width = Number.parseInt(requestedWidth, 10);
-      if (!Number.isInteger(width) || width < 120 || width > 1600) {
-        setStatus("Bitte eine Bildbreite zwischen 120 und 1600 Pixeln eingeben.", "error");
-        return;
-      }
-
-      try {
-        const position = editor.view.posAtDOM(image, 0);
-        editor.chain().focus().setNodeSelection(position).updateAttributes("noteImage", { width }).run();
-      } catch (_error) {
-        setStatus("Die Bildgröße konnte nicht geändert werden.", "error");
-      }
     });
     restoreLocalDraft();
     updateCounts();
@@ -700,7 +981,7 @@ function initNotesApp() {
       dot.classList.toggle("is-active", dot.querySelector("input") === input);
     });
   });
-  document.querySelector("[data-table-dialog-open]")?.addEventListener("click", () => tableDialog?.showModal());
+  document.querySelector("[data-table-dialog-open]")?.addEventListener("click", (event) => insertTable(event.currentTarget));
   mathInput?.addEventListener("input", renderMathPreview);
   mathBlockToggle?.addEventListener("change", renderMathPreview);
 
@@ -708,7 +989,6 @@ function initNotesApp() {
     const button = event.target.closest("[data-command]");
     if (!button) return;
     event.preventDefault();
-    if (button.closest("[data-table-dialog]")) tableDialog.close();
     runCommand(button.dataset.command);
   });
 
@@ -748,11 +1028,24 @@ function initNotesApp() {
     if (folder && folderSummary === folder.querySelector(":scope > summary")) {
       event.preventDefault();
       openFolderContextMenu(folder, event.clientX, event.clientY);
+      return;
+    }
+    const editorArea = event.target.closest("[data-note-editor]");
+    if (editorArea && !event.target.closest("img[data-note-image], [data-note-attachment]")) {
+      event.preventDefault();
+      openEditorContextMenu(event.clientX, event.clientY);
     }
   });
 
+  document.addEventListener("click", (event) => {
+    const editorContextAction = event.target.closest("[data-editor-context-action]");
+    if (!editorContextAction) return;
+    closeContextMenus();
+    runCommand(editorContextAction.dataset.editorContextAction);
+  });
+
   document.addEventListener("pointerdown", (event) => {
-    if (!event.target.closest("[data-note-context-menu], [data-folder-context-menu]")) closeContextMenus();
+    if (!event.target.closest("[data-note-context-menu], [data-folder-context-menu], [data-editor-context-menu]")) closeContextMenus();
   });
   window.addEventListener("resize", closeContextMenus);
   window.addEventListener("scroll", closeContextMenus, true);
@@ -822,7 +1115,7 @@ function initNotesApp() {
       codeBlock: () => editor?.chain().focus().toggleCodeBlock().run(),
       insertMath: insertMath,
       addComment: addCommentToSelection,
-      insertTable: () => insertTable(),
+      insertTable: () => insertTable(document.querySelector("[data-table-dialog-open]")),
       addRowBefore: () => editor?.chain().focus().addRowBefore().run(),
       addRowAfter: () => editor?.chain().focus().addRowAfter().run(),
       addColumnBefore: () => editor?.chain().focus().addColumnBefore().run(),
@@ -914,7 +1207,7 @@ function initNotesApp() {
     mathInput.focus();
   }
 
-  function insertTable() {
+  function insertTableCustomSize() {
     if (!editor || !note?.can_edit || note?.is_deleted) return;
     const requestedRows = window.prompt("Anzahl der Zeilen (1–20)", "3");
     if (requestedRows === null) return;
@@ -931,6 +1224,83 @@ function initNotesApp() {
       return;
     }
     editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run();
+  }
+
+  const TABLE_PICKER_ROWS = 8;
+  const TABLE_PICKER_COLS = 10;
+  let tableSizePicker = null;
+
+  function closeTableSizePicker() {
+    tableSizePicker?.remove();
+    tableSizePicker = null;
+    document.removeEventListener("mousedown", handleTableSizePickerOutsideClick, true);
+    document.removeEventListener("keydown", handleTableSizePickerKeydown, true);
+  }
+
+  function handleTableSizePickerOutsideClick(event) {
+    if (tableSizePicker && !tableSizePicker.contains(event.target)) closeTableSizePicker();
+  }
+
+  function handleTableSizePickerKeydown(event) {
+    if (event.key === "Escape") closeTableSizePicker();
+  }
+
+  function insertTable(anchor) {
+    if (!editor || !note?.can_edit || note?.is_deleted) return;
+    closeTableSizePicker();
+
+    const picker = document.createElement("div");
+    picker.className = "table-size-picker";
+
+    const label = document.createElement("div");
+    label.className = "table-size-picker-label";
+    label.textContent = "Tabelle einfügen";
+
+    const grid = document.createElement("div");
+    grid.className = "table-size-picker-grid";
+    grid.style.setProperty("--table-picker-cols", String(TABLE_PICKER_COLS));
+
+    const cells = [];
+    for (let row = 0; row < TABLE_PICKER_ROWS; row += 1) {
+      for (let col = 0; col < TABLE_PICKER_COLS; col += 1) {
+        const cell = document.createElement("button");
+        cell.type = "button";
+        cell.className = "table-size-picker-cell";
+        cell.addEventListener("mouseenter", () => {
+          cells.forEach((other) => other.el.classList.toggle("is-active", other.row <= row && other.col <= col));
+          label.textContent = `${row + 1} × ${col + 1} Tabelle`;
+        });
+        cell.addEventListener("click", () => {
+          editor.chain().focus().insertTable({ rows: row + 1, cols: col + 1, withHeaderRow: true }).run();
+          closeTableSizePicker();
+        });
+        cells.push({ el: cell, row, col });
+        grid.append(cell);
+      }
+    }
+
+    const customButton = document.createElement("button");
+    customButton.type = "button";
+    customButton.className = "table-size-picker-custom";
+    customButton.textContent = "Benutzerdefinierte Größe…";
+    customButton.addEventListener("click", () => {
+      closeTableSizePicker();
+      insertTableCustomSize();
+    });
+
+    picker.append(label, grid, customButton);
+    document.body.append(picker);
+
+    const anchorRect = anchor?.getBoundingClientRect?.();
+    if (anchorRect) {
+      const maxLeft = window.innerWidth - picker.offsetWidth - 12;
+      picker.style.left = `${Math.max(12, Math.min(anchorRect.left, maxLeft))}px`;
+      picker.style.top = `${anchorRect.bottom + 8}px`;
+    }
+
+    tableSizePicker = picker;
+    document.addEventListener("mousedown", handleTableSizePickerOutsideClick, true);
+    document.addEventListener("keydown", handleTableSizePickerKeydown, true);
   }
 
   function applyFormatControl(control) {
@@ -1095,7 +1465,12 @@ function initNotesApp() {
     if (!editor || !wordCount) return;
     const words = editor.storage.characterCount.words();
     const characters = editor.storage.characterCount.characters();
-    wordCount.textContent = `${words} ${words === 1 ? "Wort" : "Wörter"} · ${characters} Zeichen`;
+    const readingLabel = words > 0
+      ? ` · ${Math.max(1, Math.round(words / READING_WORDS_PER_MINUTE))} Min. Lesezeit`
+      : "";
+    const label = `${words} ${words === 1 ? "Wort" : "Wörter"} · ${characters} Zeichen${readingLabel}`;
+    wordCount.textContent = label;
+    wordCount.title = label;
   }
 
   function toggleOutlinePanel() {
@@ -1830,10 +2205,19 @@ function initNotesApp() {
   function closeContextMenus() {
     noteContextMenu?.setAttribute("hidden", "");
     folderContextMenu?.setAttribute("hidden", "");
+    editorContextMenu?.setAttribute("hidden", "");
     contextNoteCard?.classList.remove("has-context-menu");
     contextFolder?.classList.remove("has-context-menu");
     contextNoteCard = null;
     contextFolder = null;
+  }
+
+  function openEditorContextMenu(x, y) {
+    if (!editor || !note?.can_edit || note?.is_deleted) return;
+    closeContextMenus();
+    const inTable = editor.isActive("table");
+    editorContextMenu.querySelectorAll("[data-table-only]").forEach((el) => { el.hidden = !inTable; });
+    positionContextMenu(editorContextMenu, x, y);
   }
 
   function openNoteContextMenu(card, x, y) {
@@ -2134,9 +2518,7 @@ function initNotesApp() {
     }
   }
 
-  async function uploadSelectedFile(input, kind) {
-    const file = input.files?.[0];
-    input.value = "";
+  async function uploadFile(file, kind) {
     if (!file || !note?.can_edit) return;
     const form = new FormData();
     form.append("file", file);
@@ -2150,11 +2532,22 @@ function initNotesApp() {
     }
     const item = data.attachment;
     if (kind === "image") {
-      const alt = window.prompt("Alternativtext für das Bild", file.name) ?? file.name;
-      editor.chain().focus().insertContent({ type: "noteImage", attrs: { attachmentId: item.id, alt, title: file.name, width: 720 } }).run();
+      editor.chain().focus().insertContent({ type: "noteImage", attrs: { attachmentId: item.id, alt: file.name, title: file.name, width: 720 } }).run();
     } else {
       editor.chain().focus().insertContent({ type: "noteAttachment", attrs: { attachmentId: item.id, name: item.name, size: item.size } }).run();
     }
+  }
+
+  async function uploadFiles(files) {
+    for (const file of files) {
+      await uploadFile(file, file.type.startsWith("image/") ? "image" : "file");
+    }
+  }
+
+  async function uploadSelectedFile(input, kind) {
+    const file = input.files?.[0];
+    input.value = "";
+    await uploadFile(file, kind);
   }
 
   async function openShareDialog() {
@@ -2364,11 +2757,40 @@ function initNotesApp() {
     data.versions.forEach((version) => {
       const row = document.createElement("div");
       row.className = "version-row";
-      row.innerHTML = `<span><strong></strong><small></small></span>${note.can_edit ? '<button class="ghost-button" type="button">Wiederherstellen</button>' : ''}`;
+      row.innerHTML = `<span><strong></strong><small></small></span><button class="ghost-button" type="button" data-version-compare>Vergleichen</button>${note.can_edit ? '<button class="ghost-button" type="button" data-version-restore>Wiederherstellen</button>' : ''}`;
       row.querySelector("strong").textContent = version.title;
       row.querySelector("small").textContent = `${new Date(version.created_at).toLocaleString()} · ${version.created_by} · Revision ${version.revision}`;
-      row.querySelector("button")?.addEventListener("click", () => restoreVersion(version.id));
+      row.querySelector("[data-version-compare]").addEventListener("click", () => openVersionDiffDialog(version.id));
+      row.querySelector("[data-version-restore]")?.addEventListener("click", () => restoreVersion(version.id));
       target.append(row);
+    });
+  }
+
+  async function openVersionDiffDialog(versionId) {
+    if (!versionDiffDialog || !note) return;
+    const summary = document.querySelector("[data-version-diff-summary]");
+    const content = document.querySelector("[data-version-diff-content]");
+    summary.textContent = "";
+    content.innerHTML = '<p class="dialog-hint">Vergleich wird geladen …</p>';
+    versionDiffDialog.showModal();
+    const { response, data } = await requestJson(`/notes/api/${note.id}/versions/${versionId}/diff/`);
+    if (!response.ok) {
+      content.textContent = data.error || "Vergleich konnte nicht geladen werden.";
+      return;
+    }
+    const { added_words: added, removed_words: removed } = data;
+    summary.textContent = added || removed
+      ? `${added} Wort${added === 1 ? "" : "e"} hinzugefügt · ${removed} Wort${removed === 1 ? "" : "e"} entfernt seit dieser Version.`
+      : "Keine inhaltlichen Änderungen seit dieser Version.";
+    content.innerHTML = "";
+    data.segments.forEach((segment) => {
+      if (segment.type === "equal") {
+        content.append(document.createTextNode(segment.text));
+        return;
+      }
+      const mark = document.createElement(segment.type === "insert" ? "ins" : "del");
+      mark.textContent = segment.text;
+      content.append(mark);
     });
   }
 

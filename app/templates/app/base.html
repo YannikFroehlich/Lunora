@@ -53,7 +53,7 @@
         })();
     </script>
 </head>
-<body>
+<body data-page="{{ active_page }}">
 {% if request.user.is_authenticated %}
 <nav class="floating-nav" aria-label="Hauptnavigation">
     <a class="nav-orb {% if active_page == 'home' %}is-active{% endif %}" href="{% url 'home' %}" aria-label="Dashboard">

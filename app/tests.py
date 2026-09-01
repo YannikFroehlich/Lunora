@@ -5525,8 +5525,8 @@ class NotesTests(TestCase):
         self.assertContains(response, "Versionsverlauf")
         self.assertContains(response, "Projektidee")
         self.assertContains(response, "data-table-dialog-open")
-        self.assertContains(response, "data-table-dialog")
-        self.assertContains(response, "Tabellenwerkzeuge")
+        self.assertContains(response, "data-editor-context-menu")
+        self.assertContains(response, "data-table-only")
         self.assertContains(response, f'data-note-card="{note.id}"')
         self.assertContains(response, "data-note-card-title")
         self.assertContains(response, "data-note-title", count=1)
@@ -6138,6 +6138,34 @@ class NotesTests(TestCase):
         self.assertEqual(note.plain_text, "")
         self.assertEqual(note.revision, 3)
         self.assertEqual(note.versions.count(), 2)
+
+    def test_version_diff_reports_word_level_changes(self):
+        note = self.create_note()
+        saved = self.save_note(note, text="Erster Inhalt")
+        self.assertEqual(saved.status_code, 200)
+        version = NoteVersion.objects.get(note=note)
+        response = self.client.get(f"/notes/api/{note.id}/versions/{version.id}/diff/")
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()
+        self.assertEqual(payload["added_words"], 2)
+        self.assertEqual(payload["removed_words"], 0)
+        non_empty_segments = [segment for segment in payload["segments"] if segment["text"].strip()]
+        self.assertEqual(non_empty_segments, [{"type": "insert", "text": "Erster Inhalt"}])
+
+    def test_version_diff_is_visible_to_read_only_share(self):
+        note = self.create_note()
+        self.save_note(note, text="Erster Inhalt")
+        version = NoteVersion.objects.get(note=note)
+        NoteShare.objects.create(note=note, user=self.reader, role=NoteShare.ROLE_READER)
+        reader_client = Client()
+        reader_client.login(username="reader@example.com", password="secret-12345")
+        response = reader_client.get(f"/notes/api/{note.id}/versions/{version.id}/diff/")
+        self.assertEqual(response.status_code, 200, response.content)
+
+    def test_version_diff_missing_version_returns_404(self):
+        note = self.create_note()
+        response = self.client.get(f"/notes/api/{note.id}/versions/999999/diff/")
+        self.assertEqual(response.status_code, 404)
 
     def test_version_history_is_limited_to_100_entries_and_90_days(self):
         note = self.create_note()

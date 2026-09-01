@@ -133,7 +133,6 @@
                 <div class="note-meta-line">
                     <span data-save-status>Gespeichert</span>
                     <span>Bearbeitet von {{ selected_note_data.updated_by }}</span>
-                    <span data-word-count>0 Wörter · 0 Zeichen</span>
                     {% if selected_note_data.permission != 'owner' %}<span class="shared-role">{{ selected_note_data.permission|capfirst }}</span>{% endif %}
                 </div>
             </div>
@@ -230,7 +229,7 @@
                         <button type="button" data-command="codeBlock" aria-label="Codeblock"><i class="fa-solid fa-code"></i></button>
                         <button type="button" data-command="insertMath" aria-label="Formel einfügen"><i class="fa-solid fa-square-root-variable"></i></button>
                         <button type="button" data-command="addComment" aria-label="Kommentar zur Auswahl hinzufügen"><i class="fa-solid fa-comment-medical"></i></button>
-                        <button type="button" data-table-dialog-open aria-label="Tabellenwerkzeuge öffnen" aria-haspopup="dialog" title="Tabellenwerkzeuge">
+                        <button type="button" data-table-dialog-open aria-label="Tabelle einfügen" aria-haspopup="true" title="Tabelle einfügen">
                             <i class="fa-solid fa-table-cells"></i>
                         </button>
                     </div>
@@ -275,6 +274,9 @@
                     <div class="note-outline-list" data-note-outline-list></div>
                 </aside>
             </div>
+            <footer class="note-editor-statusbar">
+                <span data-word-count>0 Wörter · 0 Zeichen</span>
+            </footer>
             <button type="button" class="note-editor-zoom-indicator" data-editor-zoom-level aria-label="Zoomstufe des Editors, klicken zum Zurücksetzen">100%</button>
             {% if selected_note_data.backlinks %}
             <footer class="note-backlinks">
@@ -331,28 +333,6 @@
     </form>
 </dialog>
 
-<dialog class="notes-dialog table-operations-dialog" data-table-dialog>
-    <form method="dialog" class="dialog-card">
-        <header>
-            <div><span class="eyebrow">Formatierung</span><h2>Tabellenwerkzeuge</h2></div>
-            <button value="cancel" aria-label="Schließen"><i class="fa-solid fa-xmark"></i></button>
-        </header>
-        <p class="table-dialog-hint">Füge eine neue Tabelle ein oder bearbeite die Zelle, in der sich der Cursor befindet.</p>
-        <div class="table-operation-grid">
-            <button type="button" data-command="insertTable"><i class="fa-solid fa-table-cells-large"></i><span>Tabelle einfügen…</span></button>
-            <button type="button" data-command="addRowBefore"><i class="fa-solid fa-arrow-up"></i><span>Zeile darüber</span></button>
-            <button type="button" data-command="addRowAfter"><i class="fa-solid fa-arrow-down"></i><span>Zeile darunter</span></button>
-            <button type="button" data-command="addColumnBefore"><i class="fa-solid fa-arrow-left"></i><span>Spalte links</span></button>
-            <button type="button" data-command="addColumnAfter"><i class="fa-solid fa-arrow-right"></i><span>Spalte rechts</span></button>
-            <button type="button" data-command="mergeCells"><i class="fa-solid fa-object-group"></i><span>Zellen verbinden</span></button>
-            <button type="button" data-command="splitCell"><i class="fa-solid fa-border-all"></i><span>Zelle trennen</span></button>
-            <button type="button" data-command="deleteRow"><i class="fa-solid fa-table-rows"></i><span>Zeile löschen</span></button>
-            <button type="button" data-command="deleteColumn"><i class="fa-solid fa-table-columns"></i><span>Spalte löschen</span></button>
-            <button class="is-danger" type="button" data-command="deleteTable"><i class="fa-solid fa-trash"></i><span>Tabelle löschen</span></button>
-        </div>
-    </form>
-</dialog>
-
 <dialog class="notes-dialog math-dialog" data-math-dialog>
     <form method="dialog" class="dialog-card">
         <header>
@@ -386,6 +366,14 @@
     <form method="dialog" class="dialog-card">
         <header><div><span class="eyebrow">Sicherheit</span><h2>Versionsverlauf</h2></div><button value="cancel" aria-label="Schließen"><i class="fa-solid fa-xmark"></i></button></header>
         <div class="version-list" data-version-list></div>
+    </form>
+</dialog>
+
+<dialog class="notes-dialog version-diff-dialog" data-version-diff-dialog>
+    <form method="dialog" class="dialog-card">
+        <header><div><span class="eyebrow">Sicherheit</span><h2>Änderungen seit dieser Version</h2></div><button value="cancel" aria-label="Schließen"><i class="fa-solid fa-xmark"></i></button></header>
+        <p class="dialog-hint" data-version-diff-summary></p>
+        <div class="version-diff-content soft-scrollbar" data-version-diff-content></div>
     </form>
 </dialog>
 
@@ -489,6 +477,28 @@
     <button type="button" role="menuitem" data-folder-context-action="create"><i class="fa-solid fa-folder-plus"></i><span>Neuer Unterordner</span></button>
     <button class="context-menu-separator" type="button" role="menuitem" data-folder-context-action="rename"><i class="fa-solid fa-pen"></i><span>Umbenennen</span></button>
     <button class="is-danger" type="button" role="menuitem" data-folder-context-action="delete"><i class="fa-solid fa-trash-can"></i><span>Löschen</span></button>
+</div>
+
+<div class="notes-context-menu" role="menu" data-editor-context-menu hidden>
+    <button type="button" role="menuitem" data-editor-context-action="bold"><i class="fa-solid fa-bold"></i><span>Fett</span></button>
+    <button type="button" role="menuitem" data-editor-context-action="italic"><i class="fa-solid fa-italic"></i><span>Kursiv</span></button>
+    <button type="button" role="menuitem" data-editor-context-action="underline"><i class="fa-solid fa-underline"></i><span>Unterstrichen</span></button>
+    <button type="button" role="menuitem" data-editor-context-action="strike"><i class="fa-solid fa-strikethrough"></i><span>Durchgestrichen</span></button>
+    <button type="button" role="menuitem" data-editor-context-action="textColor"><i class="fa-solid fa-droplet"></i><span>Textfarbe</span></button>
+    <button type="button" role="menuitem" data-editor-context-action="highlight"><i class="fa-solid fa-highlighter"></i><span>Markierfarbe</span></button>
+    <button type="button" role="menuitem" data-editor-context-action="fontFamily"><i class="fa-solid fa-font"></i><span>Schriftart</span></button>
+    <button class="context-menu-separator" type="button" role="menuitem" data-editor-context-action="fontSize"><i class="fa-solid fa-text-height"></i><span>Schriftgröße</span></button>
+    <button type="button" role="menuitem" data-editor-context-action="link"><i class="fa-solid fa-link"></i><span>Link</span></button>
+    <button class="context-menu-separator" type="button" role="menuitem" data-editor-context-action="addComment"><i class="fa-solid fa-comment-medical"></i><span>Kommentar hinzufügen</span></button>
+    <button type="button" role="menuitem" data-editor-context-action="addRowBefore" data-table-only><i class="fa-solid fa-arrow-up"></i><span>Zeile darüber</span></button>
+    <button type="button" role="menuitem" data-editor-context-action="addRowAfter" data-table-only><i class="fa-solid fa-arrow-down"></i><span>Zeile darunter</span></button>
+    <button type="button" role="menuitem" data-editor-context-action="addColumnBefore" data-table-only><i class="fa-solid fa-arrow-left"></i><span>Spalte links</span></button>
+    <button type="button" role="menuitem" data-editor-context-action="addColumnAfter" data-table-only><i class="fa-solid fa-arrow-right"></i><span>Spalte rechts</span></button>
+    <button type="button" role="menuitem" data-editor-context-action="mergeCells" data-table-only><i class="fa-solid fa-object-group"></i><span>Zellen verbinden</span></button>
+    <button type="button" role="menuitem" data-editor-context-action="splitCell" data-table-only><i class="fa-solid fa-border-all"></i><span>Zelle trennen</span></button>
+    <button type="button" role="menuitem" data-editor-context-action="deleteRow" data-table-only><i class="fa-solid fa-table-rows"></i><span>Zeile löschen</span></button>
+    <button type="button" role="menuitem" data-editor-context-action="deleteColumn" data-table-only><i class="fa-solid fa-table-columns"></i><span>Spalte löschen</span></button>
+    <button class="is-danger" type="button" role="menuitem" data-editor-context-action="deleteTable" data-table-only><i class="fa-solid fa-trash"></i><span>Tabelle löschen</span></button>
 </div>
 
 {% csrf_token %}

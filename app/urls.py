@@ -140,6 +140,11 @@ urlpatterns = [
     path("notes/api/<int:note_id>/attachments/", view.note_attachment_upload_api, name="note_attachment_upload_api"),
     path("notes/api/<int:note_id>/versions/", view.note_versions_api, name="note_versions_api"),
     path(
+        "notes/api/<int:note_id>/versions/<int:version_id>/diff/",
+        view.note_version_diff_api,
+        name="note_version_diff_api",
+    ),
+    path(
         "notes/api/<int:note_id>/versions/<int:version_id>/restore/",
         view.note_version_restore_api,
         name="note_version_restore_api",
