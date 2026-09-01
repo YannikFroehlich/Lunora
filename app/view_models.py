@@ -19,6 +19,7 @@ from app.services.user_preferences import (
     format_user_date,
     format_user_datetime,
     format_user_time,
+    get_user_date_format,
     get_user_month_name,
     get_user_time_format,
     get_user_weekday_name,
@@ -91,6 +92,7 @@ def get_dashboard_context(user=None):
             "year": now.strftime("%Y"),
             "timezone": get_user_timezone_name(user),
             "time_format": get_user_time_format(user),
+            "date_format": get_user_date_format(user),
         },
         "nav_tiles": nav_tiles,
         "recent_tools": _dashboard_tool_shortcuts(

@@ -27,12 +27,16 @@
   function initDashboardClock(panel) {
     const timeZone = panel.dataset.clockTimezone || undefined;
     const timeFormat = panel.dataset.clockTimeFormat || "24h";
+    const dateFormat = panel.dataset.clockDateFormat || "de_numeric";
 
     const timeEl = panel.querySelector("[data-clock-time]");
     const weekdayEl = panel.querySelector("[data-clock-weekday]");
     const dayEl = panel.querySelector("[data-clock-day]");
     const monthEl = panel.querySelector("[data-clock-month]");
     const yearEl = panel.querySelector("[data-clock-year]");
+    const todayEl = panel.querySelector("[data-clock-today]");
+    const momentLabelEl = panel.querySelector("[data-clock-moment-label]");
+    const momentIconEl = panel.querySelector("[data-clock-moment-icon]");
 
     let partsFormatter;
     try {
@@ -70,6 +74,43 @@
       return `${String(hour24).padStart(2, "0")}:${minute}`;
     }
 
+    function formatToday(dayPadded, monthPadded, year) {
+      if (dateFormat === "de_long") {
+        return `${Number(dayPadded)}. ${GERMAN_MONTH_NAMES[Number(monthPadded) - 1]} ${year}`;
+      }
+      if (dateFormat === "iso") {
+        return `${year}-${monthPadded}-${dayPadded}`;
+      }
+      if (dateFormat === "us_numeric") {
+        return `${monthPadded}/${dayPadded}/${year}`;
+      }
+      return `${dayPadded}.${monthPadded}.${year}`;
+    }
+
+    function momentInfo(hour24) {
+      let label;
+      if (hour24 >= 5 && hour24 < 11) {
+        label = "Ruhiger Start";
+      } else if (hour24 >= 11 && hour24 < 17) {
+        label = "Fokussierter Tag";
+      } else if (hour24 >= 17 && hour24 < 22) {
+        label = "Ruhiger Abend";
+      } else {
+        label = "Nachtruhe";
+      }
+
+      let icon;
+      if (hour24 >= 5 && hour24 < 17) {
+        icon = "fa-regular fa-sun";
+      } else if (hour24 >= 17 && hour24 < 22) {
+        icon = "fa-solid fa-cloud-sun";
+      } else {
+        icon = "fa-regular fa-moon";
+      }
+
+      return { label, icon };
+    }
+
     function update() {
       const parts = partsFormatter.formatToParts(new Date());
       const lookup = {};
@@ -91,6 +132,16 @@
       }
       if (yearEl) {
         yearEl.textContent = lookup.year;
+      }
+      if (todayEl) {
+        todayEl.textContent = formatToday(lookup.day, lookup.month, lookup.year);
+      }
+      const moment = momentInfo(Number(lookup.hour));
+      if (momentLabelEl) {
+        momentLabelEl.textContent = moment.label;
+      }
+      if (momentIconEl) {
+        momentIconEl.className = moment.icon;
       }
     }
 

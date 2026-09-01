@@ -1,6 +1,7 @@
 <div data-home-clock
      data-clock-timezone="{{ clock.timezone }}"
-     data-clock-time-format="{{ clock.time_format }}">
+     data-clock-time-format="{{ clock.time_format }}"
+     data-clock-date-format="{{ clock.date_format }}">
     <div class="panel-title panel-title-between">
         <span><i class="fa-regular fa-clock"></i> Jetzt</span>
         <span class="clock-zone">{{ clock.timezone }}</span>
@@ -17,7 +18,7 @@
         </div>
     </div>
     <div class="clock-details">
-        <span><i class="fa-regular fa-calendar"></i> {{ today_label }}</span>
-        <span><i class="{{ dashboard_moment_icon }}" aria-hidden="true"></i> {{ dashboard_moment_label }}</span>
+        <span><i class="fa-regular fa-calendar"></i> <span data-clock-today>{{ today_label }}</span></span>
+        <span><i data-clock-moment-icon class="{{ dashboard_moment_icon }}" aria-hidden="true"></i> <span data-clock-moment-label>{{ dashboard_moment_label }}</span></span>
     </div>
 </div>
