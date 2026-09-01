@@ -12,21 +12,26 @@ from django.utils import timezone
 from django.utils.http import content_disposition_header
 
 from app.forms import ConversationStartForm, MessageForm
-from app.models import ChatMessage, ChatMessageAttachment, ChatMessageReaction, Conversation, ConversationMember
+from app.models import (
+    ChatMessage,
+    ChatMessageAttachment,
+    ChatMessageReaction,
+    Conversation,
+    ConversationMember,
+)
 from app.services.chat_files import infer_attachment_kind
-from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.message_queries import (
     current_members_by_conversation,
     last_messages_by_conversation,
     unread_counts_by_conversation,
 )
+from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.user_preferences import (
     format_user_date,
     format_user_datetime,
     format_user_time,
     localtime_for_user,
 )
-
 
 MESSAGE_REACTION_EMOJIS = [emoji for emoji, _label in ChatMessageReaction.EMOJI_CHOICES]
 MESSAGE_STREAM_PAGE_SIZE = 50
@@ -55,7 +60,10 @@ def messages(request, conversation_id=None):
                 return redirect("messages")
             current_member = _get_conversation_member(selected_conversation, request.user)
             if current_member and current_member.is_blocked:
-                django_messages.error(request, "Du hast diesen Chat blockiert. Hebe die Blockierung auf, um wieder zu schreiben.")
+                django_messages.error(
+                    request,
+                    "Du hast diesen Chat blockiert. Hebe die Blockierung auf, um wieder zu schreiben.",
+                )
                 return redirect("messages_detail", conversation_id=selected_conversation.id)
             if _conversation_blocked_for_sender(selected_conversation, request.user):
                 django_messages.error(request, "Diese Nachricht konnte nicht gesendet werden.")
@@ -66,7 +74,9 @@ def messages(request, conversation_id=None):
                 message.sender = request.user
                 reply_to_id = _coerce_positive_int(request.POST.get("reply_to_id"))
                 if reply_to_id:
-                    message.reply_to = selected_conversation.messages.filter(pk=reply_to_id, is_deleted=False).first()
+                    message.reply_to = selected_conversation.messages.filter(
+                        pk=reply_to_id, is_deleted=False
+                    ).first()
                 message.save()
                 upload = message_form.cleaned_data.get("attachment")
                 if upload:
@@ -104,7 +114,10 @@ def messages(request, conversation_id=None):
                     )
                     ConversationMember.objects.bulk_create(
                         [ConversationMember(conversation=selected_conversation, user=request.user)]
-                        + [ConversationMember(conversation=selected_conversation, user=recipient) for recipient in recipients]
+                        + [
+                            ConversationMember(conversation=selected_conversation, user=recipient)
+                            for recipient in recipients
+                        ]
                     )
 
                 body = start_form.cleaned_data.get("body")
@@ -166,7 +179,9 @@ def messages(request, conversation_id=None):
                 return redirect("messages_detail", conversation_id=selected_conversation.id)
 
             if action == "leave_group" and selected_conversation.is_group:
-                ConversationMember.objects.filter(conversation=selected_conversation, user=request.user).delete()
+                ConversationMember.objects.filter(
+                    conversation=selected_conversation, user=request.user
+                ).delete()
                 return redirect("messages")
 
             _apply_conversation_member_action(selected_conversation, request.user, action)
@@ -178,7 +193,9 @@ def messages(request, conversation_id=None):
                 request.POST.get("conversation_id") or conversation_id,
             )
             if selected_conversation:
-                ConversationMember.objects.filter(conversation=selected_conversation, user=request.user).update(is_archived=True)
+                ConversationMember.objects.filter(
+                    conversation=selected_conversation, user=request.user
+                ).update(is_archived=True)
             return redirect("messages")
 
         elif form_name == "mark_read":
@@ -208,12 +225,20 @@ def messages(request, conversation_id=None):
 
     message_window = _build_message_window(selected_conversation, request.user, before_id=message_before_id)
     message_items = message_window["message_items"]
-    pinned_message_items = _build_pinned_message_items(selected_conversation, request.user) if selected_conversation else []
-    selected_members = _build_member_items(selected_conversation, request.user) if selected_conversation else []
-    current_member = _get_conversation_member(selected_conversation, request.user) if selected_conversation else None
+    pinned_message_items = (
+        _build_pinned_message_items(selected_conversation, request.user) if selected_conversation else []
+    )
+    selected_members = (
+        _build_member_items(selected_conversation, request.user) if selected_conversation else []
+    )
+    current_member = (
+        _get_conversation_member(selected_conversation, request.user) if selected_conversation else None
+    )
     current_member_state = _build_current_member_state(current_member, request.user, selected_conversation)
     available_recipients = (
-        _available_group_recipients(selected_conversation) if selected_conversation and selected_conversation.is_group else []
+        _available_group_recipients(selected_conversation)
+        if selected_conversation and selected_conversation.is_group
+        else []
     )
 
     context = {
@@ -222,9 +247,13 @@ def messages(request, conversation_id=None):
         "current_filter": current_filter,
         "query": query,
         "selected_conversation": selected_conversation,
-        "selected_title": selected_conversation.display_title_for(request.user) if selected_conversation else "",
+        "selected_title": selected_conversation.display_title_for(request.user)
+        if selected_conversation
+        else "",
         "selected_avatar": selected_conversation.avatar_for(request.user) if selected_conversation else "",
-        "selected_avatar_url": _conversation_avatar_url_for(selected_conversation, request.user) if selected_conversation else "",
+        "selected_avatar_url": _conversation_avatar_url_for(selected_conversation, request.user)
+        if selected_conversation
+        else "",
         "selected_members": selected_members,
         "message_items": message_items,
         "has_older_messages": message_window["has_older_messages"],
@@ -286,11 +315,15 @@ def messages_live_updates(request, conversation_id=None):
         "ok": True,
         "unread_total": unread_total,
         "conversation_total": len(all_inbox_items),
-        "contact_list_html": render_to_string("app/partials/messages_contact_list.html", context, request=request),
+        "contact_list_html": render_to_string(
+            "app/partials/messages_contact_list.html", context, request=request
+        ),
     }
 
     if selected_conversation:
-        message_window = _build_message_window(selected_conversation, request.user, before_id=message_before_id)
+        message_window = _build_message_window(
+            selected_conversation, request.user, before_id=message_before_id
+        )
         message_items = message_window["message_items"]
         pinned_message_items = _build_pinned_message_items(selected_conversation, request.user)
         current_member = _get_conversation_member(selected_conversation, request.user)
@@ -300,16 +333,24 @@ def messages_live_updates(request, conversation_id=None):
                 "has_older_messages": message_window["has_older_messages"],
                 "oldest_message_id": message_window["oldest_message_id"],
                 "pinned_message_items": pinned_message_items,
-                "current_member_state": _build_current_member_state(current_member, request.user, selected_conversation),
+                "current_member_state": _build_current_member_state(
+                    current_member, request.user, selected_conversation
+                ),
             }
         )
         current_member_state = context["current_member_state"]
         payload.update(
             {
                 "selected_conversation_id": selected_conversation.id,
-                "message_stream_html": render_to_string("app/partials/messages_stream.html", context, request=request),
-                "pinned_messages_html": render_to_string("app/partials/messages_pinned.html", context, request=request),
-                "compose_html": render_to_string("app/partials/messages_compose.html", context, request=request),
+                "message_stream_html": render_to_string(
+                    "app/partials/messages_stream.html", context, request=request
+                ),
+                "pinned_messages_html": render_to_string(
+                    "app/partials/messages_pinned.html", context, request=request
+                ),
+                "compose_html": render_to_string(
+                    "app/partials/messages_compose.html", context, request=request
+                ),
                 "compose_blocked": bool(
                     current_member_state["is_blocked"] or current_member_state["blocked_by_recipient"]
                 ),
@@ -318,7 +359,9 @@ def messages_live_updates(request, conversation_id=None):
             }
         )
     else:
-        payload["overview_html"] = render_to_string("app/partials/messages_overview.html", context, request=request)
+        payload["overview_html"] = render_to_string(
+            "app/partials/messages_overview.html", context, request=request
+        )
 
     return JsonResponse(payload)
 
@@ -346,7 +389,9 @@ def chat_attachment_download(request, file_id, disposition):
     if not feature_enabled("messages"):
         return disabled_feature_response(request, "messages", json_response=True)
 
-    attachment = ChatMessageAttachment.objects.select_related("message__conversation").filter(file_id=file_id).first()
+    attachment = (
+        ChatMessageAttachment.objects.select_related("message__conversation").filter(file_id=file_id).first()
+    )
     if not attachment or disposition not in {"inline", "download"}:
         return JsonResponse({"ok": False, "error": "Datei nicht gefunden."}, status=404)
 
@@ -476,7 +521,9 @@ def _build_inbox_items(conversations, user):
                 "is_group": conversation.is_group,
                 "is_muted": bool(member and member.is_muted),
                 "is_blocked": bool(member and member.is_blocked),
-                "participant_text": ", ".join(Conversation.display_name_for_user(row.user) for row in participants),
+                "participant_text": ", ".join(
+                    Conversation.display_name_for_user(row.user) for row in participants
+                ),
                 "last_message_body": _message_preview_text(last_message) if last_message else "",
             }
         )
@@ -564,8 +611,7 @@ def _paginated_conversation_messages(conversation, before_id=None):
         anchor = conversation.messages.filter(pk=before_id).only("id", "created_at").first()
         if anchor:
             messages = messages.filter(
-                Q(created_at__lt=anchor.created_at)
-                | Q(created_at=anchor.created_at, id__lt=anchor.id)
+                Q(created_at__lt=anchor.created_at) | Q(created_at=anchor.created_at, id__lt=anchor.id)
             )
 
     newest_first = list(messages.order_by("-created_at", "-id")[: MESSAGE_STREAM_PAGE_SIZE + 1])
@@ -592,7 +638,9 @@ def _build_message_items(conversation, user, messages):
                 "message": message,
                 "side": "out" if message.sender_id == user.id else "in",
                 "time": format_user_time(message.created_at, user),
-                "date_label": _date_separator_label(message.created_at, user) if message_date != last_date else "",
+                "date_label": _date_separator_label(message.created_at, user)
+                if message_date != last_date
+                else "",
                 "sender_name": Conversation.display_name_for_user(message.sender),
                 "sender_avatar": Conversation.initials_for_user(message.sender),
                 "sender_avatar_url": _profile_image_url_for_user(message.sender),
@@ -601,8 +649,12 @@ def _build_message_items(conversation, user, messages):
                 "is_pinned": message.is_pinned,
                 "can_delete": message.sender_id == user.id and not message.is_deleted,
                 "can_react": not message.is_deleted,
-                "read_receipt": _message_read_receipt(message, conversation, user) if message.sender_id == user.id else "",
-                "read_receipt_is_read": _message_is_read_by_others(message, conversation, user) if message.sender_id == user.id else False,
+                "read_receipt": _message_read_receipt(message, conversation, user)
+                if message.sender_id == user.id
+                else "",
+                "read_receipt_is_read": _message_is_read_by_others(message, conversation, user)
+                if message.sender_id == user.id
+                else False,
                 "reactions": _build_reaction_items(message, user),
                 "attachment": _build_attachment_item(message),
                 "reply_preview": _build_reply_preview(message),
@@ -657,18 +709,24 @@ def _message_read_receipt(message, conversation, user):
 
 
 def _build_pinned_message_items(conversation, user):
-    pinned_messages = conversation.messages.filter(is_pinned=True, is_deleted=False).select_related(
-        "sender",
-        "sender__profile",
-        "pinned_by",
-        "pinned_by__profile",
-        "attachment",
-    ).order_by("-pinned_at", "-id")[:5]
+    pinned_messages = (
+        conversation.messages.filter(is_pinned=True, is_deleted=False)
+        .select_related(
+            "sender",
+            "sender__profile",
+            "pinned_by",
+            "pinned_by__profile",
+            "attachment",
+        )
+        .order_by("-pinned_at", "-id")[:5]
+    )
     return [
         {
             "message": message,
             "sender_name": Conversation.display_name_for_user(message.sender),
-            "pinned_by_name": Conversation.display_name_for_user(message.pinned_by) if message.pinned_by else "Unbekannt",
+            "pinned_by_name": Conversation.display_name_for_user(message.pinned_by)
+            if message.pinned_by
+            else "Unbekannt",
             "preview": _message_preview_text(message)[:140],
         }
         for message in pinned_messages
@@ -686,7 +744,9 @@ def _build_reaction_items(message, user):
                 "emoji": emoji,
                 "count": len(matching_reactions),
                 "is_own": any(reaction.user_id == user.id for reaction in matching_reactions),
-                "title": ", ".join(Conversation.display_name_for_user(reaction.user) for reaction in matching_reactions),
+                "title": ", ".join(
+                    Conversation.display_name_for_user(reaction.user) for reaction in matching_reactions
+                ),
             }
         )
     return grouped
@@ -831,7 +891,11 @@ def _message_preview_text(message):
         return message.body
     attachment = getattr(message, "attachment", None)
     if attachment:
-        return "📷 Bild" if attachment.kind == ChatMessageAttachment.KIND_IMAGE else f"📎 {attachment.original_name}"
+        return (
+            "📷 Bild"
+            if attachment.kind == ChatMessageAttachment.KIND_IMAGE
+            else f"📎 {attachment.original_name}"
+        )
     return ""
 
 

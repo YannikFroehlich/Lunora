@@ -29,7 +29,6 @@ from dataclasses import dataclass
 from django.db import connection
 from django.db.models import Case, FloatField, Q, Value, When
 
-
 SEARCH_CONFIG = "german"
 MAX_TERMS = 12
 MAX_TERM_LENGTH = 60
@@ -201,10 +200,11 @@ def _apply_postgres_search(queryset, parsed):
     if query is None:
         return queryset.annotate(search_rank=_substring_rank(parsed)).filter(_substring_filter(parsed))
 
-    rank = SearchRank(vector, query) * Value(VECTOR_WEIGHT, output_field=FloatField()) + _substring_rank(parsed)
-    return (
-        queryset.annotate(search_vector=vector, search_rank=rank)
-        .filter(Q(search_vector=query) | _substring_filter(parsed))
+    rank = SearchRank(vector, query) * Value(VECTOR_WEIGHT, output_field=FloatField()) + _substring_rank(
+        parsed
+    )
+    return queryset.annotate(search_vector=vector, search_rank=rank).filter(
+        Q(search_vector=query) | _substring_filter(parsed)
     )
 
 

@@ -84,7 +84,11 @@ urlpatterns = [
         view.chat_attachment_download,
         name="chat_attachment_download",
     ),
-    path("messages/<int:conversation_id>/live/", view.messages_live_updates, name="messages_live_detail_updates"),
+    path(
+        "messages/<int:conversation_id>/live/",
+        view.messages_live_updates,
+        name="messages_live_detail_updates",
+    ),
     path("messages/<int:conversation_id>/typing/", view.chat_typing_ping, name="messages_typing_ping"),
     path("messages/<int:conversation_id>/", view.messages, name="messages_detail"),
     path("notes/", view.notes, name="notes"),
@@ -137,7 +141,11 @@ urlpatterns = [
         view.note_share_delete_api,
         name="note_share_delete_api",
     ),
-    path("notes/api/<int:note_id>/attachments/", view.note_attachment_upload_api, name="note_attachment_upload_api"),
+    path(
+        "notes/api/<int:note_id>/attachments/",
+        view.note_attachment_upload_api,
+        name="note_attachment_upload_api",
+    ),
     path("notes/api/<int:note_id>/versions/", view.note_versions_api, name="note_versions_api"),
     path(
         "notes/api/<int:note_id>/versions/<int:version_id>/diff/",

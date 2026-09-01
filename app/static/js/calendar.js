@@ -150,7 +150,7 @@ if (editDialog) {
         allDay: button.dataset.editAllDay,
         location: button.dataset.editLocation,
         attendees: button.dataset.editAttendees,
-      })
+      }),
     );
   });
 

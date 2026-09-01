@@ -28,9 +28,7 @@ def last_messages_by_conversation(conversations):
         .values_list("id", "latest_message_id")
     )
     message_ids_by_conversation = {
-        conversation_id: message_id
-        for conversation_id, message_id in rows
-        if message_id
+        conversation_id: message_id for conversation_id, message_id in rows if message_id
     }
     messages_by_id = {
         message.id: message
@@ -77,10 +75,9 @@ def unread_total_for_user(user):
     if not user or not getattr(user, "is_authenticated", False):
         return 0
 
-    memberships = list(ConversationMember.objects.filter(user=user, is_archived=False).select_related("conversation"))
+    memberships = list(
+        ConversationMember.objects.filter(user=user, is_archived=False).select_related("conversation")
+    )
     conversations = [membership.conversation for membership in memberships]
-    members_by_conversation = {
-        membership.conversation_id: membership
-        for membership in memberships
-    }
+    members_by_conversation = {membership.conversation_id: membership for membership in memberships}
     return sum(unread_counts_by_conversation(conversations, user, members_by_conversation).values())

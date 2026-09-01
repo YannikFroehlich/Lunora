@@ -10,7 +10,6 @@ from django.utils.deconstruct import deconstructible
 
 from app.services.image_uploads import _detect_image_type_and_size
 
-
 NOTE_IMAGE_MAX_BYTES = 8 * 1024 * 1024
 NOTE_ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024
 NOTE_TOTAL_ATTACHMENT_BYTES = 100 * 1024 * 1024
@@ -34,7 +33,9 @@ NOTE_IMAGE_ACCEPT = "image/jpeg,image/png,image/webp"
 @deconstructible
 class PrivateNoteStorage(FileSystemStorage):
     def __init__(self):
-        super().__init__(location=getattr(settings, "PRIVATE_MEDIA_ROOT", settings.BASE_DIR / "private_media"))
+        super().__init__(
+            location=getattr(settings, "PRIVATE_MEDIA_ROOT", settings.BASE_DIR / "private_media")
+        )
 
 
 private_note_storage = PrivateNoteStorage()

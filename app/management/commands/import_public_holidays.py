@@ -10,7 +10,9 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--from-year", type=int, required=True)
         parser.add_argument("--to-year", type=int, required=True)
-        parser.add_argument("--subdivision", choices=[choice[0] for choice in VacationYear.SUBDIVISION_CHOICES])
+        parser.add_argument(
+            "--subdivision", choices=[choice[0] for choice in VacationYear.SUBDIVISION_CHOICES]
+        )
 
     def handle(self, *args, **options):
         from_year = options["from_year"]

@@ -8,14 +8,14 @@ from app.models import (
     ChatMessageReaction,
     Conversation,
     ConversationMember,
+    CustomHoliday,
+    HolidayOverride,
     Note,
     NoteAttachment,
     NoteShare,
     NoteUserState,
     NoteVersion,
     NotificationPreference,
-    CustomHoliday,
-    HolidayOverride,
     OfficialHoliday,
     Profile,
     SystemSettings,
@@ -128,7 +128,16 @@ class TaskLabelAdmin(admin.ModelAdmin):
 
 @admin.register(Task)
 class TaskAdmin(admin.ModelAdmin):
-    list_display = ("title", "user", "task_list", "priority", "is_done", "due_at", "email_notified_at", "desktop_notified_at")
+    list_display = (
+        "title",
+        "user",
+        "task_list",
+        "priority",
+        "is_done",
+        "due_at",
+        "email_notified_at",
+        "desktop_notified_at",
+    )
     list_filter = ("is_done", "priority", "recurrence_rule", "created_at")
     search_fields = ("title", "user__username")
 

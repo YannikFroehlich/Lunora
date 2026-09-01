@@ -53,11 +53,7 @@ def _serialize_calculation(calculation):
         "required_days": float(calculation["required_days"]),
         "required_days_label": decimal_label(calculation["required_days"]),
         "per_year": [
-            {
-                key: convert_value(value)
-                for key, value in row.items()
-            }
-            for row in calculation["per_year"]
+            {key: convert_value(value) for key, value in row.items()} for row in calculation["per_year"]
         ],
         "missing_years": calculation["missing_years"],
         "overlaps": [
@@ -84,10 +80,13 @@ def vacation_planner(request):
     vacation_year = context["year_context"]["vacation_year"]
     context.update(
         {
-            "year_form": VacationYearForm(instance=vacation_year, initial={
-                "allowance_days": context["year_context"]["suggested_allowance"],
-                "subdivision": context["year_context"]["suggested_subdivision"],
-            }),
+            "year_form": VacationYearForm(
+                instance=vacation_year,
+                initial={
+                    "allowance_days": context["year_context"]["suggested_allowance"],
+                    "subdivision": context["year_context"]["suggested_subdivision"],
+                },
+            ),
             "period_form": VacationPeriodForm(user=request.user),
             "custom_holiday_form": CustomHolidayForm(),
             "override_form": HolidayOverrideForm(),
@@ -147,14 +146,18 @@ def vacation_period_save(request):
         if calculation["missing_years"]:
             years = ", ".join(str(year) for year in calculation["missing_years"])
             django_messages.error(request, f"Bitte bestätige zuerst die Urlaubsjahre: {years}.")
-            return _planner_redirect(_selected_year(request) or form.cleaned_data["start_date"].year, _selected_month(request))
+            return _planner_redirect(
+                _selected_year(request) or form.cleaned_data["start_date"].year, _selected_month(request)
+            )
         period = form.save(commit=False)
         period.user = request.user
         period.save()
         django_messages.success(request, "Urlaub gespeichert.")
     else:
         django_messages.error(request, "Der Urlaub konnte nicht gespeichert werden.")
-    return _planner_redirect(_selected_year(request) or (period.start_date.year if period else 2026), _selected_month(request))
+    return _planner_redirect(
+        _selected_year(request) or (period.start_date.year if period else 2026), _selected_month(request)
+    )
 
 
 @login_required
@@ -162,7 +165,9 @@ def vacation_period_delete(request):
     if not feature_enabled("vacation_planner"):
         return disabled_feature_response(request, "vacation_planner")
     if request.method == "POST":
-        deleted_count, _details = VacationPeriod.objects.filter(user=request.user, pk=request.POST.get("period_id")).delete()
+        deleted_count, _details = VacationPeriod.objects.filter(
+            user=request.user, pk=request.POST.get("period_id")
+        ).delete()
         if deleted_count:
             django_messages.success(request, "Urlaub gelöscht.")
     return _planner_redirect(_selected_year(request) or 2026, _selected_month(request))
@@ -185,7 +190,9 @@ def vacation_preview(request):
     if not start_date or not end_date:
         return JsonResponse({"ok": False, "error": "Bitte Start- und Enddatum angeben."}, status=400)
     if end_date < start_date:
-        return JsonResponse({"ok": False, "error": "Das Enddatum muss am oder nach dem Startdatum liegen."}, status=400)
+        return JsonResponse(
+            {"ok": False, "error": "Das Enddatum muss am oder nach dem Startdatum liegen."}, status=400
+        )
 
     calculation = calculate_period(
         request.user,
@@ -238,7 +245,9 @@ def custom_holiday_delete(request):
     year = _selected_year(request)
     vacation_year = VacationYear.objects.filter(user=request.user, year=year).first()
     if request.method == "POST" and vacation_year:
-        deleted_count, _details = CustomHoliday.objects.filter(vacation_year=vacation_year, pk=request.POST.get("holiday_id")).delete()
+        deleted_count, _details = CustomHoliday.objects.filter(
+            vacation_year=vacation_year, pk=request.POST.get("holiday_id")
+        ).delete()
         if deleted_count:
             django_messages.success(request, "Feiertag gelöscht.")
     return _planner_redirect(year or 2026, _selected_month(request))
@@ -259,7 +268,9 @@ def official_holiday_override_save(request):
         django_messages.error(request, "Der Feiertag konnte nicht gefunden werden.")
         return _planner_redirect(year or 2026, _selected_month(request))
 
-    override = HolidayOverride.objects.filter(vacation_year=vacation_year, official_holiday=official_holiday).first()
+    override = HolidayOverride.objects.filter(
+        vacation_year=vacation_year, official_holiday=official_holiday
+    ).first()
     form = HolidayOverrideForm(request.POST, instance=override)
     if form.is_valid():
         override = form.save(commit=False)

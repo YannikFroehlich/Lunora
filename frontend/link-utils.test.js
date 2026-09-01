@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { normalizeLinkHref } from "./link-utils.js";
 
-
 describe("normalizeLinkHref", () => {
   it("ergänzt bei normalen Domains HTTPS", () => {
     expect(normalizeLinkHref("youtube.com")).toBe("https://youtube.com");

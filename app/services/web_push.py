@@ -18,7 +18,6 @@ from app.services.notification_preferences import (
     web_push_is_quiet_for_user,
 )
 
-
 logger = logging.getLogger(__name__)
 
 BASE64URL_PATTERN = re.compile(r"^[A-Za-z0-9_-]+={0,2}$")
@@ -38,8 +37,7 @@ def web_push_configured():
 def _trusted_endpoint_host(hostname):
     host = (hostname or "").lower().rstrip(".")
     return any(
-        host == allowed_host.lower().rstrip(".")
-        or host.endswith(f".{allowed_host.lower().rstrip('.')}")
+        host == allowed_host.lower().rstrip(".") or host.endswith(f".{allowed_host.lower().rstrip('.')}")
         for allowed_host in settings.WEB_PUSH_ALLOWED_ENDPOINT_HOSTS
     )
 
@@ -284,9 +282,7 @@ def send_pending_web_push_notifications(*, now=None, limit=100):
     failed = 0
     removed = 0
     deferred = 0
-    preference_cache = notification_preference_map(
-        delivery.subscription.user_id for delivery in deliveries
-    )
+    preference_cache = notification_preference_map(delivery.subscription.user_id for delivery in deliveries)
     for delivery in deliveries:
         subscription = delivery.subscription
         if not notification_channel_enabled(

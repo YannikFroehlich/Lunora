@@ -180,7 +180,7 @@ if (weatherForm) {
       () => {
         currentLocationButton.disabled = false;
       },
-      { enableHighAccuracy: false, timeout: 8000 }
+      { enableHighAccuracy: false, timeout: 8000 },
     );
   });
 
@@ -248,10 +248,14 @@ if (hourlyCarousel) {
 
   previousButton?.addEventListener("click", () => scrollHourlyForecast(-1));
   nextButton?.addEventListener("click", () => scrollHourlyForecast(1));
-  scroller?.addEventListener("scroll", () => {
-    window.cancelAnimationFrame(scrollFrame);
-    scrollFrame = window.requestAnimationFrame(updateHourlyControls);
-  }, { passive: true });
+  scroller?.addEventListener(
+    "scroll",
+    () => {
+      window.cancelAnimationFrame(scrollFrame);
+      scrollFrame = window.requestAnimationFrame(updateHourlyControls);
+    },
+    { passive: true },
+  );
 
   if (scroller && "ResizeObserver" in window) {
     const hourlyResizeObserver = new ResizeObserver(updateHourlyControls);
@@ -321,9 +325,8 @@ if (weatherMapShell) {
     updateLegend(activeButton);
   }
 
-  const defaultButton = layerButtons.find(
-    (button) => button.dataset.weatherMapLayer === defaultLayerId
-  ) || layerButtons[0];
+  const defaultButton =
+    layerButtons.find((button) => button.dataset.weatherMapLayer === defaultLayerId) || layerButtons[0];
   setActiveButton(defaultButton);
 
   if (!canvas || typeof window.L === "undefined") {
@@ -454,7 +457,7 @@ if (weatherMapShell) {
         createPointPopupContent({
           state: "loading",
           message: "Temperatur wird abgerufen …",
-        })
+        }),
       );
 
       const requestUrl = new URL(pointWeatherUrl, window.location.origin);
@@ -472,17 +475,11 @@ if (weatherMapShell) {
         }
         if (currentController !== pointWeatherController) return;
 
-        showPointPopup(
-          latlng,
-          createPointPopupContent({ state: "success", weather: payload.weather })
-        );
+        showPointPopup(latlng, createPointPopupContent({ state: "success", weather: payload.weather }));
       } catch (error) {
         if (error.name === "AbortError" || currentController !== pointWeatherController) return;
         const message = error.message || "Temperatur konnte nicht geladen werden.";
-        showPointPopup(
-          latlng,
-          createPointPopupContent({ state: "error", message })
-        );
+        showPointPopup(latlng, createPointPopupContent({ state: "error", message }));
       }
     }
 
@@ -568,7 +565,7 @@ if (weatherMapShell) {
         } else if (fullscreenTarget.requestFullscreen) {
           await fullscreenTarget.requestFullscreen();
         }
-      } catch (error) {
+      } catch (_error) {
         setStatus("Der Vollbildmodus konnte nicht geöffnet werden.", true);
       }
     });
@@ -583,7 +580,7 @@ if (weatherMapShell) {
       }
       fullscreenButton?.setAttribute(
         "aria-label",
-        isFullscreen ? "Vollbild der Wetterkarte beenden" : "Wetterkarte im Vollbild anzeigen"
+        isFullscreen ? "Vollbild der Wetterkarte beenden" : "Wetterkarte im Vollbild anzeigen",
       );
       refreshMapLayout(true);
     });

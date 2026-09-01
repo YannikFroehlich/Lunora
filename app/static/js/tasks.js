@@ -66,15 +66,26 @@
     return PRIORITY_RANK[row.dataset.taskPriority] ?? 0;
   }
 
+  function dragEnabled() {
+    return sortSelect ? sortSelect.value === "manual" : false;
+  }
+
+  function syncDragAffordance() {
+    const enabled = dragEnabled();
+    document.querySelectorAll("[data-task-row]").forEach((row) => {
+      row.classList.toggle("is-drag-enabled", enabled);
+    });
+  }
+
   function compareRows(first, second) {
     const sortMode = sortSelect ? sortSelect.value : "due";
 
+    if (sortMode === "manual") return 0;
+
     if (sortMode === "title") {
-      return (first.dataset.taskTitle || "").localeCompare(
-        second.dataset.taskTitle || "",
-        "de",
-        { sensitivity: "base" }
-      );
+      return (first.dataset.taskTitle || "").localeCompare(second.dataset.taskTitle || "", "de", {
+        sensitivity: "base",
+      });
     }
 
     if (sortMode === "newest") return createdValue(second) - createdValue(first);
@@ -97,15 +108,19 @@
     if (!taskList) return;
 
     const groups = Array.from(taskList.querySelectorAll("[data-task-group]"));
-    groups.sort((firstGroup, secondGroup) =>
-      compareRows(firstGroup.querySelector("[data-task-row]"), secondGroup.querySelector("[data-task-row]"))
-    ).forEach((group) => taskList.appendChild(group));
+    groups
+      .sort((firstGroup, secondGroup) =>
+        compareRows(firstGroup.querySelector("[data-task-row]"), secondGroup.querySelector("[data-task-row]")),
+      )
+      .forEach((group) => taskList.appendChild(group));
 
     let visibleCount = 0;
     groups.forEach((group) => {
       const parentRow = group.querySelector("[data-task-row]:not([data-task-subtask])");
       const subtaskRows = Array.from(group.querySelectorAll("[data-task-row][data-task-subtask]"));
-      subtaskRows.sort(compareRows).forEach((row) => group.insertBefore(row, group.querySelector(".task-subtask-add-form")));
+      subtaskRows
+        .sort(compareRows)
+        .forEach((row) => group.insertBefore(row, group.querySelector(".task-subtask-add-form")));
 
       const parentVisible = taskMatchesFilter(parentRow) && taskMatchesView(parentRow);
       let anySubtaskVisible = false;
@@ -125,10 +140,11 @@
 
     if (filterEmpty) filterEmpty.hidden = visibleCount !== 0;
     if (resultsStatus) {
-      resultsStatus.textContent = visibleCount === 1
-        ? "Eine Aufgabe wird angezeigt."
-        : `${visibleCount} Aufgaben werden angezeigt.`;
+      resultsStatus.textContent =
+        visibleCount === 1 ? "Eine Aufgabe wird angezeigt." : `${visibleCount} Aufgaben werden angezeigt.`;
     }
+
+    syncDragAffordance();
   }
 
   filterButtons.forEach((button) => {
@@ -152,7 +168,18 @@
     });
   });
 
-  if (sortSelect) sortSelect.addEventListener("change", applyTaskView);
+  if (sortSelect) {
+    sortSelect.addEventListener("change", () => {
+      // Manual mode reorders relative to the true saved position order, which can differ
+      // from whatever sort was on screen a moment ago — reload so the display (and thus
+      // what dragging appears to operate on) matches that true order before anyone drags.
+      if (sortSelect.value === "manual" && sortSelect.dataset.initialSort !== "manual") {
+        window.location.href = `${window.location.pathname}?sort=manual`;
+        return;
+      }
+      applyTaskView();
+    });
+  }
 
   if (resetButton) {
     resetButton.addEventListener("click", () => {
@@ -195,7 +222,7 @@
         try {
           if (typeof dateInput.showPicker === "function") dateInput.showPicker();
           else dateInput.focus();
-        } catch (error) {
+        } catch (_error) {
           dateInput.focus();
         }
       });
@@ -217,6 +244,183 @@
       }
     });
   }
+
+  const editDialog = document.querySelector("[data-task-edit-dialog]");
+
+  if (editDialog) {
+    const editForm = editDialog.querySelector("[data-task-edit-form]");
+    const idInput = editForm?.querySelector("[data-task-edit-id-input]");
+    const titleInput = editForm?.querySelector("input[name='title']");
+    const dueInput = editForm?.querySelector("input[name='due_at']");
+    const listSelect = editForm?.querySelector("select[name='task_list']");
+    const prioritySelect = editForm?.querySelector("select[name='priority']");
+    const recurrenceSelect = editForm?.querySelector("select[name='recurrence_rule']");
+    const parentInput = editForm?.querySelector("input[name='parent']");
+    const labelInputs = editForm?.querySelectorAll("input[name='labels']") || [];
+
+    const openEditDialog = (data) => {
+      if (idInput) idInput.value = data.taskId || "";
+      if (titleInput) titleInput.value = data.title || "";
+      if (dueInput) dueInput.value = data.due || "";
+      if (listSelect) listSelect.value = data.list || "";
+      if (prioritySelect) prioritySelect.value = data.priority || "none";
+      if (recurrenceSelect) recurrenceSelect.value = data.recurrence || "none";
+      if (parentInput) parentInput.value = data.parent || "";
+
+      const labelIds = (data.labels || "").split(",").filter(Boolean);
+      labelInputs.forEach((input) => {
+        input.checked = labelIds.includes(input.value);
+      });
+
+      if (!editDialog.open) {
+        editDialog.showModal();
+      }
+
+      window.setTimeout(() => titleInput?.focus(), 0);
+    };
+
+    document.querySelectorAll("[data-task-edit-open]").forEach((button) => {
+      button.addEventListener("click", () =>
+        openEditDialog({
+          taskId: button.dataset.taskId,
+          title: button.dataset.editTitle,
+          due: button.dataset.editDue,
+          list: button.dataset.editList,
+          priority: button.dataset.editPriority,
+          recurrence: button.dataset.editRecurrence,
+          labels: button.dataset.editLabels,
+          parent: button.dataset.editParent,
+        }),
+      );
+    });
+
+    editDialog.querySelectorAll("[data-task-edit-dialog-close]").forEach((button) => {
+      button.addEventListener("click", () => editDialog.close());
+    });
+
+    editDialog.addEventListener("click", (event) => {
+      if (event.target === editDialog) {
+        editDialog.close();
+      }
+    });
+
+    if (editDialog.dataset.hasErrors === "true") {
+      if (!editDialog.open) {
+        editDialog.showModal();
+      }
+      window.setTimeout(() => titleInput?.focus(), 0);
+    }
+  }
+
+  if (sortSelect && sortSelect.dataset.initialSort === "manual") {
+    sortSelect.value = "manual";
+  }
+
+  let draggedTaskRow = null;
+
+  document.addEventListener("dragstart", (event) => {
+    const row = event.target.closest("[data-task-row]");
+    if (!row) return;
+    const handle = event.target.closest(".task-drag-handle");
+    if (!handle || !dragEnabled()) {
+      event.preventDefault();
+      return;
+    }
+    draggedTaskRow = row;
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", row.dataset.taskId || "");
+  });
+
+  document.addEventListener("dragend", () => {
+    draggedTaskRow = null;
+    document.querySelectorAll(".is-drop-before, .is-drop-after").forEach((el) => {
+      el.classList.remove("is-drop-before", "is-drop-after");
+    });
+  });
+
+  let draggedTaskListItem = null;
+
+  document.addEventListener("dragstart", (event) => {
+    const item = event.target.closest("[data-task-list-item]");
+    if (!item) return;
+    const handle = event.target.closest(".task-drag-handle");
+    if (!handle) {
+      event.preventDefault();
+      return;
+    }
+    draggedTaskListItem = item;
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", item.dataset.taskListId || "");
+  });
+
+  document.addEventListener("dragend", () => {
+    draggedTaskListItem = null;
+    document.querySelectorAll(".is-drop-before, .is-drop-after").forEach((el) => {
+      el.classList.remove("is-drop-before", "is-drop-after");
+    });
+  });
+
+  document.addEventListener("dragover", (event) => {
+    if (draggedTaskRow) {
+      const row = event.target.closest("[data-task-row]");
+      if (!row || row === draggedTaskRow || row.dataset.taskParent !== draggedTaskRow.dataset.taskParent) return;
+      event.preventDefault();
+      const rect = row.getBoundingClientRect();
+      const isBefore = event.clientY < rect.top + rect.height / 2;
+      document.querySelectorAll(".is-drop-before, .is-drop-after").forEach((el) => {
+        if (el !== row) el.classList.remove("is-drop-before", "is-drop-after");
+      });
+      row.classList.toggle("is-drop-before", isBefore);
+      row.classList.toggle("is-drop-after", !isBefore);
+      return;
+    }
+
+    if (draggedTaskListItem) {
+      const item = event.target.closest("[data-task-list-item]");
+      if (!item || item === draggedTaskListItem) return;
+      event.preventDefault();
+      const rect = item.getBoundingClientRect();
+      const isBefore = event.clientY < rect.top + rect.height / 2;
+      document.querySelectorAll(".is-drop-before, .is-drop-after").forEach((el) => {
+        if (el !== item) el.classList.remove("is-drop-before", "is-drop-after");
+      });
+      item.classList.toggle("is-drop-before", isBefore);
+      item.classList.toggle("is-drop-after", !isBefore);
+    }
+  });
+
+  document.addEventListener("drop", (event) => {
+    if (draggedTaskRow) {
+      const row = event.target.closest("[data-task-row]");
+      if (row && row !== draggedTaskRow && row.dataset.taskParent === draggedTaskRow.dataset.taskParent) {
+        event.preventDefault();
+        const placement = row.classList.contains("is-drop-before") ? "before" : "after";
+        const reorderForm = document.getElementById("task-reorder-form");
+        if (reorderForm) {
+          reorderForm.querySelector("[data-reorder-task-id]").value = draggedTaskRow.dataset.taskId;
+          reorderForm.querySelector("[data-reorder-target-id]").value = row.dataset.taskId;
+          reorderForm.querySelector("[data-reorder-placement]").value = placement;
+          reorderForm.submit();
+        }
+      }
+      return;
+    }
+
+    if (draggedTaskListItem) {
+      const item = event.target.closest("[data-task-list-item]");
+      if (item && item !== draggedTaskListItem) {
+        event.preventDefault();
+        const placement = item.classList.contains("is-drop-before") ? "before" : "after";
+        const reorderForm = document.getElementById("task-list-reorder-form");
+        if (reorderForm) {
+          reorderForm.querySelector("[data-list-reorder-task-list-id]").value = draggedTaskListItem.dataset.taskListId;
+          reorderForm.querySelector("[data-list-reorder-target-id]").value = item.dataset.taskListId;
+          reorderForm.querySelector("[data-list-reorder-placement]").value = placement;
+          reorderForm.submit();
+        }
+      }
+    }
+  });
 
   applyTaskView();
 })();

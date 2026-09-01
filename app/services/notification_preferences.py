@@ -3,7 +3,6 @@ from django.core.exceptions import ObjectDoesNotExist
 from app.models import NotificationPreference, UserNotification
 from app.services.user_preferences import localtime_for_user
 
-
 CHANNEL_INBOX = "inbox"
 CHANNEL_EMAIL = "email"
 CHANNEL_WEB_PUSH = "web_push"

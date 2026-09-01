@@ -2,13 +2,14 @@ import hashlib
 import json
 import os
 import re
+import sys
 import uuid
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from email.message import Message
 from io import StringIO
-from types import SimpleNamespace
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from unittest.mock import patch
 from urllib.error import HTTPError, URLError
 from zoneinfo import ZoneInfo
@@ -17,20 +18,58 @@ from django.contrib.auth.models import User
 from django.core import mail
 from django.core.cache import cache
 from django.core.exceptions import ImproperlyConfigured
-from django.core.management import call_command
 from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.management import call_command
 from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
 from app.forms import CalendarSourceForm, ProfileForm
-from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, CalendarSource, ChatMessage, ChatMessageAttachment, ChatMessageReaction, Conversation, ConversationMember, CustomHoliday, Note, NoteActivityNotification, NoteAttachment, NoteCommentThread, NoteFolder, NoteLink, NoteShare, NoteTemplate, NoteUserState, NoteVersion, NotificationPreference, OfficialHoliday, Profile, SystemSettings, Task, TaskLabel, TaskList, UserNotification, VacationPeriod, VacationYear, WeatherLocation, WebPushDelivery, WebPushSubscription, WeeklySummaryDelivery
+from app.models import (
+    CalendarEvent,
+    CalendarEventAttendee,
+    CalendarReminder,
+    CalendarSource,
+    ChatMessage,
+    ChatMessageAttachment,
+    ChatMessageReaction,
+    Conversation,
+    ConversationMember,
+    CustomHoliday,
+    HolidayOverride,
+    Note,
+    NoteActivityNotification,
+    NoteAttachment,
+    NoteCommentThread,
+    NoteFolder,
+    NoteLink,
+    NoteShare,
+    NoteTemplate,
+    NoteUserState,
+    NoteVersion,
+    NotificationPreference,
+    OfficialHoliday,
+    Profile,
+    SystemSettings,
+    Task,
+    TaskLabel,
+    TaskList,
+    UserNotification,
+    VacationPeriod,
+    VacationYear,
+    WeatherLocation,
+    WebPushDelivery,
+    WebPushSubscription,
+    WeeklySummaryDelivery,
+)
 from app.services.calendar_service import fetch_ical, parse_ical_events
 from app.services.calendar_sync_queue import queue_calendar_sources
 from app.services.dashboard import DASHBOARD_WIDGET_IDS, default_dashboard_layout, normalize_dashboard_layout
 from app.services.image_uploads import PROFILE_IMAGE_MAX_BYTES
+from app.services.note_content import NOTE_TEMPLATES, empty_note_document, validate_note_document
+from app.services.note_search import build_snippet, highlight_text, parse_search_query, search_notes
+from app.services.notes import accessible_notes, prune_note_versions, purge_expired_notes, share_note
 from app.services.notifications import (
-    claim_due_weather_alerts,
     send_due_reminder_emails,
     send_due_task_reminder_emails,
     send_new_invitation_emails,
@@ -40,10 +79,15 @@ from app.services.notifications import (
 )
 from app.services.scheduled_tasks import run_scheduled_tasks, sync_due_calendars
 from app.services.tasks import dashboard_today_tasks, toggle_task
-from app.services.web_push import (
-    materialize_web_push_weather_alerts,
-    register_web_push_subscription,
-    send_pending_web_push_notifications,
+from app.services.vacation_planner import (
+    annual_summary,
+    calculate_period,
+    decimal_label,
+    effective_holidays_for_year,
+    generated_public_holidays,
+    import_public_holidays,
+    month_calendar,
+    month_summary,
 )
 from app.services.weather_service import (
     WEATHER_MAP_LAYERS,
@@ -59,10 +103,11 @@ from app.services.weather_service import (
     save_weather_location,
     set_default_weather_location,
 )
-from app.services.note_content import NOTE_TEMPLATES, empty_note_document, validate_note_document
-from app.services.note_search import build_snippet, highlight_text, parse_search_query, search_notes
-from app.services.notes import accessible_notes, prune_note_versions, purge_expired_notes, share_note
-from app.services.vacation_planner import annual_summary, calculate_period
+from app.services.web_push import (
+    materialize_web_push_weather_alerts,
+    register_web_push_subscription,
+    send_pending_web_push_notifications,
+)
 from app.templatetags.static_versioning import versioned_static
 from app.view_models import (
     _dashboard_greeting,
@@ -72,7 +117,6 @@ from app.view_models import (
 )
 from app.views.message_views import _build_inbox_items
 from lunora.settings import BASE_DIR, database_config
-
 
 PNG_1X1_BYTES = (
     b"\x89PNG\r\n\x1a\n"
@@ -217,6 +261,23 @@ class PwaTests(TestCase):
         self.assertNotIn("/calendar/", content)
         self.assertNotIn("/media/", content)
         self.assertNotIn("/private_media/", content)
+
+    def test_service_worker_caches_navigated_pages_for_offline_use(self):
+        response = self.client.get("/service-worker.js")
+        content = response.content.decode("utf-8")
+
+        self.assertIn("const PAGES_CACHE = ", content)
+        self.assertIn("async function servePage(request)", content)
+        self.assertIn("caches.match(request, { cacheName: PAGES_CACHE })", content)
+        self.assertIn("networkResponse.ok", content)
+
+    def test_service_worker_clears_page_cache_on_logout(self):
+        response = self.client.get("/service-worker.js")
+        content = response.content.decode("utf-8")
+
+        self.assertIn('const LOGOUT_URL = "/logout/";', content)
+        self.assertIn("requestUrl.pathname === LOGOUT_URL", content)
+        self.assertIn("caches.delete(PAGES_CACHE)", content)
 
     def test_service_worker_handles_web_push_and_notification_clicks(self):
         response = self.client.get("/service-worker.js")
@@ -409,7 +470,6 @@ class TurnstileValidationTests(SimpleTestCase):
         self.assertFalse(verify_registration_token("valid-token"))
 
 
-
 @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
 class SettingsProfileTests(TestCase):
     def test_settings_page_requires_login(self):
@@ -476,7 +536,9 @@ class SettingsProfileTests(TestCase):
 
     def test_successful_login_clears_previous_failed_attempts(self):
         cache.clear()
-        User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
 
         for _ in range(4):
             self.client.post("/login/", {"username": "mira@example.com", "password": "wrong-password"})
@@ -596,7 +658,9 @@ class SettingsProfileTests(TestCase):
         self.assertContains(response, "Link ungültig")
 
     def test_logged_in_user_can_update_profile(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         self.client.login(username="mira@example.com", password="secret-12345")
 
@@ -620,7 +684,9 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(user.first_name, "Mira Neu")
 
     def test_profile_form_accepts_valid_profile_image(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         profile = Profile.objects.create(user=user, display_name="Mira")
         upload = SimpleUploadedFile("avatar.png", PNG_1X1_BYTES, content_type="image/png")
 
@@ -629,7 +695,9 @@ class SettingsProfileTests(TestCase):
         self.assertTrue(form.is_valid(), form.errors)
 
     def test_profile_form_rejects_spoofed_profile_image(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         profile = Profile.objects.create(user=user, display_name="Mira")
         upload = SimpleUploadedFile("avatar.png", b"not really an image", content_type="image/png")
 
@@ -639,7 +707,9 @@ class SettingsProfileTests(TestCase):
         self.assertIn("profile_image", form.errors)
 
     def test_profile_form_rejects_oversized_profile_image(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         profile = Profile.objects.create(user=user, display_name="Mira")
         upload = SimpleUploadedFile(
             "avatar.png",
@@ -661,7 +731,9 @@ class SettingsProfileTests(TestCase):
             )
             profile = Profile.objects.create(user=user, display_name="Mira")
             first_upload = SimpleUploadedFile("avatar.png", PNG_1X1_BYTES, content_type="image/png")
-            form = ProfileForm(data={"display_name": "Mira"}, files={"profile_image": first_upload}, instance=profile)
+            form = ProfileForm(
+                data={"display_name": "Mira"}, files={"profile_image": first_upload}, instance=profile
+            )
             self.assertTrue(form.is_valid(), form.errors)
             profile = form.save()
             old_image_name = profile.profile_image.name
@@ -688,7 +760,9 @@ class SettingsProfileTests(TestCase):
             )
             profile = Profile.objects.create(user=user, display_name="Mira")
             upload = SimpleUploadedFile("avatar.png", PNG_1X1_BYTES, content_type="image/png")
-            form = ProfileForm(data={"display_name": "Mira"}, files={"profile_image": upload}, instance=profile)
+            form = ProfileForm(
+                data={"display_name": "Mira"}, files={"profile_image": upload}, instance=profile
+            )
             self.assertTrue(form.is_valid(), form.errors)
             profile = form.save()
             old_image_name = profile.profile_image.name
@@ -705,7 +779,9 @@ class SettingsProfileTests(TestCase):
             self.assertFalse(default_storage.exists(old_image_name))
 
     def test_logged_in_user_can_save_appearance_settings(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(
             user=user,
             display_name="Mira",
@@ -737,7 +813,9 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(user.profile.timezone_name, "UTC")
 
     def test_logged_in_user_can_save_region_settings(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(
             user=user,
             display_name="Mira",
@@ -769,7 +847,9 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(user.profile.density, "compact")
 
     def test_logged_in_user_can_save_notification_preferences_without_changing_weather(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira", weather_default_city="Hamburg,de")
         self.client.login(username="mira@example.com", password="secret-12345")
 
@@ -794,7 +874,9 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(user.profile.weather_default_city, "Hamburg,de")
 
     def test_logged_in_user_can_save_weather_without_changing_notifications(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(
             user=user,
             display_name="Mira",
@@ -833,7 +915,9 @@ class SettingsProfileTests(TestCase):
         self.assertTrue(category.web_push_enabled)
 
     def test_invalid_appearance_settings_render_without_changing_profile(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         profile = Profile.objects.create(user=user, display_name="Mira", background_softness=55)
         self.client.force_login(user)
 
@@ -854,7 +938,9 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(profile.background_softness, 55)
 
     def test_invalid_region_settings_render_without_changing_profile(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         profile = Profile.objects.create(user=user, display_name="Mira", timezone_name="Europe/Berlin")
         self.client.force_login(user)
 
@@ -874,7 +960,9 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(profile.timezone_name, "Europe/Berlin")
 
     def test_invalid_weather_settings_render_without_changing_profile(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         profile = Profile.objects.create(user=user, display_name="Mira", weather_default_city="Bünde,de")
         self.client.force_login(user)
 
@@ -892,7 +980,9 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(profile.weather_default_city, "Bünde,de")
 
     def test_settings_hide_unimplemented_analytics_controls(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         self.client.login(username="mira@example.com", password="secret-12345")
 
@@ -903,7 +993,9 @@ class SettingsProfileTests(TestCase):
         self.assertContains(response, "Erinnerungszustellung")
 
     def test_settings_show_detailed_notification_controls(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         self.client.force_login(user)
 
@@ -916,14 +1008,16 @@ class SettingsProfileTests(TestCase):
         self.assertContains(response, "Test senden")
 
     def test_settings_are_grouped_into_accessible_sections(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         self.client.force_login(user)
 
         response = self.client.get("/settings/")
 
         self.assertContains(response, 'role="tablist"')
-        self.assertContains(response, 'data-settings-tab=', count=6)
+        self.assertContains(response, "data-settings-tab=", count=6)
         self.assertContains(response, 'data-settings-panel="appearance"')
         self.assertContains(response, 'data-settings-panel="profile"', count=2)
         self.assertContains(response, 'data-settings-panel="calendar"')
@@ -942,7 +1036,9 @@ class SettingsProfileTests(TestCase):
         self.assertNotContains(response, ">Abbrechen<")
 
     def test_settings_reject_unsafe_or_authentication_return_targets(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         self.client.force_login(user)
         unsafe_targets = [
@@ -966,7 +1062,9 @@ class SettingsProfileTests(TestCase):
                 self.assertContains(response, 'class="settings-back-link" href="/home/"')
 
     def test_settings_preserve_valid_return_target_across_save_redirect(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         self.client.force_login(user)
         return_to = "/calendar/?view=month#week"
@@ -991,7 +1089,9 @@ class SettingsProfileTests(TestCase):
         )
 
     def test_settings_ignore_login_referrer_for_back_link(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         self.client.force_login(user)
 
@@ -1003,7 +1103,9 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(response.context["return_to"], "/home/")
 
     def test_calendar_color_choices_have_accessible_names(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         CalendarSource.objects.create(
             user=user,
@@ -1019,7 +1121,9 @@ class SettingsProfileTests(TestCase):
                 self.assertContains(response, f'aria-label="{label}"', count=2)
 
     def test_logged_in_user_can_save_detailed_notification_preferences(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         self.client.force_login(user)
 
@@ -1063,7 +1167,9 @@ class SettingsProfileTests(TestCase):
         self.assertFalse(weather.web_push_enabled)
 
     def test_equal_quiet_hour_boundaries_are_rejected(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         self.client.force_login(user)
 
@@ -1085,7 +1191,9 @@ class SettingsProfileTests(TestCase):
         self.assertFalse(NotificationPreference.objects.filter(user=user).exists())
 
     def test_settings_save_shows_feedback_message(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         self.client.login(username="mira@example.com", password="secret-12345")
 
@@ -1104,7 +1212,9 @@ class SettingsProfileTests(TestCase):
         self.assertContains(response, "Benachrichtigungseinstellungen gespeichert.")
 
     def test_calendar_source_can_be_added_and_queued_from_settings(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         self.client.login(username="mira@example.com", password="secret-12345")
 
@@ -1123,7 +1233,9 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-calendar")
         source = CalendarSource.objects.get(user=user)
         self.assertEqual(source.name, "Arbeit")
-        self.assertEqual(source.ical_url, "https://calendar.google.com/calendar/ical/settings/private/basic.ics")
+        self.assertEqual(
+            source.ical_url, "https://calendar.google.com/calendar/ical/settings/private/basic.ics"
+        )
         self.assertEqual(source.color, "green")
         self.assertTrue(source.is_visible)
         self.assertTrue(source.enabled)
@@ -1131,7 +1243,9 @@ class SettingsProfileTests(TestCase):
         fetch_calendar.assert_not_called()
 
     def test_calendar_source_is_kept_while_first_sync_is_queued(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         self.client.login(username="mira@example.com", password="secret-12345")
 
@@ -1176,13 +1290,17 @@ class SettingsProfileTests(TestCase):
 
         for url in unsafe_urls:
             with self.subTest(url=url):
-                form = CalendarSourceForm(data={"name": "Privat", "ical_url": url, "color": "blue", "enabled": "on"})
+                form = CalendarSourceForm(
+                    data={"name": "Privat", "ical_url": url, "color": "blue", "enabled": "on"}
+                )
 
                 self.assertFalse(form.is_valid())
                 self.assertIn("ical_url", form.errors)
 
     def test_calendar_source_form_rejects_duplicate_urls_for_user(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         CalendarSource.objects.create(
             user=user,
             name="Arbeit",
@@ -1203,8 +1321,12 @@ class SettingsProfileTests(TestCase):
         self.assertIn("ical_url", form.errors)
 
     def test_settings_calendar_source_is_scoped_to_logged_in_user(self):
-        mira = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
-        lukas = User.objects.create_user(username="lukas@example.com", email="lukas@example.com", password="secret-12345")
+        mira = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
+        lukas = User.objects.create_user(
+            username="lukas@example.com", email="lukas@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=mira, display_name="Mira")
         Profile.objects.create(user=lukas, display_name="Lukas")
         private_url = "https://calendar.google.com/calendar/ical/mira/private/basic.ics"
@@ -1236,7 +1358,9 @@ class SettingsProfileTests(TestCase):
         )
 
     def test_calendar_source_update_clears_events_when_url_changes(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         source = CalendarSource.objects.create(
             user=user,
@@ -1277,7 +1401,9 @@ class SettingsProfileTests(TestCase):
         fetch_calendar.assert_not_called()
 
     def test_disabling_calendar_source_clears_pending_sync(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         source = CalendarSource.objects.create(
             user=user,
@@ -1306,7 +1432,9 @@ class SettingsProfileTests(TestCase):
         self.assertIsNone(source.sync_requested_at)
 
     def test_calendar_source_delete_removes_events(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         source = CalendarSource.objects.create(
             user=user,
@@ -1337,7 +1465,9 @@ class SettingsProfileTests(TestCase):
         self.assertFalse(CalendarEvent.objects.filter(external_id="delete-event").exists())
 
     def test_calendar_page_does_not_render_calendar_source_form(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         self.client.login(username="mira@example.com", password="secret-12345")
 
@@ -1349,7 +1479,9 @@ class SettingsProfileTests(TestCase):
         self.assertNotContains(response, "Hinzufügen")
 
     def test_calendar_empty_states_offer_direct_actions(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         self.client.login(username="mira@example.com", password="secret-12345")
 
@@ -1363,7 +1495,9 @@ class SettingsProfileTests(TestCase):
         self.assertContains(response, "Kalender verbinden", count=2)
 
     def test_calendar_upcoming_empty_state_respects_existing_sources(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         CalendarSource.objects.create(
             user=user,
@@ -1380,7 +1514,9 @@ class SettingsProfileTests(TestCase):
         self.assertContains(response, 'data-calendar-empty-action="event-upcoming"')
 
     def test_calendar_page_get_does_not_sync_calendar_source(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         CalendarSource.objects.create(
             user=user,
@@ -1395,7 +1531,9 @@ class SettingsProfileTests(TestCase):
         queue_sync.assert_not_called()
 
     def test_calendar_page_displays_saved_events(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         source = CalendarSource.objects.create(
             user=user,
@@ -1422,7 +1560,9 @@ class SettingsProfileTests(TestCase):
         self.assertContains(response, "tone-red")
 
     def test_manual_calendar_event_can_be_created(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira", timezone_name="Europe/Berlin")
         self.client.login(username="mira@example.com", password="secret-12345")
         calendar_url = "/calendar/?year=2099&month=8"
@@ -1454,8 +1594,12 @@ class SettingsProfileTests(TestCase):
         self.assertContains(response, "Eigener Termin")
 
     def test_calendar_event_with_attendee_creates_invitation_visible_to_invitee(self):
-        organizer = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
-        invitee = User.objects.create_user(username="lukas@example.com", email="lukas@example.com", password="secret-12345")
+        organizer = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
+        invitee = User.objects.create_user(
+            username="lukas@example.com", email="lukas@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=organizer, display_name="Mira", timezone_name="Europe/Berlin")
         Profile.objects.create(user=invitee, display_name="Lukas", timezone_name="Europe/Berlin")
         self.client.login(username="mira@example.com", password="secret-12345")
@@ -1493,8 +1637,12 @@ class SettingsProfileTests(TestCase):
         self.assertContains(response, "Einladungen")
 
     def test_invitee_can_accept_and_decline_event_invitation(self):
-        organizer = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
-        invitee = User.objects.create_user(username="lukas@example.com", email="lukas@example.com", password="secret-12345")
+        organizer = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
+        invitee = User.objects.create_user(
+            username="lukas@example.com", email="lukas@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=organizer, display_name="Mira")
         Profile.objects.create(user=invitee, display_name="Lukas")
         event = CalendarEvent.objects.create(
@@ -1523,9 +1671,15 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(attendee.status, CalendarEventAttendee.STATUS_DECLINED)
 
     def test_rsvp_action_cannot_target_another_users_invitation(self):
-        organizer = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
-        invitee = User.objects.create_user(username="lukas@example.com", email="lukas@example.com", password="secret-12345")
-        outsider = User.objects.create_user(username="anna@example.com", email="anna@example.com", password="secret-12345")
+        organizer = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
+        invitee = User.objects.create_user(
+            username="lukas@example.com", email="lukas@example.com", password="secret-12345"
+        )
+        outsider = User.objects.create_user(
+            username="anna@example.com", email="anna@example.com", password="secret-12345"
+        )
         for user in (organizer, invitee, outsider):
             Profile.objects.create(user=user, display_name=user.first_name or user.username)
         event = CalendarEvent.objects.create(
@@ -1545,7 +1699,9 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(attendee.status, CalendarEventAttendee.STATUS_INVITED)
 
     def test_manual_all_day_event_uses_the_full_selected_day(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira", timezone_name="Europe/Berlin")
         self.client.login(username="mira@example.com", password="secret-12345")
 
@@ -1566,7 +1722,9 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(timezone.localtime(event.end_at).strftime("%Y-%m-%d %H:%M"), "2099-08-14 00:00")
 
     def test_manual_calendar_event_rejects_an_end_before_its_start(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         self.client.login(username="mira@example.com", password="secret-12345")
 
@@ -1587,7 +1745,9 @@ class SettingsProfileTests(TestCase):
         self.assertFalse(CalendarEvent.objects.filter(user=user).exists())
 
     def test_recurring_calendar_event_creates_one_row_per_occurrence(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira", timezone_name="Europe/Berlin")
         self.client.login(username="mira@example.com", password="secret-12345")
 
@@ -1617,7 +1777,9 @@ class SettingsProfileTests(TestCase):
         self.assertTrue(all(event.recurrence_rule == "WEEKLY" for event in events))
 
     def test_recurring_calendar_event_requires_repeat_until(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         self.client.login(username="mira@example.com", password="secret-12345")
 
@@ -1637,7 +1799,9 @@ class SettingsProfileTests(TestCase):
         self.assertFalse(CalendarEvent.objects.filter(user=user).exists())
 
     def test_recurring_calendar_event_rejects_repeat_until_before_start(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         self.client.login(username="mira@example.com", password="secret-12345")
 
@@ -1658,7 +1822,9 @@ class SettingsProfileTests(TestCase):
         self.assertFalse(CalendarEvent.objects.filter(user=user).exists())
 
     def test_recurring_calendar_event_rejects_repeat_until_too_far_out(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         self.client.login(username="mira@example.com", password="secret-12345")
 
@@ -1679,7 +1845,9 @@ class SettingsProfileTests(TestCase):
         self.assertFalse(CalendarEvent.objects.filter(user=user).exists())
 
     def test_calendar_event_delete_removes_single_occurrence(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         event = CalendarEvent.objects.create(
             user=user,
@@ -1698,7 +1866,9 @@ class SettingsProfileTests(TestCase):
         self.assertFalse(CalendarEvent.objects.filter(pk=event.id).exists())
 
     def test_calendar_event_delete_series_removes_all_occurrences(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira", timezone_name="Europe/Berlin")
         self.client.login(username="mira@example.com", password="secret-12345")
         self.client.post(
@@ -1725,8 +1895,12 @@ class SettingsProfileTests(TestCase):
         self.assertFalse(CalendarEvent.objects.filter(recurrence_id=recurrence_id).exists())
 
     def test_calendar_event_delete_cannot_target_another_users_event(self):
-        owner = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
-        outsider = User.objects.create_user(username="anna@example.com", email="anna@example.com", password="secret-12345")
+        owner = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
+        outsider = User.objects.create_user(
+            username="anna@example.com", email="anna@example.com", password="secret-12345"
+        )
         for user in (owner, outsider):
             Profile.objects.create(user=user, display_name=user.first_name or user.username)
         event = CalendarEvent.objects.create(
@@ -1745,9 +1919,13 @@ class SettingsProfileTests(TestCase):
         self.assertTrue(CalendarEvent.objects.filter(pk=event.id).exists())
 
     def test_calendar_event_delete_ignores_synced_events(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
-        source = CalendarSource.objects.create(user=user, name="Google Kalender", ical_url="https://example.com/cal.ics")
+        source = CalendarSource.objects.create(
+            user=user, name="Google Kalender", ical_url="https://example.com/cal.ics"
+        )
         event = CalendarEvent.objects.create(
             user=user,
             source=source,
@@ -1766,8 +1944,12 @@ class SettingsProfileTests(TestCase):
         self.assertTrue(CalendarEvent.objects.filter(pk=event.id).exists())
 
     def test_calendar_event_edit_updates_fields_and_attendees(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
-        invitee = User.objects.create_user(username="anna@example.com", email="anna@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
+        invitee = User.objects.create_user(
+            username="anna@example.com", email="anna@example.com", password="secret-12345"
+        )
         for account in (user, invitee):
             Profile.objects.create(user=account, display_name=account.first_name or account.username)
         event = CalendarEvent.objects.create(
@@ -1800,8 +1982,12 @@ class SettingsProfileTests(TestCase):
         self.assertTrue(CalendarEventAttendee.objects.filter(event=event, user=invitee).exists())
 
     def test_calendar_event_edit_cannot_target_another_users_event(self):
-        owner = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
-        outsider = User.objects.create_user(username="anna@example.com", email="anna@example.com", password="secret-12345")
+        owner = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
+        outsider = User.objects.create_user(
+            username="anna@example.com", email="anna@example.com", password="secret-12345"
+        )
         for account in (owner, outsider):
             Profile.objects.create(user=account, display_name=account.first_name or account.username)
         event = CalendarEvent.objects.create(
@@ -1827,9 +2013,13 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(event.title, "Fremder Termin")
 
     def test_calendar_event_edit_ignores_synced_events(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
-        source = CalendarSource.objects.create(user=user, name="Google Kalender", ical_url="https://example.com/cal.ics")
+        source = CalendarSource.objects.create(
+            user=user, name="Google Kalender", ical_url="https://example.com/cal.ics"
+        )
         event = CalendarEvent.objects.create(
             user=user,
             source=source,
@@ -1855,7 +2045,9 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(event.title, "Synchronisierter Termin")
 
     def test_calendar_event_edit_rejects_an_end_before_its_start(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         event = CalendarEvent.objects.create(
             user=user,
@@ -1881,8 +2073,41 @@ class SettingsProfileTests(TestCase):
         event.refresh_from_db()
         self.assertEqual(event.title, "Termin")
 
+    def test_calendar_context_includes_due_tasks(self):
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=user, display_name="Mira")
+        now = timezone.now()
+        Task.objects.create(user=user, title="Heute fällig", due_at=now)
+        Task.objects.create(user=user, title="Überfällig", due_at=now - timedelta(days=1))
+        Task.objects.create(user=user, title="Erledigt", due_at=now, is_done=True)
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get("/calendar/")
+
+        due_task_titles = {item["title"] for item in response.context["due_tasks"]}
+        self.assertEqual(due_task_titles, {"Heute fällig", "Überfällig"})
+        self.assertContains(response, "Fällige Aufgaben")
+
+    def test_calendar_due_tasks_hidden_when_tasks_disabled(self):
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=user, display_name="Mira")
+        Task.objects.create(user=user, title="Heute fällig", due_at=timezone.now())
+        SystemSettings.objects.create(tasks_enabled=False)
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get("/calendar/")
+
+        self.assertEqual(response.context["due_tasks"], [])
+        self.assertNotContains(response, "Fällige Aufgaben")
+
     def test_calendar_sync_request_is_queued_and_visible(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         CalendarSource.objects.create(
             user=user,
@@ -1902,7 +2127,9 @@ class SettingsProfileTests(TestCase):
         self.assertIsNotNone(source.sync_requested_at)
 
     def test_calendar_visibility_filters_calendar_and_dashboard(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         visible_source = CalendarSource.objects.create(
             user=user,
@@ -1917,7 +2144,9 @@ class SettingsProfileTests(TestCase):
             is_visible=False,
             ical_url="https://calendar.google.com/calendar/ical/private/private/basic.ics",
         )
-        start_at = timezone.localtime(timezone.now() + timedelta(days=2)).replace(hour=9, minute=0, second=0, microsecond=0)
+        start_at = timezone.localtime(timezone.now() + timedelta(days=2)).replace(
+            hour=9, minute=0, second=0, microsecond=0
+        )
         calendar_url = f"/calendar/?year={start_at.year}&month={start_at.month}"
         CalendarEvent.objects.create(
             user=user,
@@ -1963,8 +2192,12 @@ class SettingsProfileTests(TestCase):
         self.assertTrue(hidden_source.is_visible)
 
     def test_calendar_visibility_is_scoped_to_logged_in_user(self):
-        mira = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
-        lukas = User.objects.create_user(username="lukas@example.com", email="lukas@example.com", password="secret-12345")
+        mira = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
+        lukas = User.objects.create_user(
+            username="lukas@example.com", email="lukas@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=mira, display_name="Mira")
         Profile.objects.create(user=lukas, display_name="Lukas")
         mira_source = CalendarSource.objects.create(
@@ -1994,7 +2227,9 @@ class SettingsProfileTests(TestCase):
         self.assertFalse(lukas_source.is_visible)
 
     def test_sync_queue_processes_hidden_sources_and_skips_disabled_sources(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         hidden_source = CalendarSource.objects.create(
             user=user,
             name="Hidden",
@@ -2017,7 +2252,9 @@ class SettingsProfileTests(TestCase):
         self.assertIsNone(disabled_source.sync_requested_at)
 
     def test_home_page_shows_upcoming_calendar_events(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         source = CalendarSource.objects.create(
             user=user,
@@ -2045,7 +2282,9 @@ class SettingsProfileTests(TestCase):
         self.assertNotContains(response, "Analysen")
 
     def test_calendar_reminders_can_be_added_and_completed(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         self.client.login(username="mira@example.com", password="secret-12345")
 
@@ -2087,7 +2326,9 @@ class SettingsProfileTests(TestCase):
         self.assertFalse(CalendarReminder.objects.filter(pk=reminder.id).exists())
 
     def test_calendar_reminders_can_store_due_dates(self):
-        user = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Mira")
         self.client.login(username="mira@example.com", password="secret-12345")
         due_at = timezone.localtime(timezone.now() + timedelta(days=1)).replace(second=0, microsecond=0)
@@ -2341,6 +2582,170 @@ class TaskTests(TestCase):
         response = self.client.get("/tasks/")
         self.assertNotContains(response, "Privat")
 
+    def test_task_edit_updates_fields(self):
+        self._login()
+        task_list = TaskList.objects.create(owner=self.user, name="Projekt")
+        label = TaskLabel.objects.create(owner=self.user, name="Wichtig")
+        task = Task.objects.create(user=self.user, title="Alter Titel")
+        due_at = timezone.localtime(timezone.now() + timedelta(days=2)).replace(second=0, microsecond=0)
+
+        response = self.client.post(
+            "/tasks/",
+            {
+                "form_name": "task_edit",
+                "task_id": str(task.id),
+                "title": "Neuer Titel",
+                "due_at": due_at.strftime("%Y-%m-%dT%H:%M"),
+                "task_list": str(task_list.id),
+                "priority": "high",
+                "recurrence_rule": "WEEKLY",
+                "labels": [str(label.id)],
+            },
+        )
+
+        self.assertRedirects(response, "/tasks/")
+        task.refresh_from_db()
+        self.assertEqual(task.title, "Neuer Titel")
+        self.assertEqual(
+            timezone.localtime(task.due_at).strftime("%Y-%m-%dT%H:%M"),
+            due_at.strftime("%Y-%m-%dT%H:%M"),
+        )
+        self.assertEqual(task.task_list_id, task_list.id)
+        self.assertEqual(task.priority, "high")
+        self.assertEqual(task.recurrence_rule, "WEEKLY")
+        self.assertEqual(list(task.labels.all()), [label])
+
+    def test_task_edit_cannot_target_another_users_task(self):
+        other = User.objects.create_user(
+            username="lukas@example.com", email="lukas@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=other, display_name="Lukas")
+        task = Task.objects.create(user=other, title="Fremde Aufgabe")
+        self._login()
+
+        self.client.post(
+            "/tasks/",
+            {"form_name": "task_edit", "task_id": str(task.id), "title": "Übernommen"},
+        )
+
+        task.refresh_from_db()
+        self.assertEqual(task.title, "Fremde Aufgabe")
+
+    def test_task_edit_rejects_blank_title(self):
+        self._login()
+        task = Task.objects.create(user=self.user, title="Bleibt gleich")
+
+        self.client.post(
+            "/tasks/",
+            {"form_name": "task_edit", "task_id": str(task.id), "title": ""},
+        )
+
+        task.refresh_from_db()
+        self.assertEqual(task.title, "Bleibt gleich")
+
+    def test_task_reorder_updates_positions(self):
+        self._login()
+        first = Task.objects.create(user=self.user, title="Erstens")
+        second = Task.objects.create(user=self.user, title="Zweitens")
+        third = Task.objects.create(user=self.user, title="Drittens")
+
+        response = self.client.post(
+            "/tasks/",
+            {
+                "form_name": "task_reorder",
+                "task_id": str(third.id),
+                "target_id": str(first.id),
+                "placement": "before",
+            },
+        )
+
+        self.assertRedirects(response, "/tasks/?sort=manual")
+        ordered_ids = list(
+            Task.objects.filter(user=self.user).order_by("position", "id").values_list("id", flat=True)
+        )
+        self.assertEqual(ordered_ids, [third.id, first.id, second.id])
+
+    def test_task_reorder_rejects_cross_parent_move(self):
+        self._login()
+        parent_a = Task.objects.create(user=self.user, title="Eltern A")
+        parent_b = Task.objects.create(user=self.user, title="Eltern B")
+        subtask = Task.objects.create(user=self.user, title="Unteraufgabe", parent=parent_a)
+
+        self.client.post(
+            "/tasks/",
+            {
+                "form_name": "task_reorder",
+                "task_id": str(subtask.id),
+                "target_id": str(parent_b.id),
+                "placement": "after",
+            },
+        )
+
+        subtask.refresh_from_db()
+        self.assertEqual(subtask.parent_id, parent_a.id)
+
+    def test_task_reorder_cannot_target_another_users_task(self):
+        other = User.objects.create_user(
+            username="lukas@example.com", email="lukas@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=other, display_name="Lukas")
+        mine = Task.objects.create(user=self.user, title="Meine Aufgabe", position=1000)
+        theirs = Task.objects.create(user=other, title="Fremde Aufgabe", position=2000)
+        self._login()
+
+        self.client.post(
+            "/tasks/",
+            {
+                "form_name": "task_reorder",
+                "task_id": str(mine.id),
+                "target_id": str(theirs.id),
+                "placement": "before",
+            },
+        )
+
+        mine.refresh_from_db()
+        theirs.refresh_from_db()
+        self.assertEqual(mine.position, 1000)
+        self.assertEqual(theirs.position, 2000)
+
+    def test_task_list_reorder_updates_positions(self):
+        self._login()
+        first = TaskList.objects.create(owner=self.user, name="Erste")
+        second = TaskList.objects.create(owner=self.user, name="Zweite")
+        third = TaskList.objects.create(owner=self.user, name="Dritte")
+
+        response = self.client.post(
+            "/tasks/",
+            {
+                "form_name": "task_list_reorder",
+                "task_list_id": str(third.id),
+                "target_id": str(first.id),
+                "placement": "before",
+            },
+        )
+
+        self.assertRedirects(response, "/tasks/")
+        ordered_ids = list(
+            TaskList.objects.filter(owner=self.user).order_by("position", "id").values_list("id", flat=True)
+        )
+        self.assertEqual(ordered_ids, [third.id, first.id, second.id])
+
+    def test_manual_sort_orders_tasks_by_position(self):
+        self._login()
+        now = timezone.now()
+        # due_at order would put "Später fällig" first; position order should reverse that.
+        Task.objects.create(
+            user=self.user, title="Früher fällig", due_at=now + timedelta(days=1), position=2000
+        )
+        Task.objects.create(
+            user=self.user, title="Später fällig", due_at=now + timedelta(days=5), position=1000
+        )
+
+        response = self.client.get("/tasks/?sort=manual")
+
+        titles = [item["title"] for item in response.context["tasks"]]
+        self.assertEqual(titles, ["Später fällig", "Früher fällig"])
+
     def test_due_task_reminder_email_is_sent_only_once(self):
         task = Task.objects.create(
             user=self.user,
@@ -2451,7 +2856,8 @@ class TaskTests(TestCase):
         self.assertEqual(task.task_list_id, task_list.id)
 
         self.client.post(
-            "/tasks/", {"form_name": "task_list_rename", "task_list_id": str(task_list.id), "name": "Projekt Beta"}
+            "/tasks/",
+            {"form_name": "task_list_rename", "task_list_id": str(task_list.id), "name": "Projekt Beta"},
         )
         task_list.refresh_from_db()
         self.assertEqual(task_list.name, "Projekt Beta")
@@ -2636,12 +3042,13 @@ class CalendarFetchSafetyTests(TestCase):
 
     def test_fetch_ical_reads_public_calendar_response(self):
         with patch("app.services.url_safety.socket.getaddrinfo", return_value=self.public_dns_result()):
-            with patch("app.services.calendar_service._ICAL_OPENER.open", return_value=FakeIcalResponse()) as opener:
+            with patch(
+                "app.services.calendar_service._ICAL_OPENER.open", return_value=FakeIcalResponse()
+            ) as opener:
                 text = fetch_ical("https://example.com/calendar.ics")
 
         self.assertIn("BEGIN:VCALENDAR", text)
         opener.assert_called_once()
-
 
 
 @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
@@ -2776,7 +3183,9 @@ class ScheduledAutomationTests(TestCase):
         self.assertIsNotNone(reminder.desktop_notified_at)
 
     def test_event_invitation_email_and_desktop_claim_are_sent_only_once(self):
-        organizer = User.objects.create_user(username="lukas@example.com", email="lukas@example.com", password="secret-12345")
+        organizer = User.objects.create_user(
+            username="lukas@example.com", email="lukas@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=organizer, display_name="Lukas")
         event = CalendarEvent.objects.create(
             user=organizer,
@@ -2800,7 +3209,9 @@ class ScheduledAutomationTests(TestCase):
         self.assertEqual(second_response.json(), {"notifications": []})
 
     def test_note_activity_email_and_desktop_claim_are_sent_only_once(self):
-        actor = User.objects.create_user(username="anna@example.com", email="anna@example.com", password="secret-12345")
+        actor = User.objects.create_user(
+            username="anna@example.com", email="anna@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=actor, display_name="Anna")
         note = Note.objects.create(owner=actor, title="Ideen")
         NoteActivityNotification.objects.create(
@@ -2872,7 +3283,9 @@ class ScheduledAutomationTests(TestCase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn("Team Sync", mail.outbox[0].body)
         self.assertIn("Agenda vorbereiten", mail.outbox[0].body)
-        self.assertTrue(WeeklySummaryDelivery.objects.filter(user=self.user, week_start=monday.date()).exists())
+        self.assertTrue(
+            WeeklySummaryDelivery.objects.filter(user=self.user, week_start=monday.date()).exists()
+        )
 
     def test_automation_command_runs_one_cycle_by_default(self):
         result = {
@@ -2882,7 +3295,9 @@ class ScheduledAutomationTests(TestCase):
         }
         output = StringIO()
 
-        with patch("app.management.commands.run_automations.run_scheduled_tasks", return_value=result) as run_tasks:
+        with patch(
+            "app.management.commands.run_automations.run_scheduled_tasks", return_value=result
+        ) as run_tasks:
             call_command("run_automations", stdout=output)
 
         run_tasks.assert_called_once_with()
@@ -2913,7 +3328,9 @@ class NotificationCenterTests(TestCase):
     def test_due_tasks_and_reminders_are_materialized_once_and_appear_in_badge(self):
         now = timezone.now()
         Task.objects.create(user=self.user, title="Präsentation", due_at=now - timedelta(minutes=2))
-        CalendarReminder.objects.create(user=self.user, title="Arzt anrufen", due_at=now - timedelta(minutes=1))
+        CalendarReminder.objects.create(
+            user=self.user, title="Arzt anrufen", due_at=now - timedelta(minutes=1)
+        )
         self.client.force_login(self.user)
 
         first_response = self.client.get("/notifications/?status=all")
@@ -3496,7 +3913,9 @@ class WebPushTests(TestCase):
             label="Berlin",
         )
 
-        with patch("app.services.notifications.materialize_due_weather_alerts", return_value=[{"id": "alert"}]) as claim:
+        with patch(
+            "app.services.notifications.materialize_due_weather_alerts", return_value=[{"id": "alert"}]
+        ) as claim:
             result = materialize_web_push_weather_alerts()
 
         self.assertEqual(result, {"created": 1, "failed": 0})
@@ -3521,7 +3940,9 @@ class WebPushTests(TestCase):
             label="Berlin",
         )
 
-        with patch("app.services.notifications.materialize_due_weather_alerts", return_value=[{"id": "alert"}]) as detect:
+        with patch(
+            "app.services.notifications.materialize_due_weather_alerts", return_value=[{"id": "alert"}]
+        ) as detect:
             result = materialize_web_push_weather_alerts()
 
         self.assertEqual(result, {"created": 1, "failed": 0})
@@ -3750,7 +4171,9 @@ class WeatherMapTests(TestCase):
         cache.clear()
         payload = [{"name": "Berlin", "state": "Berlin", "country": "DE", "lat": 52.52, "lon": 13.405}]
 
-        with patch("app.services.weather_service.urlopen", return_value=FakeWeatherResponse(payload)) as mocked_urlopen:
+        with patch(
+            "app.services.weather_service.urlopen", return_value=FakeWeatherResponse(payload)
+        ) as mocked_urlopen:
             first = get_location_suggestions("Berlin")
             second = get_location_suggestions("Berlin")
 
@@ -3776,16 +4199,22 @@ class WeatherMapTests(TestCase):
         thunder = _build_weather_alert(base_current, base_forecast, {"main": "Thunderstorm"})
         self.assertEqual(thunder["kind"], "storm")
 
-        windy = _build_weather_alert({"main": {"temp": 20}, "wind": {"speed": 20}}, base_forecast, {"main": "Clear"})
+        windy = _build_weather_alert(
+            {"main": {"temp": 20}, "wind": {"speed": 20}}, base_forecast, {"main": "Clear"}
+        )
         self.assertEqual(windy["kind"], "wind")
 
         rainy = _build_weather_alert(base_current, {"list": [{"pop": 0.9}]}, {"main": "Rain"})
         self.assertEqual(rainy["kind"], "rain")
 
-        hot = _build_weather_alert({"main": {"temp": 36}, "wind": {"speed": 0}}, base_forecast, {"main": "Clear"})
+        hot = _build_weather_alert(
+            {"main": {"temp": 36}, "wind": {"speed": 0}}, base_forecast, {"main": "Clear"}
+        )
         self.assertEqual(hot["kind"], "heat")
 
-        cold = _build_weather_alert({"main": {"temp": -12}, "wind": {"speed": 0}}, base_forecast, {"main": "Clear"})
+        cold = _build_weather_alert(
+            {"main": {"temp": -12}, "wind": {"speed": 0}}, base_forecast, {"main": "Clear"}
+        )
         self.assertEqual(cold["kind"], "cold")
 
         self.assertIsNone(_build_weather_alert(base_current, base_forecast, {"main": "Clear"}))
@@ -3812,25 +4241,35 @@ class WeatherMapTests(TestCase):
         self.assertEqual(alert["kind"], "storm")
 
     def test_save_weather_location_dedupes_and_sets_first_as_default(self):
-        location, created = save_weather_location(self.user, name="Berlin", lat=52.52, lon=13.405, details="DE", label="Berlin, DE")
+        location, created = save_weather_location(
+            self.user, name="Berlin", lat=52.52, lon=13.405, details="DE", label="Berlin, DE"
+        )
         self.assertTrue(created)
         self.assertTrue(location.is_default)
 
-        duplicate, created_again = save_weather_location(self.user, name="Berlin", lat=52.5203, lon=13.4048, details="DE", label="Berlin, DE")
+        duplicate, created_again = save_weather_location(
+            self.user, name="Berlin", lat=52.5203, lon=13.4048, details="DE", label="Berlin, DE"
+        )
         self.assertFalse(created_again)
         self.assertEqual(duplicate.pk, location.pk)
         self.assertEqual(list_weather_locations(self.user), [location])
 
     def test_save_weather_location_enforces_cap(self):
         for index in range(8):
-            save_weather_location(self.user, name=f"Ort {index}", lat=10 + index, lon=10 + index, details="", label="")
+            save_weather_location(
+                self.user, name=f"Ort {index}", lat=10 + index, lon=10 + index, details="", label=""
+            )
 
         with self.assertRaises(ValueError):
             save_weather_location(self.user, name="Ort 9", lat=50, lon=50, details="", label="")
 
     def test_delete_weather_location_promotes_next_default(self):
-        first, _ = save_weather_location(self.user, name="Berlin", lat=52.52, lon=13.405, details="", label="Berlin")
-        second, _ = save_weather_location(self.user, name="Hamburg", lat=53.55, lon=9.99, details="", label="Hamburg")
+        first, _ = save_weather_location(
+            self.user, name="Berlin", lat=52.52, lon=13.405, details="", label="Berlin"
+        )
+        second, _ = save_weather_location(
+            self.user, name="Hamburg", lat=53.55, lon=9.99, details="", label="Hamburg"
+        )
 
         delete_weather_location(self.user, first.pk)
 
@@ -3839,8 +4278,12 @@ class WeatherMapTests(TestCase):
         self.assertEqual(list(WeatherLocation.objects.filter(user=self.user)), [second])
 
     def test_set_default_weather_location_switches_default(self):
-        first, _ = save_weather_location(self.user, name="Berlin", lat=52.52, lon=13.405, details="", label="Berlin")
-        second, _ = save_weather_location(self.user, name="Hamburg", lat=53.55, lon=9.99, details="", label="Hamburg")
+        first, _ = save_weather_location(
+            self.user, name="Berlin", lat=52.52, lon=13.405, details="", label="Berlin"
+        )
+        second, _ = save_weather_location(
+            self.user, name="Hamburg", lat=53.55, lon=9.99, details="", label="Hamburg"
+        )
 
         set_default_weather_location(self.user, second.pk)
 
@@ -3851,7 +4294,9 @@ class WeatherMapTests(TestCase):
 
     @override_settings(WEATHER_API_KEY="")
     def test_location_from_request_prefers_default_weather_location(self):
-        save_weather_location(self.user, name="Hamburg", lat=53.55, lon=9.99, details="DE", label="Hamburg, DE")
+        save_weather_location(
+            self.user, name="Hamburg", lat=53.55, lon=9.99, details="DE", label="Hamburg, DE"
+        )
 
         context = get_weather_context({}, user=self.user)
 
@@ -3863,7 +4308,14 @@ class WeatherMapTests(TestCase):
 
         save_response = self.client.post(
             "/weather/",
-            {"form_name": "location_save", "name": "Berlin", "lat": "52.52", "lon": "13.405", "details": "DE", "label": "Berlin, DE"},
+            {
+                "form_name": "location_save",
+                "name": "Berlin",
+                "lat": "52.52",
+                "lon": "13.405",
+                "details": "DE",
+                "label": "Berlin, DE",
+            },
         )
         self.assertRedirects(save_response, "/weather/")
         location = WeatherLocation.objects.get(user=self.user, name="Berlin")
@@ -3871,7 +4323,14 @@ class WeatherMapTests(TestCase):
 
         second_response = self.client.post(
             "/weather/",
-            {"form_name": "location_save", "name": "Hamburg", "lat": "53.55", "lon": "9.99", "details": "DE", "label": "Hamburg, DE"},
+            {
+                "form_name": "location_save",
+                "name": "Hamburg",
+                "lat": "53.55",
+                "lon": "9.99",
+                "details": "DE",
+                "label": "Hamburg, DE",
+            },
         )
         self.assertRedirects(second_response, "/weather/")
         second_location = WeatherLocation.objects.get(user=self.user, name="Hamburg")
@@ -3895,8 +4354,6 @@ class WeatherMapTests(TestCase):
 
         overview = self.client.get("/weather/")
         self.assertContains(overview, "Hamburg")
-
-
 
 
 @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
@@ -4031,7 +4488,9 @@ class MessagesPageTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Neue Antwort")
-        self.assertFalse(ConversationMember.objects.get(conversation=conversation, user=self.mira).unread_count())
+        self.assertFalse(
+            ConversationMember.objects.get(conversation=conversation, user=self.mira).unread_count()
+        )
 
     def test_messages_root_shows_overview_without_auto_opening_chat(self):
         conversation = Conversation.objects.create(created_by=self.mira)
@@ -4047,14 +4506,18 @@ class MessagesPageTests(TestCase):
         self.assertContains(response, "Neue Nachrichten")
         self.assertContains(response, "Lukas: Neue Antwort")
         self.assertNotContains(response, 'name="form_name" value="message"')
-        self.assertTrue(ConversationMember.objects.get(conversation=conversation, user=self.mira).unread_count())
+        self.assertTrue(
+            ConversationMember.objects.get(conversation=conversation, user=self.mira).unread_count()
+        )
 
     def test_message_search_matches_older_message_bodies(self):
         conversation = Conversation.objects.create(created_by=self.mira)
         ConversationMember.objects.create(conversation=conversation, user=self.mira)
         ConversationMember.objects.create(conversation=conversation, user=self.lukas)
         ChatMessage.objects.create(conversation=conversation, sender=self.lukas, body="Projekt Alpha")
-        ChatMessage.objects.create(conversation=conversation, sender=self.lukas, body="Normale letzte Nachricht")
+        ChatMessage.objects.create(
+            conversation=conversation, sender=self.lukas, body="Normale letzte Nachricht"
+        )
         self.client.login(username="mira@example.com", password="secret-12345")
 
         response = self.client.get("/messages/?q=Alpha")
@@ -4202,7 +4665,6 @@ class MessagesPageTests(TestCase):
         message.refresh_from_db()
         self.assertFalse(message.is_deleted)
         self.assertEqual(message.body, "Bleibt da")
-
 
     def test_user_can_mute_and_unmute_conversation(self):
         conversation = Conversation.objects.create(created_by=self.mira)
@@ -4367,7 +4829,9 @@ class MessagesPageTests(TestCase):
             {"form_name": "member_action", "conversation_id": str(conversation.id), "action": "leave_group"},
         )
         self.assertRedirects(response, "/messages/")
-        self.assertFalse(ConversationMember.objects.filter(conversation=conversation, user=self.lukas).exists())
+        self.assertFalse(
+            ConversationMember.objects.filter(conversation=conversation, user=self.lukas).exists()
+        )
 
     def test_leave_group_action_is_ignored_for_direct_conversations(self):
         conversation = Conversation.objects.create(created_by=self.mira)
@@ -4464,7 +4928,9 @@ class MessagesPageTests(TestCase):
         conversation = Conversation.objects.create(created_by=self.mira)
         ConversationMember.objects.create(conversation=conversation, user=self.mira)
         ConversationMember.objects.create(conversation=conversation, user=self.lukas)
-        original = ChatMessage.objects.create(conversation=conversation, sender=self.lukas, body="Erste Nachricht")
+        original = ChatMessage.objects.create(
+            conversation=conversation, sender=self.lukas, body="Erste Nachricht"
+        )
 
         self.client.login(username="mira@example.com", password="secret-12345")
         response = self.client.post(
@@ -4495,7 +4961,7 @@ class MessagesPageTests(TestCase):
             body="",
             is_deleted=True,
         )
-        reply = ChatMessage.objects.create(
+        ChatMessage.objects.create(
             conversation=conversation,
             sender=self.mira,
             body="Antwort auf geloeschte Nachricht",
@@ -4532,8 +4998,12 @@ class MessagesPageTests(TestCase):
 
 class MessageReadReceiptTests(TestCase):
     def test_outgoing_message_shows_read_receipt_after_recipient_opened_chat(self):
-        sender = User.objects.create_user(username="sender@example.com", email="sender@example.com", password="secret-12345")
-        recipient = User.objects.create_user(username="recipient@example.com", email="recipient@example.com", password="secret-12345")
+        sender = User.objects.create_user(
+            username="sender@example.com", email="sender@example.com", password="secret-12345"
+        )
+        recipient = User.objects.create_user(
+            username="recipient@example.com", email="recipient@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=sender, display_name="Sender")
         Profile.objects.create(user=recipient, display_name="Recipient")
 
@@ -4559,8 +5029,12 @@ class MessageReadReceiptTests(TestCase):
 
 class MessageLiveUpdateTests(TestCase):
     def test_live_updates_return_new_messages_and_mark_chat_as_read(self):
-        sender = User.objects.create_user(username="sender-live@example.com", email="sender-live@example.com", password="secret-12345")
-        recipient = User.objects.create_user(username="recipient-live@example.com", email="recipient-live@example.com", password="secret-12345")
+        sender = User.objects.create_user(
+            username="sender-live@example.com", email="sender-live@example.com", password="secret-12345"
+        )
+        recipient = User.objects.create_user(
+            username="recipient-live@example.com", email="recipient-live@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=sender, display_name="Sender Live")
         Profile.objects.create(user=recipient, display_name="Recipient Live")
 
@@ -4580,8 +5054,14 @@ class MessageLiveUpdateTests(TestCase):
         self.assertIsNotNone(recipient_member.last_read_at)
 
     def test_live_updates_report_compose_blocked_state(self):
-        sender = User.objects.create_user(username="sender-block@example.com", email="sender-block@example.com", password="secret-12345")
-        recipient = User.objects.create_user(username="recipient-block@example.com", email="recipient-block@example.com", password="secret-12345")
+        sender = User.objects.create_user(
+            username="sender-block@example.com", email="sender-block@example.com", password="secret-12345"
+        )
+        recipient = User.objects.create_user(
+            username="recipient-block@example.com",
+            email="recipient-block@example.com",
+            password="secret-12345",
+        )
         Profile.objects.create(user=sender, display_name="Sender Block")
         Profile.objects.create(user=recipient, display_name="Recipient Block")
 
@@ -4608,7 +5088,9 @@ class MessageLiveUpdateTests(TestCase):
         self.assertIn("Diese Nachricht kann derzeit nicht gesendet werden.", payload["compose_html"])
 
     def test_overview_live_updates_return_contact_list(self):
-        user = User.objects.create_user(username="overview-live@example.com", email="overview-live@example.com", password="secret-12345")
+        user = User.objects.create_user(
+            username="overview-live@example.com", email="overview-live@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=user, display_name="Overview Live")
 
         self.client.login(username="overview-live@example.com", password="secret-12345")
@@ -4622,8 +5104,12 @@ class MessageLiveUpdateTests(TestCase):
 
 class GlobalSearchTests(TestCase):
     def setUp(self):
-        self.mira = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
-        self.lukas = User.objects.create_user(username="lukas@example.com", email="lukas@example.com", password="secret-12345")
+        self.mira = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
+        self.lukas = User.objects.create_user(
+            username="lukas@example.com", email="lukas@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=self.mira, display_name="Mira")
         Profile.objects.create(user=self.lukas, display_name="Lukas")
 
@@ -4691,11 +5177,15 @@ class GlobalSearchTests(TestCase):
     def test_global_search_does_not_leak_other_users_private_data(self):
         Note.objects.create(owner=self.lukas, title="Raketengeheimnis")
         conversation = Conversation.objects.create(created_by=self.lukas)
-        other_user = User.objects.create_user(username="anna@example.com", email="anna@example.com", password="secret-12345")
+        other_user = User.objects.create_user(
+            username="anna@example.com", email="anna@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=other_user, display_name="Anna")
         ConversationMember.objects.create(conversation=conversation, user=self.lukas)
         ConversationMember.objects.create(conversation=conversation, user=other_user)
-        ChatMessage.objects.create(conversation=conversation, sender=self.lukas, body="Rakete geheime Unterhaltung")
+        ChatMessage.objects.create(
+            conversation=conversation, sender=self.lukas, body="Rakete geheime Unterhaltung"
+        )
         CalendarEvent.objects.create(
             user=self.lukas,
             title="Rakete privater Termin",
@@ -4771,7 +5261,9 @@ class NoteSearchSnippetTests(SimpleTestCase):
         parsed = parse_search_query("Zündung")
         segments = build_snippet("Vor dem Start muss die Zündung geprüft werden.", parsed)
         self.assertEqual([part["text"] for part in segments if part["match"]], ["Zündung"])
-        self.assertEqual("".join(part["text"] for part in segments), "Vor dem Start muss die Zündung geprüft werden.")
+        self.assertEqual(
+            "".join(part["text"] for part in segments), "Vor dem Start muss die Zündung geprüft werden."
+        )
 
     def test_snippet_matches_case_insensitively_and_inside_compounds(self):
         parsed = parse_search_query("rakete")
@@ -4815,7 +5307,9 @@ class NoteSearchSnippetTests(SimpleTestCase):
 
 class NoteSearchRankingTests(TestCase):
     def setUp(self):
-        self.mira = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        self.mira = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=self.mira, display_name="Mira")
 
     def search(self, query):
@@ -4830,13 +5324,17 @@ class NoteSearchRankingTests(TestCase):
         self.assertEqual(self.search("Rakete Zündung"), [both])
 
     def test_title_match_ranks_above_body_only_match(self):
-        body_hit = Note.objects.create(owner=self.mira, title="Wochenplan", plain_text="Die Rakete ist fertig")
+        body_hit = Note.objects.create(
+            owner=self.mira, title="Wochenplan", plain_text="Die Rakete ist fertig"
+        )
         title_hit = Note.objects.create(owner=self.mira, title="Rakete", plain_text="ohne Treffer im Text")
 
         self.assertEqual(self.search("Rakete"), [title_hit, body_hit])
 
     def test_phrase_requires_adjacent_words(self):
-        adjacent = Note.objects.create(owner=self.mira, title="Ablauf", plain_text="Ein kalter Start am Morgen")
+        adjacent = Note.objects.create(
+            owner=self.mira, title="Ablauf", plain_text="Ein kalter Start am Morgen"
+        )
         Note.objects.create(owner=self.mira, title="Ablauf B", plain_text="Start war kalter als erwartet")
 
         self.assertEqual(self.search('"kalter Start"'), [adjacent])
@@ -4848,13 +5346,17 @@ class NoteSearchRankingTests(TestCase):
         self.assertEqual(self.search("Rakete -geheim"), [keep])
 
     def test_german_compounds_match_as_prefix_and_infix(self):
-        note = Note.objects.create(owner=self.mira, title="Raketenstart planen", plain_text="Zündfolge prüfen")
+        note = Note.objects.create(
+            owner=self.mira, title="Raketenstart planen", plain_text="Zündfolge prüfen"
+        )
 
         self.assertEqual(self.search("Rakete"), [note])
         self.assertEqual(self.search("start"), [note])
 
     def test_search_does_not_return_notes_the_user_cannot_access(self):
-        other = User.objects.create_user(username="lukas@example.com", email="lukas@example.com", password="secret-12345")
+        other = User.objects.create_user(
+            username="lukas@example.com", email="lukas@example.com", password="secret-12345"
+        )
         Note.objects.create(owner=other, title="Raketengeheimnis", plain_text="privat")
 
         self.assertEqual(self.search("Rakete"), [])
@@ -4935,12 +5437,16 @@ class NotePostgresSearchSqlTests(SimpleTestCase):
 @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
 class NoteSearchViewTests(TestCase):
     def setUp(self):
-        self.mira = User.objects.create_user(username="mira@example.com", email="mira@example.com", password="secret-12345")
+        self.mira = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=self.mira, display_name="Mira")
         self.client.login(username="mira@example.com", password="secret-12345")
 
     def test_notes_page_ranks_by_relevance_when_searching(self):
-        body_hit = Note.objects.create(owner=self.mira, title="Wochenplan", plain_text="Die Rakete ist fertig")
+        body_hit = Note.objects.create(
+            owner=self.mira, title="Wochenplan", plain_text="Die Rakete ist fertig"
+        )
         title_hit = Note.objects.create(owner=self.mira, title="Rakete", plain_text="ohne Treffer im Text")
 
         response = self.client.get("/notes/?q=Rakete")
@@ -4983,7 +5489,9 @@ class NoteSearchViewTests(TestCase):
         self.assertEqual([item["title"] for item in response.context["note_items"]], ["Start"])
 
     def test_global_search_highlights_the_matching_fragment(self):
-        Note.objects.create(owner=self.mira, title="Wochenplan", plain_text="Vor dem Start muss die Zündung geprüft werden")
+        Note.objects.create(
+            owner=self.mira, title="Wochenplan", plain_text="Vor dem Start muss die Zündung geprüft werden"
+        )
 
         response = self.client.get("/search/?q=Z%C3%BCndung")
 
@@ -5005,7 +5513,9 @@ class NoteSearchViewTests(TestCase):
         self.assertContains(response, "Unbenannte Notiz")
 
     def test_global_search_escapes_note_content_in_the_snippet(self):
-        Note.objects.create(owner=self.mira, title="Wochenplan", plain_text="<script>alert(1)</script> Zündung")
+        Note.objects.create(
+            owner=self.mira, title="Wochenplan", plain_text="<script>alert(1)</script> Zündung"
+        )
 
         response = self.client.get("/search/?q=Z%C3%BCndung")
 
@@ -5026,11 +5536,12 @@ class DashboardCustomizationTests(TestCase):
     def _login(self):
         self.client.login(username="mira@example.com", password="secret-12345")
 
-    def _layout(self, *, order=None, hidden=None):
+    def _layout(self, *, order=None, hidden=None, wide=None):
         return {
-            "version": 1,
+            "version": 2,
             "order": order or list(DASHBOARD_WIDGET_IDS),
             "hidden": hidden or [],
+            "wide": wide or [],
         }
 
     def test_home_uses_default_layout_and_creates_missing_profile(self):
@@ -5048,7 +5559,16 @@ class DashboardCustomizationTests(TestCase):
         )
 
     def test_home_renders_saved_order(self):
-        order = ["clock", "welcome", "quick_actions", "recent_tools", "upcoming_events", "weather", "tasks", "notifications"]
+        order = [
+            "clock",
+            "welcome",
+            "quick_actions",
+            "recent_tools",
+            "upcoming_events",
+            "weather",
+            "tasks",
+            "notifications",
+        ]
         self.profile.dashboard_layout = self._layout(order=order)
         self.profile.save(update_fields=["dashboard_layout"])
         self._login()
@@ -5059,6 +5579,20 @@ class DashboardCustomizationTests(TestCase):
             [widget["id"] for widget in response.context["dashboard_widgets"]],
             order,
         )
+
+    def test_home_renders_wide_widgets_with_span_class(self):
+        self.profile.dashboard_layout = self._layout(wide=["weather", "clock"])
+        self.profile.save(update_fields=["dashboard_layout"])
+        self._login()
+
+        response = self.client.get("/home/")
+
+        widgets_by_id = {widget["id"]: widget for widget in response.context["dashboard_widgets"]}
+        self.assertTrue(widgets_by_id["weather"]["wide"])
+        self.assertTrue(widgets_by_id["clock"]["wide"])
+        self.assertFalse(widgets_by_id["welcome"]["wide"])
+        self.assertContains(response, "dashboard-widget--wide")
+        self.assertContains(response, 'aria-pressed="true"')
 
     def test_home_keeps_hidden_widgets_for_edit_mode_and_shows_empty_state(self):
         self.profile.dashboard_layout = self._layout(hidden=list(DASHBOARD_WIDGET_IDS))
@@ -5077,12 +5611,27 @@ class DashboardCustomizationTests(TestCase):
             "version": 1,
             "order": ["clock", "unknown", "clock", "welcome"],
             "hidden": ["removed", "weather", "weather"],
+            "wide": ["removed", "clock", "clock"],
         }
 
         normalized = normalize_dashboard_layout(broken_layout)
 
+        self.assertEqual(normalized["version"], 2)
         self.assertEqual(normalized["order"][:2], ["clock", "welcome"])
         self.assertEqual(set(normalized["order"]), set(DASHBOARD_WIDGET_IDS))
+        self.assertEqual(normalized["hidden"], ["weather"])
+        self.assertEqual(normalized["wide"], ["clock"])
+
+    def test_normalization_defaults_wide_for_layouts_saved_before_the_feature_existed(self):
+        pre_existing_layout = {
+            "version": 1,
+            "order": list(DASHBOARD_WIDGET_IDS),
+            "hidden": ["weather"],
+        }
+
+        normalized = normalize_dashboard_layout(pre_existing_layout)
+
+        self.assertEqual(normalized["wide"], [])
         self.assertEqual(normalized["hidden"], ["weather"])
 
     def test_saved_hidden_layout_is_ignored_when_customization_is_disabled(self):
@@ -5132,11 +5681,23 @@ class DashboardCustomizationTests(TestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_dashboard_layout_api_saves_valid_layout_for_current_user_only(self):
-        other = User.objects.create_user(username="lukas@example.com", email="lukas@example.com", password="secret-12345")
+        other = User.objects.create_user(
+            username="lukas@example.com", email="lukas@example.com", password="secret-12345"
+        )
         other_profile = Profile.objects.create(user=other, display_name="Lukas")
         layout = self._layout(
-            order=["recent_tools", "quick_actions", "upcoming_events", "weather", "clock", "welcome", "tasks", "notifications"],
+            order=[
+                "recent_tools",
+                "quick_actions",
+                "upcoming_events",
+                "weather",
+                "clock",
+                "welcome",
+                "tasks",
+                "notifications",
+            ],
             hidden=["clock", "weather"],
+            wide=["recent_tools", "weather"],
         )
         self._login()
 
@@ -5156,10 +5717,15 @@ class DashboardCustomizationTests(TestCase):
     def test_dashboard_layout_api_rejects_invalid_layouts_without_saving(self):
         original_layout = self.profile.dashboard_layout
         invalid_layouts = [
-            {"version": 1, "order": ["welcome"], "hidden": []},
-            self._layout(order=["welcome", "welcome", "clock", "weather", "upcoming_events", "quick_actions"]),
+            {"version": 2, "order": ["welcome"], "hidden": [], "wide": []},
+            self._layout(
+                order=["welcome", "welcome", "clock", "weather", "upcoming_events", "quick_actions"]
+            ),
             self._layout(order=["welcome", "clock", "weather", "upcoming_events", "quick_actions", "bogus"]),
-            {"version": 1, "order": list(DASHBOARD_WIDGET_IDS), "hidden": "weather"},
+            {"version": 2, "order": list(DASHBOARD_WIDGET_IDS), "hidden": "weather", "wide": []},
+            {"version": 2, "order": list(DASHBOARD_WIDGET_IDS), "hidden": [], "wide": "weather"},
+            self._layout(wide=["welcome", "welcome"]),
+            self._layout(wide=["bogus"]),
             ["welcome", "clock"],
         ]
         self._login()
@@ -5191,7 +5757,9 @@ class DashboardCustomizationTests(TestCase):
 
     def test_disabled_weather_or_messages_are_not_restored_by_dashboard_layout(self):
         SystemSettings.objects.create(weather_enabled=False, messages_enabled=False)
-        self.profile.dashboard_layout = self._layout(order=["weather", "quick_actions", "recent_tools", "welcome", "clock", "upcoming_events"])
+        self.profile.dashboard_layout = self._layout(
+            order=["weather", "quick_actions", "recent_tools", "welcome", "clock", "upcoming_events"]
+        )
         self.profile.save(update_fields=["dashboard_layout"])
         self._login()
 
@@ -5470,13 +6038,22 @@ class AdministrationFeatureFlagTests(TestCase):
 class NotesTests(TestCase):
     def setUp(self):
         self.owner = User.objects.create_user(
-            username="owner@example.com", email="owner@example.com", password="secret-12345", first_name="Owner"
+            username="owner@example.com",
+            email="owner@example.com",
+            password="secret-12345",
+            first_name="Owner",
         )
         self.reader = User.objects.create_user(
-            username="reader@example.com", email="reader@example.com", password="secret-12345", first_name="Reader"
+            username="reader@example.com",
+            email="reader@example.com",
+            password="secret-12345",
+            first_name="Reader",
         )
         self.editor = User.objects.create_user(
-            username="editor@example.com", email="editor@example.com", password="secret-12345", first_name="Editor"
+            username="editor@example.com",
+            email="editor@example.com",
+            password="secret-12345",
+            first_name="Editor",
         )
         Profile.objects.create(user=self.owner, display_name="Owner")
         Profile.objects.create(user=self.reader, display_name="Reader")
@@ -5537,8 +6114,8 @@ class NotesTests(TestCase):
         self.assertNotContains(response, "data-note-card-tags")
         self.assertContains(response, "data-note-context-menu")
         self.assertContains(response, "data-folder-context-menu")
-        self.assertContains(response, "data-note-context-action=\"rename\"")
-        self.assertContains(response, "data-folder-context-action=\"create\"")
+        self.assertContains(response, 'data-note-context-action="rename"')
+        self.assertContains(response, 'data-folder-context-action="create"')
 
     def test_notes_overview_does_not_automatically_open_first_note(self):
         note = self.create_note()
@@ -5675,11 +6252,19 @@ class NotesTests(TestCase):
                         {"type": "mention", "attrs": {"userId": self.editor.id, "label": "Editor"}},
                     ],
                 },
-                {"type": "noteImage", "attrs": {"attachmentId": str(uuid.uuid4()), "alt": "Bild", "width": 400}},
+                {
+                    "type": "noteImage",
+                    "attrs": {"attachmentId": str(uuid.uuid4()), "alt": "Bild", "width": 400},
+                },
                 {
                     "type": "bulletList",
                     "content": [
-                        {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Punkt"}]}]},
+                        {
+                            "type": "listItem",
+                            "content": [
+                                {"type": "paragraph", "content": [{"type": "text", "text": "Punkt"}]}
+                            ],
+                        },
                     ],
                 },
             ],
@@ -5757,7 +6342,10 @@ class NotesTests(TestCase):
     def test_custom_template_limit_is_enforced(self):
         note = self.create_note()
         NoteTemplate.objects.bulk_create(
-            [NoteTemplate(owner=self.owner, name=f"Vorlage {i}", document=empty_note_document()) for i in range(30)]
+            [
+                NoteTemplate(owner=self.owner, name=f"Vorlage {i}", document=empty_note_document())
+                for i in range(30)
+            ]
         )
         response = self.client.post(
             "/notes/api/templates/",
@@ -5990,7 +6578,9 @@ class NotesTests(TestCase):
         denied = self.save_note(note, client=reader_client)
         self.assertEqual(denied.status_code, 403)
         pin = reader_client.post(
-            f"/notes/api/{note.id}/actions/", data=json.dumps({"action": "pin"}), content_type="application/json"
+            f"/notes/api/{note.id}/actions/",
+            data=json.dumps({"action": "pin"}),
+            content_type="application/json",
         )
         self.assertEqual(pin.status_code, 200)
         self.assertTrue(NoteUserState.objects.get(note=note, user=self.reader).is_pinned)
@@ -6035,7 +6625,9 @@ class NotesTests(TestCase):
         editor_client = Client()
         editor_client.login(username="editor@example.com", password="secret-12345")
         denied = editor_client.post(
-            f"/notes/api/{note.id}/actions/", data=json.dumps({"action": "trash"}), content_type="application/json"
+            f"/notes/api/{note.id}/actions/",
+            data=json.dumps({"action": "trash"}),
+            content_type="application/json",
         )
         self.assertEqual(denied.status_code, 403)
         denied = editor_client.post(
@@ -6046,12 +6638,16 @@ class NotesTests(TestCase):
         self.assertEqual(denied.status_code, 403)
 
         trashed = self.client.post(
-            f"/notes/api/{note.id}/actions/", data=json.dumps({"action": "trash"}), content_type="application/json"
+            f"/notes/api/{note.id}/actions/",
+            data=json.dumps({"action": "trash"}),
+            content_type="application/json",
         )
         self.assertEqual(trashed.status_code, 200)
         self.assertEqual(editor_client.get(f"/notes/api/{note.id}/").status_code, 404)
         restored = self.client.post(
-            f"/notes/api/{note.id}/actions/", data=json.dumps({"action": "restore"}), content_type="application/json"
+            f"/notes/api/{note.id}/actions/",
+            data=json.dumps({"action": "restore"}),
+            content_type="application/json",
         )
         self.assertEqual(restored.status_code, 200)
 
@@ -6235,7 +6831,18 @@ class NotesTests(TestCase):
         note = self.create_note()
         unsafe = {
             "type": "doc",
-            "content": [{"type": "paragraph", "content": [{"type": "text", "text": "X", "marks": [{"type": "link", "attrs": {"href": "javascript:alert(1)"}}]}]}],
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "X",
+                            "marks": [{"type": "link", "attrs": {"href": "javascript:alert(1)"}}],
+                        }
+                    ],
+                }
+            ],
         }
         response = self.client.patch(
             f"/notes/api/{note.id}/",
@@ -6281,7 +6888,9 @@ class NotesTests(TestCase):
         )
         self.assertEqual(response.status_code, 200, response.content)
         saved_document = response.json()["note"]["document"]
-        self.assertEqual(saved_document["content"][0]["content"][0]["marks"][0]["attrs"]["href"], "https://youtube.com")
+        self.assertEqual(
+            saved_document["content"][0]["content"][0]["marks"][0]["attrs"]["href"], "https://youtube.com"
+        )
 
     def test_pdf_export_preserves_access_control_and_returns_pdf(self):
         note = self.create_note("PDF Beispiel")
@@ -6298,13 +6907,27 @@ class NotesTests(TestCase):
                     "attrs": {"textAlign": "justify"},
                     "content": [
                         {"type": "text", "text": "Fett", "marks": [{"type": "bold"}]},
-                        {"type": "text", "text": " und farbig", "marks": [{"type": "textStyle", "attrs": {"color": "#a67c52", "fontSize": "18px", "lineHeight": "1.5"}}]},
+                        {
+                            "type": "text",
+                            "text": " und farbig",
+                            "marks": [
+                                {
+                                    "type": "textStyle",
+                                    "attrs": {"color": "#a67c52", "fontSize": "18px", "lineHeight": "1.5"},
+                                }
+                            ],
+                        },
                     ],
                 },
                 {
                     "type": "bulletList",
                     "content": [
-                        {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Listenpunkt"}]}]},
+                        {
+                            "type": "listItem",
+                            "content": [
+                                {"type": "paragraph", "content": [{"type": "text", "text": "Listenpunkt"}]}
+                            ],
+                        },
                     ],
                 },
                 {
@@ -6313,15 +6936,39 @@ class NotesTests(TestCase):
                         {
                             "type": "tableRow",
                             "content": [
-                                {"type": "tableHeader", "attrs": {"colspan": 1, "rowspan": 1}, "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Spalte"}]}]},
-                                {"type": "tableHeader", "attrs": {"colspan": 1, "rowspan": 1}, "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Wert"}]}]},
+                                {
+                                    "type": "tableHeader",
+                                    "attrs": {"colspan": 1, "rowspan": 1},
+                                    "content": [
+                                        {"type": "paragraph", "content": [{"type": "text", "text": "Spalte"}]}
+                                    ],
+                                },
+                                {
+                                    "type": "tableHeader",
+                                    "attrs": {"colspan": 1, "rowspan": 1},
+                                    "content": [
+                                        {"type": "paragraph", "content": [{"type": "text", "text": "Wert"}]}
+                                    ],
+                                },
                             ],
                         },
                         {
                             "type": "tableRow",
                             "content": [
-                                {"type": "tableCell", "attrs": {"colspan": 1, "rowspan": 1}, "content": [{"type": "paragraph", "content": [{"type": "text", "text": "A"}]}]},
-                                {"type": "tableCell", "attrs": {"colspan": 1, "rowspan": 1}, "content": [{"type": "paragraph", "content": [{"type": "text", "text": "1"}]}]},
+                                {
+                                    "type": "tableCell",
+                                    "attrs": {"colspan": 1, "rowspan": 1},
+                                    "content": [
+                                        {"type": "paragraph", "content": [{"type": "text", "text": "A"}]}
+                                    ],
+                                },
+                                {
+                                    "type": "tableCell",
+                                    "attrs": {"colspan": 1, "rowspan": 1},
+                                    "content": [
+                                        {"type": "paragraph", "content": [{"type": "text", "text": "1"}]}
+                                    ],
+                                },
                             ],
                         },
                     ],
@@ -6353,7 +7000,9 @@ class NotesTests(TestCase):
         stranger_client = Client()
         stranger_client.login(username="editor@example.com", password="secret-12345")
         self.assertEqual(stranger_client.get(f"/notes/{note.id}/export/pdf/").status_code, 404)
-        self.assertRedirects(Client().get(f"/notes/{note.id}/export/pdf/"), f"/login/?next=/notes/{note.id}/export/pdf/")
+        self.assertRedirects(
+            Client().get(f"/notes/{note.id}/export/pdf/"), f"/login/?next=/notes/{note.id}/export/pdf/"
+        )
 
     def test_markdown_export_preserves_access_control_and_renders_structure(self):
         note = self.create_note("Markdown Beispiel")
@@ -6375,7 +7024,12 @@ class NotesTests(TestCase):
                 {
                     "type": "bulletList",
                     "content": [
-                        {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Listenpunkt"}]}]},
+                        {
+                            "type": "listItem",
+                            "content": [
+                                {"type": "paragraph", "content": [{"type": "text", "text": "Listenpunkt"}]}
+                            ],
+                        },
                     ],
                 },
                 {
@@ -6389,15 +7043,35 @@ class NotesTests(TestCase):
                         {
                             "type": "tableRow",
                             "content": [
-                                {"type": "tableHeader", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Spalte"}]}]},
-                                {"type": "tableHeader", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Wert"}]}]},
+                                {
+                                    "type": "tableHeader",
+                                    "content": [
+                                        {"type": "paragraph", "content": [{"type": "text", "text": "Spalte"}]}
+                                    ],
+                                },
+                                {
+                                    "type": "tableHeader",
+                                    "content": [
+                                        {"type": "paragraph", "content": [{"type": "text", "text": "Wert"}]}
+                                    ],
+                                },
                             ],
                         },
                         {
                             "type": "tableRow",
                             "content": [
-                                {"type": "tableCell", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "A | B"}]}]},
-                                {"type": "tableCell", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "1"}]}]},
+                                {
+                                    "type": "tableCell",
+                                    "content": [
+                                        {"type": "paragraph", "content": [{"type": "text", "text": "A | B"}]}
+                                    ],
+                                },
+                                {
+                                    "type": "tableCell",
+                                    "content": [
+                                        {"type": "paragraph", "content": [{"type": "text", "text": "1"}]}
+                                    ],
+                                },
                             ],
                         },
                     ],
@@ -6438,7 +7112,8 @@ class NotesTests(TestCase):
         stranger_client.login(username="editor@example.com", password="secret-12345")
         self.assertEqual(stranger_client.get(f"/notes/{note.id}/export/markdown/").status_code, 404)
         self.assertRedirects(
-            Client().get(f"/notes/{note.id}/export/markdown/"), f"/login/?next=/notes/{note.id}/export/markdown/"
+            Client().get(f"/notes/{note.id}/export/markdown/"),
+            f"/login/?next=/notes/{note.id}/export/markdown/",
         )
 
     def test_shortcut_conflicts_are_rejected_and_valid_overrides_persist(self):
@@ -6524,11 +7199,16 @@ class NotesTests(TestCase):
             self.assertEqual(
                 self.client.post(
                     f"/notes/api/{note.id}/attachments/",
-                    {"kind": "image", "file": SimpleUploadedFile("moon2.png", PNG_1X1_BYTES, content_type="image/png")},
+                    {
+                        "kind": "image",
+                        "file": SimpleUploadedFile("moon2.png", PNG_1X1_BYTES, content_type="image/png"),
+                    },
                 ).status_code,
                 503,
             )
-            self.assertEqual(self.client.get(f"/notes/attachments/{attachment.file_id}/inline/").status_code, 503)
+            self.assertEqual(
+                self.client.get(f"/notes/attachments/{attachment.file_id}/inline/").status_code, 503
+            )
             self.assertEqual(self.client.get(f"/notes/api/{note.id}/versions/").status_code, 503)
             self.assertEqual(
                 self.client.post(
@@ -6547,7 +7227,9 @@ class NotesTests(TestCase):
                 ).status_code,
                 503,
             )
-            self.assertEqual(self.client.get(f"/notes/api/{note.id}/mention-candidates/?q=re").status_code, 503)
+            self.assertEqual(
+                self.client.get(f"/notes/api/{note.id}/mention-candidates/?q=re").status_code, 503
+            )
             self.assertEqual(self.client.get(f"/notes/api/{note.id}/comments/").status_code, 503)
             self.assertEqual(
                 self.client.post(
@@ -6738,7 +7420,9 @@ class NotesTests(TestCase):
 
     def test_mentioning_user_without_access_is_rejected(self):
         note = self.create_note()
-        outsider = User.objects.create_user(username="outsider@example.com", email="outsider@example.com", password="secret-12345")
+        outsider = User.objects.create_user(
+            username="outsider@example.com", email="outsider@example.com", password="secret-12345"
+        )
         document = self.mention_document(outsider, "Outsider")
 
         response = self.client.patch(
@@ -6765,7 +7449,9 @@ class NotesTests(TestCase):
 
         response = self.client.post(
             f"/notes/api/{note.id}/comments/",
-            data=json.dumps({"thread_id": thread_id, "anchor_text": "Erster Inhalt", "body": "Was meinst du hiermit?"}),
+            data=json.dumps(
+                {"thread_id": thread_id, "anchor_text": "Erster Inhalt", "body": "Was meinst du hiermit?"}
+            ),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200, response.content)
@@ -6781,7 +7467,13 @@ class NotesTests(TestCase):
             "content": [
                 {
                     "type": "paragraph",
-                    "content": [{"type": "text", "text": "Erster Inhalt", "marks": [{"type": "commentThread", "attrs": {"threadId": thread_id}}]}],
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Erster Inhalt",
+                            "marks": [{"type": "commentThread", "attrs": {"threadId": thread_id}}],
+                        }
+                    ],
                 }
             ],
         }
@@ -6801,7 +7493,11 @@ class NotesTests(TestCase):
         )
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(len(response.json()["threads"][0]["comments"]), 2)
-        self.assertTrue(NoteActivityNotification.objects.filter(note=note, recipient=self.owner, kind=NoteActivityNotification.KIND_COMMENT).exists())
+        self.assertTrue(
+            NoteActivityNotification.objects.filter(
+                note=note, recipient=self.owner, kind=NoteActivityNotification.KIND_COMMENT
+            ).exists()
+        )
 
         response = self.client.post(
             f"/notes/api/{note.id}/comments/{thread_id}/",
@@ -6826,7 +7522,13 @@ class NotesTests(TestCase):
             "content": [
                 {
                     "type": "paragraph",
-                    "content": [{"type": "text", "text": "Erster Inhalt", "marks": [{"type": "commentThread", "attrs": {"threadId": str(uuid.uuid4())}}]}],
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Erster Inhalt",
+                            "marks": [{"type": "commentThread", "attrs": {"threadId": str(uuid.uuid4())}}],
+                        }
+                    ],
                 }
             ],
         }
@@ -6850,7 +7552,13 @@ class NotesTests(TestCase):
             "content": [
                 {
                     "type": "paragraph",
-                    "content": [{"type": "text", "text": "Erster Inhalt", "marks": [{"type": "commentThread", "attrs": {"threadId": thread_id}}]}],
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Erster Inhalt",
+                            "marks": [{"type": "commentThread", "attrs": {"threadId": thread_id}}],
+                        }
+                    ],
                 }
             ],
         }
@@ -6903,7 +7611,11 @@ class NotesTests(TestCase):
         response = self.client.patch(
             f"/notes/api/{source.id}/",
             data=json.dumps(
-                {"title": source.title, "document": note_document("Kein Link mehr"), "base_revision": source.revision}
+                {
+                    "title": source.title,
+                    "document": note_document("Kein Link mehr"),
+                    "base_revision": source.revision,
+                }
             ),
             content_type="application/json",
         )
@@ -7005,9 +7717,13 @@ class NotesTests(TestCase):
 
 class VacationPlannerTests(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(username="planner@example.com", email="planner@example.com", password="secret-12345")
+        self.user = User.objects.create_user(
+            username="planner@example.com", email="planner@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=self.user, display_name="Planner")
-        self.other = User.objects.create_user(username="other-planner@example.com", email="other-planner@example.com", password="secret-12345")
+        self.other = User.objects.create_user(
+            username="other-planner@example.com", email="other-planner@example.com", password="secret-12345"
+        )
         Profile.objects.create(user=self.other, display_name="Other")
         self.client.login(username="planner@example.com", password="secret-12345")
         self.vacation_year = VacationYear.objects.create(
@@ -7039,8 +7755,18 @@ class VacationPlannerTests(TestCase):
             name="Halber Testfeiertag",
             day_value=Decimal("0.5"),
         )
-        VacationPeriod.objects.create(user=self.user, name=VacationPeriod.TARIFURLAUB, start_date=date(2026, 1, 5), end_date=date(2026, 1, 7))
-        VacationPeriod.objects.create(user=self.user, name=VacationPeriod.SONDERURLAUB, start_date=date(2026, 1, 6), end_date=date(2026, 1, 8))
+        VacationPeriod.objects.create(
+            user=self.user,
+            name=VacationPeriod.TARIFURLAUB,
+            start_date=date(2026, 1, 5),
+            end_date=date(2026, 1, 7),
+        )
+        VacationPeriod.objects.create(
+            user=self.user,
+            name=VacationPeriod.SONDERURLAUB,
+            start_date=date(2026, 1, 6),
+            end_date=date(2026, 1, 8),
+        )
 
         summary = annual_summary(self.user, 2026)
 
@@ -7049,7 +7775,12 @@ class VacationPlannerTests(TestCase):
         self.assertTrue(summary["is_overbooked"])
 
     def test_preview_reports_overlaps_and_missing_years(self):
-        VacationPeriod.objects.create(user=self.user, name=VacationPeriod.TARIFURLAUB, start_date=date(2026, 1, 6), end_date=date(2026, 1, 8))
+        VacationPeriod.objects.create(
+            user=self.user,
+            name=VacationPeriod.TARIFURLAUB,
+            start_date=date(2026, 1, 6),
+            end_date=date(2026, 1, 8),
+        )
 
         response = self.client.post(
             "/vacation-planner/preview/",
@@ -7074,8 +7805,20 @@ class VacationPlannerTests(TestCase):
         self.assertEqual(response.status_code, 503)
 
     def test_periods_are_filtered_per_user(self):
-        VacationPeriod.objects.create(user=self.user, name=VacationPeriod.TARIFURLAUB, start_date=date(2026, 2, 2), end_date=date(2026, 2, 3), notes="Eigener Hinweis")
-        VacationPeriod.objects.create(user=self.other, name=VacationPeriod.TARIFURLAUB, start_date=date(2026, 2, 2), end_date=date(2026, 2, 3), notes="Fremder Hinweis")
+        VacationPeriod.objects.create(
+            user=self.user,
+            name=VacationPeriod.TARIFURLAUB,
+            start_date=date(2026, 2, 2),
+            end_date=date(2026, 2, 3),
+            notes="Eigener Hinweis",
+        )
+        VacationPeriod.objects.create(
+            user=self.other,
+            name=VacationPeriod.TARIFURLAUB,
+            start_date=date(2026, 2, 2),
+            end_date=date(2026, 2, 3),
+            notes="Fremder Hinweis",
+        )
 
         response = self.client.get("/vacation-planner/?year=2026&month=2")
 
@@ -7115,9 +7858,371 @@ class VacationPlannerTests(TestCase):
         output = StringIO()
         call_command("import_public_holidays", from_year=2026, to_year=2026, subdivision="NW", stdout=output)
         first_count = OfficialHoliday.objects.filter(subdivision="NW", date__year=2026).count()
-        call_command("import_public_holidays", from_year=2026, to_year=2026, subdivision="NW", stdout=StringIO())
+        call_command(
+            "import_public_holidays", from_year=2026, to_year=2026, subdivision="NW", stdout=StringIO()
+        )
 
         stale.refresh_from_db()
         self.assertGreater(first_count, 0)
         self.assertFalse(stale.active)
-        self.assertEqual(OfficialHoliday.objects.filter(subdivision="NW", date__year=2026).count(), first_count)
+        self.assertEqual(
+            OfficialHoliday.objects.filter(subdivision="NW", date__year=2026).count(), first_count
+        )
+
+    def test_decimal_label_formats_whole_and_half_values(self):
+        self.assertEqual(decimal_label(Decimal("1.0")), "1")
+        self.assertEqual(decimal_label(Decimal("0.5")), "0,5")
+        self.assertEqual(decimal_label(Decimal("2.5")), "2,5")
+        self.assertEqual(decimal_label(Decimal("0.0")), "0")
+
+    def test_fallback_holidays_used_when_holidays_package_unavailable(self):
+        with patch.dict(sys.modules, {"holidays": None}):
+            holidays_list = list(generated_public_holidays(2026, "NW"))
+
+        self.assertTrue(all(holiday["source"] == "fallback" for holiday in holidays_list))
+        names = {holiday["name"] for holiday in holidays_list}
+        self.assertIn("Neujahr", names)
+        self.assertIn("Fronleichnam", names)
+        self.assertIn("Allerheiligen", names)
+        self.assertNotIn("Mariä Himmelfahrt", names)
+
+    def test_fallback_holidays_are_subdivision_specific(self):
+        with patch.dict(sys.modules, {"holidays": None}):
+            bavaria_names = {holiday["name"] for holiday in generated_public_holidays(2026, "BY")}
+            saxony_names = {holiday["name"] for holiday in generated_public_holidays(2026, "SN")}
+
+        self.assertIn("Mariä Himmelfahrt", bavaria_names)
+        self.assertIn("Buß- und Bettag", saxony_names)
+        self.assertNotIn("Buß- und Bettag", bavaria_names)
+
+    def test_fallback_easter_based_holidays_match_holidays_package(self):
+        easter_based_names = {
+            "Karfreitag",
+            "Ostermontag",
+            "Christi Himmelfahrt",
+            "Pfingstmontag",
+            "Fronleichnam",
+        }
+        for year in (2026, 2027, 2028):
+            real_dates = {
+                holiday["name"]: holiday["date"]
+                for holiday in generated_public_holidays(year, "NW")
+                if holiday["name"] in easter_based_names
+            }
+            with patch.dict(sys.modules, {"holidays": None}):
+                fallback_dates = {
+                    holiday["name"]: holiday["date"]
+                    for holiday in generated_public_holidays(year, "NW")
+                    if holiday["name"] in easter_based_names
+                }
+            self.assertEqual(set(real_dates), easter_based_names, year)
+            self.assertEqual(fallback_dates, real_dates, year)
+
+    def test_import_public_holidays_covers_multiple_years_and_subdivisions(self):
+        imported = import_public_holidays(2026, 2027, subdivisions=["NW", "BY"])
+
+        self.assertGreater(imported, 0)
+        for subdivision in ("NW", "BY"):
+            for year in (2026, 2027):
+                self.assertTrue(
+                    OfficialHoliday.objects.filter(
+                        subdivision=subdivision, date__year=year, active=True
+                    ).exists(),
+                    f"{subdivision} {year}",
+                )
+        self.assertTrue(
+            OfficialHoliday.objects.filter(
+                subdivision="BY", name="Heilige Drei Könige", date__year=2026
+            ).exists()
+        )
+        self.assertFalse(
+            OfficialHoliday.objects.filter(
+                subdivision="NW", name="Heilige Drei Könige", date__year=2026
+            ).exists()
+        )
+
+    def test_calculate_period_splits_required_days_across_year_boundary(self):
+        VacationYear.objects.create(
+            user=self.user, year=2027, allowance_days=Decimal("25.0"), subdivision="NW"
+        )
+
+        calculation = calculate_period(self.user, date(2026, 12, 30), date(2027, 1, 2))
+
+        self.assertEqual(calculation["calendar_days"], 4)
+        self.assertEqual(calculation["missing_years"], [])
+        per_year = {row["year"]: row for row in calculation["per_year"]}
+        self.assertEqual(set(per_year), {2026, 2027})
+        self.assertEqual(per_year[2026]["calendar_days"], 2)
+        self.assertEqual(per_year[2026]["weekend_days"], 0)
+        self.assertEqual(per_year[2026]["required_days"], Decimal("2.0"))
+        self.assertEqual(per_year[2027]["calendar_days"], 2)
+        self.assertEqual(per_year[2027]["weekend_days"], 1)
+        self.assertEqual(per_year[2027]["holiday_count"], 1)
+        self.assertEqual(per_year[2027]["required_days"], Decimal("0.0"))
+        self.assertEqual(calculation["required_days"], Decimal("2.0"))
+
+    def test_holiday_override_reduces_required_days_and_renames_holiday(self):
+        official_holiday = OfficialHoliday.objects.create(
+            subdivision="NW",
+            date=date(2026, 6, 4),
+            name="Fronleichnam",
+            day_value=Decimal("1.0"),
+            active=True,
+        )
+        HolidayOverride.objects.create(
+            vacation_year=self.vacation_year,
+            official_holiday=official_holiday,
+            name="Firmenfeiertag",
+            day_value=Decimal("0.5"),
+        )
+
+        holidays = effective_holidays_for_year(self.vacation_year)
+        self.assertEqual(holidays[date(2026, 6, 4)].day_value, Decimal("0.5"))
+        self.assertEqual(holidays[date(2026, 6, 4)].names, ("Firmenfeiertag",))
+
+        calculation = calculate_period(self.user, date(2026, 6, 4), date(2026, 6, 4))
+        self.assertEqual(calculation["required_days"], Decimal("0.5"))
+
+    def test_holiday_override_can_fully_disable_a_holiday(self):
+        official_holiday = OfficialHoliday.objects.create(
+            subdivision="NW",
+            date=date(2026, 6, 4),
+            name="Fronleichnam",
+            day_value=Decimal("1.0"),
+            active=True,
+        )
+        HolidayOverride.objects.create(
+            vacation_year=self.vacation_year, official_holiday=official_holiday, day_value=Decimal("0.0")
+        )
+
+        holidays = effective_holidays_for_year(self.vacation_year)
+        self.assertNotIn(date(2026, 6, 4), holidays)
+
+        calculation = calculate_period(self.user, date(2026, 6, 4), date(2026, 6, 4))
+        self.assertEqual(calculation["required_days"], Decimal("1.0"))
+        self.assertEqual(calculation["holiday_count"], 0)
+
+    def test_month_summary_and_month_calendar_reflect_period_and_holiday(self):
+        OfficialHoliday.objects.create(
+            subdivision="NW",
+            date=date(2026, 6, 4),
+            name="Fronleichnam",
+            day_value=Decimal("1.0"),
+            active=True,
+        )
+        VacationPeriod.objects.create(
+            user=self.user,
+            name=VacationPeriod.TARIFURLAUB,
+            start_date=date(2026, 6, 8),
+            end_date=date(2026, 6, 9),
+        )
+
+        summary = month_summary(self.user, 2026, 6)
+        self.assertEqual(summary["period_count"], 1)
+        self.assertEqual(summary["planned_days"], Decimal("2.0"))
+        self.assertEqual(summary["holiday_count"], 1)
+
+        calendar_model = month_calendar(self.user, 2026, 6)
+        day_cell = next(
+            cell for week in calendar_model["rows"] for cell in week if cell["date"] == date(2026, 6, 4)
+        )
+        self.assertIsNotNone(day_cell["holiday"])
+        self.assertEqual(day_cell["holiday"].names, ("Fronleichnam",))
+
+    def test_vacation_year_save_view_creates_and_updates_allowance(self):
+        self.vacation_year.delete()
+
+        response = self.client.post(
+            "/vacation-planner/year/",
+            {"year": "2027", "allowance_days": "25.5", "subdivision": "BY"},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        vacation_year = VacationYear.objects.get(user=self.user, year=2027)
+        self.assertEqual(vacation_year.allowance_days, Decimal("25.5"))
+        self.assertEqual(vacation_year.subdivision, "BY")
+        self.assertContains(response, "Urlaubsjahr gespeichert.")
+
+    def test_vacation_year_save_view_rejects_non_half_step_allowance(self):
+        response = self.client.post(
+            "/vacation-planner/year/",
+            {"year": "2026", "allowance_days": "25.3", "subdivision": "NW"},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.vacation_year.refresh_from_db()
+        self.assertEqual(self.vacation_year.allowance_days, Decimal("3.0"))
+        self.assertContains(response, "Das Urlaubsjahr konnte nicht gespeichert werden.")
+
+    def test_custom_holiday_save_view_creates_half_day_holiday(self):
+        response = self.client.post(
+            "/vacation-planner/holiday/save/",
+            {"year": "2026", "date": "2026-08-14", "name": "Betriebsruhe", "is_half_day": "on"},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        holiday = CustomHoliday.objects.get(vacation_year=self.vacation_year, name="Betriebsruhe")
+        self.assertEqual(holiday.date, date(2026, 8, 14))
+        self.assertEqual(holiday.day_value, Decimal("0.5"))
+        self.assertContains(response, "Feiertag gespeichert.")
+
+    def test_custom_holiday_save_view_rejects_date_outside_selected_year(self):
+        response = self.client.post(
+            "/vacation-planner/holiday/save/",
+            {"year": "2026", "date": "2027-01-02", "name": "Falsches Jahr"},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertFalse(CustomHoliday.objects.filter(name="Falsches Jahr").exists())
+        self.assertContains(response, "Eigene Feiertage müssen im gewählten Jahr liegen.")
+
+    def test_custom_holiday_delete_view_only_removes_own_vacation_year_holiday(self):
+        other_year = VacationYear.objects.create(
+            user=self.other, year=2026, allowance_days=Decimal("20.0"), subdivision="NW"
+        )
+        own_holiday = CustomHoliday.objects.create(
+            vacation_year=self.vacation_year, date=date(2026, 8, 14), name="Eigen", day_value=Decimal("1.0")
+        )
+        other_holiday = CustomHoliday.objects.create(
+            vacation_year=other_year, date=date(2026, 8, 14), name="Fremd", day_value=Decimal("1.0")
+        )
+
+        response = self.client.post(
+            "/vacation-planner/holiday/delete/",
+            {"year": "2026", "holiday_id": other_holiday.id},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(CustomHoliday.objects.filter(pk=own_holiday.id).exists())
+        self.assertTrue(CustomHoliday.objects.filter(pk=other_holiday.id).exists())
+
+    def test_official_holiday_override_save_and_reset(self):
+        official_holiday = OfficialHoliday.objects.create(
+            subdivision="NW",
+            date=date(2026, 6, 4),
+            name="Fronleichnam",
+            day_value=Decimal("1.0"),
+            active=True,
+        )
+
+        response = self.client.post(
+            "/vacation-planner/official-holiday/save/",
+            {
+                "year": "2026",
+                "official_holiday_id": official_holiday.id,
+                "name": "Firmenfeiertag",
+                "day_value": "0.5",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        override = HolidayOverride.objects.get(
+            vacation_year=self.vacation_year, official_holiday=official_holiday
+        )
+        self.assertEqual(override.day_value, Decimal("0.5"))
+        self.assertEqual(override.name, "Firmenfeiertag")
+        self.assertContains(response, "Feiertag angepasst.")
+
+        response = self.client.post(
+            "/vacation-planner/official-holiday/reset/",
+            {"year": "2026", "official_holiday_id": official_holiday.id},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertFalse(
+            HolidayOverride.objects.filter(
+                vacation_year=self.vacation_year, official_holiday=official_holiday
+            ).exists()
+        )
+        self.assertContains(response, "Feiertag zurückgesetzt.")
+
+    def test_official_holiday_override_save_rejects_mismatched_subdivision(self):
+        official_holiday = OfficialHoliday.objects.create(
+            subdivision="BY",
+            date=date(2026, 6, 4),
+            name="Fronleichnam (Bayern)",
+            day_value=Decimal("1.0"),
+            active=True,
+        )
+
+        response = self.client.post(
+            "/vacation-planner/official-holiday/save/",
+            {"year": "2026", "official_holiday_id": official_holiday.id, "name": "", "day_value": "0.0"},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertFalse(HolidayOverride.objects.filter(official_holiday=official_holiday).exists())
+        self.assertContains(response, "Der Feiertag konnte nicht gefunden werden.")
+
+    def test_vacation_period_delete_view_ignores_other_users_period(self):
+        own_period = VacationPeriod.objects.create(
+            user=self.user,
+            name=VacationPeriod.TARIFURLAUB,
+            start_date=date(2026, 3, 2),
+            end_date=date(2026, 3, 3),
+        )
+        other_period = VacationPeriod.objects.create(
+            user=self.other,
+            name=VacationPeriod.TARIFURLAUB,
+            start_date=date(2026, 3, 2),
+            end_date=date(2026, 3, 3),
+        )
+
+        response = self.client.post(
+            "/vacation-planner/period/delete/", {"year": "2026", "period_id": other_period.id}, follow=True
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(VacationPeriod.objects.filter(pk=own_period.id).exists())
+        self.assertTrue(VacationPeriod.objects.filter(pk=other_period.id).exists())
+
+    def test_vacation_period_save_view_blocks_when_target_year_not_configured(self):
+        response = self.client.post(
+            "/vacation-planner/period/save/",
+            {
+                "year": "2026",
+                "name": VacationPeriod.TARIFURLAUB,
+                "start_date": "2027-01-04",
+                "end_date": "2027-01-05",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertFalse(VacationPeriod.objects.filter(user=self.user, start_date=date(2027, 1, 4)).exists())
+        self.assertContains(response, "Bitte bestätige zuerst die Urlaubsjahre: 2027.")
+
+    def test_vacation_period_save_view_updates_existing_period(self):
+        period = VacationPeriod.objects.create(
+            user=self.user,
+            name=VacationPeriod.TARIFURLAUB,
+            start_date=date(2026, 3, 2),
+            end_date=date(2026, 3, 3),
+        )
+
+        response = self.client.post(
+            "/vacation-planner/period/save/",
+            {
+                "year": "2026",
+                "period_id": period.id,
+                "name": VacationPeriod.SONDERURLAUB,
+                "start_date": "2026-03-02",
+                "end_date": "2026-03-04",
+                "notes": "Verlängert",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        period.refresh_from_db()
+        self.assertEqual(period.name, VacationPeriod.SONDERURLAUB)
+        self.assertEqual(period.end_date, date(2026, 3, 4))
+        self.assertEqual(period.notes, "Verlängert")

@@ -2,8 +2,8 @@ from django.conf import settings as django_settings
 from django.db import OperationalError, ProgrammingError
 
 from app.models import Profile, UserNotification
-from app.services.notifications import materialize_due_user_notifications
 from app.services.notification_preferences import CHANNEL_INBOX, enabled_notification_kinds
+from app.services.notifications import materialize_due_user_notifications
 from app.services.system_settings import feature_flags, get_system_settings
 
 

@@ -1,13 +1,5 @@
 (function () {
-  const GERMAN_WEEKDAY_NAMES = [
-    "Sonntag",
-    "Montag",
-    "Dienstag",
-    "Mittwoch",
-    "Donnerstag",
-    "Freitag",
-    "Samstag",
-  ];
+  const GERMAN_WEEKDAY_NAMES = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
 
   const GERMAN_MONTH_NAMES = [
     "Januar",
@@ -50,7 +42,7 @@
         month: "2-digit",
         year: "numeric",
       });
-    } catch (error) {
+    } catch (_error) {
       // Unknown/unsupported timezone identifier: fall back to the browser's local time.
       partsFormatter = new Intl.DateTimeFormat("en-US", {
         hourCycle: "h23",
@@ -186,7 +178,7 @@
           credentials: "same-origin",
           headers: {
             "X-Requested-With": "XMLHttpRequest",
-            "Accept": "application/json",
+            Accept: "application/json",
           },
         });
 
@@ -200,7 +192,7 @@
         }
 
         setBadgeCount(data.unread_total);
-      } catch (error) {
+      } catch (_error) {
         // Lokale Netzwerk-/Reload-Unterbrechungen sollen die Home-Seite nicht stören.
       }
     };
@@ -220,7 +212,7 @@
     }
     try {
       return JSON.parse(el.textContent);
-    } catch (error) {
+    } catch (_error) {
       return null;
     }
   }
@@ -259,9 +251,10 @@
 
     function cloneLayout(layout) {
       return {
-        version: 1,
+        version: 2,
         order: Array.isArray(layout.order) ? layout.order.slice() : [],
         hidden: Array.isArray(layout.hidden) ? layout.hidden.slice() : [],
+        wide: Array.isArray(layout.wide) ? layout.wide.slice() : [],
       };
     }
 
@@ -271,6 +264,23 @@
 
     function hiddenSet(layout) {
       return new Set(layout.hidden.filter((id) => availableIdSet.has(id)));
+    }
+
+    function wideSet(layout) {
+      return new Set(layout.wide.filter((id) => availableIdSet.has(id)));
+    }
+
+    function toggleWide(widgetId) {
+      const wide = new Set(draftLayout.wide);
+      if (wide.has(widgetId)) {
+        wide.delete(widgetId);
+        setAnnouncement(`${labelFor(widgetId)} ist wieder schmal.`);
+      } else {
+        wide.add(widgetId);
+        setAnnouncement(`${labelFor(widgetId)} ist jetzt breit.`);
+      }
+      draftLayout.wide = availableIds.filter((id) => wide.has(id));
+      renderDraft();
     }
 
     function setAnnouncement(message) {
@@ -336,15 +346,22 @@
     function renderDraft({ reorder = true } = {}) {
       const fragment = document.createDocumentFragment();
       const hiddenIds = hiddenSet(draftLayout);
+      const wideIds = wideSet(draftLayout);
       visibleOrder(draftLayout).forEach((id) => {
         const widget = widgetById(id);
         if (!widget) {
           return;
         }
         const isHidden = hiddenIds.has(id);
+        const isWide = wideIds.has(id);
         widget.hidden = isHidden && !editing;
         widget.classList.toggle("is-hidden-by-user", isHidden);
+        widget.classList.toggle("dashboard-widget--wide", isWide);
         widget.setAttribute("draggable", editing ? "true" : "false");
+        const resizeButton = widget.querySelector("[data-dashboard-resize]");
+        if (resizeButton) {
+          resizeButton.setAttribute("aria-pressed", isWide ? "true" : "false");
+        }
         if (reorder) {
           fragment.appendChild(widget);
         }
@@ -388,7 +405,7 @@
           method: "PATCH",
           credentials: "same-origin",
           headers: {
-            "Accept": "application/json",
+            Accept: "application/json",
             "Content-Type": "application/json",
             "X-CSRFToken": csrfToken,
             "X-Requested-With": "XMLHttpRequest",
@@ -437,20 +454,30 @@
       });
     });
 
-    grid.addEventListener("click", (event) => {
-      if (!editing) {
-        return;
-      }
-      const moveButton = event.target.closest("[data-dashboard-move]");
-      if (moveButton) {
-        const widget = moveButton.closest("[data-dashboard-widget]");
-        moveAvailableWidget(widget.dataset.widgetId, Number(moveButton.dataset.dashboardMove));
-        return;
-      }
-      if (event.target.closest("a")) {
-        event.preventDefault();
-      }
-    }, true);
+    grid.addEventListener(
+      "click",
+      (event) => {
+        if (!editing) {
+          return;
+        }
+        const moveButton = event.target.closest("[data-dashboard-move]");
+        if (moveButton) {
+          const widget = moveButton.closest("[data-dashboard-widget]");
+          moveAvailableWidget(widget.dataset.widgetId, Number(moveButton.dataset.dashboardMove));
+          return;
+        }
+        const resizeButton = event.target.closest("[data-dashboard-resize]");
+        if (resizeButton) {
+          const widget = resizeButton.closest("[data-dashboard-widget]");
+          toggleWide(widget.dataset.widgetId);
+          return;
+        }
+        if (event.target.closest("a")) {
+          event.preventDefault();
+        }
+      },
+      true,
+    );
 
     grid.addEventListener("dragstart", (event) => {
       if (!editing) {

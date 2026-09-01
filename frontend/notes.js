@@ -19,7 +19,6 @@ import { normalizeLinkHref } from "./link-utils.js";
 import { eventToShortcut, findShortcutConflict, mergeShortcuts, shortcutMatches } from "./shortcut-utils.js";
 import { SLASH_MENU_ITEMS, filterSlashMenuItems } from "./slash-menu.js";
 
-
 const app = document.querySelector("[data-notes-app]");
 const READING_WORDS_PER_MINUTE = 200;
 
@@ -40,9 +39,9 @@ function csrfToken() {
 async function requestJson(url, options = {}) {
   const headers = { Accept: "application/json", ...(options.headers || {}) };
   if (!(options.body instanceof FormData)) headers["Content-Type"] = "application/json";
-  if (!['GET', 'HEAD'].includes((options.method || 'GET').toUpperCase())) headers["X-CSRFToken"] = csrfToken();
+  if (!["GET", "HEAD"].includes((options.method || "GET").toUpperCase())) headers["X-CSRFToken"] = csrfToken();
   const response = await fetch(url, { credentials: "same-origin", ...options, headers });
-  let data = {};
+  let data;
   try {
     data = await response.json();
   } catch (_error) {
@@ -210,8 +209,12 @@ function createNoteImageNodeView() {
         syncFromNode();
         return true;
       },
-      selectNode() { wrapper.classList.add("is-selected"); },
-      deselectNode() { wrapper.classList.remove("is-selected"); },
+      selectNode() {
+        wrapper.classList.add("is-selected");
+      },
+      deselectNode() {
+        wrapper.classList.remove("is-selected");
+      },
       ignoreMutation: () => true,
     };
   };
@@ -340,7 +343,11 @@ function createMathNodeView(displayMode) {
         onDelete: () => {
           const pos = typeof getPos === "function" ? getPos() : null;
           if (typeof pos !== "number") return;
-          editor.chain().focus().deleteRange({ from: pos, to: pos + node.nodeSize }).run();
+          editor
+            .chain()
+            .focus()
+            .deleteRange({ from: pos, to: pos + node.nodeSize })
+            .run();
         },
       });
     });
@@ -352,8 +359,12 @@ function createMathNodeView(displayMode) {
         renderMathInto(dom, node.attrs.latex, displayMode);
         return true;
       },
-      selectNode() { dom.classList.add("is-selected"); },
-      deselectNode() { dom.classList.remove("is-selected"); },
+      selectNode() {
+        dom.classList.add("is-selected");
+      },
+      deselectNode() {
+        dom.classList.remove("is-selected");
+      },
       ignoreMutation: () => true,
     };
   };
@@ -375,7 +386,14 @@ const MathInline = Node.create({
     return [{ tag: "span[data-math-inline]" }];
   },
   renderHTML({ HTMLAttributes }) {
-    return ["span", mergeAttributes(HTMLAttributes, { "data-math-inline": "true", "data-latex": HTMLAttributes.latex, class: "note-math note-math-inline" })];
+    return [
+      "span",
+      mergeAttributes(HTMLAttributes, {
+        "data-math-inline": "true",
+        "data-latex": HTMLAttributes.latex,
+        class: "note-math note-math-inline",
+      }),
+    ];
   },
   renderText({ node }) {
     return `$${node.attrs.latex}$`;
@@ -400,7 +418,14 @@ const MathBlock = Node.create({
     return [{ tag: "div[data-math-block]" }];
   },
   renderHTML({ HTMLAttributes }) {
-    return ["div", mergeAttributes(HTMLAttributes, { "data-math-block": "true", "data-latex": HTMLAttributes.latex, class: "note-math note-math-block" })];
+    return [
+      "div",
+      mergeAttributes(HTMLAttributes, {
+        "data-math-block": "true",
+        "data-latex": HTMLAttributes.latex,
+        class: "note-math note-math-block",
+      }),
+    ];
   },
   renderText({ node }) {
     return `$$${node.attrs.latex}$$`;
@@ -444,7 +469,9 @@ const Mention = Node.create({
     return `@${node.attrs.label}`;
   },
   addProseMirrorPlugins() {
-    return [Suggestion({ editor: this.editor, pluginKey: new PluginKey("mentionSuggestion"), ...this.options.suggestion })];
+    return [
+      Suggestion({ editor: this.editor, pluginKey: new PluginKey("mentionSuggestion"), ...this.options.suggestion }),
+    ];
   },
 });
 
@@ -851,7 +878,11 @@ function initNotesApp() {
       editable: Boolean(note.can_edit && !note.is_deleted),
       content: note.document,
       extensions: [
-        StarterKit.configure({ heading: { levels: [1, 2, 3] }, link: { openOnClick: !note.can_edit }, codeBlock: false }),
+        StarterKit.configure({
+          heading: { levels: [1, 2, 3] },
+          link: { openOnClick: !note.can_edit },
+          codeBlock: false,
+        }),
         CodeBlockLowlight.configure({ lowlight }),
         Underline,
         Superscript,
@@ -871,7 +902,9 @@ function initNotesApp() {
         Mention.configure({
           suggestion: {
             items: async ({ query }) => {
-              const { data } = await requestJson(`/notes/api/${note.id}/mention-candidates/?q=${encodeURIComponent(query)}`);
+              const { data } = await requestJson(
+                `/notes/api/${note.id}/mention-candidates/?q=${encodeURIComponent(query)}`,
+              );
               return data.users || [];
             },
             command: ({ editor: mentionEditor, range, props }) => {
@@ -892,7 +925,9 @@ function initNotesApp() {
           suggestion: {
             char: "[[",
             items: async ({ query }) => {
-              const { data } = await requestJson(`/notes/api/${note.id}/link-candidates/?q=${encodeURIComponent(query)}`);
+              const { data } = await requestJson(
+                `/notes/api/${note.id}/link-candidates/?q=${encodeURIComponent(query)}`,
+              );
               return data.notes || [];
             },
             command: ({ editor: linkEditor, range, props }) => {
@@ -966,13 +1001,19 @@ function initNotesApp() {
   });
 
   document.querySelector("[data-note-move-confirm]")?.addEventListener("click", moveNoteFromDialog);
-  noteMoveDialog?.addEventListener("close", () => { movingNoteCard = null; });
+  noteMoveDialog?.addEventListener("close", () => {
+    movingNoteCard = null;
+  });
   document.querySelector("[data-note-style-confirm]")?.addEventListener("click", applyStyleFromDialog);
-  noteStyleDialog?.addEventListener("close", () => { stylingNoteCard = null; });
+  noteStyleDialog?.addEventListener("close", () => {
+    stylingNoteCard = null;
+  });
   noteIconGrid?.addEventListener("click", (event) => {
     const option = event.target.closest("[data-note-icon-value]");
     if (!option) return;
-    noteIconGrid.querySelectorAll("[data-note-icon-value]").forEach((button) => button.classList.toggle("is-active", button === option));
+    noteIconGrid
+      .querySelectorAll("[data-note-icon-value]")
+      .forEach((button) => button.classList.toggle("is-active", button === option));
   });
   noteColorGrid?.addEventListener("change", (event) => {
     const input = event.target.closest("input[name='note-style-color']");
@@ -981,7 +1022,9 @@ function initNotesApp() {
       dot.classList.toggle("is-active", dot.querySelector("input") === input);
     });
   });
-  document.querySelector("[data-table-dialog-open]")?.addEventListener("click", (event) => insertTable(event.currentTarget));
+  document
+    .querySelector("[data-table-dialog-open]")
+    ?.addEventListener("click", (event) => insertTable(event.currentTarget));
   mathInput?.addEventListener("input", renderMathPreview);
   mathBlockToggle?.addEventListener("change", renderMathPreview);
 
@@ -1045,7 +1088,8 @@ function initNotesApp() {
   });
 
   document.addEventListener("pointerdown", (event) => {
-    if (!event.target.closest("[data-note-context-menu], [data-folder-context-menu], [data-editor-context-menu]")) closeContextMenus();
+    if (!event.target.closest("[data-note-context-menu], [data-folder-context-menu], [data-editor-context-menu]"))
+      closeContextMenus();
   });
   window.addEventListener("resize", closeContextMenus);
   window.addEventListener("scroll", closeContextMenus, true);
@@ -1053,35 +1097,43 @@ function initNotesApp() {
   document.querySelectorAll("[data-format]").forEach((control) => {
     control.addEventListener("change", () => applyFormatControl(control));
   });
-  document.querySelector("[data-image-input]")?.addEventListener("change", (event) => uploadSelectedFile(event.target, "image"));
-  document.querySelector("[data-file-input]")?.addEventListener("change", (event) => uploadSelectedFile(event.target, "file"));
+  document
+    .querySelector("[data-image-input]")
+    ?.addEventListener("change", (event) => uploadSelectedFile(event.target, "image"));
+  document
+    .querySelector("[data-file-input]")
+    ?.addEventListener("change", (event) => uploadSelectedFile(event.target, "file"));
   document.querySelector("[data-trash-restore]")?.addEventListener("click", () => performAction("restore"));
 
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      closeContextMenus();
-      if (selectedNoteIds.size) clearNoteSelection();
-    }
-    if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
-      const noteCard = event.target.closest?.("[data-note-card]");
-      const folderSummary = event.target.closest?.("[data-note-folder] > summary");
-      const target = noteCard || folderSummary;
-      if (target) {
-        event.preventDefault();
-        event.stopPropagation();
-        const rect = target.getBoundingClientRect();
-        if (noteCard) openNoteContextMenu(noteCard, rect.left + 18, rect.bottom - 4);
-        else openFolderContextMenu(folderSummary.closest("[data-note-folder]"), rect.left + 18, rect.bottom - 4);
-        return;
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if (event.key === "Escape") {
+        closeContextMenus();
+        if (selectedNoteIds.size) clearNoteSelection();
       }
-    }
-    if (event.target.matches("[data-shortcut-capture]")) return;
-    const match = Object.entries(commands).find(([_action, config]) => shortcutMatches(event, config.shortcut));
-    if (!match) return;
-    event.preventDefault();
-    event.stopPropagation();
-    runCommand(match[0]);
-  }, true);
+      if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+        const noteCard = event.target.closest?.("[data-note-card]");
+        const folderSummary = event.target.closest?.("[data-note-folder] > summary");
+        const target = noteCard || folderSummary;
+        if (target) {
+          event.preventDefault();
+          event.stopPropagation();
+          const rect = target.getBoundingClientRect();
+          if (noteCard) openNoteContextMenu(noteCard, rect.left + 18, rect.bottom - 4);
+          else openFolderContextMenu(folderSummary.closest("[data-note-folder]"), rect.left + 18, rect.bottom - 4);
+          return;
+        }
+      }
+      if (event.target.matches("[data-shortcut-capture]")) return;
+      const match = Object.entries(commands).find(([_action, config]) => shortcutMatches(event, config.shortcut));
+      if (!match) return;
+      event.preventDefault();
+      event.stopPropagation();
+      runCommand(match[0]);
+    },
+    true,
+  );
 
   window.addEventListener("beforeunload", () => {
     if (dirty) persistLocalDraft();
@@ -1216,11 +1268,8 @@ function initNotesApp() {
 
     const rows = Number.parseInt(requestedRows, 10);
     const cols = Number.parseInt(requestedColumns, 10);
-    if (
-      !Number.isInteger(rows) || rows < 1 || rows > 20
-      || !Number.isInteger(cols) || cols < 1 || cols > 20
-    ) {
-      setStatus("Tabellen dürfen zwischen 1×1 und 20×20 Zellen groß sein.", "error");
+    if (!Number.isInteger(rows) || rows < 1 || rows > 20 || !Number.isInteger(cols) || cols < 1 || cols > 20) {
+      setSaveStatus("Tabellen dürfen zwischen 1×1 und 20×20 Zellen groß sein.");
       return;
     }
     editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run();
@@ -1271,7 +1320,11 @@ function initNotesApp() {
           label.textContent = `${row + 1} × ${col + 1} Tabelle`;
         });
         cell.addEventListener("click", () => {
-          editor.chain().focus().insertTable({ rows: row + 1, cols: col + 1, withHeaderRow: true }).run();
+          editor
+            .chain()
+            .focus()
+            .insertTable({ rows: row + 1, cols: col + 1, withHeaderRow: true })
+            .run();
           closeTableSizePicker();
         });
         cells.push({ el: cell, row, col });
@@ -1313,7 +1366,12 @@ function initNotesApp() {
     if (format === "lineHeight") editor.chain().focus().setLineHeight(value).run();
     if (format === "textColor") editor.chain().focus().setColor(value).run();
     if (format === "highlight") editor.chain().focus().toggleHighlight({ color: value }).run();
-    if (format === "codeLanguage") editor.chain().focus().updateAttributes("codeBlock", { language: value || null }).run();
+    if (format === "codeLanguage")
+      editor
+        .chain()
+        .focus()
+        .updateAttributes("codeBlock", { language: value || null })
+        .run();
   }
 
   function openFormatControl(format) {
@@ -1356,9 +1414,10 @@ function initNotesApp() {
       const currentIndex = tabs.indexOf(document.activeElement);
       if (currentIndex === -1) return;
 
-      let nextIndex = currentIndex;
+      let nextIndex;
       if (event.key === "ArrowRight" || event.key === "ArrowDown") nextIndex = (currentIndex + 1) % tabs.length;
-      else if (event.key === "ArrowLeft" || event.key === "ArrowUp") nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+      else if (event.key === "ArrowLeft" || event.key === "ArrowUp")
+        nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
       else if (event.key === "Home") nextIndex = 0;
       else if (event.key === "End") nextIndex = tabs.length - 1;
       else return;
@@ -1384,11 +1443,16 @@ function initNotesApp() {
     if (href === null) return;
     if (!href.trim()) editor.chain().focus().extendMarkRange("link").unsetLink().run();
     else {
-      const wasApplied = editor.chain().focus().extendMarkRange("link").setLink({
-        href: normalizeLinkHref(href),
-        target: "_blank",
-        rel: "noopener noreferrer",
-      }).run();
+      const wasApplied = editor
+        .chain()
+        .focus()
+        .extendMarkRange("link")
+        .setLink({
+          href: normalizeLinkHref(href),
+          target: "_blank",
+          rel: "noopener noreferrer",
+        })
+        .run();
       if (!wasApplied) setSaveStatus("Ungültige Link-Adresse");
     }
   }
@@ -1412,15 +1476,26 @@ function initNotesApp() {
       ? computedStyle.fontWeight === "bold" || Number.parseInt(computedStyle.fontWeight, 10) >= 600
       : false;
     const active = {
-      bold: editor.isActive("bold") || effectivelyBold, italic: editor.isActive("italic"), underline: editor.isActive("underline"),
-      strike: editor.isActive("strike"), superscript: editor.isActive("superscript"), subscript: editor.isActive("subscript"),
-      bulletList: editor.isActive("bulletList"), orderedList: editor.isActive("orderedList"),
-      taskList: editor.isActive("taskList"), alignLeft: editor.isActive({ textAlign: "left" }),
-      alignCenter: editor.isActive({ textAlign: "center" }), alignRight: editor.isActive({ textAlign: "right" }),
-      alignJustify: editor.isActive({ textAlign: "justify" }), link: editor.isActive("link"), codeBlock: inCodeBlock,
+      bold: editor.isActive("bold") || effectivelyBold,
+      italic: editor.isActive("italic"),
+      underline: editor.isActive("underline"),
+      strike: editor.isActive("strike"),
+      superscript: editor.isActive("superscript"),
+      subscript: editor.isActive("subscript"),
+      bulletList: editor.isActive("bulletList"),
+      orderedList: editor.isActive("orderedList"),
+      taskList: editor.isActive("taskList"),
+      alignLeft: editor.isActive({ textAlign: "left" }),
+      alignCenter: editor.isActive({ textAlign: "center" }),
+      alignRight: editor.isActive({ textAlign: "right" }),
+      alignJustify: editor.isActive({ textAlign: "justify" }),
+      link: editor.isActive("link"),
+      codeBlock: inCodeBlock,
     };
     Object.entries(active).forEach(([action, value]) => {
-      document.querySelectorAll(`[data-command="${action}"]`).forEach((button) => button.classList.toggle("is-active", value));
+      document
+        .querySelectorAll(`[data-command="${action}"]`)
+        .forEach((button) => button.classList.toggle("is-active", value));
     });
 
     const languageGroup = document.querySelector("[data-code-language-group]");
@@ -1465,9 +1540,8 @@ function initNotesApp() {
     if (!editor || !wordCount) return;
     const words = editor.storage.characterCount.words();
     const characters = editor.storage.characterCount.characters();
-    const readingLabel = words > 0
-      ? ` · ${Math.max(1, Math.round(words / READING_WORDS_PER_MINUTE))} Min. Lesezeit`
-      : "";
+    const readingLabel =
+      words > 0 ? ` · ${Math.max(1, Math.round(words / READING_WORDS_PER_MINUTE))} Min. Lesezeit` : "";
     const label = `${words} ${words === 1 ? "Wort" : "Wörter"} · ${characters} Zeichen${readingLabel}`;
     wordCount.textContent = label;
     wordCount.title = label;
@@ -1477,7 +1551,9 @@ function initNotesApp() {
     if (!outlinePanel) return;
     const willShow = outlinePanel.hidden;
     outlinePanel.hidden = !willShow;
-    document.querySelectorAll('[data-command="outline"]').forEach((button) => button.setAttribute("aria-pressed", String(willShow)));
+    document
+      .querySelectorAll('[data-command="outline"]')
+      .forEach((button) => button.setAttribute("aria-pressed", String(willShow)));
     if (willShow) updateOutline();
   }
 
@@ -1569,7 +1645,10 @@ function initNotesApp() {
       if (resolveConflict && conflictServerNote) payload.base_revision = conflictServerNote.revision;
 
       try {
-        const { response, data } = await requestJson(`/notes/api/${note.id}/`, { method: "PATCH", body: JSON.stringify(payload) });
+        const { response, data } = await requestJson(`/notes/api/${note.id}/`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        });
         if (response.status === 409) {
           conflictServerNote = data.note;
           conflictDraft = payload;
@@ -1602,7 +1681,9 @@ function initNotesApp() {
           setSaveStatus("Weitere Änderungen werden gespeichert …");
         } else {
           localStorage.removeItem(draftKey());
-          setSaveStatus(`Gespeichert ${new Date(note.updated_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`);
+          setSaveStatus(
+            `Gespeichert ${new Date(note.updated_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
+          );
         }
       } catch (error) {
         dirty = true;
@@ -1624,7 +1705,7 @@ function initNotesApp() {
 
   async function exportPdf() {
     while (saving) await new Promise((resolve) => window.setTimeout(resolve, 50));
-    if (dirty && !await saveNow()) {
+    if (dirty && !(await saveNow())) {
       setSaveStatus("PDF-Export erst nach erfolgreichem Speichern möglich");
       return;
     }
@@ -1633,7 +1714,7 @@ function initNotesApp() {
 
   async function exportMarkdown() {
     while (saving) await new Promise((resolve) => window.setTimeout(resolve, 50));
-    if (dirty && !await saveNow()) {
+    if (dirty && !(await saveNow())) {
       setSaveStatus("Markdown-Export erst nach erfolgreichem Speichern möglich");
       return;
     }
@@ -1646,7 +1727,7 @@ function initNotesApp() {
     if (name === null) return;
     const trimmed = name.trim();
     if (!trimmed) return;
-    if (dirty && !await saveNow()) return;
+    if (dirty && !(await saveNow())) return;
     const { response, data } = await requestJson("/notes/api/templates/", {
       method: "POST",
       body: JSON.stringify({ note_id: note.id, name: trimmed }),
@@ -1752,8 +1833,7 @@ function initNotesApp() {
     if (response.ok && data.note) {
       if (folderId) rememberFolderOpen(folderId, true);
       window.location.assign(`/notes/${data.note.id}/`);
-    }
-    else window.alert(data.error || "Die Notiz konnte nicht erstellt werden.");
+    } else window.alert(data.error || "Die Notiz konnte nicht erstellt werden.");
   }
 
   async function deleteCustomTemplate(templateId) {
@@ -1936,27 +2016,35 @@ function initNotesApp() {
       };
     });
 
-    notesList.addEventListener("click", (event) => {
-      if (!suppressTreeClick) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      suppressTreeClick = false;
-    }, true);
+    notesList.addEventListener(
+      "click",
+      (event) => {
+        if (!suppressTreeClick) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        suppressTreeClick = false;
+      },
+      true,
+    );
 
-    window.addEventListener("pointermove", (event) => {
-      if (!pendingTreePointer || event.pointerId !== pendingTreePointer.pointerId) return;
-      if (!pendingTreePointer.started) {
-        const distance = Math.hypot(
-          event.clientX - pendingTreePointer.startX,
-          event.clientY - pendingTreePointer.startY,
-        );
-        if (distance < 6) return;
-        pendingTreePointer.started = true;
-        startTreeDrag(pendingTreePointer.item);
-      }
-      event.preventDefault();
-      updateTreeDropTarget(document.elementFromPoint(event.clientX, event.clientY), event.clientY);
-    }, { passive: false });
+    window.addEventListener(
+      "pointermove",
+      (event) => {
+        if (!pendingTreePointer || event.pointerId !== pendingTreePointer.pointerId) return;
+        if (!pendingTreePointer.started) {
+          const distance = Math.hypot(
+            event.clientX - pendingTreePointer.startX,
+            event.clientY - pendingTreePointer.startY,
+          );
+          if (distance < 6) return;
+          pendingTreePointer.started = true;
+          startTreeDrag(pendingTreePointer.item);
+        }
+        event.preventDefault();
+        updateTreeDropTarget(document.elementFromPoint(event.clientX, event.clientY), event.clientY);
+      },
+      { passive: false },
+    );
 
     window.addEventListener("pointerup", (event) => {
       if (!pendingTreePointer || event.pointerId !== pendingTreePointer.pointerId) return;
@@ -1966,7 +2054,9 @@ function initNotesApp() {
       event.preventDefault();
       updateTreeDropTarget(document.elementFromPoint(event.clientX, event.clientY), event.clientY);
       suppressTreeClick = true;
-      window.setTimeout(() => { suppressTreeClick = false; }, 0);
+      window.setTimeout(() => {
+        suppressTreeClick = false;
+      }, 0);
       commitTreeDrop();
     });
 
@@ -2098,7 +2188,7 @@ function initNotesApp() {
         event.preventDefault();
         setEditorZoom(editorZoom + (event.deltaY < 0 ? EDITOR_ZOOM_STEP : -EDITOR_ZOOM_STEP));
       },
-      { passive: false }
+      { passive: false },
     );
     document.querySelector("[data-editor-zoom-level]")?.addEventListener("click", () => setEditorZoom(1));
     window.addEventListener("resize", () => {
@@ -2115,7 +2205,9 @@ function initNotesApp() {
   }
 
   function selectNoteRange(noteId) {
-    const ids = [...notesList.querySelectorAll("[data-note-card]")].map((card) => Number.parseInt(card.dataset.noteCard, 10));
+    const ids = [...notesList.querySelectorAll("[data-note-card]")].map((card) =>
+      Number.parseInt(card.dataset.noteCard, 10),
+    );
     const anchorId = selectionAnchorId !== null && ids.includes(selectionAnchorId) ? selectionAnchorId : noteId;
     const anchorIndex = ids.indexOf(anchorId);
     const targetIndex = ids.indexOf(noteId);
@@ -2162,8 +2254,16 @@ function initNotesApp() {
 
   async function runBulkAction(action) {
     if (selectedNoteIds.size === 0) return;
-    if (action === "purge" && !window.confirm(`${selectedNoteIds.size} Notiz(en) endgültig löschen? Das kann nicht rückgängig gemacht werden.`)) return;
-    if (action === "trash" && !window.confirm(`${selectedNoteIds.size} Notiz(en) für 30 Tage in den Papierkorb verschieben?`)) return;
+    if (
+      action === "purge" &&
+      !window.confirm(`${selectedNoteIds.size} Notiz(en) endgültig löschen? Das kann nicht rückgängig gemacht werden.`)
+    )
+      return;
+    if (
+      action === "trash" &&
+      !window.confirm(`${selectedNoteIds.size} Notiz(en) für 30 Tage in den Papierkorb verschieben?`)
+    )
+      return;
     if (!(await ensureSelectionSaved())) return;
     const { response, data } = await requestJson("/notes/api/bulk-action/", {
       method: "POST",
@@ -2182,7 +2282,9 @@ function initNotesApp() {
   }
 
   function setContextItem(menu, action, { hidden = false, label = null } = {}) {
-    const button = menu?.querySelector(`[data-note-context-action="${action}"], [data-folder-context-action="${action}"]`);
+    const button = menu?.querySelector(
+      `[data-note-context-action="${action}"], [data-folder-context-action="${action}"]`,
+    );
     if (!button) return;
     button.hidden = hidden;
     const labelTarget = button.querySelector("[data-note-context-label], [data-folder-context-label]");
@@ -2216,7 +2318,9 @@ function initNotesApp() {
     if (!editor || !note?.can_edit || note?.is_deleted) return;
     closeContextMenus();
     const inTable = editor.isActive("table");
-    editorContextMenu.querySelectorAll("[data-table-only]").forEach((el) => { el.hidden = !inTable; });
+    editorContextMenu.querySelectorAll("[data-table-only]").forEach((el) => {
+      el.hidden = !inTable;
+    });
     positionContextMenu(editorContextMenu, x, y);
   }
 
@@ -2287,7 +2391,9 @@ function initNotesApp() {
       }),
     });
     if (!response.ok || !data.note) {
-      window.alert(response.status === 409 ? "Die Notiz wurde inzwischen geändert." : data.error || "Umbenennen fehlgeschlagen.");
+      window.alert(
+        response.status === 409 ? "Die Notiz wurde inzwischen geändert." : data.error || "Umbenennen fehlgeschlagen.",
+      );
       return;
     }
     window.location.reload();
@@ -2295,7 +2401,7 @@ function initNotesApp() {
 
   async function performNoteCardAction(card, action) {
     const noteId = Number.parseInt(card.dataset.noteCard, 10);
-    if (!await ensureCurrentNoteSaved(noteId)) return;
+    if (!(await ensureCurrentNoteSaved(noteId))) return;
     const { response, data } = await requestJson(`/notes/api/${noteId}/actions/`, {
       method: "POST",
       body: JSON.stringify({ action }),
@@ -2322,8 +2428,8 @@ function initNotesApp() {
     const noteId = card ? Number.parseInt(card.dataset.noteCard, 10) : note?.id;
     if (!noteStyleDialog || !noteId) return;
     stylingNoteCard = card;
-    const currentColor = card ? (card.dataset.noteColor || "") : (note?.color || "");
-    const currentIcon = card ? (card.dataset.noteIcon || "") : (note?.icon || "");
+    const currentColor = card ? card.dataset.noteColor || "" : note?.color || "";
+    const currentIcon = card ? card.dataset.noteIcon || "" : note?.icon || "";
     noteColorGrid?.querySelectorAll(".note-color-dot").forEach((dot) => {
       const input = dot.querySelector("input");
       const matches = input?.value === currentColor;
@@ -2337,7 +2443,7 @@ function initNotesApp() {
   }
 
   async function performNoteStyleAction(noteId, { color, icon }) {
-    if (!await ensureCurrentNoteSaved(noteId)) return false;
+    if (!(await ensureCurrentNoteSaved(noteId))) return false;
     const { response, data } = await requestJson(`/notes/api/${noteId}/actions/`, {
       method: "POST",
       body: JSON.stringify({ action: "style", color, icon }),
@@ -2354,7 +2460,7 @@ function initNotesApp() {
     if (!noteId) return;
     const color = noteColorGrid?.querySelector("input[name='note-style-color']:checked")?.value ?? "";
     const icon = noteIconGrid?.querySelector(".is-active")?.dataset.noteIconValue ?? "";
-    if (!await performNoteStyleAction(noteId, { color, icon })) return;
+    if (!(await performNoteStyleAction(noteId, { color, icon }))) return;
     stylingNoteCard = null;
     noteStyleDialog?.close();
     window.location.reload();
@@ -2364,7 +2470,7 @@ function initNotesApp() {
     if (!movingNoteCard) return;
     const card = movingNoteCard;
     const noteId = Number.parseInt(card.dataset.noteCard, 10);
-    if (!await ensureCurrentNoteSaved(noteId)) return;
+    if (!(await ensureCurrentNoteSaved(noteId))) return;
     const parsedFolderId = Number.parseInt(noteMoveFolder?.value, 10);
     const folderId = Number.isInteger(parsedFolderId) && parsedFolderId > 0 ? parsedFolderId : null;
     const { response, data } = await requestJson(`/notes/api/${noteId}/folder/`, {
@@ -2484,7 +2590,7 @@ function initNotesApp() {
     }
     if (action === "delete") {
       const confirmed = window.confirm(
-        "Ordner löschen? Enthaltene Notizen und Unterordner werden eine Ebene nach oben verschoben."
+        "Ordner löschen? Enthaltene Notizen und Unterordner werden eine Ebene nach oben verschoben.",
       );
       if (!confirmed) return;
       const { response, data } = await requestJson(`/notes/api/folders/${folderId}/`, { method: "DELETE" });
@@ -2499,7 +2605,10 @@ function initNotesApp() {
 
   async function performAction(action) {
     if (!note) return;
-    const { response, data } = await requestJson(`/notes/api/${note.id}/actions/`, { method: "POST", body: JSON.stringify({ action }) });
+    const { response, data } = await requestJson(`/notes/api/${note.id}/actions/`, {
+      method: "POST",
+      body: JSON.stringify({ action }),
+    });
     if (!response.ok || !data.ok) {
       window.alert(data.error || "Die Aktion konnte nicht ausgeführt werden.");
       return;
@@ -2532,9 +2641,20 @@ function initNotesApp() {
     }
     const item = data.attachment;
     if (kind === "image") {
-      editor.chain().focus().insertContent({ type: "noteImage", attrs: { attachmentId: item.id, alt: file.name, title: file.name, width: 720 } }).run();
+      editor
+        .chain()
+        .focus()
+        .insertContent({
+          type: "noteImage",
+          attrs: { attachmentId: item.id, alt: file.name, title: file.name, width: 720 },
+        })
+        .run();
     } else {
-      editor.chain().focus().insertContent({ type: "noteAttachment", attrs: { attachmentId: item.id, name: item.name, size: item.size } }).run();
+      editor
+        .chain()
+        .focus()
+        .insertContent({ type: "noteAttachment", attrs: { attachmentId: item.id, name: item.name, size: item.size } })
+        .run();
     }
   }
 
@@ -2596,13 +2716,18 @@ function initNotesApp() {
       row.innerHTML = `<span><strong></strong><small></small></span><select><option value="reader">Leser</option><option value="editor">Bearbeiter</option></select><button class="primary-button" type="button">Teilen</button>`;
       row.querySelector("strong").textContent = user.name;
       row.querySelector("small").textContent = user.email;
-      row.querySelector("button").addEventListener("click", () => updateShare(user.id, row.querySelector("select").value));
+      row
+        .querySelector("button")
+        .addEventListener("click", () => updateShare(user.id, row.querySelector("select").value));
       target.append(row);
     });
   }
 
   async function updateShare(userId, role) {
-    const { response, data } = await requestJson(`/notes/api/${note.id}/shares/`, { method: "POST", body: JSON.stringify({ user_id: userId, role }) });
+    const { response, data } = await requestJson(`/notes/api/${note.id}/shares/`, {
+      method: "POST",
+      body: JSON.stringify({ user_id: userId, role }),
+    });
     if (!response.ok) return window.alert(data.error || "Freigabe fehlgeschlagen.");
     note.shares = data.shares;
     renderShares(note.shares);
@@ -2757,9 +2882,10 @@ function initNotesApp() {
     data.versions.forEach((version) => {
       const row = document.createElement("div");
       row.className = "version-row";
-      row.innerHTML = `<span><strong></strong><small></small></span><button class="ghost-button" type="button" data-version-compare>Vergleichen</button>${note.can_edit ? '<button class="ghost-button" type="button" data-version-restore>Wiederherstellen</button>' : ''}`;
+      row.innerHTML = `<span><strong></strong><small></small></span><button class="ghost-button" type="button" data-version-compare>Vergleichen</button>${note.can_edit ? '<button class="ghost-button" type="button" data-version-restore>Wiederherstellen</button>' : ""}`;
       row.querySelector("strong").textContent = version.title;
-      row.querySelector("small").textContent = `${new Date(version.created_at).toLocaleString()} · ${version.created_by} · Revision ${version.revision}`;
+      row.querySelector("small").textContent =
+        `${new Date(version.created_at).toLocaleString()} · ${version.created_by} · Revision ${version.revision}`;
       row.querySelector("[data-version-compare]").addEventListener("click", () => openVersionDiffDialog(version.id));
       row.querySelector("[data-version-restore]")?.addEventListener("click", () => restoreVersion(version.id));
       target.append(row);
@@ -2779,9 +2905,10 @@ function initNotesApp() {
       return;
     }
     const { added_words: added, removed_words: removed } = data;
-    summary.textContent = added || removed
-      ? `${added} Wort${added === 1 ? "" : "e"} hinzugefügt · ${removed} Wort${removed === 1 ? "" : "e"} entfernt seit dieser Version.`
-      : "Keine inhaltlichen Änderungen seit dieser Version.";
+    summary.textContent =
+      added || removed
+        ? `${added} Wort${added === 1 ? "" : "e"} hinzugefügt · ${removed} Wort${removed === 1 ? "" : "e"} entfernt seit dieser Version.`
+        : "Keine inhaltlichen Änderungen seit dieser Version.";
     content.innerHTML = "";
     data.segments.forEach((segment) => {
       if (segment.type === "equal") {
@@ -2797,9 +2924,11 @@ function initNotesApp() {
   async function restoreVersion(versionId) {
     if (!window.confirm("Diese Version als neuen Stand wiederherstellen?")) return;
     const { response, data } = await requestJson(`/notes/api/${note.id}/versions/${versionId}/restore/`, {
-      method: "POST", body: JSON.stringify({ base_revision: note.revision }),
+      method: "POST",
+      body: JSON.stringify({ base_revision: note.revision }),
     });
-    if (response.status === 409) return window.alert("Die Notiz wurde inzwischen geändert. Lade sie neu und versuche es erneut.");
+    if (response.status === 409)
+      return window.alert("Die Notiz wurde inzwischen geändert. Lade sie neu und versuche es erneut.");
     if (!response.ok) return window.alert(data.error || "Version konnte nicht wiederhergestellt werden.");
     window.location.reload();
   }
@@ -2816,7 +2945,8 @@ function initNotesApp() {
     Object.entries(values).forEach(([action, config]) => {
       const row = document.createElement("div");
       row.className = "shortcut-row";
-      row.innerHTML = '<label></label><input type="text" readonly data-shortcut-capture><button type="button" aria-label="Belegung entfernen"><i class="fa-solid fa-eraser"></i></button>';
+      row.innerHTML =
+        '<label></label><input type="text" readonly data-shortcut-capture><button type="button" aria-label="Belegung entfernen"><i class="fa-solid fa-eraser"></i></button>';
       row.querySelector("label").textContent = config.label;
       const input = row.querySelector("input");
       input.value = config.shortcut;
@@ -2834,7 +2964,9 @@ function initNotesApp() {
         }
         input.value = shortcut;
       });
-      row.querySelector("button").addEventListener("click", () => { input.value = ""; });
+      row.querySelector("button").addEventListener("click", () => {
+        input.value = "";
+      });
       target.append(row);
     });
   }
@@ -2847,11 +2979,16 @@ function initNotesApp() {
     return values;
   }
 
-  document.querySelector("[data-shortcuts-reset]")?.addEventListener("click", () => renderShortcutList(mergeShortcuts(COMMAND_DEFAULTS, {})));
+  document
+    .querySelector("[data-shortcuts-reset]")
+    ?.addEventListener("click", () => renderShortcutList(mergeShortcuts(COMMAND_DEFAULTS, {})));
   document.querySelector("[data-shortcuts-save]")?.addEventListener("click", async () => {
     const values = shortcutDraftFromDialog();
     const overrides = Object.fromEntries(Object.entries(values).map(([action, config]) => [action, config.shortcut]));
-    const { response, data } = await requestJson("/notes/api/shortcuts/", { method: "PATCH", body: JSON.stringify({ shortcuts: overrides }) });
+    const { response, data } = await requestJson("/notes/api/shortcuts/", {
+      method: "PATCH",
+      body: JSON.stringify({ shortcuts: overrides }),
+    });
     if (!response.ok) return window.alert(data.error || "Hotkeys konnten nicht gespeichert werden.");
     commands = mergeShortcuts(COMMAND_DEFAULTS, data.shortcuts);
     updateShortcutTooltips();

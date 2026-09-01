@@ -12,7 +12,9 @@ describe("note shortcut utilities", () => {
   });
 
   it("matches normalized shortcuts", () => {
-    expect(shortcutMatches({ key: "s", ctrlKey: true, metaKey: false, altKey: false, shiftKey: false }, "Mod+S")).toBe(true);
+    expect(shortcutMatches({ key: "s", ctrlKey: true, metaKey: false, altKey: false, shiftKey: false }, "Mod+S")).toBe(
+      true,
+    );
   });
 
   it("merges saved overrides while preserving labels", () => {

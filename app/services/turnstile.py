@@ -6,7 +6,6 @@ from urllib.request import Request, urlopen
 
 from django.conf import settings
 
-
 logger = logging.getLogger(__name__)
 
 TURNSTILE_SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"

@@ -4,7 +4,6 @@ from urllib.parse import urlparse
 
 from django.core.exceptions import ValidationError
 
-
 MAX_DOCUMENT_BYTES = 2 * 1024 * 1024
 MAX_TEXT_CHARACTERS = 500_000
 MAX_DOCUMENT_DEPTH = 40
@@ -35,7 +34,19 @@ ALLOWED_NODE_TYPES = {
     "mathInline",
     "mathBlock",
 }
-ALLOWED_MARK_TYPES = {"bold", "italic", "underline", "strike", "superscript", "subscript", "code", "link", "textStyle", "highlight", "commentThread"}
+ALLOWED_MARK_TYPES = {
+    "bold",
+    "italic",
+    "underline",
+    "strike",
+    "superscript",
+    "subscript",
+    "code",
+    "link",
+    "textStyle",
+    "highlight",
+    "commentThread",
+}
 THREAD_ID_RE = re.compile(r"^[0-9a-fA-F-]{36}$")
 ALLOWED_CODE_LANGUAGES = {
     "plaintext",
@@ -86,7 +97,11 @@ def _bullet_item(text=""):
 
 def _task_item(text=""):
     content = [{"type": "text", "text": text}] if text else []
-    return {"type": "taskItem", "attrs": {"checked": False}, "content": [{"type": "paragraph", "content": content}]}
+    return {
+        "type": "taskItem",
+        "attrs": {"checked": False},
+        "content": [{"type": "paragraph", "content": content}],
+    }
 
 
 def _meeting_note_document():
@@ -219,7 +234,11 @@ def _validate_node_attrs(node_type, attrs, state):
         raise ValidationError("Die Textausrichtung ist ungültig.")
     if node_type == "heading" and attrs.get("level") not in {1, 2, 3}:
         raise ValidationError("Es sind nur Überschriften der Ebenen 1 bis 3 erlaubt.")
-    if node_type == "codeBlock" and attrs.get("language") not in {None, ""} and attrs.get("language") not in ALLOWED_CODE_LANGUAGES:
+    if (
+        node_type == "codeBlock"
+        and attrs.get("language") not in {None, ""}
+        and attrs.get("language") not in ALLOWED_CODE_LANGUAGES
+    ):
         raise ValidationError("Diese Programmiersprache ist nicht erlaubt.")
     if node_type == "taskItem" and not isinstance(attrs.get("checked", False), bool):
         raise ValidationError("Der Checklistenstatus ist ungültig.")
@@ -385,5 +404,3 @@ def extract_note_link_ids(document):
 
     visit(document)
     return note_ids
-
-

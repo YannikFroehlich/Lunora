@@ -227,11 +227,14 @@ npm test
 npm run build
 ```
 
-Für JavaScript-Syntaxchecks:
+Linting und Formatierung (Konfiguration in `pyproject.toml`, `eslint.config.js`, `.prettierrc.json`; wird in der CI erzwungen):
 
 ```powershell
-node --check app\static\js\weather.js
-node --check app\static\js\messages.js
+pip install -r requirements-dev.txt
+ruff check .
+ruff format .
+npm run lint
+npm run format
 ```
 
 Der Notizeditor wird aus `frontend/` nach `app/static/js/bundles/notes.js` gebaut. Die npm-Versionen sind in `package-lock.json` festgeschrieben.

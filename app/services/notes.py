@@ -42,11 +42,9 @@ from app.services.note_content import (
     document_plain_text,
     empty_note_document,
     extract_mention_user_ids,
-    extract_note_link_ids,
     validate_note_document,
 )
 from app.services.note_files import NOTE_TOTAL_ATTACHMENT_BYTES
-
 
 VERSION_INTERVAL = timedelta(minutes=5)
 VERSION_RETENTION = timedelta(days=90)
@@ -103,7 +101,9 @@ def accessible_notes(user, *, include_deleted=False):
             default=Value(True),
             output_field=BooleanField(),
         ),
-        has_unseen_share=Exists(NoteShare.objects.filter(note_id=OuterRef("pk"), user=user, first_opened_at__isnull=True)),
+        has_unseen_share=Exists(
+            NoteShare.objects.filter(note_id=OuterRef("pk"), user=user, first_opened_at__isnull=True)
+        ),
     )
 
 
@@ -129,8 +129,14 @@ def get_note_state(note, user):
 
 
 def _next_tree_position(user, folder_id):
-    folder_max = NoteFolder.objects.filter(owner=user, parent_id=folder_id).aggregate(value=Max("position"))["value"] or 0
-    note_max = NoteUserState.objects.filter(user=user, folder_id=folder_id).aggregate(value=Max("position"))["value"] or 0
+    folder_max = (
+        NoteFolder.objects.filter(owner=user, parent_id=folder_id).aggregate(value=Max("position"))["value"]
+        or 0
+    )
+    note_max = (
+        NoteUserState.objects.filter(user=user, folder_id=folder_id).aggregate(value=Max("position"))["value"]
+        or 0
+    )
     return max(folder_max, note_max) + TREE_POSITION_STEP
 
 
@@ -207,7 +213,11 @@ def delete_note_folder(user, folder_id):
     siblings = _tree_container_items(user, parent_id)
     contents = _tree_container_items(user, folder.id)
     folder_index = next(
-        (index for index, item in enumerate(siblings) if item["type"] == "folder" and item["id"] == folder.id),
+        (
+            index
+            for index, item in enumerate(siblings)
+            if item["type"] == "folder" and item["id"] == folder.id
+        ),
         len(siblings),
     )
     siblings = [item for item in siblings if not (item["type"] == "folder" and item["id"] == folder.id)]
@@ -285,7 +295,9 @@ def _validate_folder_move_destination(folder, destination):
     visited = set()
     while current:
         if current.id == folder.id:
-            raise ValidationError("Ein Ordner kann nicht in sich selbst oder einen Unterordner verschoben werden.")
+            raise ValidationError(
+                "Ein Ordner kann nicht in sich selbst oder einen Unterordner verschoben werden."
+            )
         if current.id in visited:
             raise ValidationError("Die Ordnerstruktur ist ungültig.")
         visited.add(current.id)
@@ -342,7 +354,9 @@ def move_note_tree_item(user, *, item_type, item_id, placement, target_type=None
     insertion_index = len(items)
     if target_key:
         try:
-            target_index = next(index for index, item in enumerate(items) if (item["type"], item["id"]) == target_key)
+            target_index = next(
+                index for index, item in enumerate(items) if (item["type"], item["id"]) == target_key
+            )
         except StopIteration as error:
             raise ValidationError("Das Verschiebeziel ist nicht mehr vorhanden.") from error
         insertion_index = target_index if placement == "before" else target_index + 1
@@ -469,13 +483,13 @@ def save_note(user, note_id, *, title, document, base_revision, conflict_resolut
     note.revision += 1
     note.last_edited_by = user
     note.updated_at = timezone.now()
-    note.save(
-        update_fields=["title", "document", "plain_text", "revision", "last_edited_by", "updated_at"]
-    )
+    note.save(update_fields=["title", "document", "plain_text", "revision", "last_edited_by", "updated_at"])
     _set_note_links(note, note_link_ids)
     prune_note_versions(note)
     if new_mention_ids:
-        _create_note_activity_notifications(note, user, new_mention_ids, NoteActivityNotification.KIND_MENTION)
+        _create_note_activity_notifications(
+            note, user, new_mention_ids, NoteActivityNotification.KIND_MENTION
+        )
     return note
 
 
@@ -524,7 +538,11 @@ def _set_note_links(note, target_ids):
     NoteLink.objects.filter(source_note=note).exclude(target_note_id__in=target_ids).delete()
     existing_ids = set(note.outgoing_links.values_list("target_note_id", flat=True))
     NoteLink.objects.bulk_create(
-        [NoteLink(source_note=note, target_note_id=target_id) for target_id in target_ids if target_id not in existing_ids]
+        [
+            NoteLink(source_note=note, target_note_id=target_id)
+            for target_id in target_ids
+            if target_id not in existing_ids
+        ]
     )
 
 
@@ -538,7 +556,9 @@ def _create_note_activity_notifications(note, actor, recipient_ids, kind):
     excerpt = note.plain_text[:200]
     notification_rows = NoteActivityNotification.objects.bulk_create(
         [
-            NoteActivityNotification(note=note, recipient_id=recipient_id, actor=actor, kind=kind, excerpt=excerpt)
+            NoteActivityNotification(
+                note=note, recipient_id=recipient_id, actor=actor, kind=kind, excerpt=excerpt
+            )
             for recipient_id in recipient_ids
             if recipient_id != actor.id
         ]
@@ -576,7 +596,9 @@ def prune_note_versions(note):
     for version_document in note.versions.values_list("document", flat=True):
         referenced_ids.update(_document_attachment_ids(version_document))
     orphan_cutoff = timezone.now() - timedelta(hours=1)
-    for attachment in note.attachments.filter(created_at__lt=orphan_cutoff).exclude(file_id__in=referenced_ids):
+    for attachment in note.attachments.filter(created_at__lt=orphan_cutoff).exclude(
+        file_id__in=referenced_ids
+    ):
         attachment.file.delete(save=False)
         attachment.delete()
 
@@ -882,7 +904,9 @@ def create_attachment(user, note_id, upload, *, kind):
 
 def mark_shared_note_opened(user, note):
     if note.owner_id != user.id:
-        NoteShare.objects.filter(note=note, user=user, first_opened_at__isnull=True).update(first_opened_at=timezone.now())
+        NoteShare.objects.filter(note=note, user=user, first_opened_at__isnull=True).update(
+            first_opened_at=timezone.now()
+        )
 
 
 def share_note(owner, note_id, target_user_id, role):
@@ -1014,7 +1038,9 @@ def delete_comment_thread(user, note_id, thread_id):
     note = get_accessible_note(user, note_id)
     thread = _get_note_comment_thread(note, thread_id)
     if thread.created_by_id != user.id and note.owner_id != user.id:
-        raise PermissionDenied("Nur die Ersteller*in oder die Notiz-Eigentümer*in darf diesen Kommentar löschen.")
+        raise PermissionDenied(
+            "Nur die Ersteller*in oder die Notiz-Eigentümer*in darf diesen Kommentar löschen."
+        )
     thread.delete()
 
 

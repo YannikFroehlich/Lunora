@@ -13,7 +13,6 @@ from django.utils import timezone
 
 from app.models import WeatherLocation
 
-
 MAX_WEATHER_LOCATIONS = 8
 _LOCATION_DEDUPE_PRECISION = 2
 _WEATHER_NOUN_PATTERN = re.compile(
@@ -56,9 +55,7 @@ def get_weather_context(params=None, user=None):
         forecast = _fetch_json(f"{settings.WEATHER_API_BASE_URL}/forecast", weather_params)
     except Exception as exc:
         context = _fallback_for_location(fallback, location, search_query)
-        context["api_notice"] = (
-            "Wetter-API ist gerade nicht erreichbar. Demo-Daten werden angezeigt."
-        )
+        context["api_notice"] = "Wetter-API ist gerade nicht erreichbar. Demo-Daten werden angezeigt."
         context["api_error"] = exc.__class__.__name__
         return context
 
@@ -393,7 +390,7 @@ def fetch_weather_map_tile(z, x, y, layer="temperature"):
     if z < 1 or z > 10:
         raise ValueError("Ungültige Wetterkarten-Kachel.")
 
-    max_tile = 2 ** z
+    max_tile = 2**z
     if x < 0 or y < 0 or x >= max_tile or y >= max_tile:
         raise ValueError("Ungültige Wetterkarten-Kachel.")
 
@@ -432,12 +429,7 @@ def _build_context_from_api(current, forecast, fallback, location):
     sys = current.get("sys", {})
 
     location_label = location.get("label", "")
-    city_name = (
-        location.get("name")
-        or current.get("name")
-        or _short_location_name(location_label)
-        or "Bünde"
-    )
+    city_name = location.get("name") or current.get("name") or _short_location_name(location_label) or "Bünde"
     location_detail = location.get("details") or _location_details_from_label(location_label)
     temperature = round(main.get("temp", 24))
     feels_like = round(main.get("feels_like", temperature))
@@ -572,8 +564,7 @@ def _forecast_summary(daily_forecast):
     average_rain = sum(day.get("rain", 0) for day in days) / len(days)
     rainy_descriptions = ("regen", "schauer", "gewitter", "drizzle", "rain")
     has_rain_text = any(
-        any(word in day.get("description", "").casefold() for word in rainy_descriptions)
-        for day in days
+        any(word in day.get("description", "").casefold() for word in rainy_descriptions) for day in days
     )
 
     if average_rain >= 55 or rain_days >= max(2, len(days) // 2) or has_rain_text:
@@ -599,21 +590,23 @@ def _forecast_summary(daily_forecast):
 def _fallback_for_location(fallback, location, search_query):
     context = deepcopy(fallback)
     selected_label = location.get("label") or search_query
-    display_label = (location.get("query") or selected_label) if location.get("is_default") else selected_label
+    display_label = (
+        (location.get("query") or selected_label) if location.get("is_default") else selected_label
+    )
     context["search_query"] = search_query
 
     if display_label:
         fallback_place = _fallback_place_for_label(display_label)
-        context["current"]["city"] = location.get("name") or fallback_place.get("name") or _short_location_name(display_label)
+        context["current"]["city"] = (
+            location.get("name") or fallback_place.get("name") or _short_location_name(display_label)
+        )
         context["current"]["detail"] = (
             location.get("details")
             or fallback_place.get("details")
             or _location_details_from_label(display_label)
         )
         context["current"]["label"] = "Standardort" if location.get("is_default") else "Demo-Ort"
-        context["api_notice"] = (
-            "Trage OPENWEATHER_API_KEY in deiner .env ein, um echte Wetterdaten zu laden."
-        )
+        context["api_notice"] = "Trage OPENWEATHER_API_KEY in deiner .env ein, um echte Wetterdaten zu laden."
 
     context["weather_map"] = _weather_map_context_for_location(
         location,
@@ -651,11 +644,7 @@ def _weather_map_context_for_location(location=None, current=None, city_name="")
         layers.append(
             {
                 "id": layer_id,
-                **{
-                    key: value
-                    for key, value in layer_config.items()
-                    if key != "provider_layer"
-                },
+                **{key: value for key, value in layer_config.items() if key != "provider_layer"},
             }
         )
 
@@ -694,12 +683,7 @@ def _fallback_place_for_label(label):
 
 def _normalize_location_search_text(value):
     return (
-        (value or "")
-        .casefold()
-        .replace("ä", "ae")
-        .replace("ö", "oe")
-        .replace("ü", "ue")
-        .replace("ß", "ss")
+        (value or "").casefold().replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
     )
 
 
@@ -978,13 +962,41 @@ def _icon_for_weather(condition):
 def _fallback_weather_context():
     weather_tip = _fallback_weather_tip()
     daily_forecast = [
-        {"day": "Samstag", "icon": "fa-cloud-sun", "description": "Teilweise bewölkt", "high": 27, "low": 16, "rain": 10},
-        {"day": "Sonntag", "icon": "fa-cloud-rain", "description": "Leichter Regen", "high": 22, "low": 14, "rain": 60},
+        {
+            "day": "Samstag",
+            "icon": "fa-cloud-sun",
+            "description": "Teilweise bewölkt",
+            "high": 27,
+            "low": 16,
+            "rain": 10,
+        },
+        {
+            "day": "Sonntag",
+            "icon": "fa-cloud-rain",
+            "description": "Leichter Regen",
+            "high": 22,
+            "low": 14,
+            "rain": 60,
+        },
         {"day": "Montag", "icon": "fa-cloud", "description": "Bewölkt", "high": 21, "low": 13, "rain": 20},
-        {"day": "Dienstag", "icon": "fa-cloud-sun", "description": "Wolkig", "high": 23, "low": 14, "rain": 20},
+        {
+            "day": "Dienstag",
+            "icon": "fa-cloud-sun",
+            "description": "Wolkig",
+            "high": 23,
+            "low": 14,
+            "rain": 20,
+        },
         {"day": "Mittwoch", "icon": "fa-sun", "description": "Sonnig", "high": 26, "low": 15, "rain": 10},
         {"day": "Donnerstag", "icon": "fa-sun", "description": "Sonnig", "high": 27, "low": 16, "rain": 10},
-        {"day": "Freitag", "icon": "fa-cloud-sun", "description": "Teilweise bewölkt", "high": 25, "low": 15, "rain": 20},
+        {
+            "day": "Freitag",
+            "icon": "fa-cloud-sun",
+            "description": "Teilweise bewölkt",
+            "high": 25,
+            "low": 15,
+            "rain": 20,
+        },
     ]
 
     return {
@@ -1011,7 +1023,12 @@ def _fallback_weather_context():
             {"icon": "fa-wind", "label": "Wind", "value": "14 km/h", "hint": "W - Mäßig"},
             {"icon": "fa-sun", "label": "UV-Index", "value": "4", "hint": "Mäßig"},
             {"icon": "fa-gauge", "label": "Luftdruck", "value": "1016 hPa", "hint": "Stabil"},
-            {"icon": "fa-cloud-sun", "label": "Sonnenaufgang / Sonnenuntergang", "value": "05:23 / 21:21", "hint": ""},
+            {
+                "icon": "fa-cloud-sun",
+                "label": "Sonnenaufgang / Sonnenuntergang",
+                "value": "05:23 / 21:21",
+                "hint": "",
+            },
         ],
         "hourly_forecast": [
             {"time": "Jetzt", "icon": "fa-cloud-sun", "temperature": 24, "rain": 10},

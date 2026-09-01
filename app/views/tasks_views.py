@@ -14,6 +14,8 @@ from app.services.tasks import (
     delete_task_label,
     delete_task_list,
     get_tasks_context,
+    move_task,
+    move_task_list,
     rename_task_list,
     toggle_task,
 )
@@ -25,6 +27,9 @@ def tasks(request):
         return disabled_feature_response(request, "tasks")
 
     form_name = request.POST.get("form_name") if request.method == "POST" else None
+    task_form = TaskForm(user=request.user)
+    edit_form = None
+    editing_task_id = None
 
     if form_name == "task_add":
         task_form = TaskForm(request.POST, user=request.user)
@@ -58,6 +63,21 @@ def tasks(request):
         if delete_task(request.user, request.POST.get("task_id")):
             django_messages.success(request, "Aufgabe gelöscht.")
         return redirect(request.get_full_path())
+    elif form_name == "task_edit":
+        editing_task_id = request.POST.get("task_id")
+        task = Task.objects.filter(user=request.user, pk=editing_task_id).first()
+        if task is None:
+            django_messages.error(request, "Aufgabe konnte nicht bearbeitet werden.")
+            return redirect(request.get_full_path())
+        edit_form = TaskForm(request.POST, instance=task, user=request.user)
+        if edit_form.is_valid():
+            edited_task = edit_form.save(commit=False)
+            edited_task.priority = edited_task.priority or Task.PRIORITY_NONE
+            edited_task.recurrence_rule = edited_task.recurrence_rule or Task.RECURRENCE_NONE
+            edited_task.save()
+            edit_form.save_m2m()
+            django_messages.success(request, "Aufgabe aktualisiert.")
+            return redirect(request.get_full_path())
     elif form_name == "task_list_add":
         list_form = TaskListForm(request.POST)
         if list_form.is_valid():
@@ -110,11 +130,35 @@ def tasks(request):
         except TaskLabel.DoesNotExist:
             pass
         return redirect(request.get_full_path())
-    else:
-        task_form = TaskForm(user=request.user)
+    elif form_name == "task_reorder":
+        try:
+            move_task(
+                request.user,
+                task_id=request.POST.get("task_id"),
+                target_id=request.POST.get("target_id"),
+                placement=request.POST.get("placement"),
+            )
+        except (Task.DoesNotExist, ValidationError):
+            pass
+        return redirect(f"{request.path}?sort=manual")
+    elif form_name == "task_list_reorder":
+        try:
+            move_task_list(
+                request.user,
+                task_list_id=request.POST.get("task_list_id"),
+                target_id=request.POST.get("target_id"),
+                placement=request.POST.get("placement"),
+            )
+        except (TaskList.DoesNotExist, ValidationError):
+            pass
+        return redirect(request.get_full_path())
 
-    context = get_tasks_context(request.user)
+    sort = request.GET.get("sort")
+    context = get_tasks_context(request.user, sort=sort)
+    context["sort"] = sort
     context["task_form"] = task_form
     context["task_list_form"] = TaskListForm()
     context["task_label_form"] = TaskLabelForm()
+    context["edit_form"] = edit_form or TaskForm(user=request.user)
+    context["editing_task_id"] = editing_task_id
     return render(request, "app/tasks.html", context)

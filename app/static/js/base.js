@@ -19,9 +19,9 @@ function saveScrollPosition() {
         left: window.scrollX,
         top: window.scrollY,
         savedAt: Date.now(),
-      })
+      }),
     );
-  } catch (error) {
+  } catch (_error) {
     // Navigating still works normally if session storage is unavailable.
   }
 }
@@ -33,14 +33,15 @@ function restoreScrollPosition() {
     const storedValue = sessionStorage.getItem(SCROLL_RESTORE_STORAGE_KEY);
     sessionStorage.removeItem(SCROLL_RESTORE_STORAGE_KEY);
     savedPosition = storedValue ? JSON.parse(storedValue) : null;
-  } catch (error) {
+  } catch (_error) {
     return;
   }
 
-  const isRecent = savedPosition
-    && Number.isFinite(savedPosition.left)
-    && Number.isFinite(savedPosition.top)
-    && Date.now() - savedPosition.savedAt <= SCROLL_RESTORE_MAX_AGE_MS;
+  const isRecent =
+    savedPosition &&
+    Number.isFinite(savedPosition.left) &&
+    Number.isFinite(savedPosition.top) &&
+    Date.now() - savedPosition.savedAt <= SCROLL_RESTORE_MAX_AGE_MS;
 
   if (!isRecent || savedPosition.page !== getCurrentPageKey()) {
     return;
@@ -97,7 +98,7 @@ function readStoredTheme() {
   try {
     const theme = localStorage.getItem(THEME_STORAGE_KEY);
     return ["light", "dark"].includes(theme) ? theme : null;
-  } catch (error) {
+  } catch (_error) {
     return null;
   }
 }
@@ -105,7 +106,7 @@ function readStoredTheme() {
 function saveStoredTheme(theme) {
   try {
     localStorage.setItem(THEME_STORAGE_KEY, theme);
-  } catch (error) {
+  } catch (_error) {
     // Theme still changes for this page even if storage is unavailable.
   }
 }
@@ -124,10 +125,7 @@ function updateThemeButton(theme) {
   const isDarkMode = theme === "dark";
   themeToggleIcon.classList.toggle("fa-moon", !isDarkMode);
   themeToggleIcon.classList.toggle("fa-sun", isDarkMode);
-  themeToggleButton.setAttribute(
-    "aria-label",
-    isDarkMode ? "Switch to light mode" : "Switch to dark mode"
-  );
+  themeToggleButton.setAttribute("aria-label", isDarkMode ? "Switch to light mode" : "Switch to dark mode");
 }
 
 function updateThemeChoices(theme) {
@@ -162,7 +160,7 @@ function setAccentPreview(color) {
 function applySoftnessPreview(value) {
   const normalized = Math.max(0, Math.min(100, Number(value))) / 100;
   document.documentElement.style.setProperty("--background-overlay-alpha", (0.14 + normalized * 0.34).toFixed(2));
-  document.documentElement.style.setProperty("--background-highlight-alpha", (0.20 + normalized * 0.28).toFixed(2));
+  document.documentElement.style.setProperty("--background-highlight-alpha", (0.2 + normalized * 0.28).toFixed(2));
   document.documentElement.style.setProperty("--glass-blur", `${18 + normalized * 18}px`);
 }
 
@@ -303,7 +301,7 @@ async function hasActiveWebPushSubscription() {
     ]);
     if (!registration) return false;
     return Boolean(await registration.pushManager.getSubscription());
-  } catch (error) {
+  } catch (_error) {
     return false;
   }
 }
@@ -341,7 +339,7 @@ async function initDesktopReminderNotifications() {
           notification.close();
         });
       });
-    } catch (error) {
+    } catch (_error) {
       // A later polling cycle retries if the browser or network is temporarily unavailable.
     } finally {
       claimInProgress = false;
@@ -364,12 +362,14 @@ const pwaInstallState = {
 };
 
 function announcePwaState() {
-  window.dispatchEvent(new CustomEvent("lunora:pwa-state-change", {
-    detail: {
-      installable: Boolean(pwaInstallState.deferredPrompt),
-      installed: pwaInstallState.installed,
-    },
-  }));
+  window.dispatchEvent(
+    new CustomEvent("lunora:pwa-state-change", {
+      detail: {
+        installable: Boolean(pwaInstallState.deferredPrompt),
+        installed: pwaInstallState.installed,
+      },
+    }),
+  );
 }
 
 window.lunoraPwa = {
@@ -410,12 +410,14 @@ function registerLunoraServiceWorker() {
   if (!serviceWorkerUrl || !("serviceWorker" in navigator) || !window.isSecureContext) return;
 
   const register = () => {
-    navigator.serviceWorker.register(serviceWorkerUrl, {
-      scope: "/",
-      updateViaCache: "none",
-    }).catch(() => {
-      // The app remains fully usable online if registration is blocked.
-    });
+    navigator.serviceWorker
+      .register(serviceWorkerUrl, {
+        scope: "/",
+        updateViaCache: "none",
+      })
+      .catch(() => {
+        // The app remains fully usable online if registration is blocked.
+      });
   };
 
   if (document.readyState === "complete") {

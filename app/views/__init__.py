@@ -10,16 +10,6 @@ from .auth_views import (
 from .calendar_views import calendar
 from .core_views import dashboard_layout_update, home, settings
 from .message_views import chat_attachment_download, chat_typing_ping, messages, messages_live_updates
-from .notification_views import (
-    claim_desktop_notifications,
-    notification_center,
-    notification_mark_all_read,
-    notification_open,
-    notification_toggle_read,
-    web_push_test,
-    web_push_subscription,
-)
-from .pwa_views import offline, service_worker
 from .note_views import (
     note_action_api,
     note_attachment_download,
@@ -48,6 +38,16 @@ from .note_views import (
     note_versions_api,
     notes,
 )
+from .notification_views import (
+    claim_desktop_notifications,
+    notification_center,
+    notification_mark_all_read,
+    notification_open,
+    notification_toggle_read,
+    web_push_subscription,
+    web_push_test,
+)
+from .pwa_views import offline, service_worker
 from .search_views import global_search
 from .tasks_views import tasks
 from .vacation_planner_views import (

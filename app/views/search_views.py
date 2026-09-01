@@ -8,8 +8,11 @@ from app.services.notes import accessible_notes
 from app.services.system_settings import feature_flags
 from app.services.user_preferences import format_user_date, format_user_time, localtime_for_user
 from app.view_models import _calendar_visible_events_query
-from app.views.message_views import _build_inbox_items, _conversation_ids_matching_message_query, _filter_inbox_items
-
+from app.views.message_views import (
+    _build_inbox_items,
+    _conversation_ids_matching_message_query,
+    _filter_inbox_items,
+)
 
 SEARCH_RESULT_LIMIT = 20
 
@@ -77,7 +80,9 @@ def global_search(request):
     if query:
         events = (
             _calendar_visible_events_query(request.user)
-            .filter(Q(title__icontains=query) | Q(description__icontains=query) | Q(location__icontains=query))
+            .filter(
+                Q(title__icontains=query) | Q(description__icontains=query) | Q(location__icontains=query)
+            )
             .select_related("source")
             .order_by("-start_at")[:SEARCH_RESULT_LIMIT]
         )

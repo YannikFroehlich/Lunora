@@ -32,7 +32,6 @@ from app.services.notification_preferences import (
 from app.services.user_preferences import format_user_datetime, localtime_for_user
 from app.services.weather_service import get_weather_alert_for_location, weather_location_to_dict
 
-
 logger = logging.getLogger(__name__)
 
 WEATHER_ALERT_COOLDOWN = timedelta(hours=6)
@@ -52,7 +51,9 @@ def notification_display_items(notifications, user):
     """Attach the shared icon/label/tone presentation to a list of UserNotification rows."""
     items = []
     for notification in notifications:
-        icon, label, tone = NOTIFICATION_PRESENTATION.get(notification.kind, ("fa-bell", "Hinweis", "default"))
+        icon, label, tone = NOTIFICATION_PRESENTATION.get(
+            notification.kind, ("fa-bell", "Hinweis", "default")
+        )
         items.append(
             {
                 "notification": notification,
@@ -167,8 +168,7 @@ def materialize_event_invitation_notifications(invitations):
                 "kind": UserNotification.KIND_EVENT_INVITATION,
                 "title": f"Einladung: {invitation.event.title}",
                 "body": (
-                    f"{organizer_name} · "
-                    f"{format_user_datetime(invitation.event.start_at, invitation.user)}"
+                    f"{organizer_name} · {format_user_datetime(invitation.event.start_at, invitation.user)}"
                 ),
                 "url": "/calendar/",
                 "source_key": f"event-invitation:{invitation.pk}",
@@ -258,7 +258,7 @@ def claim_due_desktop_reminders(user, *, now=None, limit=5):
         include_tasks=False,
     )
     try:
-        profile = user.profile
+        _ = user.profile
     except Profile.DoesNotExist:
         return []
 
@@ -363,7 +363,7 @@ def claim_due_desktop_tasks(user, *, now=None, limit=5):
         include_tasks=True,
     )
     try:
-        profile = user.profile
+        _ = user.profile
     except Profile.DoesNotExist:
         return []
 
@@ -521,7 +521,7 @@ def claim_due_note_activity(user, *, now=None, limit=5):
     )
     materialize_note_activity_notifications(inbox_sources)
     try:
-        profile = user.profile
+        _ = user.profile
     except Profile.DoesNotExist:
         return []
 
@@ -603,9 +603,9 @@ def send_note_activity_emails(*, now=None):
             logger.exception("Note activity email delivery failed for notification %s", notification.pk)
             continue
 
-        updated = NoteActivityNotification.objects.filter(pk=notification.pk, email_notified_at__isnull=True).update(
-            email_notified_at=current_time
-        )
+        updated = NoteActivityNotification.objects.filter(
+            pk=notification.pk, email_notified_at__isnull=True
+        ).update(email_notified_at=current_time)
         sent += int(bool(updated))
 
     return {"sent": sent, "failed": failed}
@@ -621,7 +621,7 @@ def claim_due_event_invitations(user, *, now=None, limit=5):
     )
     materialize_event_invitation_notifications(inbox_sources)
     try:
-        profile = user.profile
+        _ = user.profile
     except Profile.DoesNotExist:
         return []
 
@@ -696,9 +696,9 @@ def send_new_invitation_emails(*, now=None):
             logger.exception("Event invitation email delivery failed for attendee %s", invitation.pk)
             continue
 
-        updated = CalendarEventAttendee.objects.filter(pk=invitation.pk, email_notified_at__isnull=True).update(
-            email_notified_at=current_time
-        )
+        updated = CalendarEventAttendee.objects.filter(
+            pk=invitation.pk, email_notified_at__isnull=True
+        ).update(email_notified_at=current_time)
         sent += int(bool(updated))
 
     return {"sent": sent, "failed": failed}
@@ -731,9 +731,7 @@ def send_pending_user_notification_emails(
         .select_related("recipient", "recipient__profile")
         .order_by("created_at", "id")
     )
-    preferences = notification_preference_map(
-        notification.recipient_id for notification in notifications
-    )
+    preferences = notification_preference_map(notification.recipient_id for notification in notifications)
 
     sent = 0
     failed = 0
@@ -749,9 +747,7 @@ def send_pending_user_notification_emails(
             send_mail(
                 subject=f"Lunora: {notification.title}",
                 message=(
-                    f"{notification.title}\n\n"
-                    f"{notification.body}\n\n"
-                    "Öffne Lunora, um den Hinweis anzusehen."
+                    f"{notification.title}\n\n{notification.body}\n\nÖffne Lunora, um den Hinweis anzusehen."
                 ),
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 recipient_list=[notification.recipient.email],
@@ -784,8 +780,7 @@ def _weekly_summary_text(user, current_time):
         .order_by("start_at", "title")[:5]
     )
     reminders = list(
-        CalendarReminder.objects.filter(user=user, is_done=False)
-        .order_by("due_at", "created_at")[:5]
+        CalendarReminder.objects.filter(user=user, is_done=False).order_by("due_at", "created_at")[:5]
     )
     unread_messages = unread_total_for_user(user)
     new_note_shares = NoteShare.objects.filter(

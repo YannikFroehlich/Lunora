@@ -89,7 +89,9 @@ class Profile(models.Model):
 
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile")
     display_name = models.CharField(max_length=120)
-    profile_image = models.FileField(upload_to="profiles/", blank=True, validators=[validate_profile_image_file])
+    profile_image = models.FileField(
+        upload_to="profiles/", blank=True, validators=[validate_profile_image_file]
+    )
     theme = models.CharField(max_length=12, choices=THEME_CHOICES, default="light")
     accent_color = models.CharField(max_length=7, choices=ACCENT_COLOR_CHOICES, default="#c2a276")
     background_softness = models.PositiveSmallIntegerField(default=55)
@@ -121,7 +123,9 @@ class Profile(models.Model):
 
 
 class WeatherLocation(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="weather_locations")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="weather_locations"
+    )
     query = models.CharField(max_length=120, blank=True)
     lat = models.FloatField(blank=True, null=True)
     lon = models.FloatField(blank=True, null=True)
@@ -185,7 +189,9 @@ class Conversation(models.Model):
             return self.title
         other_participants = [member.user for member in self.member_rows.all() if member.user_id != user.id]
         if other_participants:
-            return ", ".join(self.display_name_for_user(member_user) for member_user in other_participants[:3])
+            return ", ".join(
+                self.display_name_for_user(member_user) for member_user in other_participants[:3]
+            )
         return "Nur du"
 
     def avatar_for(self, user):
@@ -235,7 +241,9 @@ class Conversation(models.Model):
 
 class ConversationMember(models.Model):
     conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name="member_rows")
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="conversation_memberships")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="conversation_memberships"
+    )
     is_archived = models.BooleanField(default=False)
     is_blocked = models.BooleanField(default=False)
     muted_until = models.DateTimeField(blank=True, null=True)
@@ -265,7 +273,9 @@ class ConversationMember(models.Model):
 
 class ChatMessage(models.Model):
     conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name="messages")
-    sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="sent_chat_messages")
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="sent_chat_messages"
+    )
     body = models.TextField(max_length=4000)
     is_deleted = models.BooleanField(default=False)
     deleted_at = models.DateTimeField(blank=True, null=True)
@@ -317,7 +327,9 @@ class ChatMessageReaction(models.Model):
     ]
 
     message = models.ForeignKey(ChatMessage, on_delete=models.CASCADE, related_name="reactions")
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="chat_message_reactions")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="chat_message_reactions"
+    )
     emoji = models.CharField(max_length=8, choices=EMOJI_CHOICES)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -368,7 +380,9 @@ class CalendarSource(models.Model):
         ("violet", "Violett"),
     ]
 
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="calendar_sources")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="calendar_sources"
+    )
     name = models.CharField(max_length=120, default="Google Kalender")
     ical_url = models.URLField(max_length=1000)
     color = models.CharField(max_length=12, choices=COLOR_CHOICES, default="blue")
@@ -392,7 +406,9 @@ class CalendarSource(models.Model):
 
 
 class CalendarEvent(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="calendar_events")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="calendar_events"
+    )
     source = models.ForeignKey(
         CalendarSource,
         on_delete=models.CASCADE,
@@ -425,7 +441,9 @@ class CalendarEvent(models.Model):
     class Meta:
         ordering = ["start_at", "title"]
         constraints = [
-            models.UniqueConstraint(fields=["source", "external_id"], name="unique_calendar_event_per_source"),
+            models.UniqueConstraint(
+                fields=["source", "external_id"], name="unique_calendar_event_per_source"
+            ),
         ]
 
     def __str__(self):
@@ -443,7 +461,9 @@ class CalendarEventAttendee(models.Model):
     ]
 
     event = models.ForeignKey(CalendarEvent, on_delete=models.CASCADE, related_name="attendees")
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="calendar_invitations")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="calendar_invitations"
+    )
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=STATUS_INVITED)
     invited_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -467,7 +487,9 @@ class CalendarEventAttendee(models.Model):
 
 
 class CalendarReminder(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="calendar_reminders")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="calendar_reminders"
+    )
     title = models.CharField(max_length=180)
     due_at = models.DateTimeField(blank=True, null=True)
     is_done = models.BooleanField(default=False)
@@ -556,8 +578,11 @@ class Task(models.Model):
     title = models.CharField(max_length=180)
     due_at = models.DateTimeField(blank=True, null=True)
     priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default=PRIORITY_NONE, blank=True)
-    recurrence_rule = models.CharField(max_length=10, choices=RECURRENCE_CHOICES, default=RECURRENCE_NONE, blank=True)
+    recurrence_rule = models.CharField(
+        max_length=10, choices=RECURRENCE_CHOICES, default=RECURRENCE_NONE, blank=True
+    )
     labels = models.ManyToManyField(TaskLabel, blank=True, related_name="tasks")
+    position = models.PositiveIntegerField(default=0)
     is_done = models.BooleanField(default=False)
     email_notified_at = models.DateTimeField(blank=True, null=True)
     desktop_notified_at = models.DateTimeField(blank=True, null=True)
@@ -729,7 +754,9 @@ class WebPushDelivery(models.Model):
 
 
 class WeeklySummaryDelivery(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="weekly_summaries")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="weekly_summaries"
+    )
     week_start = models.DateField()
     sent_at = models.DateTimeField(auto_now_add=True)
 
@@ -763,7 +790,9 @@ class VacationYear(models.Model):
         ("TH", "Thüringen"),
     ]
 
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="vacation_years")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="vacation_years"
+    )
     year = models.PositiveSmallIntegerField()
     allowance_days = models.DecimalField(max_digits=5, decimal_places=1)
     subdivision = models.CharField(max_length=2, choices=SUBDIVISION_CHOICES, default="NW")
@@ -790,7 +819,9 @@ class VacationPeriod(models.Model):
         (UEBERSTUNDENABBAU, "Überstundenabbau"),
     ]
 
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="vacation_periods")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="vacation_periods"
+    )
     name = models.CharField(max_length=160, choices=TYPE_CHOICES, default=TARIFURLAUB)
     start_date = models.DateField()
     end_date = models.DateField()
@@ -846,8 +877,12 @@ class CustomHoliday(models.Model):
 
 
 class HolidayOverride(models.Model):
-    vacation_year = models.ForeignKey(VacationYear, on_delete=models.CASCADE, related_name="holiday_overrides")
-    official_holiday = models.ForeignKey(OfficialHoliday, on_delete=models.CASCADE, related_name="user_overrides")
+    vacation_year = models.ForeignKey(
+        VacationYear, on_delete=models.CASCADE, related_name="holiday_overrides"
+    )
+    official_holiday = models.ForeignKey(
+        OfficialHoliday, on_delete=models.CASCADE, related_name="user_overrides"
+    )
     name = models.CharField(max_length=160, blank=True)
     day_value = models.DecimalField(max_digits=2, decimal_places=1)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -856,7 +891,9 @@ class HolidayOverride(models.Model):
     class Meta:
         ordering = ["official_holiday__date", "official_holiday__name"]
         constraints = [
-            models.UniqueConstraint(fields=["vacation_year", "official_holiday"], name="unique_holiday_override"),
+            models.UniqueConstraint(
+                fields=["vacation_year", "official_holiday"], name="unique_holiday_override"
+            ),
         ]
 
     def __str__(self):
@@ -891,7 +928,9 @@ class Note(models.Model):
 
 
 class NoteTemplate(models.Model):
-    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="note_templates")
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="note_templates"
+    )
     name = models.CharField(max_length=100)
     document = models.JSONField()
     created_at = models.DateTimeField(auto_now_add=True)

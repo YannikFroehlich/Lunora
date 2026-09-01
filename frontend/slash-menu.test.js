@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { SLASH_MENU_ITEMS, filterSlashMenuItems } from "./slash-menu.js";
 
-
 describe("filterSlashMenuItems", () => {
   it("gibt bei leerem Query alle Einträge zurück", () => {
     expect(filterSlashMenuItems(SLASH_MENU_ITEMS, "")).toEqual(SLASH_MENU_ITEMS);

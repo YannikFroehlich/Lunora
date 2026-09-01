@@ -8,7 +8,6 @@ from django.utils import timezone
 
 from app.models import SystemSettings
 
-
 FEATURE_FIELDS = {
     "calendar_event_creation": "calendar_event_creation_enabled",
     "calendar_reminders": "calendar_reminders_enabled",
@@ -77,8 +76,7 @@ def feature_enabled(feature_key):
 def feature_flags():
     settings_obj = get_system_settings()
     return {
-        feature_key: getattr(settings_obj, field_name)
-        for feature_key, field_name in FEATURE_FIELDS.items()
+        feature_key: getattr(settings_obj, field_name) for feature_key, field_name in FEATURE_FIELDS.items()
     }
 
 
