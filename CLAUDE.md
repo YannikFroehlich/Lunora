@@ -45,7 +45,16 @@ Bulk-import official public holidays for the vacation planner over a year range 
 python manage.py import_public_holidays --from-year 2026 --to-year 2027
 ```
 
-JS syntax check for the hand-written page scripts (they are not bundled or linted): `node --check app/static/js/weather.js`.
+Linting and formatting (config in `pyproject.toml`, `eslint.config.js`, `.prettierrc.json`; enforced in CI):
+
+```bash
+ruff check .
+ruff format .
+npm run lint
+npm run format
+```
+
+`ruff` needs installing once via `pip install -r requirements-dev.txt` (adds `ruff` on top of the production `requirements.txt`). The hand-written page scripts under `app/static/js/` are linted and formatted the same as `frontend/`, but still loaded as plain `<script>` tags rather than bundled — `node --check app/static/js/weather.js` remains a quick syntax-only fallback when you don't want to run the full toolchain.
 
 ## Architecture
 
@@ -137,6 +146,10 @@ The `notifications` widget (`dashboard_notifications.html`) surfaces the latest 
 
 Static CSS/JS files are cache-busted with a content hash rather than Django's `ManifestStaticFilesStorage`: `app/templatetags/static_versioning.py`'s `{% versioned_static %}` appends `?v=<sha256-of-file-contents>` to a `{% static %}` URL, and `{% static_version %}` combines several files into one digest (used for the service worker's cache name in `service-worker.js`). Every page template must `{% load static static_versioning %}` and use `versioned_static` instead of `static` for its own CSS/JS, or edits won't bust client caches / the PWA service worker cache.
 
+### Service worker offline caching
+
+`app/templates/app/service-worker.js` precaches only the app shell (`APP_SHELL_URLS`: the offline page, its CSS, and brand icons) at install time — it must never gain a hardcoded personal-page path (`/notes/`, `/messages/`, `/calendar/`, `/home/`, media URLs); `PwaTests.test_service_worker_does_not_precache_personal_pages_or_media` enforces this. Beyond the shell, every same-origin full-page navigation (`request.mode === "navigate"`) goes through `servePage()`: network-first, and on a successful (`.ok`) response the page is also written into the separate `PAGES_CACHE` so the same URL can still open while offline, trimmed to `MAX_CACHED_PAGES` most-recent entries. `PAGES_CACHE` and `STATIC_CACHE` are both named with the same `{% static_version %}` hash, so a deploy that changes shell CSS/JS also drops old page snapshots (avoiding offline pages that reference static assets no longer being generated). Because the pages cache holds whatever authenticated content a user last viewed, the service worker intercepts the `POST /logout/` form submission and clears `PAGES_CACHE` once it completes, so a signed-out session's pages can't resurface for the next person on a shared device. Runtime `/static/*` asset caching (`serveStaticAsset`) is unrelated and untouched by this — it's cache-first, keyed by the always-versioned static URL.
+
 ## Configuration
 
 `lunora/settings.py` reads a plain `.env` at the repo root with its own tiny parser (`load_env_file`, `os.environ.setdefault` — real environment variables win) plus `env_bool`/`env_int`/`env_list` helpers. `.env.example` is the documented reference. With `DJANGO_DEBUG=false`, missing `DJANGO_SECRET_KEY` or `DJANGO_ALLOWED_HOSTS` raises `ImproperlyConfigured`, and the HTTPS/HSTS/secure-cookie toggles default to on.
@@ -149,4 +162,4 @@ All Python tests live in `app/tests.py` (Django `TestCase` + test client), group
 
 ## Related files
 
-`AGENTS.md` and `README.md` (German) cover overlapping ground; `README.md` is the authoritative list of env vars and setup steps.
+`AGENTS.md` and `README.md` (German) cover overlapping ground; `README.md` is the authoritative list of env vars and setup steps. `CHANGELOG.md` tracks user-facing changes under an `## Unreleased` heading — add a bullet there for any new feature, behavior change, or notable fix (skip pure refactors, tests, or internal tooling).

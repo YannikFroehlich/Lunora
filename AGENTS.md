@@ -17,6 +17,7 @@ Current feature areas include authentication with e-mail-or-username login, prof
 - `python -m venv .venv`: create a local virtual environment if one is not present.
 - `.venv\Scripts\Activate.ps1`: activate the virtual environment on PowerShell.
 - `python -m pip install -r requirements.txt`: install Python dependencies.
+- `python -m pip install -r requirements-dev.txt`: install Python dependencies plus `ruff` for linting/formatting.
 - `npm ci`: install the pinned frontend toolchain for the notes editor.
 - `npm run build`: rebuild `app/static/js/bundles/notes.js` from `frontend/`.
 - `python manage.py migrate`: apply database migrations to `db.sqlite3`.
@@ -24,6 +25,8 @@ Current feature areas include authentication with e-mail-or-username login, prof
 - `python manage.py check`: run Django's system checks.
 - `python manage.py test`: run Django's test suite.
 - `npm test`: run the vitest suite over `frontend/**/*.test.js`.
+- `ruff check .` / `ruff format .`: lint and format Python (config in `pyproject.toml`).
+- `npm run lint` / `npm run format`: lint and format `frontend/` and `app/static/js/` (config in `eslint.config.js` / `.prettierrc.json`).
 - `python manage.py run_automations [--loop]`: run calendar sync, due reminder e-mails, and weekly summaries once, or continuously.
 - `python manage.py purge_expired_notes`: permanently delete notes that have been in the trash for 30 days.
 
@@ -51,11 +54,13 @@ Python tests live in `app/tests.py` and use Django's `TestCase` and test client,
 
 Existing coverage includes settings/profile updates, profile image validation, calendar sync and iCal parsing, iCal fetch safety, manual events and attendee invitations, reminders, tasks, scheduled automations, notification idempotency, detailed channel preferences, Web-Push quiet hours and test delivery, weather map and point endpoints, messaging permissions, unread counts, message actions, read receipts, live update responses, global search, static asset versioning, administration feature flags, dashboard customization, the vacation planner, and the notes workspace including revision conflicts and share roles.
 
-Run a single case with `python manage.py test app.tests.NotesTests.test_stale_revision_returns_conflict_without_overwriting`. Run `python manage.py test` and, when `frontend/` changed, `npm test` and `npm run build` before opening a pull request.
+Run a single case with `python manage.py test app.tests.NotesTests.test_stale_revision_returns_conflict_without_overwriting`. Run `python manage.py test`, `ruff check .`, `ruff format --check .`, `npm run lint`, `npm run format:check`, and, when `frontend/` changed, `npm test` and `npm run build` before opening a pull request — CI enforces all of these.
 
 ## Commit & Pull Request Guidelines
 
 Recent commits use short, imperative summaries, for example `Add notification automation and improve mobile settings` or `Add multi-calendar support and update weather UI`. Keep commits focused and describe the user-visible change. Pull requests should include a concise summary, test results, linked issues when applicable, and screenshots for template or static asset changes.
+
+Add a bullet under `## Unreleased` in [`CHANGELOG.md`](CHANGELOG.md) for any user-facing change (new feature, behavior change, notable fix); skip it for pure refactors, tests, or internal tooling. When cutting a dated entry, rename `Unreleased` to the date and start a fresh empty `Unreleased` section above it.
 
 ## Security & Configuration Tips
 
