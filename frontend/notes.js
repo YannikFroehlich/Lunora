@@ -1,4 +1,4 @@
-import { Editor, Mark, Node, mergeAttributes } from "@tiptap/core";
+import { Editor, Extension, Mark, Node, mergeAttributes } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { CodeBlockLowlight } from "@tiptap/extension-code-block-lowlight";
 import { Highlight } from "@tiptap/extension-highlight";
@@ -17,6 +17,7 @@ import katex from "katex";
 
 import { normalizeLinkHref } from "./link-utils.js";
 import { eventToShortcut, findShortcutConflict, mergeShortcuts, shortcutMatches } from "./shortcut-utils.js";
+import { SLASH_MENU_ITEMS, filterSlashMenuItems } from "./slash-menu.js";
 
 
 const app = document.querySelector("[data-notes-app]");
@@ -328,6 +329,16 @@ const NoteLink = Node.create({
   },
 });
 
+const SlashCommand = Extension.create({
+  name: "slashCommand",
+  addOptions() {
+    return { suggestion: { char: "/" } };
+  },
+  addProseMirrorPlugins() {
+    return [Suggestion({ editor: this.editor, pluginKey: new PluginKey("slashCommand"), ...this.options.suggestion })];
+  },
+});
+
 const CommentThread = Mark.create({
   name: "commentThread",
   addAttributes() {
@@ -441,6 +452,95 @@ function createLinkSuggestionRenderer() {
   return createSuggestionRenderer({ className: "note-link-suggestion", getLabel: (item) => item.title });
 }
 
+function createSlashMenuRenderer() {
+  let popup = null;
+  let items = [];
+  let selectedIndex = 0;
+  let command = null;
+
+  function renderOptions() {
+    if (!popup) return;
+    popup.innerHTML = "";
+    if (!items.length) {
+      popup.hidden = true;
+      return;
+    }
+    popup.hidden = false;
+    items.forEach((item, index) => {
+      const option = document.createElement("button");
+      option.type = "button";
+      option.className = `slash-menu-option${index === selectedIndex ? " is-active" : ""}`;
+      const icon = document.createElement("span");
+      icon.className = "slash-menu-option-icon";
+      if (item.iconClass) icon.innerHTML = `<i class="${item.iconClass}"></i>`;
+      else icon.textContent = item.iconText || "";
+      const label = document.createElement("span");
+      label.className = "slash-menu-option-label";
+      label.textContent = item.label;
+      option.append(icon, label);
+      option.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+        command(item);
+      });
+      popup.append(option);
+    });
+  }
+
+  function positionPopup(clientRect) {
+    const rect = clientRect?.();
+    if (!popup || !rect) return;
+    popup.style.left = `${rect.left}px`;
+    popup.style.top = `${rect.bottom + 6}px`;
+  }
+
+  return {
+    onStart(props) {
+      popup = document.createElement("div");
+      popup.className = "slash-menu-popup";
+      document.body.append(popup);
+      items = props.items;
+      selectedIndex = 0;
+      command = props.command;
+      positionPopup(props.clientRect);
+      renderOptions();
+    },
+    onUpdate(props) {
+      items = props.items;
+      selectedIndex = Math.min(selectedIndex, Math.max(0, items.length - 1));
+      command = props.command;
+      positionPopup(props.clientRect);
+      renderOptions();
+    },
+    onKeyDown(props) {
+      if (!items.length) return false;
+      if (props.event.key === "ArrowDown") {
+        selectedIndex = (selectedIndex + 1) % items.length;
+        renderOptions();
+        return true;
+      }
+      if (props.event.key === "ArrowUp") {
+        selectedIndex = (selectedIndex - 1 + items.length) % items.length;
+        renderOptions();
+        return true;
+      }
+      if (props.event.key === "Enter") {
+        command(items[selectedIndex]);
+        return true;
+      }
+      if (props.event.key === "Escape") {
+        popup?.remove();
+        popup = null;
+        return true;
+      }
+      return false;
+    },
+    onExit() {
+      popup?.remove();
+      popup = null;
+    },
+  };
+}
+
 const COMMAND_DEFAULTS = {
   save: { label: "Speichern", shortcut: "Mod+S" },
   undo: { label: "Rückgängig", shortcut: "Mod+Z" },
@@ -550,7 +650,6 @@ function initNotesApp() {
   const outlineList = document.querySelector("[data-note-outline-list]");
   const shortcutDialog = document.querySelector("[data-shortcut-dialog]");
   const conflictDialog = document.querySelector("[data-conflict-dialog]");
-  const tableDialog = document.querySelector("[data-table-dialog]");
   const mathDialog = document.querySelector("[data-math-dialog]");
   const mathInput = document.querySelector("[data-math-input]");
   const mathPreview = document.querySelector("[data-math-preview]");
@@ -566,6 +665,7 @@ function initNotesApp() {
   const noteIconGrid = document.querySelector("[data-note-icon-grid]");
   const noteContextMenu = document.querySelector("[data-note-context-menu]");
   const folderContextMenu = document.querySelector("[data-folder-context-menu]");
+  const editorContextMenu = document.querySelector("[data-editor-context-menu]");
   const notesList = document.querySelector("[data-notes-list]");
   const bulkBar = document.querySelector("[data-notes-bulk-bar]");
   const bulkCount = document.querySelector("[data-notes-bulk-count]");
@@ -634,7 +734,35 @@ function initNotesApp() {
             render: createLinkSuggestionRenderer,
           },
         }),
+        SlashCommand.configure({
+          suggestion: {
+            items: ({ query }) => filterSlashMenuItems(SLASH_MENU_ITEMS, query),
+            command: ({ editor: slashEditor, range, props }) => {
+              slashEditor.chain().focus().deleteRange(range).run();
+              runCommand(props.action);
+            },
+            render: createSlashMenuRenderer,
+          },
+        }),
       ],
+      editorProps: {
+        handlePaste(_view, event) {
+          const files = Array.from(event.clipboardData?.files || []);
+          if (!files.length || !note?.can_edit || note?.is_deleted) return false;
+          event.preventDefault();
+          uploadFiles(files);
+          return true;
+        },
+        handleDrop(view, event) {
+          const files = Array.from(event.dataTransfer?.files || []);
+          if (!files.length || !note?.can_edit || note?.is_deleted) return false;
+          event.preventDefault();
+          const pos = view.posAtCoords({ left: event.clientX, top: event.clientY });
+          if (pos) editor.chain().setTextSelection(pos.pos).run();
+          uploadFiles(files);
+          return true;
+        },
+      },
       onUpdate: () => {
         updateCounts();
         updateToolbarState();
@@ -700,7 +828,7 @@ function initNotesApp() {
       dot.classList.toggle("is-active", dot.querySelector("input") === input);
     });
   });
-  document.querySelector("[data-table-dialog-open]")?.addEventListener("click", () => tableDialog?.showModal());
+  document.querySelector("[data-table-dialog-open]")?.addEventListener("click", (event) => insertTable(event.currentTarget));
   mathInput?.addEventListener("input", renderMathPreview);
   mathBlockToggle?.addEventListener("change", renderMathPreview);
 
@@ -708,7 +836,6 @@ function initNotesApp() {
     const button = event.target.closest("[data-command]");
     if (!button) return;
     event.preventDefault();
-    if (button.closest("[data-table-dialog]")) tableDialog.close();
     runCommand(button.dataset.command);
   });
 
@@ -748,11 +875,24 @@ function initNotesApp() {
     if (folder && folderSummary === folder.querySelector(":scope > summary")) {
       event.preventDefault();
       openFolderContextMenu(folder, event.clientX, event.clientY);
+      return;
+    }
+    const editorArea = event.target.closest("[data-note-editor]");
+    if (editorArea && !event.target.closest("img[data-note-image], [data-note-attachment]")) {
+      event.preventDefault();
+      openEditorContextMenu(event.clientX, event.clientY);
     }
   });
 
+  document.addEventListener("click", (event) => {
+    const editorContextAction = event.target.closest("[data-editor-context-action]");
+    if (!editorContextAction) return;
+    closeContextMenus();
+    runCommand(editorContextAction.dataset.editorContextAction);
+  });
+
   document.addEventListener("pointerdown", (event) => {
-    if (!event.target.closest("[data-note-context-menu], [data-folder-context-menu]")) closeContextMenus();
+    if (!event.target.closest("[data-note-context-menu], [data-folder-context-menu], [data-editor-context-menu]")) closeContextMenus();
   });
   window.addEventListener("resize", closeContextMenus);
   window.addEventListener("scroll", closeContextMenus, true);
@@ -822,7 +962,7 @@ function initNotesApp() {
       codeBlock: () => editor?.chain().focus().toggleCodeBlock().run(),
       insertMath: insertMath,
       addComment: addCommentToSelection,
-      insertTable: () => insertTable(),
+      insertTable: () => insertTable(document.querySelector("[data-table-dialog-open]")),
       addRowBefore: () => editor?.chain().focus().addRowBefore().run(),
       addRowAfter: () => editor?.chain().focus().addRowAfter().run(),
       addColumnBefore: () => editor?.chain().focus().addColumnBefore().run(),
@@ -914,7 +1054,7 @@ function initNotesApp() {
     mathInput.focus();
   }
 
-  function insertTable() {
+  function insertTableCustomSize() {
     if (!editor || !note?.can_edit || note?.is_deleted) return;
     const requestedRows = window.prompt("Anzahl der Zeilen (1–20)", "3");
     if (requestedRows === null) return;
@@ -931,6 +1071,83 @@ function initNotesApp() {
       return;
     }
     editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run();
+  }
+
+  const TABLE_PICKER_ROWS = 8;
+  const TABLE_PICKER_COLS = 10;
+  let tableSizePicker = null;
+
+  function closeTableSizePicker() {
+    tableSizePicker?.remove();
+    tableSizePicker = null;
+    document.removeEventListener("mousedown", handleTableSizePickerOutsideClick, true);
+    document.removeEventListener("keydown", handleTableSizePickerKeydown, true);
+  }
+
+  function handleTableSizePickerOutsideClick(event) {
+    if (tableSizePicker && !tableSizePicker.contains(event.target)) closeTableSizePicker();
+  }
+
+  function handleTableSizePickerKeydown(event) {
+    if (event.key === "Escape") closeTableSizePicker();
+  }
+
+  function insertTable(anchor) {
+    if (!editor || !note?.can_edit || note?.is_deleted) return;
+    closeTableSizePicker();
+
+    const picker = document.createElement("div");
+    picker.className = "table-size-picker";
+
+    const label = document.createElement("div");
+    label.className = "table-size-picker-label";
+    label.textContent = "Tabelle einfügen";
+
+    const grid = document.createElement("div");
+    grid.className = "table-size-picker-grid";
+    grid.style.setProperty("--table-picker-cols", String(TABLE_PICKER_COLS));
+
+    const cells = [];
+    for (let row = 0; row < TABLE_PICKER_ROWS; row += 1) {
+      for (let col = 0; col < TABLE_PICKER_COLS; col += 1) {
+        const cell = document.createElement("button");
+        cell.type = "button";
+        cell.className = "table-size-picker-cell";
+        cell.addEventListener("mouseenter", () => {
+          cells.forEach((other) => other.el.classList.toggle("is-active", other.row <= row && other.col <= col));
+          label.textContent = `${row + 1} × ${col + 1} Tabelle`;
+        });
+        cell.addEventListener("click", () => {
+          editor.chain().focus().insertTable({ rows: row + 1, cols: col + 1, withHeaderRow: true }).run();
+          closeTableSizePicker();
+        });
+        cells.push({ el: cell, row, col });
+        grid.append(cell);
+      }
+    }
+
+    const customButton = document.createElement("button");
+    customButton.type = "button";
+    customButton.className = "table-size-picker-custom";
+    customButton.textContent = "Benutzerdefinierte Größe…";
+    customButton.addEventListener("click", () => {
+      closeTableSizePicker();
+      insertTableCustomSize();
+    });
+
+    picker.append(label, grid, customButton);
+    document.body.append(picker);
+
+    const anchorRect = anchor?.getBoundingClientRect?.();
+    if (anchorRect) {
+      const maxLeft = window.innerWidth - picker.offsetWidth - 12;
+      picker.style.left = `${Math.max(12, Math.min(anchorRect.left, maxLeft))}px`;
+      picker.style.top = `${anchorRect.bottom + 8}px`;
+    }
+
+    tableSizePicker = picker;
+    document.addEventListener("mousedown", handleTableSizePickerOutsideClick, true);
+    document.addEventListener("keydown", handleTableSizePickerKeydown, true);
   }
 
   function applyFormatControl(control) {
@@ -1830,10 +2047,19 @@ function initNotesApp() {
   function closeContextMenus() {
     noteContextMenu?.setAttribute("hidden", "");
     folderContextMenu?.setAttribute("hidden", "");
+    editorContextMenu?.setAttribute("hidden", "");
     contextNoteCard?.classList.remove("has-context-menu");
     contextFolder?.classList.remove("has-context-menu");
     contextNoteCard = null;
     contextFolder = null;
+  }
+
+  function openEditorContextMenu(x, y) {
+    if (!editor || !note?.can_edit || note?.is_deleted) return;
+    closeContextMenus();
+    const inTable = editor.isActive("table");
+    editorContextMenu.querySelectorAll("[data-table-only]").forEach((el) => { el.hidden = !inTable; });
+    positionContextMenu(editorContextMenu, x, y);
   }
 
   function openNoteContextMenu(card, x, y) {
@@ -2134,9 +2360,7 @@ function initNotesApp() {
     }
   }
 
-  async function uploadSelectedFile(input, kind) {
-    const file = input.files?.[0];
-    input.value = "";
+  async function uploadFile(file, kind) {
     if (!file || !note?.can_edit) return;
     const form = new FormData();
     form.append("file", file);
@@ -2155,6 +2379,18 @@ function initNotesApp() {
     } else {
       editor.chain().focus().insertContent({ type: "noteAttachment", attrs: { attachmentId: item.id, name: item.name, size: item.size } }).run();
     }
+  }
+
+  async function uploadFiles(files) {
+    for (const file of files) {
+      await uploadFile(file, file.type.startsWith("image/") ? "image" : "file");
+    }
+  }
+
+  async function uploadSelectedFile(input, kind) {
+    const file = input.files?.[0];
+    input.value = "";
+    await uploadFile(file, kind);
   }
 
   async function openShareDialog() {
