@@ -2,10 +2,13 @@
 Django settings for the Lunora project.
 """
 
+import mimetypes
 import os
 from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
+
+mimetypes.add_type("application/javascript", ".js", strict=True)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 

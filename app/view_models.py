@@ -12,7 +12,7 @@ from app.services.dashboard import (
     normalize_dashboard_layout,
 )
 from app.services.message_queries import unread_total_for_user
-from app.services.notifications import dashboard_latest_notifications, materialize_user_notification_sources
+from app.services.notifications import dashboard_latest_notifications
 from app.services.system_settings import feature_enabled, feature_flags
 from app.services.tasks import dashboard_open_tasks, dashboard_today_tasks
 from app.services.user_preferences import (
@@ -27,7 +27,6 @@ from app.services.user_preferences import (
     get_user_zoneinfo,
     localtime_for_user,
 )
-from app.services.weather_service import get_weather_context
 
 
 def get_dashboard_context(user=None):
@@ -46,23 +45,23 @@ def get_dashboard_context(user=None):
         include_hidden=dashboard_customization_enabled,
     )
     dashboard_visible_widgets = [widget for widget in dashboard_widgets if not widget["hidden"]]
-    dashboard_weather = _dashboard_weather_context(user) if flags["weather"] else {}
+    visible_widget_ids = {widget["id"] for widget in dashboard_visible_widgets}
+    dashboard_weather = _dashboard_weather_placeholder(user) if flags["weather"] else {}
     unread_messages_total = _dashboard_unread_message_count(user) if flags["messages"] else 0
     new_note_shares = _dashboard_new_note_share_count(user) if flags["notes"] else 0
     upcoming_dashboard_events = _dashboard_upcoming_events(user, now) if user else []
     dashboard_tasks = dashboard_open_tasks(user, now) if flags["tasks"] and user else []
     open_tasks_count = Task.objects.filter(user=user, is_done=False).count() if flags["tasks"] and user else 0
     nav_tiles = _dashboard_nav_tiles(user, unread_messages_total, new_note_shares, open_tasks_count, flags)
-    if user:
-        materialize_user_notification_sources(
-            user,
-            include_reminders=flags["calendar_reminders"],
-            include_tasks=flags["tasks"],
-        )
+    if user and "notifications" in visible_widget_ids:
         dashboard_notifications = dashboard_latest_notifications(user)
     else:
         dashboard_notifications = []
-    dashboard_today_open_tasks = dashboard_today_tasks(user, now) if flags["tasks"] and user else []
+    dashboard_today_open_tasks = (
+        dashboard_today_tasks(user, now)
+        if flags["tasks"] and user and "notifications" in visible_widget_ids
+        else []
+    )
 
     return {
         "active_page": "home",
@@ -262,27 +261,29 @@ def _dashboard_tool_shortcuts(
     return tools
 
 
-def _dashboard_weather_context(user=None):
-    weather_context = get_weather_context({}, user=user)
-    current = weather_context.get("current", {})
-    daily_forecast = weather_context.get("daily_forecast") or []
-    tomorrow = daily_forecast[0] if daily_forecast else {}
-
+def _dashboard_weather_placeholder(user=None):
+    city = "Standardort"
+    if user:
+        try:
+            default_city = user.profile.weather_default_city.strip()
+        except Exception:
+            default_city = ""
+        city = default_city.partition(",")[0].strip() or city
     return {
         "today": {
-            "city": current.get("city", "Bünde"),
-            "temperature": current.get("temperature", 24),
-            "feels_like": current.get("feels_like", current.get("temperature", 24)),
-            "description": current.get("description", "Teilweise bewölkt"),
-            "icon": current.get("icon", "fa-cloud-sun"),
+            "city": city,
+            "temperature": "–",
+            "feels_like": "–",
+            "description": "Wetter wird geladen …",
+            "icon": "fa-cloud",
         },
         "tomorrow": {
-            "day": tomorrow.get("day", "Morgen"),
-            "high": tomorrow.get("high", current.get("high", current.get("temperature", 24))),
-            "low": tomorrow.get("low", current.get("low", current.get("temperature", 18))),
-            "rain": tomorrow.get("rain", 10),
-            "description": tomorrow.get("description", "Teilweise bewölkt"),
-            "icon": tomorrow.get("icon", "fa-cloud-sun"),
+            "day": "Morgen",
+            "high": "–",
+            "low": "–",
+            "rain": "–",
+            "description": "Vorhersage wird geladen …",
+            "icon": "fa-cloud",
         },
     }
 

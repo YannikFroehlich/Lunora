@@ -50,6 +50,7 @@
                  data-dashboard-widget
                  data-widget-id="{{ widget.id }}"
                  data-widget-label="{{ widget.label }}"
+                 {% if widget.id == "weather" %}data-dashboard-weather-url="{% url 'dashboard_weather' %}"{% endif %}
                  {% if widget.id == "quick_actions" %}aria-label="Schnellzugriff"{% endif %}
                  {% if widget.id == "quick_actions" and dashboard_messages_enabled %}data-home-messages-live-url="{% url 'messages_live_updates' %}"{% endif %}
                  {% if widget.hidden %}hidden{% endif %}>

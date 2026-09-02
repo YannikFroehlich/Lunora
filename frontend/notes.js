@@ -12,8 +12,26 @@ import { Superscript } from "@tiptap/extension-superscript";
 import { CharacterCount } from "@tiptap/extensions";
 import Suggestion from "@tiptap/suggestion";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
-import { common, createLowlight } from "lowlight";
-import katex from "katex";
+import { createLowlight } from "lowlight";
+import bash from "highlight.js/lib/languages/bash";
+import c from "highlight.js/lib/languages/c";
+import cpp from "highlight.js/lib/languages/cpp";
+import csharp from "highlight.js/lib/languages/csharp";
+import css from "highlight.js/lib/languages/css";
+import diff from "highlight.js/lib/languages/diff";
+import go from "highlight.js/lib/languages/go";
+import java from "highlight.js/lib/languages/java";
+import javascript from "highlight.js/lib/languages/javascript";
+import json from "highlight.js/lib/languages/json";
+import markdown from "highlight.js/lib/languages/markdown";
+import php from "highlight.js/lib/languages/php";
+import python from "highlight.js/lib/languages/python";
+import ruby from "highlight.js/lib/languages/ruby";
+import rust from "highlight.js/lib/languages/rust";
+import sql from "highlight.js/lib/languages/sql";
+import typescript from "highlight.js/lib/languages/typescript";
+import xml from "highlight.js/lib/languages/xml";
+import yaml from "highlight.js/lib/languages/yaml";
 
 import { normalizeLinkHref } from "./link-utils.js";
 import { eventToShortcut, findShortcutConflict, mergeShortcuts, shortcutMatches } from "./shortcut-utils.js";
@@ -54,7 +72,34 @@ function attachmentUrl(id, disposition) {
   return `/notes/attachments/${encodeURIComponent(id)}/${disposition}/`;
 }
 
-const lowlight = createLowlight(common);
+const lowlight = createLowlight({
+  bash,
+  c,
+  cpp,
+  csharp,
+  css,
+  diff,
+  go,
+  java,
+  javascript,
+  json,
+  markdown,
+  php,
+  python,
+  ruby,
+  rust,
+  sql,
+  typescript,
+  xml,
+  yaml,
+});
+
+let katexPromise;
+
+function loadKatex() {
+  katexPromise ||= import("katex").then(({ default: katex }) => katex);
+  return katexPromise;
+}
 
 const NOTE_IMAGE_MIN_WIDTH = 120;
 const NOTE_IMAGE_MAX_WIDTH = 1600;
@@ -301,7 +346,7 @@ function formatBytes(value) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function renderMathInto(target, latex, displayMode) {
+async function renderMathInto(target, latex, displayMode) {
   target.innerHTML = "";
   const value = (latex || "").trim();
   if (!value) {
@@ -312,6 +357,7 @@ function renderMathInto(target, latex, displayMode) {
   }
   target.classList.remove("is-empty");
   try {
+    const katex = await loadKatex();
     katex.render(value, target, { throwOnError: false, displayMode, trust: false });
     target.classList.remove("is-error");
   } catch (_error) {

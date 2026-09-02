@@ -8,6 +8,7 @@ from django.views.decorators.http import require_GET
 from app.models import Profile
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.weather_service import (
+    dashboard_weather_from_context,
     delete_weather_location,
     fetch_weather_map_tile,
     get_location_suggestions,
@@ -75,6 +76,20 @@ def weather_suggestions(request):
         return disabled_feature_response(request, "weather", json_response=True)
     query = request.GET.get("q", "")
     return JsonResponse({"results": get_location_suggestions(query)})
+
+
+@login_required
+@require_GET
+def dashboard_weather(request):
+    if not feature_enabled("weather"):
+        return disabled_feature_response(request, "weather", json_response=True)
+
+    weather_context = get_weather_context({}, user=request.user)
+    response = JsonResponse(
+        {"ok": True, "weather": dashboard_weather_from_context(weather_context)}
+    )
+    response["Cache-Control"] = "private, no-store"
+    return response
 
 
 @login_required

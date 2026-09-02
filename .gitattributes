@@ -1,0 +1,2 @@
+# Vite output can contain meaningful trailing spaces inside minified template literals.
+app/static/js/bundles/chunks/*.js -whitespace

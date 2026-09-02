@@ -3,7 +3,6 @@ from django.db import OperationalError, ProgrammingError
 
 from app.models import Profile, UserNotification
 from app.services.notification_preferences import CHANNEL_INBOX, enabled_notification_kinds
-from app.services.notifications import materialize_due_user_notifications
 from app.services.system_settings import feature_flags, get_system_settings
 
 
@@ -65,11 +64,6 @@ def system_settings(request):
     unread_notification_count = 0
     if request.user.is_authenticated:
         try:
-            materialize_due_user_notifications(
-                user=request.user,
-                include_reminders=flags.get("calendar_reminders", False),
-                include_tasks=flags.get("tasks", False),
-            )
             unread_notification_count = UserNotification.objects.filter(
                 recipient=request.user,
                 kind__in=enabled_notification_kinds(request.user, CHANNEL_INBOX),
