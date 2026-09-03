@@ -5721,6 +5721,7 @@ class DashboardCustomizationTests(TestCase):
             "weather",
             "tasks",
             "notifications",
+            "stats",
         ]
         self.profile.dashboard_layout = self._layout(order=order)
         self.profile.save(update_fields=["dashboard_layout"])
@@ -5848,6 +5849,7 @@ class DashboardCustomizationTests(TestCase):
                 "welcome",
                 "tasks",
                 "notifications",
+                "stats",
             ],
             hidden=["clock", "weather"],
             wide=["recent_tools", "weather"],
@@ -6005,6 +6007,70 @@ class DashboardNotificationWidgetTests(TestCase):
         self.assertContains(response, "Neueste Hinweise")
         self.assertNotContains(response, "Heutige Aufgaben")
         self.assertFalse(response.context["dashboard_tasks_enabled"])
+
+
+class DashboardStatsWidgetTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="mira@example.com",
+            email="mira@example.com",
+            password="secret-12345",
+        )
+        Profile.objects.create(user=self.user, display_name="Mira")
+
+    def _login(self):
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+    def test_dashboard_shows_stat_tiles_for_enabled_features(self):
+        now = timezone.now()
+        Task.objects.create(user=self.user, title="Erledigt", is_done=True)
+        Task.objects.create(user=self.user, title="Offen")
+        Note.objects.create(owner=self.user, title="Diese Woche bearbeitet")
+        CalendarEvent.objects.create(
+            user=self.user,
+            title="Bald",
+            start_at=now + timedelta(days=2),
+            end_at=now + timedelta(days=2, hours=1),
+        )
+        VacationYear.objects.create(user=self.user, year=now.year, allowance_days=Decimal("30"))
+        self._login()
+
+        response = self.client.get("/home/")
+
+        self.assertContains(response, "Statistik")
+        stats_by_label = {tile["label"]: tile["value"] for tile in response.context["dashboard_stats"]}
+        self.assertEqual(stats_by_label["Erledigt (7 Tage)"], "1")
+        self.assertEqual(stats_by_label["Offene Aufgaben"], "1")
+        self.assertEqual(stats_by_label["Notizen (7 Tage)"], "1")
+        self.assertEqual(stats_by_label["Termine (7 Tage)"], "1")
+        self.assertEqual(stats_by_label[f"Resturlaub {now.year}"], "30 Tage")
+
+    def test_dashboard_omits_tiles_for_disabled_features_and_unconfigured_vacation_year(self):
+        SystemSettings.objects.create(tasks_enabled=False, notes_enabled=False)
+        self._login()
+
+        response = self.client.get("/home/")
+
+        labels = {tile["label"] for tile in response.context["dashboard_stats"]}
+        self.assertNotIn("Erledigt (7 Tage)", labels)
+        self.assertNotIn("Offene Aufgaben", labels)
+        self.assertNotIn("Notizen (7 Tage)", labels)
+        self.assertIn("Termine (7 Tage)", labels)
+        self.assertFalse(any(label.startswith("Resturlaub") for label in labels))
+
+    def test_dashboard_skips_hidden_stats_widget_queries(self):
+        layout = default_dashboard_layout()
+        layout["hidden"] = ["stats"]
+        self.user.profile.dashboard_layout = layout
+        self.user.profile.save(update_fields=["dashboard_layout"])
+        self._login()
+
+        with patch("app.view_models._dashboard_stats") as dashboard_stats:
+            response = self.client.get("/home/")
+
+        self.assertEqual(response.status_code, 200)
+        dashboard_stats.assert_not_called()
+        self.assertEqual(response.context["dashboard_stats"], [])
 
 
 class AdministrationFeatureFlagTests(TestCase):

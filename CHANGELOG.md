@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Add a "Statistik" dashboard widget summarizing weekly task/note activity, upcoming events, and
+  remaining vacation days.
 - Add `ruff` (Python) and ESLint/Prettier (JavaScript) linting and formatting, enforced in CI.
 - Extend the service worker to cache visited pages in a separate `PAGES_CACHE`, so previously
   viewed pages (not just the offline shell) still open without a network connection; the cache
