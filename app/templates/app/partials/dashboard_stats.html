@@ -1,10 +1,25 @@
 <div class="panel-title">
     <i class="fa-solid fa-chart-simple"></i>
     <h2>Statistik</h2>
+    {% if dashboard_stats %}
+    <div class="stat-period-toggle" role="tablist" aria-label="Zeitraum">
+        <button type="button" class="stat-period-toggle__button is-active" data-stats-period-toggle="week" role="tab" aria-selected="true">Woche</button>
+        <button type="button" class="stat-period-toggle__button" data-stats-period-toggle="month" role="tab" aria-selected="false">Monat</button>
+    </div>
+    {% endif %}
 </div>
 {% if dashboard_stats %}
-<div class="stat-grid">
-    {% for tile in dashboard_stats %}
+<div class="stat-grid" data-stats-panel="week">
+    {% for tile in dashboard_stats.week %}
+    <a class="stat-tile" href="{% url tile.url_name %}">
+        <i class="fa-solid {{ tile.icon }}" aria-hidden="true"></i>
+        <strong>{{ tile.value }}</strong>
+        <span>{{ tile.label }}</span>
+    </a>
+    {% endfor %}
+</div>
+<div class="stat-grid" data-stats-panel="month" hidden>
+    {% for tile in dashboard_stats.month %}
     <a class="stat-tile" href="{% url tile.url_name %}">
         <i class="fa-solid {{ tile.icon }}" aria-hidden="true"></i>
         <strong>{{ tile.value }}</strong>

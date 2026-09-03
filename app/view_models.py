@@ -71,7 +71,7 @@ def get_dashboard_context(user=None):
         if flags["tasks"] and user and "notifications" in visible_widget_ids
         else []
     )
-    dashboard_stats = _dashboard_stats(user, now, flags) if user and "stats" in visible_widget_ids else []
+    dashboard_stats = _dashboard_stats(user, now, flags) if user and "stats" in visible_widget_ids else {}
 
     return {
         "active_page": "home",
@@ -169,20 +169,35 @@ def _dashboard_new_note_share_count(user):
     ).count()
 
 
+DASHBOARD_STATS_PERIODS = ("week", "month")
+
+
 def _dashboard_stats(user, now, flags):
-    week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    return {period: _dashboard_stat_tiles(user, now, flags, period) for period in DASHBOARD_STATS_PERIODS}
+
+
+def _dashboard_stat_tiles(user, now, flags, period):
+    if period == "month":
+        period_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        lookahead_days = 30
+        period_label = "Monat"
+    else:
+        period_start = (now - timedelta(days=now.weekday())).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        lookahead_days = 7
+        period_label = "Woche"
+
     tiles = []
 
     if flags["tasks"]:
-        tasks_done_this_week = Task.objects.filter(
-            user=user, is_done=True, updated_at__gte=week_start
-        ).count()
+        tasks_done = Task.objects.filter(user=user, is_done=True, updated_at__gte=period_start).count()
         open_tasks = Task.objects.filter(user=user, is_done=False).count()
         tiles.append(
             {
                 "icon": "fa-check-double",
-                "label": "Erledigt (7 Tage)",
-                "value": str(tasks_done_this_week),
+                "label": f"Erledigt ({period_label})",
+                "value": str(tasks_done),
                 "url_name": "tasks",
             }
         )
@@ -196,27 +211,27 @@ def _dashboard_stats(user, now, flags):
         )
 
     if flags["notes"]:
-        notes_this_week = Note.objects.filter(
-            owner=user, deleted_at__isnull=True, updated_at__gte=week_start
+        notes_count = Note.objects.filter(
+            owner=user, deleted_at__isnull=True, updated_at__gte=period_start
         ).count()
         tiles.append(
             {
                 "icon": "fa-note-sticky",
-                "label": "Notizen (7 Tage)",
-                "value": str(notes_this_week),
+                "label": f"Notizen ({period_label})",
+                "value": str(notes_count),
                 "url_name": "notes",
             }
         )
 
     upcoming_event_count = (
         _calendar_visible_events_query(user)
-        .filter(start_at__gte=now, start_at__lte=now + timedelta(days=7))
+        .filter(start_at__gte=now, start_at__lte=now + timedelta(days=lookahead_days))
         .count()
     )
     tiles.append(
         {
             "icon": "fa-calendar-week",
-            "label": "Termine (7 Tage)",
+            "label": f"Termine ({period_label})",
             "value": str(upcoming_event_count),
             "url_name": "calendar",
         }

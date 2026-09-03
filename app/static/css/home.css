@@ -624,6 +624,39 @@
   font-size: 0.85rem;
 }
 
+.stat-period-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 3px;
+  background: rgba(255, 255, 255, 0.34);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: 999px;
+}
+
+.stat-period-toggle__button {
+  padding: 5px 14px;
+  color: var(--color-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: color 160ms ease, background 160ms ease;
+}
+
+.stat-period-toggle__button:hover {
+  color: var(--color-heading);
+}
+
+.stat-period-toggle__button.is-active {
+  color: var(--color-heading);
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow: var(--shadow-soft);
+}
+
 .notice-list {
   margin: 14px -8px 0;
   padding: 0;
@@ -800,6 +833,24 @@
 [data-theme="dark"] .tool-tile span,
 [data-theme="dark"] .stat-tile span {
   color: rgba(255, 248, 237, 0.58);
+}
+
+[data-theme="dark"] .stat-period-toggle {
+  background: rgba(255, 248, 237, 0.08);
+  border-color: rgba(255, 248, 237, 0.10);
+}
+
+[data-theme="dark"] .stat-period-toggle__button {
+  color: rgba(255, 248, 237, 0.58);
+}
+
+[data-theme="dark"] .stat-period-toggle__button:hover {
+  color: rgba(255, 248, 237, 0.86);
+}
+
+[data-theme="dark"] .stat-period-toggle__button.is-active {
+  color: rgba(255, 248, 237, 0.92);
+  background: rgba(255, 248, 237, 0.18);
 }
 
 @media (min-width: 1100px) {

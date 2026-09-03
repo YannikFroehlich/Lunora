@@ -305,6 +305,34 @@
     });
   }
 
+  function initDashboardStatsPeriodToggle() {
+    const widget = document.querySelector('[data-dashboard-widget][data-widget-id="stats"]');
+    if (!widget) {
+      return;
+    }
+
+    const toggleButtons = Array.from(widget.querySelectorAll("[data-stats-period-toggle]"));
+    const panels = Array.from(widget.querySelectorAll("[data-stats-panel]"));
+    if (!toggleButtons.length || !panels.length) {
+      return;
+    }
+
+    function activatePeriod(period) {
+      toggleButtons.forEach((button) => {
+        const isActive = button.dataset.statsPeriodToggle === period;
+        button.classList.toggle("is-active", isActive);
+        button.setAttribute("aria-selected", String(isActive));
+      });
+      panels.forEach((panel) => {
+        panel.hidden = panel.dataset.statsPanel !== period;
+      });
+    }
+
+    toggleButtons.forEach((button) => {
+      button.addEventListener("click", () => activatePeriod(button.dataset.statsPeriodToggle));
+    });
+  }
+
   function initDashboardCustomizer() {
     const customizer = document.querySelector("[data-dashboard-customizer]");
     const grid = document.querySelector("[data-dashboard-grid]");
@@ -614,5 +642,6 @@
 
   initUnreadMessagesBadge();
   initDashboardWeather();
+  initDashboardStatsPeriodToggle();
   initDashboardCustomizer();
 })();

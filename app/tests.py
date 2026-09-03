@@ -6038,12 +6038,20 @@ class DashboardStatsWidgetTests(TestCase):
         response = self.client.get("/home/")
 
         self.assertContains(response, "Statistik")
-        stats_by_label = {tile["label"]: tile["value"] for tile in response.context["dashboard_stats"]}
-        self.assertEqual(stats_by_label["Erledigt (7 Tage)"], "1")
-        self.assertEqual(stats_by_label["Offene Aufgaben"], "1")
-        self.assertEqual(stats_by_label["Notizen (7 Tage)"], "1")
-        self.assertEqual(stats_by_label["Termine (7 Tage)"], "1")
-        self.assertEqual(stats_by_label[f"Resturlaub {now.year}"], "30 Tage")
+        dashboard_stats = response.context["dashboard_stats"]
+        week_by_label = {tile["label"]: tile["value"] for tile in dashboard_stats["week"]}
+        self.assertEqual(week_by_label["Erledigt (Woche)"], "1")
+        self.assertEqual(week_by_label["Offene Aufgaben"], "1")
+        self.assertEqual(week_by_label["Notizen (Woche)"], "1")
+        self.assertEqual(week_by_label["Termine (Woche)"], "1")
+        self.assertEqual(week_by_label[f"Resturlaub {now.year}"], "30 Tage")
+
+        month_by_label = {tile["label"]: tile["value"] for tile in dashboard_stats["month"]}
+        self.assertEqual(month_by_label["Erledigt (Monat)"], "1")
+        self.assertEqual(month_by_label["Offene Aufgaben"], "1")
+        self.assertEqual(month_by_label["Notizen (Monat)"], "1")
+        self.assertEqual(month_by_label["Termine (Monat)"], "1")
+        self.assertEqual(month_by_label[f"Resturlaub {now.year}"], "30 Tage")
 
     def test_dashboard_omits_tiles_for_disabled_features_and_unconfigured_vacation_year(self):
         SystemSettings.objects.create(tasks_enabled=False, notes_enabled=False)
@@ -6051,12 +6059,40 @@ class DashboardStatsWidgetTests(TestCase):
 
         response = self.client.get("/home/")
 
-        labels = {tile["label"] for tile in response.context["dashboard_stats"]}
-        self.assertNotIn("Erledigt (7 Tage)", labels)
-        self.assertNotIn("Offene Aufgaben", labels)
-        self.assertNotIn("Notizen (7 Tage)", labels)
-        self.assertIn("Termine (7 Tage)", labels)
-        self.assertFalse(any(label.startswith("Resturlaub") for label in labels))
+        for period, done_label, notes_label, events_label in (
+            ("week", "Erledigt (Woche)", "Notizen (Woche)", "Termine (Woche)"),
+            ("month", "Erledigt (Monat)", "Notizen (Monat)", "Termine (Monat)"),
+        ):
+            labels = {tile["label"] for tile in response.context["dashboard_stats"][period]}
+            self.assertNotIn(done_label, labels)
+            self.assertNotIn("Offene Aufgaben", labels)
+            self.assertNotIn(notes_label, labels)
+            self.assertIn(events_label, labels)
+            self.assertFalse(any(label.startswith("Resturlaub") for label in labels))
+
+    def test_dashboard_stat_tiles_distinguish_week_and_month_activity(self):
+        now = timezone.now()
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+        if week_start <= month_start:
+            self.skipTest("Wochenstart fällt mit dem Monatsstart zusammen.")
+
+        earlier_this_month = week_start - timedelta(days=1)
+        task = Task.objects.create(user=self.user, title="Letzte Woche erledigt", is_done=True)
+        Task.objects.filter(pk=task.pk).update(updated_at=earlier_this_month)
+        self._login()
+
+        response = self.client.get("/home/")
+
+        dashboard_stats = response.context["dashboard_stats"]
+        week_value = next(
+            tile["value"] for tile in dashboard_stats["week"] if tile["label"] == "Erledigt (Woche)"
+        )
+        month_value = next(
+            tile["value"] for tile in dashboard_stats["month"] if tile["label"] == "Erledigt (Monat)"
+        )
+        self.assertEqual(week_value, "0")
+        self.assertEqual(month_value, "1")
 
     def test_dashboard_skips_hidden_stats_widget_queries(self):
         layout = default_dashboard_layout()
@@ -6070,7 +6106,7 @@ class DashboardStatsWidgetTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         dashboard_stats.assert_not_called()
-        self.assertEqual(response.context["dashboard_stats"], [])
+        self.assertEqual(response.context["dashboard_stats"], {})
 
 
 class AdministrationFeatureFlagTests(TestCase):
