@@ -4,7 +4,7 @@ All notable changes to Lunora are documented here, newest first. This project do
 versioned releases, so entries are grouped by date instead of a version number. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/).
 
-## Unreleased
+## 2026-09-03
 
 - Add a "Statistik" dashboard widget summarizing weekly task/note activity, upcoming events, and
   remaining vacation days.
