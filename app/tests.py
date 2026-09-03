@@ -8431,6 +8431,18 @@ class VacationPlannerTests(TestCase):
         self.assertEqual(self.vacation_year.allowance_days, Decimal("3.0"))
         self.assertContains(response, "Das Urlaubsjahr konnte nicht gespeichert werden.")
 
+    def test_vacation_year_save_view_rejects_negative_allowance(self):
+        response = self.client.post(
+            "/vacation-planner/year/",
+            {"year": "2026", "allowance_days": "-5", "subdivision": "NW"},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.vacation_year.refresh_from_db()
+        self.assertEqual(self.vacation_year.allowance_days, Decimal("3.0"))
+        self.assertContains(response, "Das Urlaubsjahr konnte nicht gespeichert werden.")
+
     def test_custom_holiday_save_view_creates_half_day_holiday(self):
         response = self.client.post(
             "/vacation-planner/holiday/save/",
@@ -8574,6 +8586,29 @@ class VacationPlannerTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         self.assertFalse(VacationPeriod.objects.filter(user=self.user, start_date=date(2027, 1, 4)).exists())
         self.assertContains(response, "Bitte bestätige zuerst die Urlaubsjahre: 2027.")
+
+    def test_vacation_period_save_view_blocks_overlapping_period(self):
+        VacationPeriod.objects.create(
+            user=self.user,
+            name=VacationPeriod.TARIFURLAUB,
+            start_date=date(2026, 3, 2),
+            end_date=date(2026, 3, 4),
+        )
+
+        response = self.client.post(
+            "/vacation-planner/period/save/",
+            {
+                "year": "2026",
+                "name": VacationPeriod.SONDERURLAUB,
+                "start_date": "2026-03-03",
+                "end_date": "2026-03-05",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertFalse(VacationPeriod.objects.filter(user=self.user, start_date=date(2026, 3, 3)).exists())
+        self.assertContains(response, "Der Zeitraum überschneidet sich mit: Tarifurlaub.")
 
     def test_vacation_period_save_view_updates_existing_period(self):
         period = VacationPeriod.objects.create(
