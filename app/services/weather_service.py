@@ -62,6 +62,31 @@ def get_weather_context(params=None, user=None):
     return _build_context_from_api(current, forecast, fallback, location)
 
 
+def dashboard_weather_from_context(weather_context):
+    """Reduce the full weather context to the data needed by the dashboard widget."""
+    current = weather_context.get("current", {})
+    daily_forecast = weather_context.get("daily_forecast") or []
+    tomorrow = daily_forecast[0] if daily_forecast else {}
+
+    return {
+        "today": {
+            "city": current.get("city", "Bünde"),
+            "temperature": current.get("temperature", 24),
+            "feels_like": current.get("feels_like", current.get("temperature", 24)),
+            "description": current.get("description", "Teilweise bewölkt"),
+            "icon": current.get("icon", "fa-cloud-sun"),
+        },
+        "tomorrow": {
+            "day": tomorrow.get("day", "Morgen"),
+            "high": tomorrow.get("high", current.get("high", current.get("temperature", 24))),
+            "low": tomorrow.get("low", current.get("low", current.get("temperature", 18))),
+            "rain": tomorrow.get("rain", 10),
+            "description": tomorrow.get("description", "Teilweise bewölkt"),
+            "icon": tomorrow.get("icon", "fa-cloud-sun"),
+        },
+    }
+
+
 def get_location_suggestions(query, limit=5):
     """Return city suggestions from OpenWeather Geocoding or local demo data."""
     clean_query = query.strip()

@@ -217,6 +217,94 @@
     }
   }
 
+  function initDashboardWeather() {
+    const widget = document.querySelector('[data-dashboard-widget][data-widget-id="weather"]');
+    if (!widget) {
+      return;
+    }
+
+    const status = widget.querySelector("[data-dashboard-weather-status]");
+    const setText = (selector, value, suffix = "") => {
+      const element = widget.querySelector(selector);
+      if (element && value !== undefined && value !== null) {
+        element.textContent = `${value}${suffix}`;
+      }
+    };
+    const setIcon = (selector, icon) => {
+      const element = widget.querySelector(selector);
+      if (element && /^fa-[a-z0-9-]+$/.test(icon || "")) {
+        element.className = `fa-solid ${icon} weather-icon`;
+      }
+    };
+
+    async function loadWeather() {
+      const hiddenByUser = widget.hidden || widget.classList.contains("is-hidden-by-user");
+      const loadedAt = Number(widget.dataset.dashboardWeatherLoadedAt || 0);
+      const isFresh = loadedAt && Date.now() - loadedAt < 10 * 60 * 1000;
+      if (
+        hiddenByUser ||
+        isFresh ||
+        widget.dataset.dashboardWeatherState === "loading" ||
+        !widget.dataset.dashboardWeatherUrl
+      ) {
+        return;
+      }
+
+      widget.dataset.dashboardWeatherState = "loading";
+      widget.setAttribute("aria-busy", "true");
+      try {
+        const response = await fetch(widget.dataset.dashboardWeatherUrl, {
+          method: "GET",
+          credentials: "same-origin",
+          headers: {
+            "X-Requested-With": "XMLHttpRequest",
+            Accept: "application/json",
+          },
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok || !data.weather) {
+          throw new Error("Wetterdaten konnten nicht geladen werden.");
+        }
+
+        const today = data.weather.today || {};
+        const tomorrow = data.weather.tomorrow || {};
+        setIcon("[data-dashboard-weather-today-icon]", today.icon);
+        setText("[data-dashboard-weather-today-temperature]", today.temperature, "°");
+        setText("[data-dashboard-weather-today-description]", today.description);
+        setText("[data-dashboard-weather-today-feels-like]", today.feels_like);
+        setText("[data-dashboard-weather-tomorrow-day]", tomorrow.day);
+        setIcon("[data-dashboard-weather-tomorrow-icon]", tomorrow.icon);
+        setText("[data-dashboard-weather-tomorrow-high]", tomorrow.high, "°");
+        setText("[data-dashboard-weather-tomorrow-description]", tomorrow.description);
+        setText("[data-dashboard-weather-tomorrow-low]", tomorrow.low);
+        setText("[data-dashboard-weather-tomorrow-rain]", tomorrow.rain);
+
+        widget.dataset.dashboardWeatherState = "loaded";
+        widget.dataset.dashboardWeatherLoadedAt = Date.now().toString();
+        if (status) {
+          status.textContent = "Wetterdaten aktualisiert.";
+        }
+      } catch (_error) {
+        widget.dataset.dashboardWeatherState = "error";
+        setText("[data-dashboard-weather-today-description]", "Wetter derzeit nicht verfügbar.");
+        setText("[data-dashboard-weather-tomorrow-description]", "Vorhersage derzeit nicht verfügbar.");
+        if (status) {
+          status.textContent = "Wetterdaten konnten nicht geladen werden.";
+        }
+      } finally {
+        widget.removeAttribute("aria-busy");
+      }
+    }
+
+    loadWeather();
+    document.addEventListener("dashboard:layout-saved", loadWeather);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) {
+        loadWeather();
+      }
+    });
+  }
+
   function initDashboardCustomizer() {
     const customizer = document.querySelector("[data-dashboard-customizer]");
     const grid = document.querySelector("[data-dashboard-grid]");
@@ -419,6 +507,7 @@
         savedLayout = cloneLayout(data.layout);
         draftLayout = cloneLayout(data.layout);
         setEditing(false);
+        document.dispatchEvent(new CustomEvent("dashboard:layout-saved"));
         setAnnouncement("Dashboard gespeichert.");
       } catch (error) {
         setAnnouncement(error.message || "Dashboard konnte nicht gespeichert werden.");
@@ -524,5 +613,6 @@
   }
 
   initUnreadMessagesBadge();
+  initDashboardWeather();
   initDashboardCustomizer();
 })();

@@ -1,16 +1,17 @@
 <article class="weather-overview-card">
     <span class="panel-kicker"><i class="fa-regular fa-sun"></i> Heute</span>
     <div class="weather-row">
-        <i class="fa-solid {{ dashboard_weather.today.icon }} weather-icon"></i>
-        <strong>{{ dashboard_weather.today.temperature }}°</strong>
-        <span>{{ dashboard_weather.today.description }}<br><small>Gefühlt {{ dashboard_weather.today.feels_like }}°</small></span>
+        <i class="fa-solid {{ dashboard_weather.today.icon }} weather-icon" data-dashboard-weather-today-icon></i>
+        <strong data-dashboard-weather-today-temperature>{{ dashboard_weather.today.temperature }}°</strong>
+        <span><span data-dashboard-weather-today-description>{{ dashboard_weather.today.description }}</span><br><small>Gefühlt <span data-dashboard-weather-today-feels-like>{{ dashboard_weather.today.feels_like }}</span>°</small></span>
     </div>
 </article>
 <article class="weather-forecast-block">
-    <span class="panel-kicker"><i class="fa-solid fa-seedling"></i> Morgen</span>
+    <span class="panel-kicker"><i class="fa-solid fa-seedling"></i> <span data-dashboard-weather-tomorrow-day>{{ dashboard_weather.tomorrow.day }}</span></span>
     <div class="weather-row weather-row-compact">
-        <i class="fa-solid {{ dashboard_weather.tomorrow.icon }} weather-icon"></i>
-        <strong>{{ dashboard_weather.tomorrow.high }}°</strong>
-        <span>{{ dashboard_weather.tomorrow.description }}<br><small>{{ dashboard_weather.tomorrow.low }}° nachts · {{ dashboard_weather.tomorrow.rain }} % Regen</small></span>
+        <i class="fa-solid {{ dashboard_weather.tomorrow.icon }} weather-icon" data-dashboard-weather-tomorrow-icon></i>
+        <strong data-dashboard-weather-tomorrow-high>{{ dashboard_weather.tomorrow.high }}°</strong>
+        <span><span data-dashboard-weather-tomorrow-description>{{ dashboard_weather.tomorrow.description }}</span><br><small><span data-dashboard-weather-tomorrow-low>{{ dashboard_weather.tomorrow.low }}</span>° nachts · <span data-dashboard-weather-tomorrow-rain>{{ dashboard_weather.tomorrow.rain }}</span> % Regen</small></span>
     </div>
 </article>
+<p class="sr-only" aria-live="polite" aria-atomic="true" data-dashboard-weather-status></p>

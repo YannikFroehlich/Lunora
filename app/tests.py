@@ -1,5 +1,6 @@
 import hashlib
 import json
+import mimetypes
 import os
 import re
 import sys
@@ -214,6 +215,9 @@ class WeatherDescriptionTests(SimpleTestCase):
 
 
 class StaticVersioningTests(SimpleTestCase):
+    def test_javascript_assets_use_module_compatible_content_type(self):
+        self.assertEqual(mimetypes.guess_type("notes.js")[0], "application/javascript")
+
     def test_versioned_static_uses_file_content_hash(self):
         static_path = BASE_DIR / "app" / "static" / "css" / "base.css"
         expected_version = hashlib.sha256(static_path.read_bytes()).hexdigest()[:12]
@@ -221,6 +225,60 @@ class StaticVersioningTests(SimpleTestCase):
         self.assertEqual(
             versioned_static("css/base.css"),
             f"/static/css/base.css?v={expected_version}",
+        )
+
+    def test_nginx_immutably_caches_only_versioned_static_assets(self):
+        nginx_config = (BASE_DIR / "deploy" / "nginx-lunora.conf").read_text(encoding="utf-8")
+
+        self.assertIn("map $uri $lunora_static_path_cache_control", nginx_config)
+        self.assertIn(
+            "~^/static/js/bundles/chunks/[a-z0-9-]+-[A-Za-z0-9_-]{8,}\\.js$",
+            nginx_config,
+        )
+        self.assertIn("map $arg_v $lunora_static_cache_control", nginx_config)
+        self.assertIn('default "public, max-age=31536000, immutable";', nginx_config)
+        self.assertIn('default "public, max-age=3600";', nginx_config)
+        self.assertIn('""      $lunora_static_path_cache_control;', nginx_config)
+        self.assertIn(
+            "add_header Cache-Control $lunora_static_cache_control always;",
+            nginx_config,
+        )
+        self.assertIn('add_header Cache-Control "public, max-age=3600" always;', nginx_config)
+
+    def test_css_subresources_are_explicitly_versioned(self):
+        base_css = (BASE_DIR / "app" / "static" / "css" / "base.css").read_text(encoding="utf-8")
+        fontawesome_css = (
+            BASE_DIR / "app" / "static" / "vendor" / "fontawesome" / "css" / "all.min.css"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("inter-latin-variable.woff2?v=inter-1", base_css)
+        self.assertIn("lunora_background.webp?v=brand-3", base_css)
+        self.assertIn("fa-solid-900.woff2?v=fontawesome-7.2.0", fontawesome_css)
+        self.assertIn("fa-regular-400.woff2?v=fontawesome-7.2.0", fontawesome_css)
+        self.assertIn("fa-brands-400.woff2?v=fontawesome-7.2.0", fontawesome_css)
+
+    def test_notes_editor_uses_split_es_module_bundle(self):
+        bundle_dir = BASE_DIR / "app" / "static" / "js" / "bundles"
+        entry_path = bundle_dir / "notes.js"
+        entry_source = entry_path.read_text(encoding="utf-8")
+        chunk_paths = list((bundle_dir / "chunks").glob("*.js"))
+        chunk_names = [path.name for path in chunk_paths]
+
+        self.assertLess(entry_path.stat().st_size, 100_000)
+        self.assertTrue(any(name.startswith("editor-core-") for name in chunk_names))
+        self.assertTrue(any(name.startswith("editor-extensions-") for name in chunk_names))
+        self.assertTrue(any(name.startswith("syntax-highlighting-") for name in chunk_names))
+        self.assertTrue(any(name.startswith("math-renderer-") for name in chunk_names))
+        self.assertLess(max(path.stat().st_size for path in chunk_paths), 500_000)
+        self.assertRegex(
+            entry_source,
+            r'import\("\./chunks/math-renderer-[A-Za-z0-9_-]+\.js"\)',
+        )
+
+        notes_template = (BASE_DIR / "app" / "templates" / "app" / "notes.html").read_text(encoding="utf-8")
+        self.assertIn(
+            '<script src="{% versioned_static \'js/bundles/notes.js\' %}" type="module"></script>',
+            notes_template,
         )
 
 
@@ -472,6 +530,17 @@ class TurnstileValidationTests(SimpleTestCase):
 
 @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
 class SettingsProfileTests(TestCase):
+    def test_base_template_self_hosts_fonts_without_blocking_icon_css(self):
+        response = self.client.get("/login/")
+        content = response.content.decode()
+        icon_stylesheet = versioned_static("vendor/fontawesome/css/all.min.css")
+
+        self.assertNotIn("fonts.googleapis.com", content)
+        self.assertNotIn("cdn.jsdelivr.net", content)
+        self.assertIn("/static/vendor/inter/inter-latin-variable.woff2", content)
+        self.assertIn(f'rel="preload" href="{icon_stylesheet}" as="style"', content)
+        self.assertIn(f'<noscript><link rel="stylesheet" href="{icon_stylesheet}">', content)
+
     def test_settings_page_requires_login(self):
         response = self.client.get("/settings/")
 
@@ -4017,6 +4086,77 @@ class WeatherMapTests(TestCase):
 
         self.assertRedirects(response, "/login/?next=/weather/point/")
 
+    def test_dashboard_weather_requires_login(self):
+        response = self.client.get("/home/weather/")
+
+        self.assertRedirects(response, "/login/?next=/home/weather/")
+
+    def test_dashboard_weather_returns_personalized_summary(self):
+        self.client.login(username="map@example.com", password="secret-12345")
+        weather_context = {
+            "current": {
+                "city": "Berlin",
+                "temperature": 18,
+                "feels_like": 17,
+                "description": "Leicht bewölkt",
+                "icon": "fa-cloud-sun",
+            },
+            "daily_forecast": [
+                {
+                    "day": "Donnerstag",
+                    "high": 21,
+                    "low": 12,
+                    "rain": 25,
+                    "description": "Bewölkt",
+                    "icon": "fa-cloud",
+                }
+            ],
+        }
+
+        with patch(
+            "app.views.weather_views.get_weather_context",
+            return_value=weather_context,
+        ) as weather_lookup:
+            response = self.client.get("/home/weather/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {
+                "ok": True,
+                "weather": {
+                    "today": {
+                        "city": "Berlin",
+                        "temperature": 18,
+                        "feels_like": 17,
+                        "description": "Leicht bewölkt",
+                        "icon": "fa-cloud-sun",
+                    },
+                    "tomorrow": {
+                        "day": "Donnerstag",
+                        "high": 21,
+                        "low": 12,
+                        "rain": 25,
+                        "description": "Bewölkt",
+                        "icon": "fa-cloud",
+                    },
+                },
+            },
+        )
+        self.assertEqual(response["Cache-Control"], "private, no-store")
+        weather_lookup.assert_called_once_with({}, user=self.user)
+
+    def test_dashboard_weather_respects_feature_flag(self):
+        SystemSettings.objects.create(weather_enabled=False)
+        self.client.login(username="map@example.com", password="secret-12345")
+
+        with patch("app.views.weather_views.get_weather_context") as weather_lookup:
+            response = self.client.get("/home/weather/")
+
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(response.json()["ok"])
+        weather_lookup.assert_not_called()
+
     @override_settings(WEATHER_API_KEY="")
     def test_weather_point_requires_api_key(self):
         self.client.login(username="map@example.com", password="secret-12345")
@@ -5558,6 +5698,19 @@ class DashboardCustomizationTests(TestCase):
             list(DASHBOARD_WIDGET_IDS),
         )
 
+    @override_settings(WEATHER_API_KEY="test-key")
+    def test_home_defers_weather_provider_requests_until_after_render(self):
+        self._login()
+
+        with patch("app.services.weather_service.urlopen") as provider_request:
+            response = self.client.get("/home/")
+
+        self.assertEqual(response.status_code, 200)
+        provider_request.assert_not_called()
+        self.assertContains(response, 'data-dashboard-weather-url="/home/weather/"')
+        self.assertContains(response, "Wetter wird geladen …")
+        self.assertContains(response, "Vorhersage wird geladen …")
+
     def test_home_renders_saved_order(self):
         order = [
             "clock",
@@ -5810,6 +5963,38 @@ class DashboardNotificationWidgetTests(TestCase):
         self.assertEqual(len(response.context["dashboard_notifications"]), 1)
         self.assertEqual(len(response.context["dashboard_today_tasks"]), 1)
         self.assertEqual(response.context["dashboard_today_tasks"][0]["title"], "Heute fällig")
+
+    def test_dashboard_does_not_materialize_due_notification_sources(self):
+        now = timezone.now()
+        Task.objects.create(user=self.user, title="Überfällige Aufgabe", due_at=now - timedelta(minutes=2))
+        CalendarReminder.objects.create(
+            user=self.user,
+            title="Überfällige Erinnerung",
+            due_at=now - timedelta(minutes=1),
+        )
+        self._login()
+
+        response = self.client.get("/home/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(UserNotification.objects.filter(recipient=self.user).exists())
+        self.assertEqual(response.context["unread_notification_count"], 0)
+        self.assertEqual(response.context["dashboard_notifications"], [])
+
+    def test_dashboard_skips_hidden_notification_widget_queries(self):
+        layout = default_dashboard_layout()
+        layout["hidden"] = ["notifications"]
+        self.user.profile.dashboard_layout = layout
+        self.user.profile.save(update_fields=["dashboard_layout"])
+        self._login()
+
+        with patch("app.view_models.dashboard_latest_notifications") as latest_notifications:
+            response = self.client.get("/home/")
+
+        self.assertEqual(response.status_code, 200)
+        latest_notifications.assert_not_called()
+        self.assertEqual(response.context["dashboard_notifications"], [])
+        self.assertEqual(response.context["dashboard_today_tasks"], [])
 
     def test_dashboard_hides_task_section_when_tasks_disabled(self):
         SystemSettings.objects.create(tasks_enabled=False)

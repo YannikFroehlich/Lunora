@@ -6,7 +6,7 @@ Lunora is a Django project with a single main app. The project package lives in 
 
 Request handlers live in the `app/views/` package, split by area (`auth_views.py`, `core_views.py`, `calendar_views.py`, `message_views.py`, `note_views.py`, `notification_views.py`, `weather_views.py`, `administration_views.py`, `tasks_views.py`, `vacation_planner_views.py`, `search_views.py`, `pwa_views.py`). `app/urls.py` imports the package as a namespace, so every new view must also be re-exported from `app/views/__init__.py` — both the import and `__all__` — or the URLconf will fail to load. Custom template tags live in `app/templatetags/`.
 
-Templates are under `app/templates/app/`; reusable page fragments, especially for live message updates, belong in `app/templates/app/partials/`. Static CSS and JavaScript live in `app/static/css/` and `app/static/js/`, usually with page-matched names such as `calendar.css`, `messages.css`, and `messages.js`. Image assets are under `app/static/img/`. The notes editor is the one bundled frontend: sources in `frontend/`, built by Vite into the committed bundle `app/static/js/bundles/notes.js`.
+Templates are under `app/templates/app/`; reusable page fragments, especially for live message updates, belong in `app/templates/app/partials/`. Static CSS and JavaScript live in `app/static/css/` and `app/static/js/`, usually with page-matched names such as `calendar.css`, `messages.css`, and `messages.js`. Image assets are under `app/static/img/`. The notes editor is the one bundled frontend: sources in `frontend/`, built by Vite as the committed ES-module entry `app/static/js/bundles/notes.js` plus content-hashed chunks under `app/static/js/bundles/chunks/`.
 
 User-uploaded profile media is served from `media/` during development and should not be treated as committed source. Private note attachments live under `private_media/` (`DJANGO_PRIVATE_MEDIA_ROOT`) and are never served directly. Database migrations belong in `app/migrations/`.
 
@@ -19,7 +19,7 @@ Current feature areas include authentication with e-mail-or-username login, prof
 - `python -m pip install -r requirements.txt`: install Python dependencies.
 - `python -m pip install -r requirements-dev.txt`: install Python dependencies plus `ruff` for linting/formatting.
 - `npm ci`: install the pinned frontend toolchain for the notes editor.
-- `npm run build`: rebuild `app/static/js/bundles/notes.js` from `frontend/`.
+- `npm run build`: rebuild `app/static/js/bundles/notes.js` and its hashed chunks from `frontend/`.
 - `python manage.py migrate`: apply database migrations to `db.sqlite3`.
 - `python manage.py runserver`: run the local Django development server.
 - `python manage.py check`: run Django's system checks.
@@ -42,9 +42,9 @@ User-facing strings are German; identifiers, comments, and commit messages are E
 
 For models, keep user-facing account data in `Profile`, calendar data in the calendar models, messaging data in the conversation/message models, note data in the `Note*` models, and global toggles in the singleton `SystemSettings` row. When changing a model, add a migration and keep data migrations small and explicit. After generating a migration, always run `python manage.py migrate` against the local development database and verify its applied status before handing off the change.
 
-For JavaScript, keep page-specific behavior in the matching file in `app/static/js/` and prefer progressive enhancement over duplicating server-rendered state. The notes editor is the exception: edit `frontend/`, then run `npm run build` and commit the regenerated bundle in the same change. Editor capabilities must also be allowed server-side in `app/services/note_content.py`, which re-validates every node, mark, and attribute of the submitted document.
+For JavaScript, keep page-specific behavior in the matching file in `app/static/js/` and prefer progressive enhancement over duplicating server-rendered state. The notes editor is the exception: edit `frontend/`, then run `npm run build` and commit both the regenerated entry and `app/static/js/bundles/chunks/` in the same change. Keep the entry as `type="module"`; KaTeX is deliberately loaded through a dynamic import, and syntax highlighting registers only the languages offered by the toolbar. Editor capabilities must also be allowed server-side in `app/services/note_content.py`, which re-validates every node, mark, and attribute of the submitted document.
 
-Every page template loads `static_versioning` (`{% load static static_versioning %}`) and links its own CSS/JS with `{% versioned_static %}` instead of `{% static %}`, so a content hash busts client and service-worker caches automatically — carry this over to any new page template.
+Every page template loads `static_versioning` (`{% load static static_versioning %}`) and links its own CSS/JS entry assets with `{% versioned_static %}` instead of `{% static %}`, so a content hash busts client and service-worker caches automatically. Vite-generated chunks are the exception because their filenames already contain a content hash. Nginx caches both query-versioned assets and hashed Vite chunks for one year with `immutable`; unversioned static files and public media remain at one hour. Add an explicit version query to static files referenced from CSS, because Django template tags cannot rewrite CSS `url(...)` values.
 
 New user-gated features should respect the flag system: guard the view with `feature_enabled(...)` and `disabled_feature_response(...)`, expose the flag through `app/context_processors.py` so navigation can hide it, and re-check it in `app/services/scheduled_tasks.py` if background work is involved.
 
@@ -180,8 +180,10 @@ The deployment script refuses a dirty production checkout, fast-forwards from `o
 installs pinned Python requirements, runs Django deployment checks, migrations and
 `collectstatic`, then restarts the web and single automation services. If environment
 variables or systemd unit files changed, install the updated files as described in
-`DEPLOYMENT.md`, reload systemd, and restart only the affected services. Make a fresh
-backup before risky schema or storage changes.
+`DEPLOYMENT.md`, reload systemd, and restart only the affected services. If
+`deploy/nginx-lunora.conf` changed, install it separately, run `sudo nginx -t`, and reload
+Nginx; the application deploy does not install host configuration. Make a fresh backup
+before risky schema or storage changes.
 
 ### Safe Post-Deployment Checks
 

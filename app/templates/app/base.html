@@ -22,10 +22,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
 
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.2.0/css/all.min.css">
+    <link rel="preload" href="{% static 'vendor/inter/inter-latin-variable.woff2' %}?v=inter-1" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="{% versioned_static 'vendor/fontawesome/css/all.min.css' %}" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link rel="stylesheet" href="{% versioned_static 'vendor/fontawesome/css/all.min.css' %}"></noscript>
 
     <script>
         // Apply the saved theme early to avoid a visible theme flash while loading.
