@@ -7095,6 +7095,94 @@ class NotesTests(TestCase):
         )
         self.assertEqual(response.status_code, 200, response.content)
 
+    def test_tiptap_table_rejects_oversized_grid(self):
+        note = self.create_note()
+        table_document = {
+            "type": "doc",
+            "content": [
+                {
+                    "type": "table",
+                    "content": [
+                        {
+                            "type": "tableRow",
+                            "content": [
+                                {
+                                    "type": "tableCell",
+                                    "attrs": {"colspan": 1, "rowspan": 1, "colwidth": None, "align": None},
+                                    "content": [{"type": "paragraph", "attrs": {"textAlign": None}}],
+                                }
+                            ],
+                        }
+                        for _ in range(21)
+                    ],
+                }
+            ],
+        }
+        response = self.client.patch(
+            f"/notes/api/{note.id}/",
+            data=json.dumps({"title": note.title, "document": table_document, "base_revision": 1}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+
+    def test_tiptap_table_rejects_invalid_cell_colspan(self):
+        note = self.create_note()
+        table_document = {
+            "type": "doc",
+            "content": [
+                {
+                    "type": "table",
+                    "content": [
+                        {
+                            "type": "tableRow",
+                            "content": [
+                                {
+                                    "type": "tableCell",
+                                    "attrs": {"colspan": 21, "rowspan": 1, "colwidth": None, "align": None},
+                                    "content": [{"type": "paragraph", "attrs": {"textAlign": None}}],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+        response = self.client.patch(
+            f"/notes/api/{note.id}/",
+            data=json.dumps({"title": note.title, "document": table_document, "base_revision": 1}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+
+    def test_tiptap_table_rejects_invalid_colwidth(self):
+        note = self.create_note()
+        table_document = {
+            "type": "doc",
+            "content": [
+                {
+                    "type": "table",
+                    "content": [
+                        {
+                            "type": "tableRow",
+                            "content": [
+                                {
+                                    "type": "tableCell",
+                                    "attrs": {"colspan": 1, "rowspan": 1, "colwidth": [10], "align": None},
+                                    "content": [{"type": "paragraph", "attrs": {"textAlign": None}}],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+        response = self.client.patch(
+            f"/notes/api/{note.id}/",
+            data=json.dumps({"title": note.title, "document": table_document, "base_revision": 1}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+
     def test_private_image_upload_requires_note_access(self):
         note = self.create_note()
         with TemporaryDirectory() as private_root, override_settings(PRIVATE_MEDIA_ROOT=private_root):
