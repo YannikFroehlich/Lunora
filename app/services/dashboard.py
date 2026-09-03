@@ -53,6 +53,12 @@ DASHBOARD_WIDGETS = (
         feature_flag="tasks",
     ),
     DashboardWidget(
+        id="stats",
+        label="Statistik",
+        template="app/partials/dashboard_stats.html",
+        class_name="notes-panel",
+    ),
+    DashboardWidget(
         id="quick_actions",
         label="Schnellzugriff",
         template="app/partials/dashboard_quick_actions.html",

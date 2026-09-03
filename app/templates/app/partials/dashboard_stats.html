@@ -1,0 +1,17 @@
+<div class="panel-title">
+    <i class="fa-solid fa-chart-simple"></i>
+    <h2>Statistik</h2>
+</div>
+{% if dashboard_stats %}
+<div class="stat-grid">
+    {% for tile in dashboard_stats %}
+    <a class="stat-tile" href="{% url tile.url_name %}">
+        <i class="fa-solid {{ tile.icon }}" aria-hidden="true"></i>
+        <strong>{{ tile.value }}</strong>
+        <span>{{ tile.label }}</span>
+    </a>
+    {% endfor %}
+</div>
+{% else %}
+<p class="empty-events">Noch keine Aktivität zum Anzeigen.</p>
+{% endif %}

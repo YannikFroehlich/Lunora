@@ -4,7 +4,15 @@ from datetime import datetime, time, timedelta
 from django.db.models import F, Q
 from django.utils import timezone
 
-from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, NoteShare, Task
+from app.models import (
+    CalendarEvent,
+    CalendarEventAttendee,
+    CalendarReminder,
+    Note,
+    NoteShare,
+    Task,
+    VacationYear,
+)
 from app.services.dashboard import (
     available_dashboard_widgets,
     dashboard_widgets_for_layout,
@@ -27,6 +35,7 @@ from app.services.user_preferences import (
     get_user_zoneinfo,
     localtime_for_user,
 )
+from app.services.vacation_planner import annual_summary
 
 
 def get_dashboard_context(user=None):
@@ -62,6 +71,7 @@ def get_dashboard_context(user=None):
         if flags["tasks"] and user and "notifications" in visible_widget_ids
         else []
     )
+    dashboard_stats = _dashboard_stats(user, now, flags) if user and "stats" in visible_widget_ids else []
 
     return {
         "active_page": "home",
@@ -85,6 +95,7 @@ def get_dashboard_context(user=None):
         "dashboard_tasks_enabled": flags["tasks"],
         "dashboard_notifications": dashboard_notifications,
         "dashboard_today_tasks": dashboard_today_open_tasks,
+        "dashboard_stats": dashboard_stats,
         "clock": {
             "time": format_user_time(now, user),
             "weekday": get_user_weekday_name(now, user),
@@ -156,6 +167,73 @@ def _dashboard_new_note_share_count(user):
     return NoteShare.objects.filter(
         user=user, first_opened_at__isnull=True, note__deleted_at__isnull=True
     ).count()
+
+
+def _dashboard_stats(user, now, flags):
+    week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    tiles = []
+
+    if flags["tasks"]:
+        tasks_done_this_week = Task.objects.filter(
+            user=user, is_done=True, updated_at__gte=week_start
+        ).count()
+        open_tasks = Task.objects.filter(user=user, is_done=False).count()
+        tiles.append(
+            {
+                "icon": "fa-check-double",
+                "label": "Erledigt (7 Tage)",
+                "value": str(tasks_done_this_week),
+                "url_name": "tasks",
+            }
+        )
+        tiles.append(
+            {
+                "icon": "fa-list-check",
+                "label": "Offene Aufgaben",
+                "value": str(open_tasks),
+                "url_name": "tasks",
+            }
+        )
+
+    if flags["notes"]:
+        notes_this_week = Note.objects.filter(
+            owner=user, deleted_at__isnull=True, updated_at__gte=week_start
+        ).count()
+        tiles.append(
+            {
+                "icon": "fa-note-sticky",
+                "label": "Notizen (7 Tage)",
+                "value": str(notes_this_week),
+                "url_name": "notes",
+            }
+        )
+
+    upcoming_event_count = (
+        _calendar_visible_events_query(user)
+        .filter(start_at__gte=now, start_at__lte=now + timedelta(days=7))
+        .count()
+    )
+    tiles.append(
+        {
+            "icon": "fa-calendar-week",
+            "label": "Termine (7 Tage)",
+            "value": str(upcoming_event_count),
+            "url_name": "calendar",
+        }
+    )
+
+    if flags["vacation_planner"] and VacationYear.objects.filter(user=user, year=now.year).exists():
+        remaining_label = annual_summary(user, now.year)["remaining_label"]
+        tiles.append(
+            {
+                "icon": "fa-umbrella-beach",
+                "label": f"Resturlaub {now.year}",
+                "value": f"{remaining_label} Tage",
+                "url_name": "vacation_planner",
+            }
+        )
+
+    return tiles
 
 
 def _dashboard_nav_tiles(user, unread_messages_total, new_note_shares, open_tasks_count, flags):
