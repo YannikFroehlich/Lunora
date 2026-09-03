@@ -85,9 +85,7 @@ def dashboard_weather(request):
         return disabled_feature_response(request, "weather", json_response=True)
 
     weather_context = get_weather_context({}, user=request.user)
-    response = JsonResponse(
-        {"ok": True, "weather": dashboard_weather_from_context(weather_context)}
-    )
+    response = JsonResponse({"ok": True, "weather": dashboard_weather_from_context(weather_context)})
     response["Cache-Control"] = "private, no-store"
     return response
 
