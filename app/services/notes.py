@@ -25,6 +25,7 @@ from django.db.models import (
 from django.utils import timezone
 
 from app.models import (
+    Conversation,
     Note,
     NoteActivityNotification,
     NoteAttachment,
@@ -36,6 +37,7 @@ from app.models import (
     NoteTemplate,
     NoteUserState,
     NoteVersion,
+    NoteViewerPresence,
 )
 from app.services.note_content import (
     NOTE_TEMPLATES,
@@ -71,6 +73,54 @@ def note_permission(note, user):
         return "owner"
     share = next((item for item in note.shares.all() if item.user_id == user.id), None)
     return share.role if share else None
+
+
+NOTE_PRESENCE_TTL_SECONDS = 40
+
+
+def _profile_image_url(user):
+    profile = getattr(user, "profile", None)
+    profile_image = getattr(profile, "profile_image", None)
+    if not profile_image:
+        return ""
+    try:
+        return profile_image.url
+    except ValueError:
+        return ""
+
+
+def list_note_presence(note, *, exclude_user=None):
+    accessible_user_ids = note_accessible_user_ids(note)
+    rows = NoteViewerPresence.objects.filter(
+        note=note, present_until__gte=timezone.now()
+    ).select_related("user", "user__profile")
+    if exclude_user is not None:
+        rows = rows.exclude(user_id=exclude_user.id)
+    return [
+        {
+            "user_id": row.user_id,
+            "name": display_name(row.user),
+            "initials": Conversation.initials_for_user(row.user),
+            "avatar_url": _profile_image_url(row.user),
+        }
+        for row in rows
+        if row.user_id in accessible_user_ids
+    ]
+
+
+def ping_note_presence(note, user):
+    now = timezone.now()
+    NoteViewerPresence.objects.update_or_create(
+        note=note,
+        user=user,
+        defaults={"present_until": now + timedelta(seconds=NOTE_PRESENCE_TTL_SECONDS)},
+    )
+    NoteViewerPresence.objects.filter(note=note, present_until__lt=now).delete()
+    return list_note_presence(note, exclude_user=user)
+
+
+def clear_note_presence(note, user):
+    NoteViewerPresence.objects.filter(note=note, user=user).delete()
 
 
 def can_edit_note(note, user):

@@ -6,8 +6,23 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Show a small avatar stack in the note editor header for other users who currently have the same
+  shared note open, updated via a lightweight polling heartbeat.
+- Automatically pick up a shared note's latest content when another user saves changes, without
+  requiring a manual reload; falls back to the existing conflict dialog instead of silently
+  discarding an unsaved local draft.
+- Automatically redirect a shared note's other viewers back to the notes overview if the owner
+  moves it to the trash, deletes it permanently, or revokes their share, instead of leaving them
+  stuck on a note they can no longer access.
+
+## 2026-09-03
+
 - Add a "Statistik" dashboard widget summarizing weekly task/note activity, upcoming events, and
   remaining vacation days.
+- Add a Woche/Monat period toggle to the dashboard "Statistik" widget.
+- Allow toggling a table's header row/column from the note editor's table context menu.
+- Reject saving an overlapping vacation period server-side, closing a gap where only the
+  client-side preview warned about overlaps.
 - Add `ruff` (Python) and ESLint/Prettier (JavaScript) linting and formatting, enforced in CI.
 - Extend the service worker to cache visited pages in a separate `PAGES_CACHE`, so previously
   viewed pages (not just the offline shell) still open without a network connection; the cache

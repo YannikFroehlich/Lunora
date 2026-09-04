@@ -48,6 +48,7 @@ from app.models import (
     NoteTemplate,
     NoteUserState,
     NoteVersion,
+    NoteViewerPresence,
     NotificationPreference,
     OfficialHoliday,
     Profile,
@@ -6038,12 +6039,20 @@ class DashboardStatsWidgetTests(TestCase):
         response = self.client.get("/home/")
 
         self.assertContains(response, "Statistik")
-        stats_by_label = {tile["label"]: tile["value"] for tile in response.context["dashboard_stats"]}
-        self.assertEqual(stats_by_label["Erledigt (7 Tage)"], "1")
-        self.assertEqual(stats_by_label["Offene Aufgaben"], "1")
-        self.assertEqual(stats_by_label["Notizen (7 Tage)"], "1")
-        self.assertEqual(stats_by_label["Termine (7 Tage)"], "1")
-        self.assertEqual(stats_by_label[f"Resturlaub {now.year}"], "30 Tage")
+        dashboard_stats = response.context["dashboard_stats"]
+        week_by_label = {tile["label"]: tile["value"] for tile in dashboard_stats["week"]}
+        self.assertEqual(week_by_label["Erledigt (Woche)"], "1")
+        self.assertEqual(week_by_label["Offene Aufgaben"], "1")
+        self.assertEqual(week_by_label["Notizen (Woche)"], "1")
+        self.assertEqual(week_by_label["Termine (Woche)"], "1")
+        self.assertEqual(week_by_label[f"Resturlaub {now.year}"], "30 Tage")
+
+        month_by_label = {tile["label"]: tile["value"] for tile in dashboard_stats["month"]}
+        self.assertEqual(month_by_label["Erledigt (Monat)"], "1")
+        self.assertEqual(month_by_label["Offene Aufgaben"], "1")
+        self.assertEqual(month_by_label["Notizen (Monat)"], "1")
+        self.assertEqual(month_by_label["Termine (Monat)"], "1")
+        self.assertEqual(month_by_label[f"Resturlaub {now.year}"], "30 Tage")
 
     def test_dashboard_omits_tiles_for_disabled_features_and_unconfigured_vacation_year(self):
         SystemSettings.objects.create(tasks_enabled=False, notes_enabled=False)
@@ -6051,12 +6060,40 @@ class DashboardStatsWidgetTests(TestCase):
 
         response = self.client.get("/home/")
 
-        labels = {tile["label"] for tile in response.context["dashboard_stats"]}
-        self.assertNotIn("Erledigt (7 Tage)", labels)
-        self.assertNotIn("Offene Aufgaben", labels)
-        self.assertNotIn("Notizen (7 Tage)", labels)
-        self.assertIn("Termine (7 Tage)", labels)
-        self.assertFalse(any(label.startswith("Resturlaub") for label in labels))
+        for period, done_label, notes_label, events_label in (
+            ("week", "Erledigt (Woche)", "Notizen (Woche)", "Termine (Woche)"),
+            ("month", "Erledigt (Monat)", "Notizen (Monat)", "Termine (Monat)"),
+        ):
+            labels = {tile["label"] for tile in response.context["dashboard_stats"][period]}
+            self.assertNotIn(done_label, labels)
+            self.assertNotIn("Offene Aufgaben", labels)
+            self.assertNotIn(notes_label, labels)
+            self.assertIn(events_label, labels)
+            self.assertFalse(any(label.startswith("Resturlaub") for label in labels))
+
+    def test_dashboard_stat_tiles_distinguish_week_and_month_activity(self):
+        now = timezone.now()
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+        if week_start <= month_start:
+            self.skipTest("Wochenstart fällt mit dem Monatsstart zusammen.")
+
+        earlier_this_month = week_start - timedelta(days=1)
+        task = Task.objects.create(user=self.user, title="Letzte Woche erledigt", is_done=True)
+        Task.objects.filter(pk=task.pk).update(updated_at=earlier_this_month)
+        self._login()
+
+        response = self.client.get("/home/")
+
+        dashboard_stats = response.context["dashboard_stats"]
+        week_value = next(
+            tile["value"] for tile in dashboard_stats["week"] if tile["label"] == "Erledigt (Woche)"
+        )
+        month_value = next(
+            tile["value"] for tile in dashboard_stats["month"] if tile["label"] == "Erledigt (Monat)"
+        )
+        self.assertEqual(week_value, "0")
+        self.assertEqual(month_value, "1")
 
     def test_dashboard_skips_hidden_stats_widget_queries(self):
         layout = default_dashboard_layout()
@@ -6070,7 +6107,7 @@ class DashboardStatsWidgetTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         dashboard_stats.assert_not_called()
-        self.assertEqual(response.context["dashboard_stats"], [])
+        self.assertEqual(response.context["dashboard_stats"], {})
 
 
 class AdministrationFeatureFlagTests(TestCase):
@@ -7059,6 +7096,94 @@ class NotesTests(TestCase):
         )
         self.assertEqual(response.status_code, 200, response.content)
 
+    def test_tiptap_table_rejects_oversized_grid(self):
+        note = self.create_note()
+        table_document = {
+            "type": "doc",
+            "content": [
+                {
+                    "type": "table",
+                    "content": [
+                        {
+                            "type": "tableRow",
+                            "content": [
+                                {
+                                    "type": "tableCell",
+                                    "attrs": {"colspan": 1, "rowspan": 1, "colwidth": None, "align": None},
+                                    "content": [{"type": "paragraph", "attrs": {"textAlign": None}}],
+                                }
+                            ],
+                        }
+                        for _ in range(21)
+                    ],
+                }
+            ],
+        }
+        response = self.client.patch(
+            f"/notes/api/{note.id}/",
+            data=json.dumps({"title": note.title, "document": table_document, "base_revision": 1}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+
+    def test_tiptap_table_rejects_invalid_cell_colspan(self):
+        note = self.create_note()
+        table_document = {
+            "type": "doc",
+            "content": [
+                {
+                    "type": "table",
+                    "content": [
+                        {
+                            "type": "tableRow",
+                            "content": [
+                                {
+                                    "type": "tableCell",
+                                    "attrs": {"colspan": 21, "rowspan": 1, "colwidth": None, "align": None},
+                                    "content": [{"type": "paragraph", "attrs": {"textAlign": None}}],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+        response = self.client.patch(
+            f"/notes/api/{note.id}/",
+            data=json.dumps({"title": note.title, "document": table_document, "base_revision": 1}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+
+    def test_tiptap_table_rejects_invalid_colwidth(self):
+        note = self.create_note()
+        table_document = {
+            "type": "doc",
+            "content": [
+                {
+                    "type": "table",
+                    "content": [
+                        {
+                            "type": "tableRow",
+                            "content": [
+                                {
+                                    "type": "tableCell",
+                                    "attrs": {"colspan": 1, "rowspan": 1, "colwidth": [10], "align": None},
+                                    "content": [{"type": "paragraph", "attrs": {"textAlign": None}}],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+        response = self.client.patch(
+            f"/notes/api/{note.id}/",
+            data=json.dumps({"title": note.title, "document": table_document, "base_revision": 1}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+
     def test_private_image_upload_requires_note_access(self):
         note = self.create_note()
         with TemporaryDirectory() as private_root, override_settings(PRIVATE_MEDIA_ROOT=private_root):
@@ -7966,6 +8091,188 @@ class NotesTests(TestCase):
         self.assertFalse(NoteLink.objects.filter(source_note=source, target_note=target).exists())
 
 
+class NotePresenceTests(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(
+            username="presence-owner@example.com",
+            email="presence-owner@example.com",
+            password="secret-12345",
+            first_name="Owner",
+        )
+        self.reader = User.objects.create_user(
+            username="presence-reader@example.com",
+            email="presence-reader@example.com",
+            password="secret-12345",
+            first_name="Reader",
+        )
+        self.outsider = User.objects.create_user(
+            username="presence-outsider@example.com",
+            email="presence-outsider@example.com",
+            password="secret-12345",
+            first_name="Outsider",
+        )
+        Profile.objects.create(user=self.owner, display_name="Owner")
+        Profile.objects.create(user=self.reader, display_name="Reader")
+        Profile.objects.create(user=self.outsider, display_name="Outsider")
+        self.note = Note.objects.create(owner=self.owner, title="Geteilte Notiz")
+        NoteShare.objects.create(note=self.note, user=self.reader, role=NoteShare.ROLE_READER)
+        self.client.login(username="presence-owner@example.com", password="secret-12345")
+        self.reader_client = Client()
+        self.reader_client.login(username="presence-reader@example.com", password="secret-12345")
+
+    def presence_url(self, *, leave=False):
+        url = f"/notes/api/{self.note.id}/presence/"
+        return f"{url}?leave=1" if leave else url
+
+    def test_ping_returns_other_active_viewers_only(self):
+        response = self.client.post(self.presence_url())
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["viewers"], [])
+        self.assertTrue(NoteViewerPresence.objects.filter(note=self.note, user=self.owner).exists())
+
+        # Owner is already present, so the reader's own ping must show the owner
+        # but never itself.
+        response = self.reader_client.post(self.presence_url())
+        self.assertEqual(response.status_code, 200, response.content)
+        viewers = response.json()["viewers"]
+        self.assertEqual(len(viewers), 1)
+        self.assertEqual(viewers[0]["user_id"], self.owner.id)
+        self.assertEqual(viewers[0]["name"], "Owner")
+
+        response = self.client.post(self.presence_url())
+        viewers = response.json()["viewers"]
+        self.assertEqual(len(viewers), 1)
+        self.assertEqual(viewers[0]["user_id"], self.reader.id)
+        self.assertEqual(viewers[0]["name"], "Reader")
+
+    def test_ping_reports_current_note_revision(self):
+        response = self.client.post(self.presence_url())
+        self.assertEqual(response.json()["revision"], self.note.revision)
+
+        save_response = self.client.patch(
+            f"/notes/api/{self.note.id}/",
+            data=json.dumps(
+                {"title": self.note.title, "document": note_document("Neuer Inhalt"), "base_revision": self.note.revision}
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(save_response.status_code, 200, save_response.content)
+        new_revision = save_response.json()["note"]["revision"]
+        self.assertGreater(new_revision, self.note.revision)
+
+        response = self.reader_client.post(self.presence_url())
+        self.assertEqual(response.json()["revision"], new_revision)
+
+    def test_leave_removes_presence_immediately(self):
+        self.client.post(self.presence_url())
+        self.reader_client.post(self.presence_url())
+        self.assertEqual(NoteViewerPresence.objects.filter(note=self.note).count(), 2)
+
+        response = self.client.post(self.presence_url(leave=True))
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertFalse(NoteViewerPresence.objects.filter(note=self.note, user=self.owner).exists())
+
+        viewers = self.reader_client.post(self.presence_url()).json()["viewers"]
+        self.assertEqual(viewers, [])
+
+    def test_expired_presence_is_excluded_and_cleaned_up(self):
+        NoteViewerPresence.objects.create(
+            note=self.note, user=self.reader, present_until=timezone.now() - timedelta(seconds=5)
+        )
+
+        response = self.client.post(self.presence_url())
+        self.assertEqual(response.json()["viewers"], [])
+        self.assertFalse(NoteViewerPresence.objects.filter(note=self.note, user=self.reader).exists())
+
+    def test_ping_requires_note_access(self):
+        outsider_client = Client()
+        outsider_client.login(username="presence-outsider@example.com", password="secret-12345")
+
+        response = outsider_client.post(self.presence_url())
+
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(NoteViewerPresence.objects.filter(note=self.note, user=self.outsider).exists())
+
+    def test_revoked_access_excludes_stale_row_from_viewer_list(self):
+        self.reader_client.post(self.presence_url())
+        NoteShare.objects.filter(note=self.note, user=self.reader).delete()
+
+        response = self.client.post(self.presence_url())
+
+        self.assertEqual(response.json()["viewers"], [])
+
+    def test_editor_cannot_trash_note(self):
+        editor = User.objects.create_user(
+            username="presence-editor@example.com",
+            email="presence-editor@example.com",
+            password="secret-12345",
+            first_name="Editor",
+        )
+        Profile.objects.create(user=editor, display_name="Editor")
+        NoteShare.objects.create(note=self.note, user=editor, role=NoteShare.ROLE_EDITOR)
+        editor_client = Client()
+        editor_client.login(username="presence-editor@example.com", password="secret-12345")
+
+        response = editor_client.post(
+            f"/notes/api/{self.note.id}/actions/",
+            data=json.dumps({"action": "trash"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.note.refresh_from_db()
+        self.assertIsNone(self.note.deleted_at)
+
+    def test_ping_returns_404_for_reader_after_note_is_trashed(self):
+        trash_response = self.client.post(
+            f"/notes/api/{self.note.id}/actions/",
+            data=json.dumps({"action": "trash"}),
+            content_type="application/json",
+        )
+        self.assertEqual(trash_response.status_code, 200, trash_response.content)
+
+        response = self.reader_client.post(self.presence_url())
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_ping_still_works_for_owner_after_trashing_own_note(self):
+        self.client.post(
+            f"/notes/api/{self.note.id}/actions/",
+            data=json.dumps({"action": "trash"}),
+            content_type="application/json",
+        )
+
+        response = self.client.post(self.presence_url())
+
+        self.assertEqual(response.status_code, 200, response.content)
+
+    def test_ping_returns_404_after_note_is_permanently_deleted(self):
+        purge_response = self.client.post(
+            f"/notes/api/{self.note.id}/actions/",
+            data=json.dumps({"action": "purge"}),
+            content_type="application/json",
+        )
+        self.assertEqual(purge_response.status_code, 200, purge_response.content)
+
+        response = self.reader_client.post(self.presence_url())
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_ping_returns_404_for_reader_after_share_is_removed(self):
+        NoteShare.objects.filter(note=self.note, user=self.reader).delete()
+
+        response = self.reader_client.post(self.presence_url())
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_presence_disabled_when_notes_feature_off(self):
+        SystemSettings.objects.create(notes_enabled=False)
+
+        response = self.client.post(self.presence_url())
+
+        self.assertEqual(response.status_code, 503)
+
+
 class VacationPlannerTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
@@ -8307,6 +8614,18 @@ class VacationPlannerTests(TestCase):
         self.assertEqual(self.vacation_year.allowance_days, Decimal("3.0"))
         self.assertContains(response, "Das Urlaubsjahr konnte nicht gespeichert werden.")
 
+    def test_vacation_year_save_view_rejects_negative_allowance(self):
+        response = self.client.post(
+            "/vacation-planner/year/",
+            {"year": "2026", "allowance_days": "-5", "subdivision": "NW"},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.vacation_year.refresh_from_db()
+        self.assertEqual(self.vacation_year.allowance_days, Decimal("3.0"))
+        self.assertContains(response, "Das Urlaubsjahr konnte nicht gespeichert werden.")
+
     def test_custom_holiday_save_view_creates_half_day_holiday(self):
         response = self.client.post(
             "/vacation-planner/holiday/save/",
@@ -8450,6 +8769,29 @@ class VacationPlannerTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         self.assertFalse(VacationPeriod.objects.filter(user=self.user, start_date=date(2027, 1, 4)).exists())
         self.assertContains(response, "Bitte bestätige zuerst die Urlaubsjahre: 2027.")
+
+    def test_vacation_period_save_view_blocks_overlapping_period(self):
+        VacationPeriod.objects.create(
+            user=self.user,
+            name=VacationPeriod.TARIFURLAUB,
+            start_date=date(2026, 3, 2),
+            end_date=date(2026, 3, 4),
+        )
+
+        response = self.client.post(
+            "/vacation-planner/period/save/",
+            {
+                "year": "2026",
+                "name": VacationPeriod.SONDERURLAUB,
+                "start_date": "2026-03-03",
+                "end_date": "2026-03-05",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertFalse(VacationPeriod.objects.filter(user=self.user, start_date=date(2026, 3, 3)).exists())
+        self.assertContains(response, "Der Zeitraum überschneidet sich mit: Tarifurlaub.")
 
     def test_vacation_period_save_view_updates_existing_period(self):
         period = VacationPeriod.objects.create(

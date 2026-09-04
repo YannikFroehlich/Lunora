@@ -149,6 +149,12 @@ def vacation_period_save(request):
             return _planner_redirect(
                 _selected_year(request) or form.cleaned_data["start_date"].year, _selected_month(request)
             )
+        if calculation["overlaps"]:
+            names = ", ".join(overlap["name"] for overlap in calculation["overlaps"])
+            django_messages.error(request, f"Der Zeitraum überschneidet sich mit: {names}.")
+            return _planner_redirect(
+                _selected_year(request) or form.cleaned_data["start_date"].year, _selected_month(request)
+            )
         period = form.save(commit=False)
         period.user = request.user
         period.save()
