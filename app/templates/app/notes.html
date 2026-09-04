@@ -136,6 +136,7 @@
                     {% if selected_note_data.permission != 'owner' %}<span class="shared-role">{{ selected_note_data.permission|capfirst }}</span>{% endif %}
                 </div>
             </div>
+            <div class="note-presence-stack" data-note-presence hidden></div>
             <div class="note-header-actions">
                 <button type="button" data-command="pin" aria-label="{% if selected_note_data.is_pinned %}Loslösen{% else %}Anpinnen{% endif %}" aria-pressed="{{ selected_note_data.is_pinned|yesno:'true,false' }}">
                     <i class="fa-solid fa-thumbtack"></i>

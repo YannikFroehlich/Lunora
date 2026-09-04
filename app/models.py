@@ -1051,6 +1051,20 @@ class NoteUserState(models.Model):
         ]
 
 
+class NoteViewerPresence(models.Model):
+    note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name="viewer_presence")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="note_presence")
+    present_until = models.DateTimeField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["note", "user"], name="unique_note_presence_per_user"),
+        ]
+        indexes = [
+            models.Index(fields=["note", "present_until"], name="notepresence_note_until_idx"),
+        ]
+
+
 class NoteAttachment(models.Model):
     KIND_IMAGE = "image"
     KIND_FILE = "file"

@@ -4,6 +4,17 @@ All notable changes to Lunora are documented here, newest first. This project do
 versioned releases, so entries are grouped by date instead of a version number. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/).
 
+## Unreleased
+
+- Show a small avatar stack in the note editor header for other users who currently have the same
+  shared note open, updated via a lightweight polling heartbeat.
+- Automatically pick up a shared note's latest content when another user saves changes, without
+  requiring a manual reload; falls back to the existing conflict dialog instead of silently
+  discarding an unsaved local draft.
+- Automatically redirect a shared note's other viewers back to the notes overview if the owner
+  moves it to the trash, deletes it permanently, or revokes their share, instead of leaving them
+  stuck on a note they can no longer access.
+
 ## 2026-09-03
 
 - Add a "Statistik" dashboard widget summarizing weekly task/note activity, upcoming events, and

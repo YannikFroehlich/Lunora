@@ -48,6 +48,7 @@ from app.models import (
     NoteTemplate,
     NoteUserState,
     NoteVersion,
+    NoteViewerPresence,
     NotificationPreference,
     OfficialHoliday,
     Profile,
@@ -8088,6 +8089,188 @@ class NotesTests(TestCase):
         )
         self.assertEqual(response.status_code, 200, response.content)
         self.assertFalse(NoteLink.objects.filter(source_note=source, target_note=target).exists())
+
+
+class NotePresenceTests(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(
+            username="presence-owner@example.com",
+            email="presence-owner@example.com",
+            password="secret-12345",
+            first_name="Owner",
+        )
+        self.reader = User.objects.create_user(
+            username="presence-reader@example.com",
+            email="presence-reader@example.com",
+            password="secret-12345",
+            first_name="Reader",
+        )
+        self.outsider = User.objects.create_user(
+            username="presence-outsider@example.com",
+            email="presence-outsider@example.com",
+            password="secret-12345",
+            first_name="Outsider",
+        )
+        Profile.objects.create(user=self.owner, display_name="Owner")
+        Profile.objects.create(user=self.reader, display_name="Reader")
+        Profile.objects.create(user=self.outsider, display_name="Outsider")
+        self.note = Note.objects.create(owner=self.owner, title="Geteilte Notiz")
+        NoteShare.objects.create(note=self.note, user=self.reader, role=NoteShare.ROLE_READER)
+        self.client.login(username="presence-owner@example.com", password="secret-12345")
+        self.reader_client = Client()
+        self.reader_client.login(username="presence-reader@example.com", password="secret-12345")
+
+    def presence_url(self, *, leave=False):
+        url = f"/notes/api/{self.note.id}/presence/"
+        return f"{url}?leave=1" if leave else url
+
+    def test_ping_returns_other_active_viewers_only(self):
+        response = self.client.post(self.presence_url())
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["viewers"], [])
+        self.assertTrue(NoteViewerPresence.objects.filter(note=self.note, user=self.owner).exists())
+
+        # Owner is already present, so the reader's own ping must show the owner
+        # but never itself.
+        response = self.reader_client.post(self.presence_url())
+        self.assertEqual(response.status_code, 200, response.content)
+        viewers = response.json()["viewers"]
+        self.assertEqual(len(viewers), 1)
+        self.assertEqual(viewers[0]["user_id"], self.owner.id)
+        self.assertEqual(viewers[0]["name"], "Owner")
+
+        response = self.client.post(self.presence_url())
+        viewers = response.json()["viewers"]
+        self.assertEqual(len(viewers), 1)
+        self.assertEqual(viewers[0]["user_id"], self.reader.id)
+        self.assertEqual(viewers[0]["name"], "Reader")
+
+    def test_ping_reports_current_note_revision(self):
+        response = self.client.post(self.presence_url())
+        self.assertEqual(response.json()["revision"], self.note.revision)
+
+        save_response = self.client.patch(
+            f"/notes/api/{self.note.id}/",
+            data=json.dumps(
+                {"title": self.note.title, "document": note_document("Neuer Inhalt"), "base_revision": self.note.revision}
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(save_response.status_code, 200, save_response.content)
+        new_revision = save_response.json()["note"]["revision"]
+        self.assertGreater(new_revision, self.note.revision)
+
+        response = self.reader_client.post(self.presence_url())
+        self.assertEqual(response.json()["revision"], new_revision)
+
+    def test_leave_removes_presence_immediately(self):
+        self.client.post(self.presence_url())
+        self.reader_client.post(self.presence_url())
+        self.assertEqual(NoteViewerPresence.objects.filter(note=self.note).count(), 2)
+
+        response = self.client.post(self.presence_url(leave=True))
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertFalse(NoteViewerPresence.objects.filter(note=self.note, user=self.owner).exists())
+
+        viewers = self.reader_client.post(self.presence_url()).json()["viewers"]
+        self.assertEqual(viewers, [])
+
+    def test_expired_presence_is_excluded_and_cleaned_up(self):
+        NoteViewerPresence.objects.create(
+            note=self.note, user=self.reader, present_until=timezone.now() - timedelta(seconds=5)
+        )
+
+        response = self.client.post(self.presence_url())
+        self.assertEqual(response.json()["viewers"], [])
+        self.assertFalse(NoteViewerPresence.objects.filter(note=self.note, user=self.reader).exists())
+
+    def test_ping_requires_note_access(self):
+        outsider_client = Client()
+        outsider_client.login(username="presence-outsider@example.com", password="secret-12345")
+
+        response = outsider_client.post(self.presence_url())
+
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(NoteViewerPresence.objects.filter(note=self.note, user=self.outsider).exists())
+
+    def test_revoked_access_excludes_stale_row_from_viewer_list(self):
+        self.reader_client.post(self.presence_url())
+        NoteShare.objects.filter(note=self.note, user=self.reader).delete()
+
+        response = self.client.post(self.presence_url())
+
+        self.assertEqual(response.json()["viewers"], [])
+
+    def test_editor_cannot_trash_note(self):
+        editor = User.objects.create_user(
+            username="presence-editor@example.com",
+            email="presence-editor@example.com",
+            password="secret-12345",
+            first_name="Editor",
+        )
+        Profile.objects.create(user=editor, display_name="Editor")
+        NoteShare.objects.create(note=self.note, user=editor, role=NoteShare.ROLE_EDITOR)
+        editor_client = Client()
+        editor_client.login(username="presence-editor@example.com", password="secret-12345")
+
+        response = editor_client.post(
+            f"/notes/api/{self.note.id}/actions/",
+            data=json.dumps({"action": "trash"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.note.refresh_from_db()
+        self.assertIsNone(self.note.deleted_at)
+
+    def test_ping_returns_404_for_reader_after_note_is_trashed(self):
+        trash_response = self.client.post(
+            f"/notes/api/{self.note.id}/actions/",
+            data=json.dumps({"action": "trash"}),
+            content_type="application/json",
+        )
+        self.assertEqual(trash_response.status_code, 200, trash_response.content)
+
+        response = self.reader_client.post(self.presence_url())
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_ping_still_works_for_owner_after_trashing_own_note(self):
+        self.client.post(
+            f"/notes/api/{self.note.id}/actions/",
+            data=json.dumps({"action": "trash"}),
+            content_type="application/json",
+        )
+
+        response = self.client.post(self.presence_url())
+
+        self.assertEqual(response.status_code, 200, response.content)
+
+    def test_ping_returns_404_after_note_is_permanently_deleted(self):
+        purge_response = self.client.post(
+            f"/notes/api/{self.note.id}/actions/",
+            data=json.dumps({"action": "purge"}),
+            content_type="application/json",
+        )
+        self.assertEqual(purge_response.status_code, 200, purge_response.content)
+
+        response = self.reader_client.post(self.presence_url())
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_ping_returns_404_for_reader_after_share_is_removed(self):
+        NoteShare.objects.filter(note=self.note, user=self.reader).delete()
+
+        response = self.reader_client.post(self.presence_url())
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_presence_disabled_when_notes_feature_off(self):
+        SystemSettings.objects.create(notes_enabled=False)
+
+        response = self.client.post(self.presence_url())
+
+        self.assertEqual(response.status_code, 503)
 
 
 class VacationPlannerTests(TestCase):

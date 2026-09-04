@@ -32,6 +32,7 @@ from app.services.notes import (
     add_comment_reply,
     bulk_move_notes_to_folder,
     bulk_set_notes_state,
+    clear_note_presence,
     create_attachment,
     create_comment_thread,
     create_note,
@@ -49,6 +50,7 @@ from app.services.notes import (
     mark_shared_note_opened,
     move_note_tree_item,
     note_accessible_user_ids,
+    ping_note_presence,
     remove_note_share,
     rename_note_folder,
     restore_note_version,
@@ -766,6 +768,24 @@ def note_comments_api(request, note_id):
         return _error_response(error, status=403)
     except ValidationError as error:
         return _error_response(error)
+
+
+@login_required
+@require_http_methods(["POST"])
+def note_presence_api(request, note_id):
+    disabled = _feature_guard(request, json_response=True)
+    if disabled:
+        return disabled
+    try:
+        note = get_accessible_note(request.user, note_id, allow_deleted=True)
+    except Note.DoesNotExist:
+        return _error_response("Notiz nicht gefunden.", status=404)
+    if request.GET.get("leave") == "1":
+        clear_note_presence(note, request.user)
+        return JsonResponse({"ok": True})
+    return JsonResponse(
+        {"ok": True, "viewers": ping_note_presence(note, request.user), "revision": note.revision}
+    )
 
 
 @login_required

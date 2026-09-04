@@ -3055,9 +3055,9 @@ function initNotesApp() {
     });
   }
 
-  document.querySelector("[data-conflict-load]")?.addEventListener("click", () => {
+  function applyServerNote(freshNote) {
     applying = true;
-    note = conflictServerNote;
+    note = freshNote;
     titleInput.value = note.title;
     editor.commands.setContent(note.document);
     applying = false;
@@ -3065,6 +3065,11 @@ function initNotesApp() {
     localStorage.removeItem(draftKey());
     conflictServerNote = null;
     conflictDraft = null;
+    updateNoteCard(note);
+  }
+
+  document.querySelector("[data-conflict-load]")?.addEventListener("click", () => {
+    applyServerNote(conflictServerNote);
     setSaveStatus("Serverstand geladen");
     conflictDialog.close();
   });
@@ -3085,6 +3090,77 @@ function initNotesApp() {
     localStorage.removeItem(draftKey());
     window.location.assign(`/notes/${data.note.id}/`);
   });
+
+  const PRESENCE_PING_INTERVAL_MS = 15000;
+  const presenceStack = document.querySelector("[data-note-presence]");
+  let kickedOut = false;
+
+  function renderPresence(viewers) {
+    if (!presenceStack) return;
+    presenceStack.innerHTML = "";
+    viewers.forEach((viewer) => {
+      const span = document.createElement("span");
+      span.className = "avatar small";
+      span.title = viewer.name;
+      if (viewer.avatar_url) {
+        const img = document.createElement("img");
+        img.src = viewer.avatar_url;
+        img.alt = `Profilbild von ${viewer.name}`;
+        span.append(img);
+      } else {
+        span.textContent = viewer.initials;
+      }
+      presenceStack.append(span);
+    });
+    presenceStack.hidden = viewers.length === 0;
+  }
+
+  async function checkForRemoteUpdate(serverRevision) {
+    if (!note || !editor || serverRevision === note.revision || conflictServerNote) return;
+    const { response, data } = await requestJson(`/notes/api/${note.id}/`);
+    if (!response.ok || !data.ok || data.note.revision === note.revision) return;
+    if (dirty) {
+      conflictServerNote = data.note;
+      setSaveStatus("Konflikt – nicht gespeichert");
+      conflictDialog?.showModal();
+    } else {
+      applyServerNote(data.note);
+      setSaveStatus(
+        `Aktualisiert ${new Date(data.note.updated_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
+      );
+    }
+  }
+
+  async function pingPresence() {
+    if (!note || kickedOut) return;
+    const { response, data } = await requestJson(`/notes/api/${note.id}/presence/`, { method: "POST" });
+    if (response.status === 404) {
+      kickedOut = true;
+      window.alert("Diese Notiz ist nicht mehr verfügbar – sie wurde gelöscht oder die Freigabe wurde entfernt.");
+      window.location.assign("/notes/");
+      return;
+    }
+    if (!response.ok || !data.ok) return;
+    renderPresence(data.viewers);
+    await checkForRemoteUpdate(data.revision);
+  }
+
+  function leavePresence() {
+    if (!note || !navigator.sendBeacon) return;
+    const body = new FormData();
+    body.append("csrfmiddlewaretoken", csrfToken());
+    navigator.sendBeacon(`/notes/api/${note.id}/presence/?leave=1`, body);
+  }
+
+  if (note) {
+    pingPresence();
+    window.setInterval(pingPresence, PRESENCE_PING_INTERVAL_MS);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) pingPresence();
+    });
+    window.addEventListener("focus", pingPresence);
+    window.addEventListener("pagehide", leavePresence);
+  }
 }
 
 if (app) {

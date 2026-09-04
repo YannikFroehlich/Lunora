@@ -131,6 +131,7 @@ urlpatterns = [
     path("notes/api/shortcuts/", view.note_shortcuts_api, name="note_shortcuts_api"),
     path("notes/api/<int:note_id>/", view.note_detail_api, name="note_detail_api"),
     path("notes/api/<int:note_id>/actions/", view.note_action_api, name="note_action_api"),
+    path("notes/api/<int:note_id>/presence/", view.note_presence_api, name="note_presence_api"),
     path(
         "notes/api/<int:note_id>/folder/",
         view.note_folder_assignment_api,
