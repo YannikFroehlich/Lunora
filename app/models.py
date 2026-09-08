@@ -1,4 +1,5 @@
 import uuid
+import zoneinfo
 from datetime import time
 
 from django.conf import settings
@@ -74,17 +75,11 @@ class Profile(models.Model):
         ("24h", "24-Stunden"),
         ("12h", "12-Stunden"),
     ]
+    # All IANA zones the stdlib knows about, sans the deprecated "posix/"/"right/" aliases.
     TIMEZONE_CHOICES = [
-        ("Europe/Berlin", "Europe/Berlin"),
-        ("Europe/Amsterdam", "Europe/Amsterdam"),
-        ("Europe/London", "Europe/London"),
-        ("Europe/Paris", "Europe/Paris"),
-        ("Europe/Rome", "Europe/Rome"),
-        ("Europe/Madrid", "Europe/Madrid"),
-        ("UTC", "UTC"),
-        ("America/New_York", "America/New_York"),
-        ("America/Los_Angeles", "America/Los_Angeles"),
-        ("Asia/Tokyo", "Asia/Tokyo"),
+        (name, name)
+        for name in sorted(zoneinfo.available_timezones())
+        if not name.startswith(("posix/", "right/"))
     ]
 
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile")

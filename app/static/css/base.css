@@ -96,6 +96,34 @@ html {
   min-height: 100%;
 }
 
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 12px;
+  z-index: 1000;
+  padding: 10px 18px;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.skip-link:focus-visible {
+  top: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 body {
   position: relative;
   min-height: 100vh;

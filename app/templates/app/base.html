@@ -53,6 +53,7 @@
     </script>
 </head>
 <body data-page="{{ active_page }}">
+<a class="skip-link" href="#main-content">Zum Inhalt springen</a>
 {% if request.user.is_authenticated %}
 <nav class="floating-nav" aria-label="Hauptnavigation">
     <a class="nav-orb {% if active_page == 'home' %}is-active{% endif %}" href="{% url 'home' %}" aria-label="Dashboard">
@@ -85,7 +86,7 @@
 </nav>
 {% endif %}
 
-<main class="site-main">
+<main class="site-main" id="main-content">
     {% if messages %}
     <div class="flash-stack" aria-live="polite" aria-atomic="true" aria-label="Statusmeldungen" data-flash-stack>
         {% for message in messages %}
