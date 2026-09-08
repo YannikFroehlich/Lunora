@@ -91,9 +91,9 @@ def _profile_image_url(user):
 
 def list_note_presence(note, *, exclude_user=None):
     accessible_user_ids = note_accessible_user_ids(note)
-    rows = NoteViewerPresence.objects.filter(
-        note=note, present_until__gte=timezone.now()
-    ).select_related("user", "user__profile")
+    rows = NoteViewerPresence.objects.filter(note=note, present_until__gte=timezone.now()).select_related(
+        "user", "user__profile"
+    )
     if exclude_user is not None:
         rows = rows.exclude(user_id=exclude_user.id)
     return [
