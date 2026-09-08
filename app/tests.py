@@ -5344,6 +5344,25 @@ class GlobalSearchTests(TestCase):
         self.assertNotContains(response, "Rakete geheime Unterhaltung")
         self.assertNotContains(response, "Rakete privater Termin")
 
+    def test_global_search_returns_matches_across_tasks_and_vacation_periods(self):
+        Task.objects.create(user=self.mira, title="Raketenstart vorbereiten")
+        VacationPeriod.objects.create(
+            user=self.mira,
+            name=VacationPeriod.SONDERURLAUB,
+            start_date=date(2026, 9, 1),
+            end_date=date(2026, 9, 3),
+            notes="Raketenmesse besuchen",
+        )
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get("/search/?q=Rakete")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context["task_results"]), 1)
+        self.assertEqual(response.context["task_results"][0]["title"], "Raketenstart vorbereiten")
+        self.assertEqual(len(response.context["vacation_results"]), 1)
+        self.assertContains(response, "Raketenstart vorbereiten")
+
     def test_global_search_hides_disabled_sections(self):
         SystemSettings.objects.create(notes_enabled=False, messages_enabled=False)
         Note.objects.create(owner=self.mira, title="Raketenidee")
@@ -8152,7 +8171,11 @@ class NotePresenceTests(TestCase):
         save_response = self.client.patch(
             f"/notes/api/{self.note.id}/",
             data=json.dumps(
-                {"title": self.note.title, "document": note_document("Neuer Inhalt"), "base_revision": self.note.revision}
+                {
+                    "title": self.note.title,
+                    "document": note_document("Neuer Inhalt"),
+                    "base_revision": self.note.revision,
+                }
             ),
             content_type="application/json",
         )

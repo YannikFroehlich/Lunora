@@ -14,6 +14,12 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 - Automatically redirect a shared note's other viewers back to the notes overview if the owner
   moves it to the trash, deletes it permanently, or revokes their share, instead of leaving them
   stuck on a note they can no longer access.
+- Extend the global search to also cover tasks and vacation periods, alongside notes, messages,
+  and calendar events.
+- Add a `Ctrl+K`/`Cmd+K` shortcut to jump straight to search from anywhere.
+- Add a skip-to-content link and honor the operating system's reduced-motion preference
+  site-wide.
+- Offer every IANA timezone (not just a fixed shortlist of ten) in the region settings.
 
 ## 2026-09-03
 

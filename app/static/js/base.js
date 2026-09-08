@@ -405,6 +405,17 @@ window.addEventListener("appinstalled", () => {
   announcePwaState();
 });
 
+document.addEventListener("keydown", (event) => {
+  if (event.key.toLowerCase() !== "k" || !(event.ctrlKey || event.metaKey)) return;
+  if (event.target.closest?.("input, textarea, select, [contenteditable='true']")) return;
+
+  const searchLink = document.querySelector(".nav-orb[aria-label='Suche']");
+  if (!searchLink) return;
+
+  event.preventDefault();
+  window.location.href = searchLink.href;
+});
+
 function registerLunoraServiceWorker() {
   const serviceWorkerUrl = document.documentElement.dataset.serviceWorkerUrl;
   if (!serviceWorkerUrl || !("serviceWorker" in navigator) || !window.isSecureContext) return;

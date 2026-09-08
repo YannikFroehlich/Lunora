@@ -2,11 +2,16 @@ from django.contrib.auth.decorators import login_required
 from django.db.models import Q
 from django.shortcuts import render
 
-from app.models import Conversation
+from app.models import Conversation, Task, VacationPeriod
 from app.services.note_search import build_snippet, highlight_text, parse_search_query, search_notes
 from app.services.notes import accessible_notes
 from app.services.system_settings import feature_flags
-from app.services.user_preferences import format_user_date, format_user_time, localtime_for_user
+from app.services.user_preferences import (
+    format_user_date,
+    format_user_datetime,
+    format_user_time,
+    localtime_for_user,
+)
 from app.view_models import _calendar_visible_events_query
 from app.views.message_views import (
     _build_inbox_items,
@@ -35,6 +40,15 @@ def _search_shortcuts(flags):
                 "description": "Chats, Gruppen und Antworten",
                 "icon": "fa-regular fa-comments",
                 "url_name": "messages",
+            }
+        )
+    if flags["tasks"]:
+        shortcuts.append(
+            {
+                "label": "Aufgaben öffnen",
+                "description": "Listen, Fälligkeiten und Prioritäten",
+                "icon": "fa-regular fa-square-check",
+                "url_name": "tasks",
             }
         )
     shortcuts.append(
@@ -98,7 +112,40 @@ def global_search(request):
             for event in events
         ]
 
-    has_search_results = bool(notes_results or message_results or event_results)
+    task_results = []
+    if query and flags["tasks"]:
+        tasks = Task.objects.filter(user=request.user, title__icontains=query).order_by(
+            "is_done", "due_at", "-id"
+        )[:SEARCH_RESULT_LIMIT]
+        task_results = [
+            {
+                "title": task.title,
+                "is_done": task.is_done,
+                "due_at": format_user_datetime(task.due_at, request.user) if task.due_at else "",
+            }
+            for task in tasks
+        ]
+
+    vacation_results = []
+    if query and flags["vacation_planner"]:
+        periods = (
+            VacationPeriod.objects.filter(user=request.user)
+            .filter(Q(name__icontains=query) | Q(notes__icontains=query))
+            .order_by("-start_date")[:SEARCH_RESULT_LIMIT]
+        )
+        vacation_results = [
+            {
+                "label": period.get_name_display(),
+                "start_date": format_user_date(period.start_date, request.user),
+                "end_date": format_user_date(period.end_date, request.user),
+                "year": period.start_date.year,
+            }
+            for period in periods
+        ]
+
+    has_search_results = bool(
+        notes_results or message_results or event_results or task_results or vacation_results
+    )
 
     return render(
         request,
@@ -111,7 +158,11 @@ def global_search(request):
             "notes_results": notes_results,
             "message_results": message_results,
             "event_results": event_results,
+            "task_results": task_results,
+            "vacation_results": vacation_results,
             "notes_enabled": flags["notes"],
             "messages_enabled": flags["messages"],
+            "tasks_enabled": flags["tasks"],
+            "vacation_planner_enabled": flags["vacation_planner"],
         },
     )
