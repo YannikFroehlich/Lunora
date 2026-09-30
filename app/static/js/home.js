@@ -164,6 +164,9 @@
       badge.classList.toggle("is-hidden", unreadCount === 0);
     };
 
+    // Server state digest from the last poll; unchanged state gets a tiny reply without a count.
+    let liveFingerprint = "";
+
     const refreshUnreadMessages = async () => {
       const liveUrl = liveRegion.dataset.homeMessagesLiveUrl;
       if (!liveUrl) {
@@ -172,6 +175,9 @@
 
       const url = new URL(liveUrl, window.location.origin);
       url.searchParams.set("_", Date.now().toString());
+      if (liveFingerprint) {
+        url.searchParams.set("fp", liveFingerprint);
+      }
 
       try {
         const response = await fetch(url, {
@@ -192,7 +198,10 @@
           return;
         }
 
-        setBadgeCount(data.unread_total);
+        liveFingerprint = data.fingerprint || "";
+        if (!data.unchanged) {
+          setBadgeCount(data.unread_total);
+        }
       } catch (_error) {
         // Lokale Netzwerk-/Reload-Unterbrechungen sollen die Home-Seite nicht stören.
       }

@@ -137,6 +137,8 @@
     return true;
   };
   let refreshInFlight = false;
+  // Server state digest from the last poll; an unchanged digest gets a tiny "unchanged" reply.
+  let liveFingerprint = "";
 
   const refreshMessages = async () => {
     // Hidden tabs skip polling (and implicit mark-as-read); visibilitychange refreshes on return.
@@ -151,6 +153,9 @@
 
     const url = new URL(liveUrl, window.location.origin);
     url.search = currentUrlParams().toString();
+    if (liveFingerprint) {
+      url.searchParams.set("fp", liveFingerprint);
+    }
 
     refreshInFlight = true;
     try {
@@ -169,6 +174,10 @@
 
       const data = await response.json();
       if (!data.ok) {
+        return;
+      }
+      liveFingerprint = data.fingerprint || "";
+      if (data.unchanged) {
         return;
       }
 

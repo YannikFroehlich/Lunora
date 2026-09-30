@@ -4,7 +4,7 @@ from datetime import time
 
 from django.conf import settings
 from django.db import models
-from django.db.models import Count, Exists, OuterRef, Prefetch
+from django.db.models import Count, Exists, OuterRef, Prefetch, Q, Subquery
 from django.utils import timezone
 
 from app.services.chat_files import chat_upload_to
@@ -231,7 +231,12 @@ class Conversation(models.Model):
         )
 
     def mark_read_for(self, user):
-        ConversationMember.objects.filter(conversation=self, user=user).update(last_read_at=timezone.now())
+        # Live polling calls this every few seconds; only write when a newer message exists, which
+        # keeps unread counts and read receipts identical while sparing a write per idle poll.
+        latest_message_at = self.messages.order_by("-created_at").values("created_at")[:1]
+        ConversationMember.objects.filter(conversation=self, user=user).filter(
+            Q(last_read_at__isnull=True) | Q(last_read_at__lt=Subquery(latest_message_at))
+        ).update(last_read_at=timezone.now())
 
 
 class ConversationMember(models.Model):

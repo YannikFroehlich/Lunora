@@ -5194,6 +5194,81 @@ class MessageLiveUpdateTests(TestCase):
         recipient_member.refresh_from_db()
         self.assertIsNotNone(recipient_member.last_read_at)
 
+    def test_live_updates_short_circuit_when_fingerprint_is_unchanged(self):
+        sender = User.objects.create_user(
+            username="sender-fp@example.com", email="sender-fp@example.com", password="secret-12345"
+        )
+        recipient = User.objects.create_user(
+            username="recipient-fp@example.com", email="recipient-fp@example.com", password="secret-12345"
+        )
+        third = User.objects.create_user(
+            username="third-fp@example.com", email="third-fp@example.com", password="secret-12345"
+        )
+        conversation = Conversation.objects.create(created_by=sender, is_group=True)
+        ConversationMember.objects.create(conversation=conversation, user=sender)
+        ConversationMember.objects.create(conversation=conversation, user=recipient)
+        message = ChatMessage.objects.create(conversation=conversation, sender=sender, body="Erste Nachricht")
+        url = f"/messages/{conversation.id}/live/"
+        self.client.login(username="recipient-fp@example.com", password="secret-12345")
+        # Freeze time so the fingerprint's minute bucket can't roll over between two polls.
+        frozen_now = patch("django.utils.timezone.now", return_value=timezone.now())
+        frozen_now.start()
+        self.addCleanup(frozen_now.stop)
+
+        def poll_until_stable():
+            fingerprint = self.client.get(url, {"_": "1"}).json()["fingerprint"]
+            payload = self.client.get(url, {"fp": fingerprint, "_": "2"}).json()
+            self.assertEqual(payload, {"ok": True, "unchanged": True, "fingerprint": fingerprint})
+            return fingerprint
+
+        changes = [
+            lambda: ChatMessage.objects.create(
+                conversation=conversation, sender=sender, body="Zweite Nachricht"
+            ),
+            lambda: ChatMessageReaction.objects.create(message=message, user=sender, emoji="❤️"),
+            lambda: ChatMessage.objects.filter(pk=message.pk).update(
+                is_pinned=True, pinned_at=timezone.now()
+            ),
+            lambda: ConversationMember.objects.create(conversation=conversation, user=third),
+        ]
+        for change in changes:
+            fingerprint = poll_until_stable()
+            change()
+            payload = self.client.get(url, {"fp": fingerprint}).json()
+            self.assertNotIn("unchanged", payload)
+            self.assertIn("message_stream_html", payload)
+            self.assertNotEqual(payload["fingerprint"], fingerprint)
+
+        # Other query parameters (e.g. a search) are part of the fingerprint.
+        fingerprint = poll_until_stable()
+        self.assertNotIn("unchanged", self.client.get(url, {"fp": fingerprint, "q": "Erste"}).json())
+
+    def test_mark_read_only_writes_when_a_newer_message_exists(self):
+        sender = User.objects.create_user(
+            username="sender-read@example.com", email="sender-read@example.com", password="secret-12345"
+        )
+        recipient = User.objects.create_user(
+            username="recipient-read@example.com", email="recipient-read@example.com", password="secret-12345"
+        )
+        conversation = Conversation.objects.create(created_by=sender)
+        ConversationMember.objects.create(conversation=conversation, user=sender)
+        recipient_member = ConversationMember.objects.create(conversation=conversation, user=recipient)
+        ChatMessage.objects.create(conversation=conversation, sender=sender, body="Hallo")
+
+        conversation.mark_read_for(recipient)
+        recipient_member.refresh_from_db()
+        first_read_at = recipient_member.last_read_at
+        self.assertIsNotNone(first_read_at)
+
+        conversation.mark_read_for(recipient)
+        recipient_member.refresh_from_db()
+        self.assertEqual(recipient_member.last_read_at, first_read_at)
+
+        newer = ChatMessage.objects.create(conversation=conversation, sender=sender, body="Noch was")
+        conversation.mark_read_for(recipient)
+        recipient_member.refresh_from_db()
+        self.assertGreaterEqual(recipient_member.last_read_at, newer.created_at)
+
     def test_live_updates_report_compose_blocked_state(self):
         sender = User.objects.create_user(
             username="sender-block@example.com", email="sender-block@example.com", password="secret-12345"
