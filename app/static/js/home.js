@@ -138,7 +138,8 @@
     }
 
     update();
-    window.setInterval(update, 15000);
+    // Hidden tabs skip ticks; visibilitychange below catches up on return.
+    window.setInterval(() => !document.hidden && update(), 15000);
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden) {
         update();
@@ -197,7 +198,7 @@
       }
     };
 
-    window.setInterval(refreshUnreadMessages, 5000);
+    window.setInterval(() => !document.hidden && refreshUnreadMessages(), 5000);
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden) {
         refreshUnreadMessages();

@@ -6,6 +6,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Reduce idle CPU/GPU load: the messages page and dashboard pause live polling while the tab is
+  hidden (so background tabs no longer mark chat messages as read), unchanged chat regions are no
+  longer re-rendered on every poll, and the dashboard logo glow animates via opacity instead of
+  repainting drop-shadow filters every frame.
 - Show a small avatar stack in the note editor header for other users who currently have the same
   shared note open, updated via a lightweight polling heartbeat.
 - Automatically pick up a shared note's latest content when another user saves changes, without
