@@ -1,0 +1,70 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}UML-Klassendiagramme | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell tools-shell">
+    <header class="page-hero">
+        <div>
+            <a class="tools-back-link" href="{% url 'tools' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Werkzeuge</a>
+            <h1>UML-Klassendiagramme</h1>
+            <p>Klassen, Interfaces, Enums und ihre Beziehungen modellieren.</p>
+        </div>
+        <i class="fa-solid fa-diagram-project hero-branch" aria-hidden="true"></i>
+    </header>
+
+    <section class="glass-panel uml-create-panel">
+        <form class="uml-create-form" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="uml_create">
+            <label class="uml-create-field">
+                <span class="visually-hidden">Titel des neuen Diagramms</span>
+                <i class="fa-solid fa-pen" aria-hidden="true"></i>
+                <input type="text" name="title" maxlength="{{ title_max_length }}" placeholder="Titel, z. B. „Bibliothek“" required>
+            </label>
+            <button class="primary-button" type="submit"><i class="fa-solid fa-plus" aria-hidden="true"></i> Neues Diagramm</button>
+        </form>
+    </section>
+
+    {% if diagrams %}
+    <ul class="uml-diagram-list">
+        {% for diagram in diagrams %}
+        <li class="glass-panel uml-diagram-card">
+            <a class="uml-diagram-link" href="{% url 'uml_diagram_editor' diagram.id %}">
+                <span class="tool-card-icon" aria-hidden="true"><i class="fa-solid fa-diagram-project"></i></span>
+                <span>
+                    <strong>{{ diagram.title }}</strong>
+                    <small>{{ diagram.class_count }} Klasse(n) · {{ diagram.relation_count }} Beziehung(en) · geändert {{ diagram.updated_label }}</small>
+                </span>
+            </a>
+            <div class="uml-diagram-actions">
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="uml_duplicate">
+                    <input type="hidden" name="diagram_id" value="{{ diagram.id }}">
+                    <button class="icon-button" type="submit" aria-label="„{{ diagram.title }}“ duplizieren" title="Duplizieren"><i class="fa-regular fa-copy" aria-hidden="true"></i></button>
+                </form>
+                <form method="post" data-confirm="Dieses Diagramm wirklich löschen?">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="uml_delete">
+                    <input type="hidden" name="diagram_id" value="{{ diagram.id }}">
+                    <button class="icon-button" type="submit" aria-label="„{{ diagram.title }}“ löschen" title="Löschen"><i class="fa-regular fa-trash-can" aria-hidden="true"></i></button>
+                </form>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state-card uml-empty">
+        <i class="fa-solid fa-diagram-project" aria-hidden="true"></i>
+        <strong>Noch keine Diagramme</strong>
+        <p>Lege oben dein erstes Klassendiagramm an.</p>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

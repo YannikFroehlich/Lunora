@@ -1,0 +1,113 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}Üben: {{ vocabulary_list.title }} | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell vocab-practice-shell" data-vocab-practice data-review-url="{% url 'vocabulary_review_api' 0 %}">
+    <header class="glass-panel uml-header">
+        <a class="icon-button" href="{% url 'vocabulary_list_detail' vocabulary_list.id %}" aria-label="Zurück zur Liste" title="Zurück zur Liste">
+            <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+        </a>
+        <div class="vocab-practice-title">
+            <h1>{{ vocabulary_list.title }}</h1>
+            <p class="uml-muted">{{ vocabulary_list.get_source_language_display }} ↔ {{ vocabulary_list.get_target_language_display }}</p>
+        </div>
+    </header>
+
+    <form class="glass-panel vocab-setup" data-vocab-setup>
+        <h2>Übung einrichten</h2>
+        <fieldset class="vocab-choice-group">
+            <legend>Abfrageart</legend>
+            <label><input type="radio" name="mode" value="flashcards" checked><span><i class="fa-regular fa-clone" aria-hidden="true"></i> Karteikarten</span></label>
+            <label><input type="radio" name="mode" value="typing"><span><i class="fa-regular fa-keyboard" aria-hidden="true"></i> Eintippen</span></label>
+            <label><input type="radio" name="mode" value="choice"><span><i class="fa-solid fa-list-ul" aria-hidden="true"></i> Multiple Choice</span></label>
+        </fieldset>
+        <fieldset class="vocab-choice-group">
+            <legend>Richtung</legend>
+            <label><input type="radio" name="direction" value="forward" checked><span>{{ vocabulary_list.get_source_language_display }} → {{ vocabulary_list.get_target_language_display }}</span></label>
+            <label><input type="radio" name="direction" value="backward"><span>{{ vocabulary_list.get_target_language_display }} → {{ vocabulary_list.get_source_language_display }}</span></label>
+            <label><input type="radio" name="direction" value="mixed"><span>Gemischt</span></label>
+        </fieldset>
+        <fieldset class="vocab-choice-group">
+            <legend>Auswahl</legend>
+            <label><input type="radio" name="scope" value="due" checked><span>Fällige <em data-vocab-count="due"></em></span></label>
+            <label><input type="radio" name="scope" value="hard"><span>Schwierige (Fach 1) <em data-vocab-count="hard"></em></span></label>
+            <label><input type="radio" name="scope" value="all"><span>Alle <em data-vocab-count="all"></em></span></label>
+        </fieldset>
+        <fieldset class="vocab-choice-group">
+            <legend>Anzahl pro Runde</legend>
+            <label><input type="radio" name="size" value="10"><span>10</span></label>
+            <label><input type="radio" name="size" value="20" checked><span>20</span></label>
+            <label><input type="radio" name="size" value="0"><span>Alle</span></label>
+        </fieldset>
+        <p class="uml-field-error" role="alert" data-vocab-setup-error hidden></p>
+        <button class="primary-button" type="submit"><i class="fa-solid fa-play" aria-hidden="true"></i> Los geht's</button>
+    </form>
+
+    <section class="glass-panel vocab-session" data-vocab-session hidden>
+        <div class="vocab-progress">
+            <div class="vocab-progress-bar"><span data-vocab-progress-bar></span></div>
+            <span data-vocab-progress-label>0 / 0</span>
+        </div>
+
+        <div class="vocab-card" data-vocab-card>
+            <small class="vocab-card-language" data-vocab-prompt-language></small>
+            <div class="vocab-prompt-row">
+                <p class="vocab-prompt" data-vocab-prompt></p>
+                <button class="icon-button" type="button" data-vocab-speak aria-label="Vorlesen" title="Vorlesen" hidden><i class="fa-solid fa-volume-high" aria-hidden="true"></i></button>
+            </div>
+
+            <div class="vocab-answer" data-vocab-answer hidden>
+                <small class="vocab-card-language" data-vocab-answer-language></small>
+                <p class="vocab-solution" data-vocab-solution></p>
+                <p class="uml-muted" data-vocab-note></p>
+            </div>
+            <p class="vocab-feedback" role="status" aria-live="polite" data-vocab-feedback></p>
+        </div>
+
+        <div class="vocab-controls" data-vocab-controls="flashcards" hidden>
+            <button class="primary-button" type="button" data-vocab-action="flip">Umdrehen <kbd>Leertaste</kbd></button>
+            <div class="vocab-rate" data-vocab-rate hidden>
+                <button class="ghost-button is-wrong" type="button" data-vocab-action="wrong"><i class="fa-solid fa-xmark" aria-hidden="true"></i> Nicht gewusst <kbd>1</kbd></button>
+                <button class="ghost-button is-right" type="button" data-vocab-action="right"><i class="fa-solid fa-check" aria-hidden="true"></i> Gewusst <kbd>2</kbd></button>
+            </div>
+        </div>
+
+        <form class="vocab-controls vocab-typing" data-vocab-controls="typing" hidden>
+            <label class="vocab-type-field">
+                <span class="visually-hidden">Deine Antwort</span>
+                <input type="text" autocomplete="off" autocapitalize="off" spellcheck="false" data-vocab-input>
+            </label>
+            <button class="primary-button" type="submit" data-vocab-check>Prüfen</button>
+        </form>
+
+        <div class="vocab-controls vocab-choices" data-vocab-controls="choice" hidden></div>
+
+        <div class="vocab-controls vocab-next-row" data-vocab-next-row hidden>
+            <button class="ghost-button" type="button" data-vocab-action="override" hidden><i class="fa-solid fa-check" aria-hidden="true"></i> War doch richtig</button>
+            <button class="primary-button" type="button" data-vocab-action="next">Weiter <kbd>Enter</kbd></button>
+        </div>
+    </section>
+
+    <section class="glass-panel vocab-summary" data-vocab-summary hidden>
+        <h2 data-vocab-summary-title>Geschafft!</h2>
+        <p data-vocab-summary-text></p>
+        <ul class="vocab-mistakes" data-vocab-mistakes></ul>
+        <div class="vocab-summary-actions">
+            <button class="ghost-button" type="button" data-vocab-action="retry-wrong"><i class="fa-solid fa-rotate" aria-hidden="true"></i> Falsche nochmal</button>
+            <button class="primary-button" type="button" data-vocab-action="restart"><i class="fa-solid fa-sliders" aria-hidden="true"></i> Neue Runde</button>
+            <a class="ghost-button" href="{% url 'vocabulary_list_detail' vocabulary_list.id %}">Zur Liste</a>
+        </div>
+    </section>
+</section>
+{{ practice_payload|json_script:"vocab-practice-data" }}
+{% endblock %}
+
+{% block page_js %}
+<script src="{% versioned_static 'js/vocabulary.js' %}"></script>
+{% endblock %}

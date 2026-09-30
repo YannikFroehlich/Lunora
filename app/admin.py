@@ -22,9 +22,12 @@ from app.models import (
     Task,
     TaskLabel,
     TaskList,
+    UmlDiagram,
     UserNotification,
     VacationPeriod,
     VacationYear,
+    VocabularyCard,
+    VocabularyList,
     WebPushDelivery,
     WebPushSubscription,
     WeeklySummaryDelivery,
@@ -140,6 +143,21 @@ class TaskAdmin(admin.ModelAdmin):
     )
     list_filter = ("is_done", "priority", "recurrence_rule", "created_at")
     search_fields = ("title", "user__username")
+
+
+@admin.register(UmlDiagram)
+class UmlDiagramAdmin(admin.ModelAdmin):
+    list_display = ("title", "owner", "updated_at")
+    search_fields = ("title", "owner__username")
+
+
+@admin.register(VocabularyList)
+class VocabularyListAdmin(admin.ModelAdmin):
+    list_display = ("title", "owner", "source_language", "target_language", "updated_at")
+    search_fields = ("title", "owner__username")
+
+
+admin.site.register(VocabularyCard)
 
 
 @admin.register(UserNotification)

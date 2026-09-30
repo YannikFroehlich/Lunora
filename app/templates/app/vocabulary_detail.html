@@ -1,0 +1,180 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}{{ vocabulary_list.title }} | Vokabeltrainer | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell tools-shell">
+    <header class="page-hero">
+        <div>
+            <a class="tools-back-link" href="{% url 'vocabulary_lists' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Alle Listen</a>
+            <h1>{{ vocabulary_list.title }}</h1>
+            <p>{{ vocabulary_list.get_source_language_display }} → {{ vocabulary_list.get_target_language_display }} · {{ card_count }} Vokabel(n) · {{ due_count }} fällig</p>
+        </div>
+        <div class="vocab-hero-actions">
+            {% if card_count %}
+            <a class="primary-button" href="{% url 'vocabulary_practice' vocabulary_list.id %}"><i class="fa-solid fa-graduation-cap" aria-hidden="true"></i> Üben</a>
+            {% endif %}
+        </div>
+    </header>
+
+    {% if card_count %}
+    <section class="glass-panel vocab-boxes" aria-label="Lernkartei">
+        <div class="panel-title panel-title-between">
+            <span><i class="fa-solid fa-box-archive" aria-hidden="true"></i> Lernkartei</span>
+            <small class="uml-muted">Richtig beantwortet wandert eine Vokabel ein Fach weiter, falsch zurück in Fach 1.</small>
+        </div>
+        <ol class="vocab-box-list">
+            {% for item in boxes %}
+            <li class="vocab-box is-box-{{ item.box }}">
+                <strong>{{ item.count }}</strong>
+                <span>{% if item.box == max_box %}Fach {{ item.box }} · gelernt{% else %}Fach {{ item.box }}{% endif %}</span>
+            </li>
+            {% endfor %}
+        </ol>
+    </section>
+    {% endif %}
+
+    <div class="vocab-layout">
+        <section class="glass-panel vocab-panel" id="vokabel-neu">
+            <h2>Vokabel hinzufügen</h2>
+            <form class="vocab-card-form" method="post">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="vocab_card_add">
+                <label class="vocab-field">
+                    <span>{{ card_form.term.label }} ({{ vocabulary_list.get_source_language_display }})</span>
+                    {{ card_form.term }}
+                </label>
+                <label class="vocab-field">
+                    <span>{{ card_form.translation.label }} ({{ vocabulary_list.get_target_language_display }})</span>
+                    {{ card_form.translation }}
+                </label>
+                <label class="vocab-field">
+                    <span>{{ card_form.note.label }}</span>
+                    {{ card_form.note }}
+                </label>
+                <button class="primary-button" type="submit"><i class="fa-solid fa-plus" aria-hidden="true"></i> Hinzufügen</button>
+                {% if card_form.errors %}<ul class="errorlist">{% for field in card_form %}{% for error in field.errors %}<li>{{ field.label }}: {{ error }}</li>{% endfor %}{% endfor %}</ul>{% endif %}
+            </form>
+            <p class="uml-muted vocab-hint">Mehrere Bedeutungen mit Komma oder Schrägstrich trennen, z. B. <code>Haus, Gebäude</code> – beim Eintippen zählt jede davon.</p>
+
+            <details class="vocab-details" {% if bulk_text %}open{% endif %}>
+                <summary><i class="fa-solid fa-file-import" aria-hidden="true"></i> Viele Vokabeln auf einmal einfügen</summary>
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="vocab_card_bulk">
+                    <label class="vocab-field">
+                        <span>Eine Vokabel pro Zeile: <code>Begriff ; Übersetzung ; Notiz</code> (auch Tab oder <code>=</code>, z. B. aus Excel kopiert)</span>
+                        <textarea name="lines" rows="8" spellcheck="false" placeholder="house ; Haus&#10;to run = rennen&#10;the weather ; das Wetter ; It's sunny today.">{{ bulk_text }}</textarea>
+                    </label>
+                    <button class="ghost-button" type="submit"><i class="fa-solid fa-upload" aria-hidden="true"></i> Importieren</button>
+                </form>
+            </details>
+
+            <details class="vocab-details">
+                <summary><i class="fa-solid fa-gear" aria-hidden="true"></i> Liste bearbeiten</summary>
+                <form class="vocab-card-form" method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="vocab_list_update">
+                    <label class="vocab-field"><span>{{ list_form.title.label }}</span>{{ list_form.title }}</label>
+                    <label class="vocab-field"><span>{{ list_form.source_language.label }}</span>{{ list_form.source_language }}</label>
+                    <label class="vocab-field"><span>{{ list_form.target_language.label }}</span>{{ list_form.target_language }}</label>
+                    <button class="ghost-button" type="submit"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Speichern</button>
+                    {% if list_form.errors %}<ul class="errorlist">{% for field in list_form %}{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}{% endfor %}</ul>{% endif %}
+                </form>
+                <div class="vocab-danger-actions">
+                    <a class="ghost-button" href="{% url 'vocabulary_export' vocabulary_list.id %}"><i class="fa-solid fa-file-csv" aria-hidden="true"></i> Als CSV exportieren</a>
+                    <form method="post" data-confirm="Lernfortschritt aller Vokabeln zurücksetzen? Alle Vokabeln landen wieder in Fach 1.">
+                        {% csrf_token %}
+                        <input type="hidden" name="form_name" value="vocab_reset_progress">
+                        <button class="ghost-button" type="submit"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Fortschritt zurücksetzen</button>
+                    </form>
+                </div>
+            </details>
+        </section>
+
+        <section class="glass-panel vocab-panel">
+            <div class="panel-title panel-title-between">
+                <h2>Vokabeln</h2>
+                {% if card_count %}
+                <label class="vocab-filter">
+                    <span class="visually-hidden">Vokabeln filtern</span>
+                    <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                    <input type="search" placeholder="Filtern …" data-vocab-filter>
+                </label>
+                {% endif %}
+            </div>
+            {% if cards %}
+            <ul class="vocab-card-list" data-vocab-cards>
+                {% for item in cards %}
+                <li class="vocab-card-row" data-vocab-search="{{ item.card.term|lower }} {{ item.card.translation|lower }} {{ item.card.note|lower }}">
+                    <details>
+                        <summary>
+                            <span class="vocab-card-text">
+                                <strong>{{ item.card.term }}</strong>
+                                <span>{{ item.card.translation }}</span>
+                                {% if item.card.note %}<small>{{ item.card.note }}</small>{% endif %}
+                            </span>
+                            <span class="vocab-card-meta">
+                                <span class="vocab-box-pill is-box-{{ item.card.box }}" title="Fach {{ item.card.box }}">{{ item.card.box }}</span>
+                                {% if item.is_due %}<span class="vocab-due-dot" title="Fällig"></span>{% endif %}
+                                <i class="fa-solid fa-pen" aria-hidden="true"></i>
+                                <span class="visually-hidden">Bearbeiten</span>
+                            </span>
+                        </summary>
+                        <form class="vocab-edit-form" method="post">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_name" value="vocab_card_edit">
+                            <input type="hidden" name="card_id" value="{{ item.card.id }}">
+                            <label class="vocab-field"><span>Begriff</span><input type="text" name="term" value="{{ item.card.term }}" maxlength="200" required></label>
+                            <label class="vocab-field"><span>Übersetzung</span><input type="text" name="translation" value="{{ item.card.translation }}" maxlength="200" required></label>
+                            <label class="vocab-field"><span>Notiz</span><input type="text" name="note" value="{{ item.card.note }}" maxlength="300"></label>
+                            <div class="vocab-edit-actions">
+                                <button class="ghost-button" type="submit">Speichern</button>
+                                <button class="ghost-button" type="submit" name="form_name" value="vocab_card_delete" formnovalidate>
+                                    <i class="fa-regular fa-trash-can" aria-hidden="true"></i> Löschen
+                                </button>
+                            </div>
+                            <small class="uml-muted">{{ item.card.correct_count }}× richtig, {{ item.card.wrong_count }}× falsch</small>
+                        </form>
+                    </details>
+                </li>
+                {% endfor %}
+            </ul>
+            <p class="uml-muted" data-vocab-filter-empty hidden>Keine Vokabel passt zum Filter.</p>
+            {% else %}
+            <div class="empty-state-card is-compact">
+                <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
+                <strong>Noch keine Vokabeln</strong>
+                <p class="uml-muted">Trage links die ersten Vokabeln ein oder füge eine ganze Liste auf einmal ein.</p>
+            </div>
+            {% endif %}
+        </section>
+    </div>
+</section>
+{% endblock %}
+
+{% block page_js %}
+<script>
+    (function () {
+        const input = document.querySelector("[data-vocab-filter]");
+        const rows = Array.from(document.querySelectorAll("[data-vocab-search]"));
+        const empty = document.querySelector("[data-vocab-filter-empty]");
+        if (!input) return;
+        input.addEventListener("input", () => {
+            const query = input.value.trim().toLowerCase();
+            let visible = 0;
+            rows.forEach((row) => {
+                const match = !query || row.dataset.vocabSearch.includes(query);
+                row.hidden = !match;
+                if (match) visible += 1;
+            });
+            empty.hidden = visible > 0;
+        });
+    })();
+</script>
+{% endblock %}

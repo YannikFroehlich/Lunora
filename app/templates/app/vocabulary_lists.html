@@ -1,0 +1,78 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}Vokabeltrainer | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell tools-shell">
+    <header class="page-hero">
+        <div>
+            <a class="tools-back-link" href="{% url 'tools' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Werkzeuge</a>
+            <h1>Vokabeltrainer</h1>
+            <p>Listen anlegen, Vokabeln eintragen und mit der Lernkartei üben.</p>
+        </div>
+        <i class="fa-solid fa-language hero-branch" aria-hidden="true"></i>
+    </header>
+
+    <section class="glass-panel uml-create-panel">
+        <form class="vocab-create-form" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="vocab_list_create">
+            <label class="vocab-field vocab-field-wide">
+                <span>{{ form.title.label }}</span>
+                {{ form.title }}
+            </label>
+            <label class="vocab-field">
+                <span>{{ form.source_language.label }}</span>
+                {{ form.source_language }}
+            </label>
+            <label class="vocab-field">
+                <span>{{ form.target_language.label }}</span>
+                {{ form.target_language }}
+            </label>
+            <button class="primary-button" type="submit"><i class="fa-solid fa-plus" aria-hidden="true"></i> Neue Liste</button>
+            {% if form.errors %}<ul class="errorlist">{% for field in form %}{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}{% endfor %}</ul>{% endif %}
+        </form>
+    </section>
+
+    {% if lists %}
+    <ul class="uml-diagram-list">
+        {% for item in lists %}
+        <li class="glass-panel uml-diagram-card">
+            <a class="uml-diagram-link" href="{% url 'vocabulary_list_detail' item.id %}">
+                <span class="tool-card-icon" aria-hidden="true"><i class="fa-solid fa-language"></i></span>
+                <span>
+                    <strong>{{ item.title }}</strong>
+                    <small>{{ item.languages }} · {{ item.card_count }} Vokabel(n) · {{ item.learned_count }} gelernt · geändert {{ item.updated_label }}</small>
+                </span>
+            </a>
+            <div class="uml-diagram-actions">
+                {% if item.card_count %}
+                <a class="ghost-button vocab-practice-link" href="{% url 'vocabulary_practice' item.id %}">
+                    <i class="fa-solid fa-graduation-cap" aria-hidden="true"></i> Üben
+                    {% if item.due_count %}<span class="vocab-due-badge" aria-label="{{ item.due_count }} fällig">{{ item.due_count }}</span>{% endif %}
+                </a>
+                {% endif %}
+                <form method="post" data-confirm="Diese Vokabelliste mit allen Vokabeln wirklich löschen?">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="vocab_list_delete">
+                    <input type="hidden" name="list_id" value="{{ item.id }}">
+                    <button class="icon-button" type="submit" aria-label="„{{ item.title }}“ löschen" title="Löschen"><i class="fa-regular fa-trash-can" aria-hidden="true"></i></button>
+                </form>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state-card uml-empty">
+        <i class="fa-solid fa-language" aria-hidden="true"></i>
+        <strong>Noch keine Vokabellisten</strong>
+        <p>Lege oben deine erste Liste an, z. B. für die aktuelle Unit im Englischbuch.</p>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

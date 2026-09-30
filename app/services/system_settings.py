@@ -18,6 +18,7 @@ FEATURE_FIELDS = {
     "weather": "weather_enabled",
     "dashboard_customization": "dashboard_customization_enabled",
     "tasks": "tasks_enabled",
+    "tools": "tools_enabled",
 }
 
 
@@ -31,6 +32,7 @@ FEATURE_LABELS = {
     "weather": "Wetter",
     "dashboard_customization": "Dashboard-Personalisierung",
     "tasks": "Aufgaben",
+    "tools": "Werkzeuge",
 }
 
 
@@ -46,6 +48,7 @@ class DefaultSystemSettings:
     weather_enabled: bool = True
     dashboard_customization_enabled: bool = True
     tasks_enabled: bool = True
+    tools_enabled: bool = True
     updated_by: object = None
     updated_at: object = None
 

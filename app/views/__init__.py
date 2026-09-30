@@ -51,6 +51,7 @@ from .notification_views import (
 from .pwa_views import offline, service_worker
 from .search_views import global_search
 from .tasks_views import tasks
+from .tools_views import tools, uml_diagram_api, uml_diagram_editor, uml_diagrams
 from .vacation_planner_views import (
     custom_holiday_delete,
     custom_holiday_save,
@@ -61,6 +62,13 @@ from .vacation_planner_views import (
     vacation_planner,
     vacation_preview,
     vacation_year_save,
+)
+from .vocabulary_views import (
+    vocabulary_export,
+    vocabulary_list_detail,
+    vocabulary_lists,
+    vocabulary_practice,
+    vocabulary_review_api,
 )
 from .weather_views import dashboard_weather, weather, weather_map_tile, weather_point, weather_suggestions
 
@@ -111,6 +119,15 @@ __all__ = [
     "note_tree_move_api",
     "global_search",
     "tasks",
+    "tools",
+    "uml_diagrams",
+    "uml_diagram_editor",
+    "uml_diagram_api",
+    "vocabulary_lists",
+    "vocabulary_list_detail",
+    "vocabulary_practice",
+    "vocabulary_export",
+    "vocabulary_review_api",
     "vacation_planner",
     "vacation_year_save",
     "vacation_period_save",

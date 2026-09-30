@@ -439,3 +439,9 @@ function registerLunoraServiceWorker() {
 }
 
 registerLunoraServiceWorker();
+
+// Forms carrying data-confirm ask before submitting (e.g. destructive delete buttons).
+document.addEventListener("submit", (event) => {
+  const message = event.target.dataset?.confirm;
+  if (message && !window.confirm(message)) event.preventDefault();
+});
