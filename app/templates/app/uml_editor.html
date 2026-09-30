@@ -1,0 +1,216 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}{{ diagram.title }} | UML | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell uml-shell" data-uml-editor data-save-url="{% url 'uml_diagram_api' diagram.id %}">
+    <header class="glass-panel uml-header">
+        <a class="icon-button" href="{% url 'uml_diagrams' %}" aria-label="Zur Diagrammübersicht" title="Zur Übersicht">
+            <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+        </a>
+        <label class="uml-title-field">
+            <span class="visually-hidden">Diagrammtitel</span>
+            <input type="text" maxlength="{{ title_max_length }}" value="{{ diagram.title }}" data-uml-title required>
+        </label>
+        <span class="uml-save-status" role="status" aria-live="polite" data-uml-status>Gespeichert</span>
+        <button class="primary-button" type="button" data-uml-action="save" title="Speichern (Strg+S)">
+            <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Speichern
+        </button>
+    </header>
+
+    <div class="glass-panel uml-toolbar" role="toolbar" aria-label="Diagramm-Werkzeuge">
+        <div class="uml-tool-group" aria-label="Elemente hinzufügen">
+            <button type="button" class="uml-tool" data-uml-add="class" title="Klasse hinzufügen"><i class="fa-regular fa-square" aria-hidden="true"></i><span>Klasse</span></button>
+            <button type="button" class="uml-tool" data-uml-add="abstract" title="Abstrakte Klasse hinzufügen"><i class="fa-solid fa-italic" aria-hidden="true"></i><span>Abstrakt</span></button>
+            <button type="button" class="uml-tool" data-uml-add="interface" title="Interface hinzufügen"><i class="fa-regular fa-circle" aria-hidden="true"></i><span>Interface</span></button>
+            <button type="button" class="uml-tool" data-uml-add="enum" title="Enum hinzufügen"><i class="fa-solid fa-list-ol" aria-hidden="true"></i><span>Enum</span></button>
+            <button type="button" class="uml-tool" data-uml-add="note" title="Notiz hinzufügen"><i class="fa-regular fa-note-sticky" aria-hidden="true"></i><span>Notiz</span></button>
+        </div>
+        <div class="uml-tool-group" aria-label="Beziehung">
+            <label class="uml-relation-select">
+                <span class="visually-hidden">Beziehungsart</span>
+                <select data-uml-relation-kind>
+                    <option value="association">Assoziation</option>
+                    <option value="directed_association">Gerichtete Assoziation</option>
+                    <option value="aggregation">Aggregation</option>
+                    <option value="composition">Komposition</option>
+                    <option value="inheritance">Vererbung</option>
+                    <option value="realization">Realisierung</option>
+                    <option value="dependency">Abhängigkeit</option>
+                    <option value="note_link">Notizverbindung</option>
+                </select>
+            </label>
+            <button type="button" class="uml-tool" data-uml-action="connect" aria-pressed="false" title="Verbinden: erst Quelle, dann Ziel anklicken (C)"><i class="fa-solid fa-link" aria-hidden="true"></i><span>Verbinden</span></button>
+        </div>
+        <div class="uml-tool-group" aria-label="Bearbeiten">
+            <button type="button" class="uml-tool is-icon" data-uml-action="undo" aria-label="Rückgängig" title="Rückgängig (Strg+Z)"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool is-icon" data-uml-action="redo" aria-label="Wiederholen" title="Wiederholen (Strg+Y)"><i class="fa-solid fa-rotate-right" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool is-icon" data-uml-action="duplicate" aria-label="Duplizieren" title="Duplizieren (Strg+D)"><i class="fa-regular fa-copy" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool is-icon" data-uml-action="delete" aria-label="Auswahl löschen" title="Löschen (Entf)"><i class="fa-regular fa-trash-can" aria-hidden="true"></i></button>
+        </div>
+        <div class="uml-tool-group" aria-label="Ansicht">
+            <button type="button" class="uml-tool is-icon" data-uml-action="zoom-out" aria-label="Verkleinern" title="Verkleinern (-)"><i class="fa-solid fa-magnifying-glass-minus" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool uml-zoom-label" data-uml-action="zoom-reset" title="Auf 100 % setzen" data-uml-zoom-label>100 %</button>
+            <button type="button" class="uml-tool is-icon" data-uml-action="zoom-in" aria-label="Vergrößern" title="Vergrößern (+)"><i class="fa-solid fa-magnifying-glass-plus" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool is-icon" data-uml-action="fit" aria-label="Alles anzeigen" title="Alles anzeigen (F)"><i class="fa-solid fa-expand" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool is-icon" data-uml-action="grid" aria-pressed="true" aria-label="Am Raster ausrichten" title="Am Raster ausrichten (G)"><i class="fa-solid fa-border-all" aria-hidden="true"></i></button>
+        </div>
+        <details class="uml-tool-group uml-export-menu">
+            <summary class="uml-tool"><i class="fa-solid fa-file-export" aria-hidden="true"></i><span>Export</span></summary>
+            <div class="uml-export-list">
+                <button type="button" data-uml-export="png"><i class="fa-regular fa-image" aria-hidden="true"></i> PNG-Bild</button>
+                <button type="button" data-uml-export="svg"><i class="fa-solid fa-bezier-curve" aria-hidden="true"></i> SVG-Grafik</button>
+                <button type="button" data-uml-export="plantuml"><i class="fa-solid fa-leaf" aria-hidden="true"></i> PlantUML-Text</button>
+                <button type="button" data-uml-export="java"><i class="fa-brands fa-java" aria-hidden="true"></i> Java-Code</button>
+                <button type="button" data-uml-export="json"><i class="fa-solid fa-code" aria-hidden="true"></i> JSON-Datei</button>
+                <button type="button" data-uml-export="import"><i class="fa-solid fa-file-import" aria-hidden="true"></i> JSON importieren …</button>
+            </div>
+        </details>
+        <input type="file" accept="application/json,.json" hidden data-uml-import-input>
+    </div>
+
+    <div class="uml-workspace">
+        <div class="glass-panel uml-canvas-wrap" data-uml-canvas-wrap>
+            <svg class="uml-canvas" data-uml-canvas tabindex="0" role="application" aria-label="UML-Zeichenfläche" aria-describedby="uml-canvas-help" xmlns="http://www.w3.org/2000/svg"></svg>
+            <p class="uml-canvas-hint" id="uml-canvas-help" data-uml-hint>Ziehen verschiebt die Fläche, Umschalt+Ziehen wählt mehrere Elemente aus, Strg+Mausrad zoomt.</p>
+        </div>
+
+        <aside class="glass-panel uml-inspector" aria-label="Eigenschaften">
+            <section data-uml-panel="empty">
+                <h2>Diagramm</h2>
+                <p class="uml-muted">Wähle ein Element aus oder füge über die Leiste eines hinzu. Beziehungen ziehst du am Griff <i class="fa-solid fa-circle-plus" aria-hidden="true"></i> einer ausgewählten Klasse zur Zielklasse.</p>
+                <h3>Elemente</h3>
+                <ul class="uml-outline" data-uml-outline></ul>
+                <h3>Schreibweise</h3>
+                <dl class="uml-syntax">
+                    <dt>Attribut</dt><dd><code>- name: String = "Max"</code></dd>
+                    <dt>Methode</dt><dd><code>+ getName(): String</code></dd>
+                    <dt>Parameter</dt><dd><code>+ setAlter(alter: int)</code></dd>
+                    <dt>Statisch</dt><dd><code>+ {static} anzahl: int</code></dd>
+                    <dt>Abstrakt</dt><dd><code># {abstract} flaeche(): double</code></dd>
+                    <dt>Sichtbarkeit</dt><dd><code>+</code> public, <code>-</code> private, <code>#</code> protected, <code>~</code> package</dd>
+                </dl>
+            </section>
+
+            <section data-uml-panel="class" hidden>
+                <h2 data-uml-class-heading>Klasse</h2>
+                <label class="uml-field">
+                    <span>Name</span>
+                    <input type="text" maxlength="120" data-uml-field="name">
+                </label>
+                <div class="uml-field-row">
+                    <label class="uml-field">
+                        <span>Art</span>
+                        <select data-uml-field="kind">
+                            <option value="class">Klasse</option>
+                            <option value="abstract">Abstrakte Klasse</option>
+                            <option value="interface">Interface</option>
+                            <option value="enum">Enum</option>
+                        </select>
+                    </label>
+                    <label class="uml-field">
+                        <span>Stereotyp</span>
+                        <input type="text" maxlength="60" placeholder="z. B. entity" data-uml-field="stereotype">
+                    </label>
+                </div>
+                <fieldset class="uml-field uml-colors">
+                    <legend>Farbe</legend>
+                    <div class="uml-color-options" data-uml-colors></div>
+                </fieldset>
+                <label class="uml-field" data-uml-literals-field>
+                    <span>Enum-Werte <small>(einer pro Zeile)</small></span>
+                    <textarea rows="4" spellcheck="false" data-uml-field="literals"></textarea>
+                </label>
+                <label class="uml-field">
+                    <span>Attribute <small>(eines pro Zeile)</small></span>
+                    <textarea rows="5" spellcheck="false" placeholder="- name: String" data-uml-field="attributes"></textarea>
+                </label>
+                <label class="uml-field">
+                    <span>Methoden <small>(eine pro Zeile)</small></span>
+                    <textarea rows="5" spellcheck="false" placeholder="+ getName(): String" data-uml-field="methods"></textarea>
+                </label>
+                <p class="uml-field-error" role="alert" data-uml-member-error hidden></p>
+            </section>
+
+            <section data-uml-panel="relation" hidden>
+                <h2>Beziehung</h2>
+                <p class="uml-muted" data-uml-relation-summary></p>
+                <label class="uml-field">
+                    <span>Art</span>
+                    <select data-uml-field="relation-kind">
+                        <option value="association">Assoziation</option>
+                        <option value="directed_association">Gerichtete Assoziation</option>
+                        <option value="aggregation">Aggregation</option>
+                        <option value="composition">Komposition</option>
+                        <option value="inheritance">Vererbung</option>
+                        <option value="realization">Realisierung</option>
+                        <option value="dependency">Abhängigkeit</option>
+                        <option value="note_link">Notizverbindung</option>
+                    </select>
+                </label>
+                <label class="uml-field">
+                    <span>Beschriftung</span>
+                    <input type="text" maxlength="120" placeholder="z. B. besitzt" data-uml-field="label">
+                </label>
+                <div class="uml-field-row">
+                    <label class="uml-field">
+                        <span>Multiplizität Quelle</span>
+                        <input type="text" maxlength="20" placeholder="1" list="uml-multiplicities" data-uml-field="source_multiplicity">
+                    </label>
+                    <label class="uml-field">
+                        <span>Multiplizität Ziel</span>
+                        <input type="text" maxlength="20" placeholder="0..*" list="uml-multiplicities" data-uml-field="target_multiplicity">
+                    </label>
+                </div>
+                <datalist id="uml-multiplicities">
+                    <option value="1"></option>
+                    <option value="0..1"></option>
+                    <option value="*"></option>
+                    <option value="0..*"></option>
+                    <option value="1..*"></option>
+                </datalist>
+                <button class="ghost-button" type="button" data-uml-action="swap"><i class="fa-solid fa-right-left" aria-hidden="true"></i> Richtung umkehren</button>
+                <p class="uml-muted uml-relation-help" data-uml-relation-help></p>
+            </section>
+
+            <section data-uml-panel="note" hidden>
+                <h2>Notiz</h2>
+                <label class="uml-field">
+                    <span>Text</span>
+                    <textarea rows="7" maxlength="2000" data-uml-field="text"></textarea>
+                </label>
+            </section>
+
+            <section data-uml-panel="multi" hidden>
+                <h2 data-uml-multi-heading>Mehrere Elemente</h2>
+                <p class="uml-muted">Ziehen verschiebt alle ausgewählten Elemente gemeinsam. Mit Entf werden sie gelöscht, mit Strg+D dupliziert.</p>
+            </section>
+        </aside>
+    </div>
+
+    <dialog class="glass-panel uml-dialog" data-uml-dialog aria-labelledby="uml-dialog-title">
+        <form method="dialog">
+            <div class="panel-title panel-title-between">
+                <h2 id="uml-dialog-title" data-uml-dialog-title>Export</h2>
+                <button class="icon-button" value="close" aria-label="Schließen"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+            </div>
+            <textarea readonly spellcheck="false" data-uml-dialog-text></textarea>
+            <div class="uml-dialog-actions">
+                <button class="ghost-button" type="button" data-uml-dialog-copy><i class="fa-regular fa-clipboard" aria-hidden="true"></i> Kopieren</button>
+                <button class="primary-button" type="button" data-uml-dialog-download><i class="fa-solid fa-download" aria-hidden="true"></i> Herunterladen</button>
+            </div>
+        </form>
+    </dialog>
+</section>
+{{ diagram_payload|json_script:"uml-diagram-data" }}
+{% endblock %}
+
+{% block page_js %}
+<script src="{% versioned_static 'js/uml_format.js' %}"></script>
+<script src="{% versioned_static 'js/uml.js' %}"></script>
+{% endblock %}

@@ -12,6 +12,7 @@ from app.services.dashboard import default_dashboard_layout
 from app.services.image_uploads import validate_profile_image_file
 from app.services.note_content import empty_note_document
 from app.services.note_files import note_upload_to, private_note_storage
+from app.services.uml_content import empty_uml_document
 
 
 class SystemSettings(models.Model):
@@ -25,6 +26,7 @@ class SystemSettings(models.Model):
     weather_enabled = models.BooleanField(default=True)
     dashboard_customization_enabled = models.BooleanField(default=True)
     tasks_enabled = models.BooleanField(default=True)
+    tools_enabled = models.BooleanField(default=True)
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -594,6 +596,77 @@ class Task(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class UmlDiagram(models.Model):
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="uml_diagrams")
+    title = models.CharField(max_length=120)
+    # Validated by app.services.uml_content before every save; never store client JSON directly.
+    document = models.JSONField(default=empty_uml_document)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at", "-id"]
+
+    def __str__(self):
+        return self.title
+
+
+VOCABULARY_LANGUAGE_CHOICES = [
+    ("de", "Deutsch"),
+    ("en", "Englisch"),
+    ("fr", "Französisch"),
+    ("es", "Spanisch"),
+    ("it", "Italienisch"),
+    ("la", "Latein"),
+    ("nl", "Niederländisch"),
+    ("pl", "Polnisch"),
+    ("ru", "Russisch"),
+    ("tr", "Türkisch"),
+    ("", "Andere"),
+]
+
+
+class VocabularyList(models.Model):
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="vocabulary_lists"
+    )
+    title = models.CharField(max_length=120)
+    source_language = models.CharField(
+        max_length=8, choices=VOCABULARY_LANGUAGE_CHOICES, default="en", blank=True
+    )
+    target_language = models.CharField(
+        max_length=8, choices=VOCABULARY_LANGUAGE_CHOICES, default="de", blank=True
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at", "-id"]
+
+    def __str__(self):
+        return self.title
+
+
+class VocabularyCard(models.Model):
+    # Leitner box 1 (new/wrong) … 5 (learned); see app/services/vocabulary.py for the intervals.
+    vocabulary_list = models.ForeignKey(VocabularyList, on_delete=models.CASCADE, related_name="cards")
+    term = models.CharField(max_length=200)
+    translation = models.CharField(max_length=200)
+    note = models.CharField(max_length=300, blank=True)
+    box = models.PositiveSmallIntegerField(default=1)
+    due_at = models.DateTimeField(blank=True, null=True)
+    correct_count = models.PositiveIntegerField(default=0)
+    wrong_count = models.PositiveIntegerField(default=0)
+    last_reviewed_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return f"{self.term} – {self.translation}"
 
 
 class UserNotification(models.Model):

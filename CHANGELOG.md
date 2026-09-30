@@ -6,6 +6,17 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Add a "Werkzeuge" (tools) page for school helpers, gated by a new `tools` feature flag, starting
+  with a full UML class diagram editor: classes, abstract classes, interfaces, enums and notes;
+  association, directed association, aggregation, composition, inheritance, realization,
+  dependency and note links with labels and multiplicities; drag-and-drop, pan/zoom, multi-select,
+  undo/redo, autosave, and export as PNG, SVG, PlantUML, Java skeleton code, or JSON (plus JSON
+  import).
+- Add a vocabulary trainer to the tools page: vocabulary lists with per-list languages, single and
+  bulk entry (paste lines separated by tab, `;` or `=`), CSV export, and practice as flashcards,
+  typing (accepts alternative meanings, optional bracketed parts and small typos) or multiple
+  choice in either direction. Progress follows a five-box Leitner system, wrong answers come back
+  within the same round, and terms can be read aloud via the browser's speech synthesis.
 - Reduce idle CPU/GPU load: the messages page and dashboard pause live polling while the tab is
   hidden (so background tabs no longer mark chat messages as read), unchanged chat regions are no
   longer re-rendered on every poll, and the dashboard logo glow animates via opacity instead of

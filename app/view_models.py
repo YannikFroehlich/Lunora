@@ -11,7 +11,10 @@ from app.models import (
     Note,
     NoteShare,
     Task,
+    UmlDiagram,
     VacationYear,
+    VocabularyCard,
+    VocabularyList,
 )
 from app.services.dashboard import (
     available_dashboard_widgets,
@@ -36,6 +39,7 @@ from app.services.user_preferences import (
     localtime_for_user,
 )
 from app.services.vacation_planner import annual_summary
+from app.services.vocabulary import due_filter
 
 
 def get_dashboard_context(user=None):
@@ -296,6 +300,8 @@ def _dashboard_nav_tiles(user, unread_messages_total, new_note_shares, open_task
         tiles.insert(
             -1, {"label": "Urlaubsplaner", "icon": "fa-umbrella-beach", "url_name": "vacation_planner"}
         )
+    if flags.get("tools"):
+        tiles.insert(-1, {"label": "Werkzeuge", "icon": "fa-toolbox", "url_name": "tools"})
     if user and getattr(user, "is_superuser", False):
         tiles.append({"label": "Administration", "icon": "fa-shield-halved", "url_name": "administration"})
     return tiles
@@ -351,7 +357,54 @@ def _dashboard_tool_shortcuts(
                 "url_name": "vacation_planner",
             },
         )
+    if flags.get("tools"):
+        tools.insert(
+            -1,
+            {
+                "title": "Werkzeuge",
+                "subtitle": "UML & Vokabeln",
+                "icon": "fa-toolbox",
+                "url_name": "tools",
+            },
+        )
     return tools
+
+
+# Catalog for the /tools/ hub. An entry without url_name renders as "coming soon".
+SCHOOL_TOOLS = (
+    {
+        "id": "uml",
+        "title": "UML-Klassendiagramm",
+        "description": "Klassen, Interfaces, Enums und Beziehungen zeichnen, als Bild, PlantUML oder Java-Code exportieren.",
+        "icon": "fa-diagram-project",
+        "url_name": "uml_diagrams",
+    },
+    {
+        "id": "vocabulary",
+        "title": "Vokabeltrainer",
+        "description": "Vokabellisten anlegen, per Karteikarte, Eintippen oder Multiple Choice abfragen – mit Lernkartei.",
+        "icon": "fa-language",
+        "url_name": "vocabulary_lists",
+    },
+)
+
+
+def get_tools_context(user):
+    diagram_count = UmlDiagram.objects.filter(owner=user).count()
+    vocabulary_count = VocabularyList.objects.filter(owner=user).count()
+    due_cards = (
+        VocabularyCard.objects.filter(vocabulary_list__owner=user).filter(due_filter(timezone.now())).count()
+    )
+    meta = {
+        "uml": f"{diagram_count} Diagramm(e)" if diagram_count else "Noch keine Diagramme",
+        "vocabulary": (
+            f"{vocabulary_count} Liste(n) · {due_cards} fällig"
+            if vocabulary_count
+            else "Noch keine Vokabellisten"
+        ),
+    }
+    tools = [{**tool, "meta": meta.get(tool["id"])} for tool in SCHOOL_TOOLS]
+    return {"active_page": "tools", "tools": tools}
 
 
 def _dashboard_weather_placeholder(user=None):

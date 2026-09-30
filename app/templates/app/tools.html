@@ -1,0 +1,40 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}Werkzeuge | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell tools-shell">
+    <header class="page-hero">
+        <div>
+            <h1>Werkzeuge</h1>
+            <p>Kleine Helfer für Schule und Lernen – alles an einem Ort.</p>
+        </div>
+        <i class="fa-solid fa-toolbox hero-branch" aria-hidden="true"></i>
+    </header>
+
+    <div class="tool-catalog">
+        {% for tool in tools %}
+        {% if tool.url_name %}
+        <a class="glass-panel tool-card" href="{% url tool.url_name %}">
+            <span class="tool-card-icon" aria-hidden="true"><i class="fa-solid {{ tool.icon }}"></i></span>
+            <strong>{{ tool.title }}</strong>
+            <p>{{ tool.description }}</p>
+            {% if tool.meta %}<small>{{ tool.meta }}</small>{% endif %}
+        </a>
+        {% else %}
+        <div class="glass-panel tool-card is-upcoming" aria-disabled="true">
+            <span class="tool-card-icon" aria-hidden="true"><i class="fa-solid {{ tool.icon }}"></i></span>
+            <strong>{{ tool.title }}</strong>
+            <p>{{ tool.description }}</p>
+            <small>Bald verfügbar</small>
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

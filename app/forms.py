@@ -25,6 +25,8 @@ from app.models import (
     TaskList,
     VacationPeriod,
     VacationYear,
+    VocabularyCard,
+    VocabularyList,
 )
 from app.services.calendar_service import expand_manual_recurrence
 from app.services.chat_files import infer_attachment_kind, validate_note_upload
@@ -121,6 +123,7 @@ class SystemSettingsForm(forms.ModelForm):
             "weather_enabled",
             "dashboard_customization_enabled",
             "tasks_enabled",
+            "tools_enabled",
         ]
         labels = {
             "normal_login_enabled": "Login und Registrierung für Nutzer",
@@ -133,6 +136,7 @@ class SystemSettingsForm(forms.ModelForm):
             "weather_enabled": "Wetter",
             "dashboard_customization_enabled": "Dashboard anpassen",
             "tasks_enabled": "Aufgaben",
+            "tools_enabled": "Werkzeuge (Schul-Tools wie UML-Editor)",
         }
         widgets = {
             "normal_login_enabled": forms.CheckboxInput(),
@@ -145,6 +149,7 @@ class SystemSettingsForm(forms.ModelForm):
             "weather_enabled": forms.CheckboxInput(),
             "dashboard_customization_enabled": forms.CheckboxInput(),
             "tasks_enabled": forms.CheckboxInput(),
+            "tools_enabled": forms.CheckboxInput(),
         }
 
 
@@ -787,6 +792,32 @@ class TaskListForm(forms.ModelForm):
         labels = {"name": "Listenname", "color": "Farbe"}
         widgets = {
             "name": forms.TextInput(attrs={"placeholder": "Neue Liste …", "autocomplete": "off"}),
+        }
+
+
+class VocabularyListForm(forms.ModelForm):
+    class Meta:
+        model = VocabularyList
+        fields = ["title", "source_language", "target_language"]
+        labels = {
+            "title": "Titel",
+            "source_language": "Sprache der Begriffe",
+            "target_language": "Übersetzung in",
+        }
+        widgets = {
+            "title": forms.TextInput(attrs={"placeholder": "z. B. Englisch Unit 3", "autocomplete": "off"}),
+        }
+
+
+class VocabularyCardForm(forms.ModelForm):
+    class Meta:
+        model = VocabularyCard
+        fields = ["term", "translation", "note"]
+        labels = {"term": "Begriff", "translation": "Übersetzung", "note": "Notiz / Beispielsatz"}
+        widgets = {
+            "term": forms.TextInput(attrs={"autocomplete": "off"}),
+            "translation": forms.TextInput(attrs={"autocomplete": "off"}),
+            "note": forms.TextInput(attrs={"autocomplete": "off", "placeholder": "optional"}),
         }
 
 
