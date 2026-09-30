@@ -85,6 +85,7 @@ from app.services.notifications import (
 from app.services.scheduled_tasks import run_scheduled_tasks, sync_due_calendars
 from app.services.tasks import dashboard_today_tasks, toggle_task
 from app.services.uml_content import validate_uml_document
+from app.services.user_preferences import get_user_zoneinfo
 from app.services.vacation_planner import (
     annual_summary,
     calculate_period,
@@ -3046,7 +3047,8 @@ class TaskTests(TestCase):
         self.assertTrue(TaskLabel.objects.filter(pk=label.id).exists())
 
     def test_dashboard_today_tasks_includes_overdue_and_today_but_not_upcoming(self):
-        now = timezone.now()
+        # Local midday, so "+2 hours" stays on the same local date.
+        now = datetime(2026, 6, 17, 12, 0, tzinfo=get_user_zoneinfo(self.user))
         Task.objects.create(user=self.user, title="Überfällig", due_at=now - timedelta(days=1))
         Task.objects.create(user=self.user, title="Heute fällig", due_at=now + timedelta(hours=2))
         Task.objects.create(user=self.user, title="Nächste Woche", due_at=now + timedelta(days=3))
@@ -6122,20 +6124,22 @@ class DashboardStatsWidgetTests(TestCase):
         self.client.login(username="mira@example.com", password="secret-12345")
 
     def test_dashboard_shows_stat_tiles_for_enabled_features(self):
-        now = timezone.now()
-        Task.objects.create(user=self.user, title="Erledigt", is_done=True)
-        Task.objects.create(user=self.user, title="Offen")
-        Note.objects.create(owner=self.user, title="Diese Woche bearbeitet")
-        CalendarEvent.objects.create(
-            user=self.user,
-            title="Bald",
-            start_at=now + timedelta(days=2),
-            end_at=now + timedelta(days=2, hours=1),
-        )
-        VacationYear.objects.create(user=self.user, year=now.year, allowance_days=Decimal("30"))
-        self._login()
+        # Wednesday mid-month at local midday, so the local year/week/month match what the view computes.
+        now = datetime(2026, 6, 17, 12, 0, tzinfo=get_user_zoneinfo(self.user))
+        with patch("django.utils.timezone.now", return_value=now):
+            Task.objects.create(user=self.user, title="Erledigt", is_done=True)
+            Task.objects.create(user=self.user, title="Offen")
+            Note.objects.create(owner=self.user, title="Diese Woche bearbeitet")
+            CalendarEvent.objects.create(
+                user=self.user,
+                title="Bald",
+                start_at=now + timedelta(days=2),
+                end_at=now + timedelta(days=2, hours=1),
+            )
+            VacationYear.objects.create(user=self.user, year=now.year, allowance_days=Decimal("30"))
+            self._login()
 
-        response = self.client.get("/home/")
+            response = self.client.get("/home/")
 
         self.assertContains(response, "Statistik")
         dashboard_stats = response.context["dashboard_stats"]
@@ -6171,18 +6175,15 @@ class DashboardStatsWidgetTests(TestCase):
             self.assertFalse(any(label.startswith("Resturlaub") for label in labels))
 
     def test_dashboard_stat_tiles_distinguish_week_and_month_activity(self):
-        now = timezone.now()
-        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
-        if week_start <= month_start:
-            self.skipTest("Wochenstart fällt mit dem Monatsstart zusammen.")
-
-        earlier_this_month = week_start - timedelta(days=1)
+        # Wednesday mid-month at local midday: week starts Mon 15th, month on the 1st.
+        now = datetime(2026, 6, 17, 12, 0, tzinfo=get_user_zoneinfo(self.user))
+        earlier_this_month = datetime(2026, 6, 10, 12, 0, tzinfo=now.tzinfo)
         task = Task.objects.create(user=self.user, title="Letzte Woche erledigt", is_done=True)
         Task.objects.filter(pk=task.pk).update(updated_at=earlier_this_month)
         self._login()
 
-        response = self.client.get("/home/")
+        with patch("django.utils.timezone.now", return_value=now):
+            response = self.client.get("/home/")
 
         dashboard_stats = response.context["dashboard_stats"]
         week_value = next(
