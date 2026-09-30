@@ -1,9 +1,10 @@
+import hashlib
 from datetime import timedelta
 
 from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
-from django.db.models import Q
+from django.db.models import Count, Max, Q
 from django.http import FileResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
@@ -283,13 +284,16 @@ def messages_live_updates(request, conversation_id=None):
     if conversation_id and not selected_conversation:
         return JsonResponse({"ok": False, "error": "Diese Unterhaltung wurde nicht gefunden."}, status=404)
 
-    all_conversations = list(Conversation.visible_for(request.user))
-
     if selected_conversation:
         selected_conversation.mark_read_for(request.user)
         selected_conversation = _get_user_conversation(request.user, selected_conversation.id)
-        all_conversations = list(Conversation.visible_for(request.user))
 
+    typing_label = _typing_label(selected_conversation, request.user)
+    fingerprint = _live_updates_fingerprint(request, typing_label)
+    if request.GET.get("fp") == fingerprint:
+        return JsonResponse({"ok": True, "unchanged": True, "fingerprint": fingerprint})
+
+    all_conversations = list(Conversation.visible_for(request.user))
     query = request.GET.get("q", "").strip()
     current_filter = request.GET.get("filter", "all")
     message_before_id = request.GET.get("before", "").strip()
@@ -313,6 +317,7 @@ def messages_live_updates(request, conversation_id=None):
 
     payload = {
         "ok": True,
+        "fingerprint": fingerprint,
         "unread_total": unread_total,
         "conversation_total": len(all_inbox_items),
         "contact_list_html": render_to_string(
@@ -355,7 +360,7 @@ def messages_live_updates(request, conversation_id=None):
                     current_member_state["is_blocked"] or current_member_state["blocked_by_recipient"]
                 ),
                 "last_message_id": message_items[-1]["message"].id if message_items else None,
-                "typing_label": _typing_label(selected_conversation, request.user),
+                "typing_label": typing_label,
             }
         )
     else:
@@ -430,6 +435,39 @@ def _conversation_blocked_for_sender(conversation, user):
     if not conversation or conversation.is_group:
         return False
     return any(member.is_blocked for member in _other_conversation_members(conversation, user))
+
+
+def _live_updates_fingerprint(request, typing_label):
+    """Cheap digest of the state the live partials render from, so idle polls skip all rendering."""
+    conversation_ids = ConversationMember.objects.filter(user=request.user).values("conversation_id")
+    message_state = ChatMessage.objects.filter(conversation_id__in=conversation_ids).aggregate(
+        count=Count("id"),
+        last_id=Max("id"),
+        edited=Max("edited_at"),
+        deleted=Count("id", filter=Q(is_deleted=True)),
+        pinned=Count("id", filter=Q(is_pinned=True)),
+        pinned_at=Max("pinned_at"),
+    )
+    reaction_state = ChatMessageReaction.objects.filter(
+        message__conversation_id__in=conversation_ids
+    ).aggregate(count=Count("id"), last_id=Max("id"))
+    member_state = list(
+        ConversationMember.objects.filter(conversation_id__in=conversation_ids)
+        .order_by("id")
+        .values_list("id", "is_archived", "is_blocked", "muted_until", "last_read_at")
+    )
+    conversation_state = list(
+        Conversation.objects.filter(id__in=conversation_ids).order_by("id").values_list("id", "updated_at")
+    )
+    # "_" is the clients' cache-busting timestamp and must not make every poll look changed.
+    params = sorted((key, value) for key, value in request.GET.items() if key not in {"fp", "_"})
+    # ponytail: the minute bucket caps staleness of untracked inputs (profile names/avatars, mute
+    # expiry, "Heute"/"Gestern" labels) at ~60s; track them explicitly if that ever matters.
+    minute = timezone.now().replace(second=0, microsecond=0)
+    raw = repr(
+        (message_state, reaction_state, member_state, conversation_state, params, typing_label, minute)
+    )
+    return hashlib.sha256(raw.encode()).hexdigest()[:32]
 
 
 def _typing_label(conversation, user):

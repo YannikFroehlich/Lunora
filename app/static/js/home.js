@@ -138,7 +138,8 @@
     }
 
     update();
-    window.setInterval(update, 15000);
+    // Hidden tabs skip ticks; visibilitychange below catches up on return.
+    window.setInterval(() => !document.hidden && update(), 15000);
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden) {
         update();
@@ -163,6 +164,9 @@
       badge.classList.toggle("is-hidden", unreadCount === 0);
     };
 
+    // Server state digest from the last poll; unchanged state gets a tiny reply without a count.
+    let liveFingerprint = "";
+
     const refreshUnreadMessages = async () => {
       const liveUrl = liveRegion.dataset.homeMessagesLiveUrl;
       if (!liveUrl) {
@@ -171,6 +175,9 @@
 
       const url = new URL(liveUrl, window.location.origin);
       url.searchParams.set("_", Date.now().toString());
+      if (liveFingerprint) {
+        url.searchParams.set("fp", liveFingerprint);
+      }
 
       try {
         const response = await fetch(url, {
@@ -191,13 +198,16 @@
           return;
         }
 
-        setBadgeCount(data.unread_total);
+        liveFingerprint = data.fingerprint || "";
+        if (!data.unchanged) {
+          setBadgeCount(data.unread_total);
+        }
       } catch (_error) {
         // Lokale Netzwerk-/Reload-Unterbrechungen sollen die Home-Seite nicht stören.
       }
     };
 
-    window.setInterval(refreshUnreadMessages, 5000);
+    window.setInterval(() => !document.hidden && refreshUnreadMessages(), 5000);
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden) {
         refreshUnreadMessages();

@@ -227,20 +227,33 @@
   z-index: 1;
   width: 128px;
   height: 128px;
-  object-fit: contain;
   opacity: 0.92;
   pointer-events: none;
+}
+
+.hero-logo img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 0 14px color-mix(in srgb, var(--color-accent-strong) 38%, transparent))
+          drop-shadow(0 0 30px color-mix(in srgb, var(--color-accent) 20%, transparent));
+}
+
+/* The pulse cross-fades a pre-rendered strong glow via opacity (compositor-only)
+   instead of animating filter, which repainted both drop-shadows every frame. */
+.hero-logo .hero-logo-glow {
+  opacity: 0;
+  will-change: opacity;
+  filter: drop-shadow(0 0 26px color-mix(in srgb, var(--color-accent-strong) 68%, transparent))
+          drop-shadow(0 0 52px color-mix(in srgb, var(--color-accent) 42%, transparent));
   animation: hero-logo-glow 3600ms ease-in-out infinite alternate;
 }
 
 @keyframes hero-logo-glow {
-  from {
-    filter: drop-shadow(0 0 14px color-mix(in srgb, var(--color-accent-strong) 38%, transparent))
-            drop-shadow(0 0 30px color-mix(in srgb, var(--color-accent) 20%, transparent));
-  }
   to {
-    filter: drop-shadow(0 0 26px color-mix(in srgb, var(--color-accent-strong) 68%, transparent))
-            drop-shadow(0 0 52px color-mix(in srgb, var(--color-accent) 42%, transparent));
+    opacity: 1;
   }
 }
 

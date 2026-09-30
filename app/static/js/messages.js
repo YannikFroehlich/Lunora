@@ -127,8 +127,22 @@
     }
   };
 
+  // Last server-rendered HTML per live region, so unchanged regions skip the DOM swap.
+  const lastLiveHtml = {};
+  const liveHtmlChanged = (key, html) => {
+    if (typeof html !== "string" || lastLiveHtml[key] === html) {
+      return false;
+    }
+    lastLiveHtml[key] = html;
+    return true;
+  };
+  let refreshInFlight = false;
+  // Server state digest from the last poll; an unchanged digest gets a tiny "unchanged" reply.
+  let liveFingerprint = "";
+
   const refreshMessages = async () => {
-    if (!chatPanel) {
+    // Hidden tabs skip polling (and implicit mark-as-read); visibilitychange refreshes on return.
+    if (!chatPanel || document.hidden || refreshInFlight) {
       return;
     }
 
@@ -139,7 +153,11 @@
 
     const url = new URL(liveUrl, window.location.origin);
     url.search = currentUrlParams().toString();
+    if (liveFingerprint) {
+      url.searchParams.set("fp", liveFingerprint);
+    }
 
+    refreshInFlight = true;
     try {
       const response = await fetch(url, {
         method: "GET",
@@ -158,9 +176,15 @@
       if (!data.ok) {
         return;
       }
+      liveFingerprint = data.fingerprint || "";
+      if (data.unchanged) {
+        return;
+      }
 
       updateUnreadFilterBadge(Number(data.unread_total || 0));
-      replaceOuterHtml("#messages-contact-list", data.contact_list_html);
+      if (liveHtmlChanged("contacts", data.contact_list_html)) {
+        replaceOuterHtml("#messages-contact-list", data.contact_list_html);
+      }
 
       const typingIndicator = document.getElementById("typing-indicator");
       if (typingIndicator) {
@@ -168,12 +192,12 @@
       }
 
       const overview = document.getElementById("messages-overview");
-      if (overview && typeof data.overview_html === "string") {
+      if (overview && liveHtmlChanged("overview", data.overview_html)) {
         overview.outerHTML = data.overview_html;
       }
 
       const pinnedRegion = document.getElementById("pinned-messages-region");
-      if (pinnedRegion && typeof data.pinned_messages_html === "string") {
+      if (pinnedRegion && liveHtmlChanged("pinned", data.pinned_messages_html)) {
         pinnedRegion.innerHTML = data.pinned_messages_html;
       }
 
@@ -187,7 +211,7 @@
       }
 
       const messageStream = document.getElementById("message-stream");
-      if (messageStream && typeof data.message_stream_html === "string") {
+      if (messageStream && liveHtmlChanged("stream", data.message_stream_html)) {
         const shouldScrollDown = isNearBottom(messageStream);
         const previousHeight = messageStream.scrollHeight;
         const previousTop = messageStream.scrollTop;
@@ -201,6 +225,8 @@
       }
     } catch (_error) {
       // Beim lokalen Entwickeln soll ein kurzer Verbindungsfehler den Chat nicht stören.
+    } finally {
+      refreshInFlight = false;
     }
   };
 

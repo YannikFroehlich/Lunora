@@ -1,2 +1,5 @@
+# Keep LF everywhere (ruff enforces line-ending = "lf"), regardless of core.autocrlf.
+* text=auto eol=lf
+
 # Vite output can contain meaningful trailing spaces inside minified template literals.
 app/static/js/bundles/chunks/*.js -whitespace
