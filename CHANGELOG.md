@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Update KaTeX (formula rendering in notes) to 0.19 and load its stylesheet with Subresource
+  Integrity; patch updates for highlight.js, ESLint and Prettier. `npm audit` is clean again.
 - Pin every transitive Python dependency at its tested version in `constraints.txt`. CI and
   `scripts/deploy.sh` install with `-c constraints.txt`, so production gets exactly the tested set;
   regenerate it with `pip freeze` after changing a `requirements*.txt`.

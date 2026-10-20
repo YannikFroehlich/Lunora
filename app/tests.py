@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import json
 import mimetypes
@@ -264,6 +265,23 @@ class StaticVersioningTests(SimpleTestCase):
         self.assertIn("fa-solid-900.woff2?v=fontawesome-7.2.0", fontawesome_css)
         self.assertIn("fa-regular-400.woff2?v=fontawesome-7.2.0", fontawesome_css)
         self.assertIn("fa-brands-400.woff2?v=fontawesome-7.2.0", fontawesome_css)
+
+    def test_notes_katex_stylesheet_matches_installed_katex(self):
+        # KaTeX 0.18+ prefixes its CSS classes, so a CDN stylesheet from another version than
+        # the bundled JS breaks every formula; a stale integrity hash blocks the stylesheet.
+        package = json.loads((BASE_DIR / "package.json").read_text(encoding="utf-8"))
+        notes_template = (BASE_DIR / "app" / "templates" / "app" / "notes.html").read_text(encoding="utf-8")
+        katex_version = package["dependencies"]["katex"]
+
+        self.assertIn(
+            f"https://cdn.jsdelivr.net/npm/katex@{katex_version}/dist/katex.min.css", notes_template
+        )
+
+        installed_css = BASE_DIR / "node_modules" / "katex" / "dist" / "katex.min.css"
+        if not installed_css.exists():
+            self.skipTest("node_modules is not installed")
+        digest = base64.b64encode(hashlib.sha384(installed_css.read_bytes()).digest()).decode()
+        self.assertIn(f'integrity="sha384-{digest}"', notes_template)
 
     def test_notes_editor_uses_split_es_module_bundle(self):
         bundle_dir = BASE_DIR / "app" / "static" / "js" / "bundles"
