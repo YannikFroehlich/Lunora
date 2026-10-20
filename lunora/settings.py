@@ -226,6 +226,8 @@ STATIC_ROOT = BASE_DIR / os.getenv("DJANGO_STATIC_ROOT", "staticfiles")
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 PRIVATE_MEDIA_ROOT = BASE_DIR / os.getenv("DJANGO_PRIVATE_MEDIA_ROOT", "private_media")
+# Redirects both media roots to a temp directory while tests run.
+TEST_RUNNER = "lunora.test_runner.IsolatedMediaTestRunner"
 PROFILE_IMAGE_MAX_BYTES = env_int("PROFILE_IMAGE_MAX_BYTES", 2 * 1024 * 1024)
 PROFILE_IMAGE_MAX_WIDTH = env_int("PROFILE_IMAGE_MAX_WIDTH", 4096)
 PROFILE_IMAGE_MAX_HEIGHT = env_int("PROFILE_IMAGE_MAX_HEIGHT", 4096)
