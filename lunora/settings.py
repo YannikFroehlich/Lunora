@@ -245,38 +245,45 @@ SECURE_REFERRER_POLICY = os.getenv("DJANGO_SECURE_REFERRER_POLICY", "same-origin
 SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_HTTPONLY = env_bool("DJANGO_CSRF_COOKIE_HTTPONLY", False)
 
-EMAIL_BACKEND = os.getenv(
+# Lowercase names on purpose: Django treats uppercase module attributes as settings, and the
+# deprecated EMAIL_* settings must not be defined alongside MAILERS.
+email_backend = os.getenv(
     "DJANGO_EMAIL_BACKEND",
     "django.core.mail.backends.console.EmailBackend",
 )
-EMAIL_HOST = os.getenv("DJANGO_EMAIL_HOST", "localhost")
-EMAIL_PORT = env_int("DJANGO_EMAIL_PORT", 587)
-EMAIL_HOST_USER = os.getenv("DJANGO_EMAIL_HOST_USER", "")
-EMAIL_HOST_PASSWORD = os.getenv("DJANGO_EMAIL_HOST_PASSWORD", "")
-EMAIL_USE_TLS = env_bool("DJANGO_EMAIL_USE_TLS", True)
-EMAIL_USE_SSL = env_bool("DJANGO_EMAIL_USE_SSL", False)
-EMAIL_TIMEOUT = env_int("DJANGO_EMAIL_TIMEOUT", 10)
-DEFAULT_FROM_EMAIL = os.getenv("DJANGO_DEFAULT_FROM_EMAIL", "Lunora <noreply@localhost>")
-
-if EMAIL_USE_SSL and EMAIL_USE_TLS:
-    raise ImproperlyConfigured(
-        "DJANGO_EMAIL_USE_SSL und DJANGO_EMAIL_USE_TLS dürfen nicht gleichzeitig aktiv sein."
-    )
-
-if not DEBUG and EMAIL_BACKEND == "django.core.mail.backends.smtp.EmailBackend":
-    missing_email_settings = [
-        name
-        for name, value in {
-            "DJANGO_EMAIL_HOST": EMAIL_HOST,
-            "DJANGO_EMAIL_HOST_USER": EMAIL_HOST_USER,
-            "DJANGO_EMAIL_HOST_PASSWORD": EMAIL_HOST_PASSWORD,
-        }.items()
-        if not value or value == "change-me"
-    ]
-    if missing_email_settings:
+email_options = {}
+# Mailers created from MAILERS reject unknown OPTIONS, so SMTP options only go to SMTP.
+if email_backend == "django.core.mail.backends.smtp.EmailBackend":
+    email_options = {
+        "host": os.getenv("DJANGO_EMAIL_HOST", "localhost"),
+        "port": env_int("DJANGO_EMAIL_PORT", 587),
+        "username": os.getenv("DJANGO_EMAIL_HOST_USER", ""),
+        "password": os.getenv("DJANGO_EMAIL_HOST_PASSWORD", ""),
+        "use_tls": env_bool("DJANGO_EMAIL_USE_TLS", True),
+        "use_ssl": env_bool("DJANGO_EMAIL_USE_SSL", False),
+        "timeout": env_int("DJANGO_EMAIL_TIMEOUT", 10),
+    }
+    if email_options["use_ssl"] and email_options["use_tls"]:
         raise ImproperlyConfigured(
-            f"{', '.join(missing_email_settings)} muss für SMTP in Produktion gesetzt sein."
+            "DJANGO_EMAIL_USE_SSL und DJANGO_EMAIL_USE_TLS dürfen nicht gleichzeitig aktiv sein."
         )
+    if not DEBUG:
+        missing_email_settings = [
+            name
+            for name, value in {
+                "DJANGO_EMAIL_HOST": email_options["host"],
+                "DJANGO_EMAIL_HOST_USER": email_options["username"],
+                "DJANGO_EMAIL_HOST_PASSWORD": email_options["password"],
+            }.items()
+            if not value or value == "change-me"
+        ]
+        if missing_email_settings:
+            raise ImproperlyConfigured(
+                f"{', '.join(missing_email_settings)} muss für SMTP in Produktion gesetzt sein."
+            )
+
+MAILERS = {"default": {"BACKEND": email_backend, "OPTIONS": email_options}}
+DEFAULT_FROM_EMAIL = os.getenv("DJANGO_DEFAULT_FROM_EMAIL", "Lunora <noreply@localhost>")
 
 # Empty by default: harmless while running locally with DEBUG=true. Set DJANGO_ADMINS
 # once this is deployed with DEBUG=false and a real e-mail backend, and Django emails

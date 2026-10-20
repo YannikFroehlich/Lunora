@@ -3131,7 +3131,6 @@ class CalendarFetchSafetyTests(TestCase):
 @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
 @override_settings(
     PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"],
-    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
     DEFAULT_FROM_EMAIL="Lunora <noreply@example.test>",
     LUNORA_WEEKLY_SUMMARY_HOUR=8,
 )
