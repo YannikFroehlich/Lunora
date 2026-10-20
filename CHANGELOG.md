@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Update the notes editor to Tiptap 3.32 (upstream fixes for list-type switching, pasting and
+  tables) and stop registering the underline extension twice, which Tiptap warned about.
 - Upgrade Django to 6.1 and Pillow to 13, plus patch updates for gunicorn, psycopg, holidays,
   pywebpush, reportlab and ruff — deployments need `pip install -r requirements.txt`.
 - Add a "Werkzeuge" (tools) page for school helpers, gated by a new `tools` feature flag, starting

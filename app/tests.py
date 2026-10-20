@@ -72,6 +72,7 @@ from app.services.calendar_sync_queue import queue_calendar_sources
 from app.services.dashboard import DASHBOARD_WIDGET_IDS, default_dashboard_layout, normalize_dashboard_layout
 from app.services.image_uploads import PROFILE_IMAGE_MAX_BYTES
 from app.services.note_content import NOTE_TEMPLATES, empty_note_document, validate_note_document
+from app.services.note_files import private_note_storage
 from app.services.note_search import build_snippet, highlight_text, parse_search_query, search_notes
 from app.services.notes import accessible_notes, prune_note_versions, purge_expired_notes, share_note
 from app.services.notifications import (
@@ -404,6 +405,7 @@ class DatabaseConfigurationTests(SimpleTestCase):
 
         self.assertEqual(config["ENGINE"], "django.db.backends.sqlite3")
         self.assertEqual(config["NAME"], BASE_DIR / "local.sqlite3")
+        self.assertEqual(config["OPTIONS"]["transaction_mode"], "IMMEDIATE")
 
     def test_production_rejects_sqlite(self):
         with patch.dict(
@@ -5020,6 +5022,7 @@ class MessagesPageTests(TestCase):
             download_url = f"/messages/attachments/{attachment.file_id}/inline/"
             response = self.client.get(download_url)
             self.assertEqual(response.status_code, 200)
+            response.close()
 
             self.client.logout()
             self.client.login(username="anna@example.com", password="secret-12345")
@@ -8188,6 +8191,16 @@ class NotesTests(TestCase):
         )
         self.assertEqual(response.status_code, 200, response.content)
         self.assertFalse(NoteLink.objects.filter(source_note=source, target_note=target).exists())
+
+
+class PrivateMediaStorageTests(SimpleTestCase):
+    def test_storage_follows_private_media_root_override(self):
+        with TemporaryDirectory() as private_root, override_settings(PRIVATE_MEDIA_ROOT=private_root):
+            self.assertEqual(private_note_storage.location, os.path.abspath(private_root))
+
+    def test_test_runner_keeps_uploads_out_of_real_media_folders(self):
+        self.assertNotEqual(os.path.abspath(private_note_storage.location), str(BASE_DIR / "private_media"))
+        self.assertNotEqual(os.path.abspath(default_storage.location), str(BASE_DIR / "media"))
 
 
 class NotePresenceTests(TestCase):

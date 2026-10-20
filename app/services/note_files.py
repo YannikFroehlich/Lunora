@@ -7,6 +7,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.files.storage import FileSystemStorage
 from django.utils.deconstruct import deconstructible
+from django.utils.functional import cached_property
 
 from app.services.image_uploads import _detect_image_type_and_size
 
@@ -32,10 +33,17 @@ NOTE_IMAGE_ACCEPT = "image/jpeg,image/png,image/webp"
 
 @deconstructible
 class PrivateNoteStorage(FileSystemStorage):
-    def __init__(self):
-        super().__init__(
-            location=getattr(settings, "PRIVATE_MEDIA_ROOT", settings.BASE_DIR / "private_media")
-        )
+    # Resolved lazily rather than passed to __init__, so override_settings(PRIVATE_MEDIA_ROOT=...)
+    # reaches the module-level instance the same way FileSystemStorage follows MEDIA_ROOT.
+    @cached_property
+    def base_location(self):
+        return getattr(settings, "PRIVATE_MEDIA_ROOT", settings.BASE_DIR / "private_media")
+
+    def _clear_cached_properties(self, setting, **kwargs):
+        super()._clear_cached_properties(setting, **kwargs)
+        if setting == "PRIVATE_MEDIA_ROOT":
+            self.__dict__.pop("base_location", None)
+            self.__dict__.pop("location", None)
 
 
 private_note_storage = PrivateNoteStorage()

@@ -164,7 +164,7 @@ Do not commit `.env`, `db.sqlite3`, `media/`, or `private_media/`.
 
 ## Testing
 
-All Python tests live in `app/tests.py` (Django `TestCase` + test client), grouped into per-area classes and asserting observable behavior: status codes, redirects, rendered templates, context contents, JSON payloads, form validation, and service return values. External HTTP is stubbed with local fake response classes (`FakeIcalResponse`, `FakeWeatherResponse`, `FakeWeatherTileResponse`) patched over the service's fetch helper — no network in tests. Model changes need a migration plus test coverage.
+All Python tests live in `app/tests.py` (Django `TestCase` + test client), grouped into per-area classes and asserting observable behavior: status codes, redirects, rendered templates, context contents, JSON payloads, form validation, and service return values. External HTTP is stubbed with local fake response classes (`FakeIcalResponse`, `FakeWeatherResponse`, `FakeWeatherTileResponse`) patched over the service's fetch helper — no network in tests. `TEST_RUNNER` (`lunora/test_runner.py`) points `MEDIA_ROOT` and `PRIVATE_MEDIA_ROOT` at a temporary directory for the whole run, so uploads made by tests never land in the real media folders; `PrivateNoteStorage` resolves its location lazily so such overrides reach it. Close streaming responses (`FileResponse` downloads) you don't consume, or the open file blocks temp-dir cleanup on Windows. Model changes need a migration plus test coverage.
 
 ## Related files
 
