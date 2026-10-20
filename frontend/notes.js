@@ -6,7 +6,6 @@ import { TaskItem, TaskList } from "@tiptap/extension-list";
 import { TableKit } from "@tiptap/extension-table";
 import { TextAlign } from "@tiptap/extension-text-align";
 import { TextStyleKit } from "@tiptap/extension-text-style";
-import { Underline } from "@tiptap/extension-underline";
 import { Subscript } from "@tiptap/extension-subscript";
 import { Superscript } from "@tiptap/extension-superscript";
 import { CharacterCount } from "@tiptap/extensions";
@@ -932,7 +931,6 @@ function initNotesApp() {
           codeBlock: false,
         }),
         CodeBlockLowlight.configure({ lowlight }),
-        Underline,
         Superscript,
         Subscript,
         Highlight.configure({ multicolor: true }),
