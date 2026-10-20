@@ -6,6 +6,9 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Pin every transitive Python dependency at its tested version in `constraints.txt`. CI and
+  `scripts/deploy.sh` install with `-c constraints.txt`, so production gets exactly the tested set;
+  regenerate it with `pip freeze` after changing a `requirements*.txt`.
 - Update the notes editor to Tiptap 3.32 (upstream fixes for list-type switching, pasting and
   tables) and stop registering the underline extension twice, which Tiptap warned about.
 - Upgrade Django to 6.1 and Pillow to 13, plus patch updates for gunicorn, psycopg, holidays,

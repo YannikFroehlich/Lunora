@@ -54,7 +54,7 @@ npm run lint
 npm run format
 ```
 
-`ruff` needs installing once via `pip install -r requirements-dev.txt` (adds `ruff` on top of the production `requirements.txt`). The hand-written page scripts under `app/static/js/` are linted and formatted the same as `frontend/`, but still loaded as plain `<script>` tags rather than bundled — `node --check app/static/js/weather.js` remains a quick syntax-only fallback when you don't want to run the full toolchain.
+`ruff` needs installing once via `pip install -r requirements-dev.txt -c constraints.txt` (adds `ruff` on top of the production `requirements.txt`). `requirements*.txt` pin only direct dependencies; `constraints.txt` pins every transitive one at the tested version and is passed with `-c` by CI and `scripts/deploy.sh`. After changing any `requirements*.txt`, reinstall without `-c` and regenerate it with `python -m pip freeze > constraints.txt` (Git Bash/Linux — PowerShell 5.1's `>` doesn't write plain UTF-8); a pin that disagrees with `constraints.txt` makes `pip install` fail with a conflict. The hand-written page scripts under `app/static/js/` are linted and formatted the same as `frontend/`, but still loaded as plain `<script>` tags rather than bundled — `node --check app/static/js/weather.js` remains a quick syntax-only fallback when you don't want to run the full toolchain.
 
 ## Architecture
 
@@ -168,4 +168,4 @@ All Python tests live in `app/tests.py` (Django `TestCase` + test client), group
 
 ## Related files
 
-`AGENTS.md` and `README.md` (German) cover overlapping ground; `README.md` is the authoritative list of env vars and setup steps. `CHANGELOG.md` tracks user-facing changes under an `## Unreleased` heading — add a bullet there for any new feature, behavior change, or notable fix (skip pure refactors, tests, or internal tooling).
+`AGENTS.md` and `README.md` (German) cover overlapping ground; `README.md` is the authoritative list of env vars and setup steps. `DEPLOYMENT.md` (German) covers the Ubuntu production host. **Every push or merge to `main` is production-effective**: `lunora-auto-deploy.timer` polls `origin/main` about once a minute and runs `scripts/deploy.sh` (pip install with `-c constraints.txt`, `check --deploy`, `migrate`, `collectstatic`, service restart) — treat a merge to `main` as a release and let CI on `develop` pass first. `CHANGELOG.md` tracks user-facing changes under an `## Unreleased` heading — add a bullet there for any new feature, behavior change, or notable fix (skip pure refactors, tests, or internal tooling).
