@@ -405,6 +405,7 @@ class DatabaseConfigurationTests(SimpleTestCase):
 
         self.assertEqual(config["ENGINE"], "django.db.backends.sqlite3")
         self.assertEqual(config["NAME"], BASE_DIR / "local.sqlite3")
+        self.assertEqual(config["OPTIONS"]["transaction_mode"], "IMMEDIATE")
 
     def test_production_rejects_sqlite(self):
         with patch.dict(

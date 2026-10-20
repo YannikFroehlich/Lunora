@@ -78,6 +78,10 @@ def database_config(debug):
             "default": {
                 "ENGINE": "django.db.backends.sqlite3",
                 "NAME": BASE_DIR / sqlite_path,
+                # Take the write lock when a transaction starts. With the default DEFERRED mode,
+                # two concurrent read-then-write transactions (e.g. autosave and presence ping)
+                # deadlock and SQLite fails one instantly with "database is locked".
+                "OPTIONS": {"transaction_mode": "IMMEDIATE"},
             }
         }
 
