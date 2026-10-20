@@ -23,7 +23,7 @@
     <meta name="mobile-web-app-capable" content="yes">
 
     <link rel="preload" href="{% static 'vendor/inter/inter-latin-variable.woff2' %}?v=inter-1" as="font" type="font/woff2" crossorigin>
-    <link rel="preload" href="{% versioned_static 'vendor/fontawesome/css/all.min.css' %}" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="stylesheet" href="{% versioned_static 'vendor/fontawesome/css/all.min.css' %}" media="print" onload="this.media='all'">
     <noscript><link rel="stylesheet" href="{% versioned_static 'vendor/fontawesome/css/all.min.css' %}"></noscript>
 
     <script>

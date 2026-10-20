@@ -547,7 +547,11 @@ class SettingsProfileTests(TestCase):
         self.assertNotIn("fonts.googleapis.com", content)
         self.assertNotIn("cdn.jsdelivr.net", content)
         self.assertIn("/static/vendor/inter/inter-latin-variable.woff2", content)
-        self.assertIn(f'rel="preload" href="{icon_stylesheet}" as="style"', content)
+        self.assertIn(
+            f'<link rel="stylesheet" href="{icon_stylesheet}" media="print" onload="this.media=\'all\'">',
+            content,
+        )
+        self.assertNotIn(f'rel="preload" href="{icon_stylesheet}"', content)
         self.assertIn(f'<noscript><link rel="stylesheet" href="{icon_stylesheet}">', content)
 
     def test_settings_page_requires_login(self):
