@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Lunora is a Django 6.0 workspace dashboard (dashboard, weather, calendar, reminders, direct messages, rich-text notes) with a single Django app (`app/`) and a Vite-built notes editor split into ES-module chunks. Third-party Python packages are kept deliberately minimal: `Django`, `Pillow`, `reportlab`, `gunicorn` (production WSGI server), `redis` (production cache backend), `psycopg` (PostgreSQL driver, needed for production and for the ranked full-text note search SQL path), `pywebpush` (Web Push delivery), and `holidays` (German public-holiday generation for the vacation planner, with a stdlib fallback). HTTP calls, iCal parsing, and env loading are still hand-rolled on the stdlib. Don't add further dependencies without asking first.
+Lunora is a Django 6.1 workspace dashboard (dashboard, weather, calendar, reminders, direct messages, rich-text notes) with a single Django app (`app/`) and a Vite-built notes editor split into ES-module chunks. Third-party Python packages are kept deliberately minimal: `Django`, `Pillow`, `reportlab`, `gunicorn` (production WSGI server), `redis` (production cache backend), `psycopg` (PostgreSQL driver, needed for production and for the ranked full-text note search SQL path), `pywebpush` (Web Push delivery), and `holidays` (German public-holiday generation for the vacation planner, with a stdlib fallback). HTTP calls, iCal parsing, and env loading are still hand-rolled on the stdlib. Don't add further dependencies without asking first.
 
 ## Commands
 

@@ -338,7 +338,6 @@ def send_due_reminder_emails(*, now=None):
                 ),
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 recipient_list=[reminder.user.email],
-                fail_silently=False,
             )
         except Exception:
             failed += 1
@@ -441,7 +440,6 @@ def send_due_task_reminder_emails(*, now=None):
                 ),
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 recipient_list=[task.user.email],
-                fail_silently=False,
             )
         except Exception:
             failed += 1
@@ -491,7 +489,6 @@ def send_weekly_summaries(*, now=None):
                 message=_weekly_summary_text(user, current_time),
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 recipient_list=[user.email],
-                fail_silently=False,
             )
             WeeklySummaryDelivery.objects.create(user=user, week_start=week_start)
         except IntegrityError:
@@ -596,7 +593,6 @@ def send_note_activity_emails(*, now=None):
                 ),
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 recipient_list=[notification.recipient.email],
-                fail_silently=False,
             )
         except Exception:
             failed += 1
@@ -689,7 +685,6 @@ def send_new_invitation_emails(*, now=None):
                 ),
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 recipient_list=[invitation.user.email],
-                fail_silently=False,
             )
         except Exception:
             failed += 1
@@ -751,7 +746,6 @@ def send_pending_user_notification_emails(
                 ),
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 recipient_list=[notification.recipient.email],
-                fail_silently=False,
             )
         except Exception:
             failed += 1
