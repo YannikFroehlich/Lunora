@@ -253,6 +253,13 @@ class StaticVersioningTests(SimpleTestCase):
         )
         self.assertIn('add_header Cache-Control "public, max-age=3600" always;', nginx_config)
 
+    def test_nginx_serves_root_favicon_without_reaching_django(self):
+        nginx_config = (BASE_DIR / "deploy" / "nginx-lunora.conf").read_text(encoding="utf-8")
+
+        self.assertIn("location = /favicon.ico {", nginx_config)
+        self.assertIn("alias /srv/lunora/app/staticfiles/img/favicon.ico;", nginx_config)
+        self.assertTrue((BASE_DIR / "app" / "static" / "img" / "favicon.ico").is_file())
+
     def test_css_subresources_are_explicitly_versioned(self):
         base_css = (BASE_DIR / "app" / "static" / "css" / "base.css").read_text(encoding="utf-8")
         fontawesome_css = (
