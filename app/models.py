@@ -49,6 +49,20 @@ class SystemSettings(models.Model):
         return "Lunora Systemeinstellungen"
 
 
+# All IANA zones the stdlib knows about, sans the deprecated "posix/"/"right/" aliases. The set
+# depends on the platform's zone source (tzdata package on Windows, system database on Linux), so
+# Profile.timezone_name takes the callable: migrations then store a reference instead of the list.
+_TIMEZONE_CHOICES = [
+    (name, name)
+    for name in sorted(zoneinfo.available_timezones())
+    if not name.startswith(("posix/", "right/"))
+]
+
+
+def timezone_choices():
+    return _TIMEZONE_CHOICES
+
+
 class Profile(models.Model):
     THEME_CHOICES = [
         ("light", "Heller Modus"),
@@ -77,13 +91,6 @@ class Profile(models.Model):
         ("24h", "24-Stunden"),
         ("12h", "12-Stunden"),
     ]
-    # All IANA zones the stdlib knows about, sans the deprecated "posix/"/"right/" aliases.
-    TIMEZONE_CHOICES = [
-        (name, name)
-        for name in sorted(zoneinfo.available_timezones())
-        if not name.startswith(("posix/", "right/"))
-    ]
-
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile")
     display_name = models.CharField(max_length=120)
     profile_image = models.FileField(
@@ -95,7 +102,7 @@ class Profile(models.Model):
     density = models.CharField(max_length=12, choices=DENSITY_CHOICES, default="comfortable")
     date_format = models.CharField(max_length=24, choices=DATE_FORMAT_CHOICES, default="de_numeric")
     time_format = models.CharField(max_length=12, choices=TIME_FORMAT_CHOICES, default="24h")
-    timezone_name = models.CharField(max_length=64, choices=TIMEZONE_CHOICES, default="Europe/Berlin")
+    timezone_name = models.CharField(max_length=64, choices=timezone_choices, default="Europe/Berlin")
     notify_email = models.BooleanField(default=False)
     notify_reminders = models.BooleanField(default=True)
     notify_desktop = models.BooleanField(default=False)
