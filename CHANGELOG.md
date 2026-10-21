@@ -6,8 +6,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
-- Update KaTeX (formula rendering in notes) to 0.19 and load its stylesheet with Subresource
-  Integrity; patch updates for highlight.js, ESLint and Prettier. `npm audit` is clean again.
+- Self-host KaTeX's stylesheet and fonts instead of loading them from jsDelivr: the notes page no
+  longer contacts a third-party CDN, and formulas keep their styling offline.
+- Update KaTeX (formula rendering in notes) to 0.19; patch updates for highlight.js, ESLint and
+  Prettier. `npm audit` is clean again.
 - Pin every transitive Python dependency at its tested version in `constraints.txt`. CI and
   `scripts/deploy.sh` install with `-c constraints.txt`, so production gets exactly the tested set;
   regenerate it with `pip freeze` after changing a `requirements*.txt`.

@@ -9,7 +9,8 @@
     "lint": "eslint frontend app/static/js",
     "lint:fix": "eslint frontend app/static/js --fix",
     "format": "prettier --write frontend app/static/js",
-    "format:check": "prettier --check frontend app/static/js"
+    "format:check": "prettier --check frontend app/static/js",
+    "vendor:katex": "node scripts/vendor-katex.mjs"
   },
   "dependencies": {
     "@tiptap/core": "3.32.0",
