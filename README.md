@@ -57,7 +57,7 @@ Voraussetzung: Python 3.12 oder neuer (Django 6.1.2 startet mit älteren Version
 ```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
+python -m pip install -r requirements.txt -c constraints.txt
 npm ci
 npm run build
 python manage.py migrate
@@ -230,7 +230,7 @@ npm run build
 Linting und Formatierung (Konfiguration in `pyproject.toml`, `eslint.config.js`, `.prettierrc.json`; wird in der CI erzwungen):
 
 ```powershell
-pip install -r requirements-dev.txt
+pip install -r requirements-dev.txt -c constraints.txt
 ruff check .
 ruff format .
 npm run lint
@@ -238,6 +238,15 @@ npm run format
 ```
 
 Der Notizeditor wird aus `frontend/` nach `app/static/js/bundles/notes.js` gebaut. Die npm-Versionen sind in `package-lock.json` festgeschrieben.
+
+Für Python legen `requirements.txt` und `requirements-dev.txt` nur die direkten Abhängigkeiten fest. `constraints.txt` hält zusätzlich jede indirekte Abhängigkeit auf der getesteten Version fest; CI und `scripts/deploy.sh` installieren immer mit `-c constraints.txt`, damit Produktion genau den getesteten Stand bekommt. Nach jeder Änderung an einer `requirements*.txt` die Datei neu erzeugen (in Git Bash oder auf Linux, weil `>` in Windows PowerShell 5.1 kein reines UTF-8 schreibt):
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m pip freeze > constraints.txt
+```
+
+Weicht ein Pin in `requirements*.txt` von `constraints.txt` ab, bricht `pip install` mit einem Konflikt ab – das ist die Erinnerung, die Datei neu zu erzeugen.
 
 Notizen im Papierkorb werden nach 30 Tagen durch folgenden Command endgültig gelöscht. In einer Deployment-Umgebung sollte er täglich eingeplant werden:
 

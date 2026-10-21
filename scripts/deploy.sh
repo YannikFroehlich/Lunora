@@ -52,7 +52,7 @@ if [[ ! -x "${VENV_DIR}/bin/python" ]]; then
     python3 -m venv "${VENV_DIR}"
 fi
 
-"${VENV_DIR}/bin/python" -m pip install --require-virtualenv --upgrade-strategy only-if-needed -r requirements.txt
+"${VENV_DIR}/bin/python" -m pip install --require-virtualenv --upgrade-strategy only-if-needed -r requirements.txt -c constraints.txt
 
 set -a
 source "${ENV_FILE}"

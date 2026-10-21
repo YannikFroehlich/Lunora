@@ -265,6 +265,26 @@ class StaticVersioningTests(SimpleTestCase):
         self.assertIn("fa-regular-400.woff2?v=fontawesome-7.2.0", fontawesome_css)
         self.assertIn("fa-brands-400.woff2?v=fontawesome-7.2.0", fontawesome_css)
 
+    def test_vendored_katex_stylesheet_matches_installed_katex(self):
+        # KaTeX 0.18+ prefixes its CSS classes, so a stylesheet from another version than the
+        # bundled JS breaks every formula. Re-vendor with `npm run vendor:katex` after a bump.
+        katex_version = json.loads((BASE_DIR / "package.json").read_text(encoding="utf-8"))["dependencies"][
+            "katex"
+        ]
+        vendor_dir = BASE_DIR / "app" / "static" / "vendor" / "katex"
+        katex_css = (vendor_dir / "katex.min.css").read_text(encoding="utf-8")
+        notes_template = (BASE_DIR / "app" / "templates" / "app" / "notes.html").read_text(encoding="utf-8")
+        font_urls = re.findall(r"url\(([^)]+)\)", katex_css)
+
+        self.assertIn(f'.katex-version:after{{content:"{katex_version}"}}', katex_css)
+        self.assertIn("{% versioned_static 'vendor/katex/katex.min.css' %}", notes_template)
+        self.assertNotIn("cdn.jsdelivr.net", notes_template)
+        self.assertTrue(font_urls)
+        for font_url in font_urls:
+            path, _, query = font_url.partition("?")
+            self.assertEqual(query, f"v=katex-{katex_version}", font_url)
+            self.assertTrue((vendor_dir / path).is_file(), font_url)
+
     def test_notes_editor_uses_split_es_module_bundle(self):
         bundle_dir = BASE_DIR / "app" / "static" / "js" / "bundles"
         entry_path = bundle_dir / "notes.js"
@@ -547,7 +567,11 @@ class SettingsProfileTests(TestCase):
         self.assertNotIn("fonts.googleapis.com", content)
         self.assertNotIn("cdn.jsdelivr.net", content)
         self.assertIn("/static/vendor/inter/inter-latin-variable.woff2", content)
-        self.assertIn(f'rel="preload" href="{icon_stylesheet}" as="style"', content)
+        self.assertIn(
+            f'<link rel="stylesheet" href="{icon_stylesheet}" media="print" onload="this.media=\'all\'">',
+            content,
+        )
+        self.assertNotIn(f'rel="preload" href="{icon_stylesheet}"', content)
         self.assertIn(f'<noscript><link rel="stylesheet" href="{icon_stylesheet}">', content)
 
     def test_settings_page_requires_login(self):

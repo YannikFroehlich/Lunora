@@ -44,7 +44,7 @@ jobs:
           cache: npm
 
       - name: Install Python dependencies
-        run: python -m pip install -r requirements-dev.txt
+        run: python -m pip install -r requirements-dev.txt -c constraints.txt
 
       - name: Install frontend dependencies
         run: npm ci

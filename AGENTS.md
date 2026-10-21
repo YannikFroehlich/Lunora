@@ -16,8 +16,9 @@ Current feature areas include authentication with e-mail-or-username login, prof
 
 - `python -m venv .venv`: create a local virtual environment if one is not present.
 - `.venv\Scripts\Activate.ps1`: activate the virtual environment on PowerShell.
-- `python -m pip install -r requirements.txt`: install Python dependencies.
-- `python -m pip install -r requirements-dev.txt`: install Python dependencies plus `ruff` for linting/formatting.
+- `python -m pip install -r requirements.txt -c constraints.txt`: install Python dependencies at the tested versions.
+- `python -m pip install -r requirements-dev.txt -c constraints.txt`: install Python dependencies plus `ruff` for linting/formatting.
+- `python -m pip freeze > constraints.txt` (Git Bash/Linux): regenerate the transitive pins after changing any `requirements*.txt`.
 - `npm ci`: install the pinned frontend toolchain for the notes editor.
 - `npm run build`: rebuild `app/static/js/bundles/notes.js` and its hashed chunks from `frontend/`.
 - `python manage.py migrate`: apply database migrations to `db.sqlite3`.
