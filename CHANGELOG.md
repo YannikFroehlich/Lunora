@@ -6,6 +6,9 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Deployments validate the new commit in a temporary directory (own venv, `pip install` with
+  constraints, `check --deploy`) before the production checkout is touched, so a broken dependency
+  or configuration no longer leaves half-deployed code on disk.
 - Self-host KaTeX's stylesheet and fonts instead of loading them from jsDelivr: the notes page no
   longer contacts a third-party CDN, and formulas keep their styling offline.
 - Update KaTeX (formula rendering in notes) to 0.19; patch updates for highlight.js, ESLint and

@@ -24,6 +24,27 @@ if [[ -n "$(git status --porcelain)" ]]; then
 fi
 
 git fetch --prune origin main
+
+# Validate the new commit outside the live checkout first, so a failing pip install or
+# deploy check leaves the running release untouched. Once the checkout holds the new code,
+# Gunicorn workers recycled by --max-requests import it from disk, with or without its
+# dependencies. Migrations are not covered: they can only be checked by applying them.
+preflight_dir=$(mktemp -d)
+trap 'rm -rf -- "${preflight_dir}"' EXIT
+mkdir "${preflight_dir}/app"
+git archive origin/main | tar -x -C "${preflight_dir}/app"
+python3 -m venv "${preflight_dir}/venv"
+"${preflight_dir}/venv/bin/python" -m pip install --require-virtualenv --quiet --disable-pip-version-check \
+    -r "${preflight_dir}/app/requirements.txt" -c "${preflight_dir}/app/constraints.txt"
+(
+    set -a
+    source "${ENV_FILE}"
+    set +a
+    cd "${preflight_dir}/app"
+    "${preflight_dir}/venv/bin/python" manage.py check --deploy
+)
+echo "Vorabprüfung für $(git rev-parse --short origin/main) erfolgreich."
+
 git switch main
 git merge --ff-only origin/main
 
