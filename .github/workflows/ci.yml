@@ -62,6 +62,7 @@ jobs:
       - name: Run Django checks and tests
         run: |
           python manage.py check
+          python manage.py makemigrations --check --dry-run
           python manage.py test
 
       - name: Run frontend tests

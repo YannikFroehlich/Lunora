@@ -97,10 +97,12 @@ Bei einem neuen Fast-Forward-Commit führt der root-eigene Treiber diese Schritt
 2. einmalig ein lokales Backup für den Ziel-Commit erstellen;
 3. `scripts/deploy.sh` als Benutzer `yunnik` ohne privilegierten Dienstneustart starten. Das
    Skript prüft den neuen Commit zuerst außerhalb des Produktions-Checkouts: `git archive` in ein
-   temporäres Verzeichnis, eigene venv, `pip install -r requirements.txt -c constraints.txt` und
-   `check --deploy`. Erst wenn das gelingt, werden Checkout und produktive venv angefasst, sodass
-   ein Paket- oder Konfigurationsfehler die laufende Version unverändert lässt. Migrationen deckt
-   die Vorabprüfung nicht ab; sie lassen sich nur durch Anwenden prüfen;
+   temporäres Verzeichnis, eigene venv, `pip install -r requirements.txt -c constraints.txt`,
+   `check --deploy` und `makemigrations --check --dry-run`. Erst wenn das gelingt, werden Checkout
+   und produktive venv angefasst, sodass ein Paket- oder Konfigurationsfehler oder eine
+   Modelländerung ohne Migration die laufende Version unverändert lässt. Ob sich die Migrationen
+   fehlerfrei anwenden lassen, deckt die Vorabprüfung nicht ab; das lässt sich nur durch Anwenden
+   prüfen;
 4. als Benutzer `lunora` prüfen, dass sämtliche getrackten Dateien lesbar sind;
 5. Web- und Automationsdienst kontrolliert als root neu starten;
 6. beide Dienste und den internen HTTPS-Proxy-Pfad prüfen;

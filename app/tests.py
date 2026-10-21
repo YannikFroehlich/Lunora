@@ -66,6 +66,7 @@ from app.models import (
     WebPushDelivery,
     WebPushSubscription,
     WeeklySummaryDelivery,
+    timezone_choices,
 )
 from app.services.calendar_service import fetch_ical, parse_ical_events
 from app.services.calendar_sync_queue import queue_calendar_sources
@@ -1067,6 +1068,24 @@ class SettingsProfileTests(TestCase):
         self.assertIn("timezone_name", response.context["region_form"].errors)
         profile.refresh_from_db()
         self.assertEqual(profile.timezone_name, "Europe/Berlin")
+
+    def test_timezone_choices_are_offered_but_kept_out_of_migrations(self):
+        # The zone list differs between platforms, so migrations must only reference the callable.
+        field = Profile._meta.get_field("timezone_name")
+        self.assertIs(field.deconstruct()[3]["choices"], timezone_choices)
+
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=user, display_name="Mira", timezone_name="America/New_York")
+        self.client.force_login(user)
+
+        response = self.client.get("/settings/")
+
+        self.assertContains(
+            response, '<option value="America/New_York" selected>America/New_York</option>', html=True
+        )
+        self.assertContains(response, '<option value="Europe/Berlin">Europe/Berlin</option>', html=True)
 
     def test_invalid_weather_settings_render_without_changing_profile(self):
         user = User.objects.create_user(

@@ -26,9 +26,10 @@ fi
 git fetch --prune origin main
 
 # Validate the new commit outside the live checkout first, so a failing pip install or
-# deploy check leaves the running release untouched. Once the checkout holds the new code,
-# Gunicorn workers recycled by --max-requests import it from disk, with or without its
-# dependencies. Migrations are not covered: they can only be checked by applying them.
+# deploy check or a model change without its migration leaves the running release untouched.
+# Once the checkout holds the new code, Gunicorn workers recycled by --max-requests import it
+# from disk, with or without its dependencies. Whether migrations apply cleanly is not covered:
+# that can only be checked by applying them.
 preflight_dir=$(mktemp -d)
 trap 'rm -rf -- "${preflight_dir}"' EXIT
 mkdir "${preflight_dir}/app"
@@ -42,6 +43,7 @@ python3 -m venv "${preflight_dir}/venv"
     set +a
     cd "${preflight_dir}/app"
     "${preflight_dir}/venv/bin/python" manage.py check --deploy
+    "${preflight_dir}/venv/bin/python" manage.py makemigrations --check --dry-run
 )
 echo "Vorabprüfung für $(git rev-parse --short origin/main) erfolgreich."
 
