@@ -71,25 +71,49 @@ Do not commit real secrets, API keys, VAPID private keys, uploaded media, privat
 
 ## Production Operations Runbook
 
-The production baseline below was verified on 24 August 2026. As of 21 October 2026 that
-host no longer exists and nothing is deployed; a new server is planned eventually, so read
-the baseline as the setup to recreate. Treat it as operational context, not as a substitute
+The public production baseline below was verified on 24 August 2026 on the former host
+`yfserv1`, which no longer exists. Since 26 October 2026 Lunora runs **LAN-only** on the
+home server `yfsrv1` at `http://192.168.178.175:8090`, without a Cloudflare tunnel; the
+deviations from the baseline are listed under "Current LAN Mode". Read the rest as the
+public setup to reach later. Treat it as operational context, not as a substitute
 for checking current state before a deployment. When
 guiding the operator interactively, label every instruction with its execution
 location: `Windows PC (PowerShell)`, `Ubuntu server`, or `Cloudflare dashboard`.
+
+### Current LAN Mode
+
+- `yfsrv1` is shared: Docker runs the RoundRush stack (Caddy on `80`/`443`, its own
+  cloudflared, PostgreSQL and Redis containers), `nexora` on `8001`, `shdashboard` on
+  `8080` and Home Assistant on `8123`. Never stop, reconfigure or rebind them. Lunora's
+  PostgreSQL, Redis and Nginx run on the host, bound to loopback except Nginx.
+- Nginx is installed from `deploy/nginx-lunora.conf` with one server-local change,
+  `listen 127.0.0.1:8090;` -> `listen 8090;`. Reapply that `sed` whenever the config is
+  reinstalled. UFW rule `Lunora LAN` allows `8090/tcp` only from `192.168.178.0/24`.
+  The packaged default site is removed because Caddy already holds port `80`.
+- `/etc/lunora/lunora.env` is in LAN mode: HTTPS redirect, secure cookies and HSTS are
+  off, `DJANGO_USE_X_FORWARDED_PROTO=false`, the console mail backend is active with
+  `DJANGO_SILENCED_SYSTEM_CHECKS=mail.E001` (Django 6.1 `check --deploy` rejects it
+  otherwise), Turnstile is not required, and all three VAPID values are empty because Web
+  Push needs HTTPS. `DJANGO_ALLOWED_HOSTS` keeps `lunora.yfserver.de` for the
+  auto-deploy health check.
+- Going public means: create the tunnel and Turnstile widget, switch the HTTPS settings,
+  SMTP and VAPID values to the baseline below, drop the silenced check, reinstall Nginx
+  on loopback, and delete the `Lunora LAN` UFW rule.
 
 ### Production Topology and Access
 
 - Public application: `https://lunora.yfserver.de`; `/login/`, `/register/`, and
   `/admin/` are the main entry points.
-- Production runs on Ubuntu host `yfserv1`. SSH uses user `yunnik`, port `22`, key-only
-  authentication, and is allowed by UFW only from `192.168.178.0/24`. The server's
-  current LAN address is `192.168.178.175`. Keep the private SSH key outside this
+- Production runs on Ubuntu host `yfsrv1` (Ubuntu 26.04). SSH uses user `yunnik`, port
+  `22`, and key-only authentication; the server's fixed LAN address is
+  `192.168.178.175`. Keep the private SSH key outside this
   repository and use the local SSH agent; never record the key, passphrase, or tunnel
   token in project files.
 - The GitHub repository is public. `develop` is the integration branch and `main` is
   the production branch. Deploy only committed, pushed, reviewed changes from `main`;
-  leave the local development checkout on `develop` after a release.
+  leave the local development checkout on `develop` after a release. `main` is
+  branch-protected: changes arrive only through a pull request from `develop` whose
+  `Tests` check passed, enforced for admins too, so never merge locally and push `main`.
 - The production checkout is `/srv/lunora/app`, the virtual environment is
   `/srv/lunora/venv`, and the service account is `lunora`.
 - Requests follow Cloudflare Tunnel -> Nginx on `127.0.0.1:8090` -> Gunicorn on
@@ -115,8 +139,8 @@ location: `Windows PC (PowerShell)`, `Ubuntu server`, or `Cloudflare dashboard`.
   Django admin address `webmaster@yfserver.de`. The SMTP password is environment-only.
 - The initial Django superuser is username `yannik`, e-mail
   `webmaster@yfserver.de`; its password remains only in the password manager.
-- Cloudflare Tunnel `lunora-yfserv1` publishes `lunora.yfserver.de` to
-  `http://localhost:8090`. Public registration is intentional, so do not place
+- A Cloudflare Tunnel (formerly `lunora-yfserv1`; none exists on `yfsrv1` yet) publishes
+  `lunora.yfserver.de` to `http://localhost:8090`. Public registration is intentional, so do not place
   Cloudflare Access in front of the whole site. Turnstile must remain required for the
   registration hostname. Scoped WAF or rate-limit rules for login, registration, and
   password reset are optional hardening and must not affect other `yfserver.de` apps.
@@ -153,9 +177,10 @@ location: `Windows PC (PowerShell)`, `Ubuntu server`, or `Cloudflare dashboard`.
 ### Normal Release Procedure
 
 Before production deployment, run the full Django test suite locally and run frontend
-tests plus a bundle build whenever `frontend/` changed. Merge or fast-forward the tested
-commit to `main` and push it. GitHub branch protection should reject direct pushes and
-require the `Tests` check from `.github/workflows/ci.yml` before merging because every
+tests plus a bundle build whenever `frontend/` changed. Push `develop`, open a pull request
+from `develop` to `main` (`gh pr create --base main --head develop`), and merge it once
+the `Tests` check is green. GitHub branch protection rejects direct pushes to `main` and
+requires the `Tests` check from `.github/workflows/ci.yml` (also for admins) because every
 new `main` commit is production eligible. CI uses GitHub-hosted isolated runners; never
 change the production workflow to a persistent self-hosted runner while the repository
 is public.
