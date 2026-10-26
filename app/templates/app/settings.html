@@ -107,177 +107,75 @@
                 </button>
             </form>
 
-            {% if calendar_sync_enabled %}
-            <section id="settings-panel-calendar" class="glass-panel calendar-settings-panel" role="tabpanel" aria-labelledby="settings-tab-calendar" data-settings-panel="calendar">
-                <div class="panel-title panel-title-between">
-                    <span><i class="fa-brands fa-google"></i><h2>Google Kalender</h2></span>
-                    {% if calendar_source_forms %}
-                    <form method="post">
-                        {% csrf_token %}
-                        <input type="hidden" name="form_name" value="calendar_sync_all">
-                        <input type="hidden" name="return_to" value="{{ return_to }}">
-                        <button class="icon-button" type="submit" aria-label="Alle Kalender synchronisieren">
-                            <i class="fa-solid fa-rotate"></i>
-                        </button>
-                    </form>
-                    {% endif %}
-                </div>
-                <p class="panel-description">Private iCal-Links speichern, umbenennen und mit eigenen Farben anzeigen.</p>
-
-                <form class="calendar-source-form settings-calendar-form calendar-source-add-form" method="post">
-                    {% csrf_token %}
-                    <input type="hidden" name="form_name" value="calendar_source_add">
-                    <input type="hidden" name="return_to" value="{{ return_to }}">
-
-                    {% if calendar_source_form.non_field_errors %}
-                    <div class="form-errors">{{ calendar_source_form.non_field_errors }}</div>
-                    {% endif %}
-
-                    <div class="calendar-form-grid">
-                        <label>
-                            <span class="field-label">{{ calendar_source_form.name.label }}</span>
-                            <span class="calendar-input-pill">
-                                <i class="fa-regular fa-calendar" aria-hidden="true"></i>
-                                {{ calendar_source_form.name }}
-                            </span>
-                            {{ calendar_source_form.name.errors }}
-                        </label>
-                        <label>
-                            <span class="field-label">{{ calendar_source_form.ical_url.label }}</span>
-                            <span class="calendar-input-pill">
-                                <i class="fa-solid fa-link" aria-hidden="true"></i>
-                                {{ calendar_source_form.ical_url }}
-                            </span>
-                            {{ calendar_source_form.ical_url.errors }}
-                        </label>
-                    </div>
-                    <small class="field-hint">{{ calendar_source_form.ical_url.help_text }}</small>
-
-                    <div class="calendar-form-actions">
-                        <fieldset class="source-color-options">
-                            <legend>{{ calendar_source_form.color.label }}</legend>
-                            {% for value, label in calendar_source_form.color.field.choices %}
-                            <label class="source-color-choice tone-{{ value }}" title="{{ label }}">
-                                <input type="radio" name="{{ calendar_source_form.color.html_name }}" value="{{ value }}" aria-label="{{ label }}" {% if calendar_source_form.color.value == value %}checked{% endif %}>
-                                <span></span>
-                            </label>
-                            {% endfor %}
-                        </fieldset>
-                        <label class="source-toggle">
-                            {{ calendar_source_form.enabled }}
-                            <span>{{ calendar_source_form.enabled.label }}</span>
-                        </label>
-                        <button class="primary-button source-submit" type="submit">
-                            <i class="fa-solid fa-plus"></i>
-                            Hinzufügen
-                        </button>
-                    </div>
-                    {{ calendar_source_form.color.errors }}
-                    {{ calendar_source_form.enabled.errors }}
-                </form>
-
-                <div class="calendar-source-list">
-                    {% if calendar_source_forms %}
-                    {% for item in calendar_source_forms %}
-                    <article class="calendar-source-card tone-{{ item.source.color }}">
-                        <form class="calendar-source-edit-form" method="post">
-                            {% csrf_token %}
-                            <input type="hidden" name="form_name" value="calendar_source_update">
-                            <input type="hidden" name="source_id" value="{{ item.source.id }}">
-                            <input type="hidden" name="return_to" value="{{ return_to }}">
-
-                            <div class="calendar-source-card-header">
-                                <span class="source-color-dot" aria-hidden="true"></span>
-                                <span>
-                                    <strong>{{ item.source.name }}</strong>
-                                    <small class="source-status is-{{ item.status.kind }}">{{ item.status.label }}</small>
-                                </span>
-                            </div>
-
-                            {% if item.form.non_field_errors %}
-                            <div class="form-errors">{{ item.form.non_field_errors }}</div>
-                            {% endif %}
-
-                            <div class="calendar-form-grid">
-                                <label>
-                                    <span class="field-label">{{ item.form.name.label }}</span>
-                                    <span class="calendar-input-pill">
-                                        <i class="fa-regular fa-calendar" aria-hidden="true"></i>
-                                        {{ item.form.name }}
-                                    </span>
-                                    {{ item.form.name.errors }}
-                                </label>
-                                <label>
-                                    <span class="field-label">{{ item.form.ical_url.label }}</span>
-                                    <span class="calendar-input-pill">
-                                        <i class="fa-solid fa-link" aria-hidden="true"></i>
-                                        {{ item.form.ical_url }}
-                                    </span>
-                                    {{ item.form.ical_url.errors }}
-                                </label>
-                            </div>
-
-                            <div class="calendar-form-actions">
-                                <fieldset class="source-color-options">
-                                    <legend>{{ item.form.color.label }}</legend>
-                                    {% for value, label in item.form.color.field.choices %}
-                                    <label class="source-color-choice tone-{{ value }}" title="{{ label }}">
-                                        <input type="radio" name="{{ item.form.color.html_name }}" value="{{ value }}" aria-label="{{ label }}" {% if item.form.color.value == value %}checked{% endif %}>
-                                        <span></span>
-                                    </label>
-                                    {% endfor %}
-                                </fieldset>
-                                <label class="source-toggle">
-                                    {{ item.form.enabled }}
-                                    <span>{{ item.form.enabled.label }}</span>
-                                </label>
-                                <button class="primary-button source-submit" type="submit">
-                                    <i class="fa-solid fa-floppy-disk"></i>
-                                    Speichern
-                                </button>
-                            </div>
-                            {{ item.form.color.errors }}
-                            {{ item.form.enabled.errors }}
-                        </form>
-                        <form class="calendar-source-delete-form" method="post" onsubmit="return confirm('Diesen Kalender wirklich löschen?');">
-                            {% csrf_token %}
-                            <input type="hidden" name="form_name" value="calendar_source_delete">
-                            <input type="hidden" name="source_id" value="{{ item.source.id }}">
-                            <input type="hidden" name="return_to" value="{{ return_to }}">
-                            <button class="ghost-button danger-button" type="submit">
-                                <i class="fa-solid fa-trash"></i>
-                                Löschen
-                            </button>
-                        </form>
-                    </article>
-                    {% endfor %}
-                    {% else %}
-                    <div class="empty-state-card is-compact">
-                        <i class="fa-regular fa-calendar-plus" aria-hidden="true"></i>
-                        <div>
-                            <strong>Noch kein Kalender</strong>
-                            <p>Füge oben deinen ersten privaten iCal-Link hinzu.</p>
-                        </div>
-                    </div>
-                    {% endif %}
-                </div>
-            </section>
-
-            {% else %}
             <section id="settings-panel-calendar" class="glass-panel calendar-settings-panel" role="tabpanel" aria-labelledby="settings-tab-calendar" data-settings-panel="calendar">
                 <div class="panel-title">
-                    <i class="fa-brands fa-google"></i>
-                    <h2>Google Kalender</h2>
+                    <i class="fa-solid fa-rss" aria-hidden="true"></i>
+                    <h2>Kalender abonnieren</h2>
                 </div>
+                <p class="panel-description">Abonniere deinen Lunora-Kalender in Google Kalender, Apple Kalender oder Outlook. Neue und geänderte Termine erscheinen dort automatisch.</p>
+
+                {% if not calendar_feed_enabled %}
                 <div class="empty-state-card is-compact">
                     <i class="fa-solid fa-pause" aria-hidden="true"></i>
                     <div>
-                        <strong>Kalendersynchronisierung pausiert</strong>
-                        <p>Quellen verwalten und Synchronisieren ist vorübergehend deaktiviert.</p>
+                        <strong>Kalender-Abo pausiert</strong>
+                        <p>Abo-Links sind vorübergehend deaktiviert.</p>
                     </div>
                 </div>
+                {% elif calendar_feed_url %}
+                <label class="settings-calendar-form" for="calendar-feed-url">
+                    <span class="field-label">Dein Abo-Link</span>
+                    <span class="calendar-input-pill">
+                        <i class="fa-solid fa-link" aria-hidden="true"></i>
+                        <input id="calendar-feed-url" type="text" value="{{ calendar_feed_url }}" readonly data-calendar-feed-url>
+                    </span>
+                </label>
+                <div class="calendar-form-actions">
+                    <button class="primary-button" type="button" data-calendar-feed-copy>
+                        <i class="fa-regular fa-copy" aria-hidden="true"></i>
+                        Link kopieren
+                    </button>
+                    <form method="post" data-confirm="Der bisherige Link funktioniert danach nicht mehr. Neuen Link erzeugen?">
+                        {% csrf_token %}
+                        <input type="hidden" name="form_name" value="calendar_feed_reset">
+                        <input type="hidden" name="return_to" value="{{ return_to }}">
+                        <button class="ghost-button" type="submit">
+                            <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+                            Neuen Link erzeugen
+                        </button>
+                    </form>
+                    <form method="post" data-confirm="Abo-Link deaktivieren? Abonnierte Kalender erhalten dann keine Termine mehr.">
+                        {% csrf_token %}
+                        <input type="hidden" name="form_name" value="calendar_feed_disable">
+                        <input type="hidden" name="return_to" value="{{ return_to }}">
+                        <button class="ghost-button danger-button" type="submit">
+                            <i class="fa-solid fa-link-slash" aria-hidden="true"></i>
+                            Deaktivieren
+                        </button>
+                    </form>
+                </div>
+                <small class="field-hint" data-calendar-feed-status aria-live="polite"></small>
+                <small class="field-hint">Google Kalender: links bei „Weitere Kalender“ auf + klicken, „Per URL“ wählen und den Link einfügen. Google aktualisiert abonnierte Kalender nur etwa alle 8–24 Stunden.</small>
+                <small class="field-hint">Wer diesen Link kennt, sieht alle deine Termine. Wurde er weitergegeben, erzeuge einen neuen.</small>
+                {% else %}
+                <div class="empty-state-card is-compact">
+                    <i class="fa-regular fa-calendar-plus" aria-hidden="true"></i>
+                    <div>
+                        <strong>Noch kein Abo-Link</strong>
+                        <p>Erstelle einen privaten Link, den du in deinem Kalenderprogramm abonnieren kannst.</p>
+                    </div>
+                </div>
+                <form class="calendar-form-actions" method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="calendar_feed_reset">
+                    <input type="hidden" name="return_to" value="{{ return_to }}">
+                    <button class="primary-button" type="submit">
+                        <i class="fa-solid fa-link" aria-hidden="true"></i>
+                        Abo-Link erstellen
+                    </button>
+                </form>
+                {% endif %}
             </section>
-            {% endif %}
 
             <form id="settings-panel-notifications" class="glass-panel notifications-panel" method="post" role="tabpanel" aria-labelledby="settings-tab-notifications" data-settings-panel="notifications">
                 {% csrf_token %}

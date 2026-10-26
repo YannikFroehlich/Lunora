@@ -97,7 +97,6 @@ def global_search(request):
             .filter(
                 Q(title__icontains=query) | Q(description__icontains=query) | Q(location__icontains=query)
             )
-            .select_related("source")
             .order_by("-start_at")[:SEARCH_RESULT_LIMIT]
         )
         event_results = [

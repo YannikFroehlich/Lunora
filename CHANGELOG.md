@@ -6,6 +6,12 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Turn the calendar into a standalone school calendar: importing external iCal/Google calendars
+  is removed (previously imported events are deleted), and events now carry a category
+  (Klassenarbeit, Test, Referat, Abgabe, Sonstiges) that sets their color. Instead, each user can
+  create a private subscription link in the settings and subscribe to their Lunora calendar from
+  Google Calendar, Apple Calendar or Outlook; the link can be regenerated or disabled at any time.
+  The admin feature flag "Kalendersynchronisierung" becomes "Kalender-Abo".
 - Font sizes follow one shared type scale instead of about 40 slightly different values, so labels,
   captions and headings look the same size on every page.
 - Unify the look across all pages: Calendar, Messages, Weather and Tasks no longer override the

@@ -7,12 +7,11 @@ import sys
 import uuid
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
-from email.message import Message
 from io import StringIO
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import patch
-from urllib.error import HTTPError, URLError
+from urllib.error import URLError
 from zoneinfo import ZoneInfo
 
 from django.contrib.auth.models import User
@@ -25,12 +24,11 @@ from django.core.management import call_command
 from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
-from app.forms import CalendarSourceForm, ProfileForm
+from app.forms import ProfileForm
 from app.models import (
     CalendarEvent,
     CalendarEventAttendee,
     CalendarReminder,
-    CalendarSource,
     ChatMessage,
     ChatMessageAttachment,
     ChatMessageReaction,
@@ -68,8 +66,6 @@ from app.models import (
     WeeklySummaryDelivery,
     timezone_choices,
 )
-from app.services.calendar_service import fetch_ical, parse_ical_events
-from app.services.calendar_sync_queue import queue_calendar_sources
 from app.services.dashboard import DASHBOARD_WIDGET_IDS, default_dashboard_layout, normalize_dashboard_layout
 from app.services.image_uploads import PROFILE_IMAGE_MAX_BYTES
 from app.services.note_content import NOTE_TEMPLATES, empty_note_document, validate_note_document
@@ -84,7 +80,7 @@ from app.services.notifications import (
     send_pending_user_notification_emails,
     send_weekly_summaries,
 )
-from app.services.scheduled_tasks import run_scheduled_tasks, sync_due_calendars
+from app.services.scheduled_tasks import run_scheduled_tasks
 from app.services.tasks import dashboard_today_tasks, toggle_task
 from app.services.uml_content import validate_uml_document
 from app.services.user_preferences import get_user_zoneinfo
@@ -1205,8 +1201,7 @@ class SettingsProfileTests(TestCase):
         self.assertContains(response, 'data-settings-panel="weather"')
         self.assertContains(response, 'data-settings-panel="app"')
         self.assertContains(response, "Sprache &amp; Region speichern")
-        self.assertContains(response, 'class="calendar-input-pill"', count=2)
-        self.assertContains(response, 'class="source-toggle"')
+        self.assertContains(response, 'name="form_name" value="calendar_feed_reset"')
         self.assertContains(response, 'name="form_name" value="appearance"')
         self.assertContains(response, 'name="form_name" value="profile"')
         self.assertContains(response, 'name="form_name" value="region"')
@@ -1281,24 +1276,6 @@ class SettingsProfileTests(TestCase):
         )
 
         self.assertEqual(response.context["return_to"], "/home/")
-
-    def test_calendar_color_choices_have_accessible_names(self):
-        user = User.objects.create_user(
-            username="mira@example.com", email="mira@example.com", password="secret-12345"
-        )
-        Profile.objects.create(user=user, display_name="Mira")
-        CalendarSource.objects.create(
-            user=user,
-            name="Arbeit",
-            ical_url="https://calendar.google.com/calendar/ical/accessibility/private/basic.ics",
-        )
-        self.client.force_login(user)
-
-        response = self.client.get("/settings/")
-
-        for label in ("Blau", "Grün", "Rot", "Sand", "Violett"):
-            with self.subTest(label=label):
-                self.assertContains(response, f'aria-label="{label}"', count=2)
 
     def test_logged_in_user_can_save_detailed_notification_preferences(self):
         user = User.objects.create_user(
@@ -1391,272 +1368,67 @@ class SettingsProfileTests(TestCase):
 
         self.assertContains(response, "Benachrichtigungseinstellungen gespeichert.")
 
-    def test_calendar_source_can_be_added_and_queued_from_settings(self):
+    def test_calendar_feed_link_can_be_created_rotated_and_disabled(self):
         user = User.objects.create_user(
             username="mira@example.com", email="mira@example.com", password="secret-12345"
         )
-        Profile.objects.create(user=user, display_name="Mira")
-        self.client.login(username="mira@example.com", password="secret-12345")
+        profile = Profile.objects.create(user=user, display_name="Mira")
+        self.client.force_login(user)
 
-        with patch("app.services.calendar_service.fetch_ical") as fetch_calendar:
-            response = self.client.post(
-                "/settings/",
-                {
-                    "form_name": "calendar_source_add",
-                    "new-name": "Arbeit",
-                    "new-ical_url": "https://calendar.google.com/calendar/ical/settings/private/basic.ics",
-                    "new-color": "green",
-                    "new-enabled": "on",
-                },
-            )
+        response = self.client.get("/settings/")
+        self.assertContains(response, 'name="form_name" value="calendar_feed_reset"')
+        self.assertContains(response, "Abo-Link erstellen")
 
+        response = self.client.post("/settings/", {"form_name": "calendar_feed_reset"})
         self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-calendar")
-        source = CalendarSource.objects.get(user=user)
-        self.assertEqual(source.name, "Arbeit")
-        self.assertEqual(
-            source.ical_url, "https://calendar.google.com/calendar/ical/settings/private/basic.ics"
-        )
-        self.assertEqual(source.color, "green")
-        self.assertTrue(source.is_visible)
-        self.assertTrue(source.enabled)
-        self.assertIsNotNone(source.sync_requested_at)
-        fetch_calendar.assert_not_called()
+        profile.refresh_from_db()
+        first_token = profile.calendar_feed_token
+        self.assertGreaterEqual(len(first_token), 40)
+        response = self.client.get("/settings/")
+        self.assertContains(response, f"http://testserver/calendar/feed/{first_token}.ics")
+        self.assertEqual(self.client.get(f"/calendar/feed/{first_token}.ics").status_code, 200)
 
-    def test_calendar_source_is_kept_while_first_sync_is_queued(self):
-        user = User.objects.create_user(
-            username="mira@example.com", email="mira@example.com", password="secret-12345"
-        )
-        Profile.objects.create(user=user, display_name="Mira")
-        self.client.login(username="mira@example.com", password="secret-12345")
+        self.client.post("/settings/", {"form_name": "calendar_feed_reset"})
+        profile.refresh_from_db()
+        self.assertNotEqual(profile.calendar_feed_token, first_token)
+        self.assertEqual(self.client.get(f"/calendar/feed/{first_token}.ics").status_code, 404)
 
-        response = self.client.post(
-            "/settings/",
-            {
-                "form_name": "calendar_source_add",
-                "new-name": "Familie",
-                "new-ical_url": "https://calendar.google.com/calendar/ical/family/private/basic.ics",
-                "new-color": "violet",
-                "new-enabled": "on",
-            },
-        )
+        self.client.post("/settings/", {"form_name": "calendar_feed_disable"})
+        profile.refresh_from_db()
+        self.assertIsNone(profile.calendar_feed_token)
 
-        self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-calendar")
-        source = CalendarSource.objects.get(user=user, name="Familie")
-        self.assertIsNotNone(source.sync_requested_at)
-
-    def test_calendar_source_form_normalizes_webcal_urls(self):
-        form = CalendarSourceForm(
-            data={
-                "name": "Arbeit",
-                "ical_url": "webcal://calendar.google.com/calendar/ical/example/private/basic.ics",
-                "color": "blue",
-                "enabled": "on",
-            }
-        )
-
-        self.assertTrue(form.is_valid(), form.errors)
-        self.assertEqual(
-            form.cleaned_data["ical_url"],
-            "https://calendar.google.com/calendar/ical/example/private/basic.ics",
-        )
-
-    def test_calendar_source_form_rejects_unsafe_targets(self):
-        unsafe_urls = [
-            "http://example.com/calendar.ics",
-            "https://127.0.0.1/private.ics",
-            "https://localhost/private.ics",
-            "https://metadata.google.internal/private.ics",
-        ]
-
-        for url in unsafe_urls:
-            with self.subTest(url=url):
-                form = CalendarSourceForm(
-                    data={"name": "Privat", "ical_url": url, "color": "blue", "enabled": "on"}
-                )
-
-                self.assertFalse(form.is_valid())
-                self.assertIn("ical_url", form.errors)
-
-    def test_calendar_source_form_rejects_duplicate_urls_for_user(self):
-        user = User.objects.create_user(
-            username="mira@example.com", email="mira@example.com", password="secret-12345"
-        )
-        CalendarSource.objects.create(
-            user=user,
-            name="Arbeit",
-            ical_url="https://calendar.google.com/calendar/ical/example/private/basic.ics",
-        )
-
-        form = CalendarSourceForm(
-            user=user,
-            data={
-                "name": "Duplikat",
-                "ical_url": "https://calendar.google.com/calendar/ical/example/private/basic.ics",
-                "color": "red",
-                "enabled": "on",
-            },
-        )
-
-        self.assertFalse(form.is_valid())
-        self.assertIn("ical_url", form.errors)
-
-    def test_settings_calendar_source_is_scoped_to_logged_in_user(self):
+    def test_settings_feed_link_is_scoped_to_logged_in_user(self):
         mira = User.objects.create_user(
             username="mira@example.com", email="mira@example.com", password="secret-12345"
         )
         lukas = User.objects.create_user(
             username="lukas@example.com", email="lukas@example.com", password="secret-12345"
         )
-        Profile.objects.create(user=mira, display_name="Mira")
+        Profile.objects.create(user=mira, display_name="Mira", calendar_feed_token="mira-secret-token")
         Profile.objects.create(user=lukas, display_name="Lukas")
-        private_url = "https://calendar.google.com/calendar/ical/mira/private/basic.ics"
-        CalendarSource.objects.create(user=mira, name="Miras Kalender", ical_url=private_url)
-        self.client.login(username="lukas@example.com", password="secret-12345")
+        self.client.force_login(lukas)
 
         response = self.client.get("/settings/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'name="form_name" value="calendar_source_add"')
-        self.assertNotContains(response, private_url)
+        self.assertNotContains(response, "mira-secret-token")
 
-        response = self.client.post(
-            "/settings/",
-            {
-                "form_name": "calendar_source_add",
-                "new-name": "Lukas Kalender",
-                "new-ical_url": "https://calendar.google.com/calendar/ical/lukas/private/basic.ics",
-                "new-color": "sand",
-                "new-enabled": "on",
-            },
-        )
-
-        self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-calendar")
-        self.assertEqual(CalendarSource.objects.get(user=mira).ical_url, private_url)
-        self.assertEqual(
-            CalendarSource.objects.get(user=lukas).ical_url,
-            "https://calendar.google.com/calendar/ical/lukas/private/basic.ics",
-        )
-
-    def test_calendar_source_update_clears_events_when_url_changes(self):
+    def test_calendar_page_shows_categories_and_no_import_controls(self):
         user = User.objects.create_user(
             username="mira@example.com", email="mira@example.com", password="secret-12345"
         )
         Profile.objects.create(user=user, display_name="Mira")
-        source = CalendarSource.objects.create(
-            user=user,
-            name="Alt",
-            ical_url="https://calendar.google.com/calendar/ical/old/private/basic.ics",
-        )
-        start_at = timezone.now() + timedelta(days=3)
-        CalendarEvent.objects.create(
-            user=user,
-            source=source,
-            external_id="old-event",
-            title="Alter Termin",
-            start_at=start_at,
-            end_at=start_at + timedelta(hours=1),
-        )
-        self.client.login(username="mira@example.com", password="secret-12345")
-
-        with patch("app.services.calendar_service.fetch_ical") as fetch_calendar:
-            response = self.client.post(
-                "/settings/",
-                {
-                    "form_name": "calendar_source_update",
-                    "source_id": str(source.id),
-                    f"source-{source.id}-name": "Neu",
-                    f"source-{source.id}-ical_url": "https://calendar.google.com/calendar/ical/new/private/basic.ics",
-                    f"source-{source.id}-color": "red",
-                    f"source-{source.id}-enabled": "on",
-                },
-            )
-
-        self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-calendar")
-        source.refresh_from_db()
-        self.assertEqual(source.name, "Neu")
-        self.assertEqual(source.color, "red")
-        self.assertEqual(source.ical_url, "https://calendar.google.com/calendar/ical/new/private/basic.ics")
-        self.assertFalse(CalendarEvent.objects.filter(source=source, external_id="old-event").exists())
-        self.assertIsNotNone(source.sync_requested_at)
-        fetch_calendar.assert_not_called()
-
-    def test_disabling_calendar_source_clears_pending_sync(self):
-        user = User.objects.create_user(
-            username="mira@example.com", email="mira@example.com", password="secret-12345"
-        )
-        Profile.objects.create(user=user, display_name="Mira")
-        source = CalendarSource.objects.create(
-            user=user,
-            name="Privat",
-            ical_url="https://calendar.google.com/calendar/ical/private/basic.ics",
-            sync_requested_at=timezone.now(),
-        )
-        self.client.login(username="mira@example.com", password="secret-12345")
-
-        response = self.client.post(
-            "/settings/",
-            {
-                "form_name": "calendar_source_update",
-                "source_id": str(source.id),
-                f"source-{source.id}-name": "Privat",
-                f"source-{source.id}-ical_url": source.ical_url,
-                f"source-{source.id}-color": "blue",
-            },
-            follow=True,
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Sync ist deaktiviert.")
-        source.refresh_from_db()
-        self.assertFalse(source.enabled)
-        self.assertIsNone(source.sync_requested_at)
-
-    def test_calendar_source_delete_removes_events(self):
-        user = User.objects.create_user(
-            username="mira@example.com", email="mira@example.com", password="secret-12345"
-        )
-        Profile.objects.create(user=user, display_name="Mira")
-        source = CalendarSource.objects.create(
-            user=user,
-            name="Privat",
-            ical_url="https://calendar.google.com/calendar/ical/example/private/basic.ics",
-        )
-        start_at = timezone.now() + timedelta(days=1)
-        CalendarEvent.objects.create(
-            user=user,
-            source=source,
-            external_id="delete-event",
-            title="Loeschen",
-            start_at=start_at,
-            end_at=start_at + timedelta(hours=1),
-        )
-        self.client.login(username="mira@example.com", password="secret-12345")
-
-        response = self.client.post(
-            "/settings/",
-            {
-                "form_name": "calendar_source_delete",
-                "source_id": str(source.id),
-            },
-        )
-
-        self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-calendar")
-        self.assertFalse(CalendarSource.objects.filter(pk=source.id).exists())
-        self.assertFalse(CalendarEvent.objects.filter(external_id="delete-event").exists())
-
-    def test_calendar_page_does_not_render_calendar_source_form(self):
-        user = User.objects.create_user(
-            username="mira@example.com", email="mira@example.com", password="secret-12345"
-        )
-        Profile.objects.create(user=user, display_name="Mira")
-        self.client.login(username="mira@example.com", password="secret-12345")
+        self.client.force_login(user)
 
         response = self.client.get("/calendar/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertNotContains(response, 'name="form_name" value="calendar_source_add"')
-        self.assertNotContains(response, "Google Kalender-Link")
-        self.assertNotContains(response, "Hinzufügen")
+        for label in ("Klassenarbeit", "Test", "Referat", "Abgabe", "Sonstiges"):
+            with self.subTest(label=label):
+                self.assertContains(response, f"<strong>{label}</strong>")
+        self.assertContains(response, "/settings/?next=/calendar/#settings-calendar")
+        self.assertNotContains(response, "calendar_sync_all")
+        self.assertNotContains(response, "Kalender verbinden")
 
     def test_calendar_empty_states_offer_direct_actions(self):
         user = User.objects.create_user(
@@ -1668,64 +1440,18 @@ class SettingsProfileTests(TestCase):
         response = self.client.get("/calendar/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'data-calendar-empty-action="connect"')
-        self.assertContains(response, 'data-calendar-empty-action="connect-upcoming"')
         self.assertContains(response, 'data-calendar-empty-action="event-today"')
         self.assertContains(response, 'data-calendar-empty-action="event-upcoming"')
-        self.assertContains(response, "Kalender verbinden", count=2)
-
-    def test_calendar_upcoming_empty_state_respects_existing_sources(self):
-        user = User.objects.create_user(
-            username="mira@example.com", email="mira@example.com", password="secret-12345"
-        )
-        Profile.objects.create(user=user, display_name="Mira")
-        CalendarSource.objects.create(
-            user=user,
-            name="Arbeit",
-            ical_url="https://calendar.google.com/calendar/ical/example/private/basic.ics",
-        )
-        self.client.login(username="mira@example.com", password="secret-12345")
-
-        response = self.client.get("/calendar/")
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Deine sichtbaren Kalender haben aktuell keine kommenden Termine.")
-        self.assertNotContains(response, 'data-calendar-empty-action="connect-upcoming"')
-        self.assertContains(response, 'data-calendar-empty-action="event-upcoming"')
-
-    def test_calendar_page_get_does_not_sync_calendar_source(self):
-        user = User.objects.create_user(
-            username="mira@example.com", email="mira@example.com", password="secret-12345"
-        )
-        Profile.objects.create(user=user, display_name="Mira")
-        CalendarSource.objects.create(
-            user=user,
-            ical_url="https://calendar.google.com/calendar/ical/example/private/basic.ics",
-        )
-        self.client.login(username="mira@example.com", password="secret-12345")
-
-        with patch("app.views.calendar_views.queue_calendar_sources") as queue_sync:
-            response = self.client.get("/calendar/")
-
-        self.assertEqual(response.status_code, 200)
-        queue_sync.assert_not_called()
 
     def test_calendar_page_displays_saved_events(self):
         user = User.objects.create_user(
             username="mira@example.com", email="mira@example.com", password="secret-12345"
         )
         Profile.objects.create(user=user, display_name="Mira")
-        source = CalendarSource.objects.create(
-            user=user,
-            name="Arbeit",
-            color="red",
-            ical_url="https://calendar.google.com/calendar/ical/example/private/basic.ics",
-        )
         start_at = timezone.make_aware(datetime(2026, 7, 8, 9, 0))
         CalendarEvent.objects.create(
             user=user,
-            source=source,
-            external_id="event-1",
+            category=CalendarEvent.CATEGORY_EXAM,
             title="Design Review",
             start_at=start_at,
             end_at=start_at + timedelta(hours=1),
@@ -1761,8 +1487,7 @@ class SettingsProfileTests(TestCase):
 
         self.assertRedirects(response, calendar_url)
         event = CalendarEvent.objects.get(user=user, title="Zahnarzttermin")
-        self.assertIsNone(event.source)
-        self.assertEqual(event.external_id, "")
+        self.assertEqual(event.category, CalendarEvent.CATEGORY_OTHER)
         self.assertEqual(timezone.localtime(event.start_at).strftime("%Y-%m-%d %H:%M"), "2099-08-12 10:30")
         self.assertEqual(timezone.localtime(event.end_at).strftime("%Y-%m-%d %H:%M"), "2099-08-12 11:15")
         self.assertEqual(event.location, "Praxis am Markt")
@@ -1771,7 +1496,7 @@ class SettingsProfileTests(TestCase):
 
         self.assertContains(response, "Zahnarzttermin")
         self.assertContains(response, "tone-sand")
-        self.assertContains(response, "Eigener Termin")
+        self.assertContains(response, "<small>Sonstiges</small>", html=False)
 
     def test_calendar_event_with_attendee_creates_invitation_visible_to_invitee(self):
         organizer = User.objects.create_user(
@@ -2098,31 +1823,6 @@ class SettingsProfileTests(TestCase):
 
         self.assertTrue(CalendarEvent.objects.filter(pk=event.id).exists())
 
-    def test_calendar_event_delete_ignores_synced_events(self):
-        user = User.objects.create_user(
-            username="mira@example.com", email="mira@example.com", password="secret-12345"
-        )
-        Profile.objects.create(user=user, display_name="Mira")
-        source = CalendarSource.objects.create(
-            user=user, name="Google Kalender", ical_url="https://example.com/cal.ics"
-        )
-        event = CalendarEvent.objects.create(
-            user=user,
-            source=source,
-            external_id="synced-1",
-            title="Synchronisierter Termin",
-            start_at=timezone.now() + timedelta(days=1),
-            end_at=timezone.now() + timedelta(days=1, hours=1),
-        )
-        self.client.login(username="mira@example.com", password="secret-12345")
-
-        self.client.post(
-            "/calendar/",
-            {"form_name": "calendar_event_delete", "event_id": str(event.id)},
-        )
-
-        self.assertTrue(CalendarEvent.objects.filter(pk=event.id).exists())
-
     def test_calendar_event_edit_updates_fields_and_attendees(self):
         user = User.objects.create_user(
             username="mira@example.com", email="mira@example.com", password="secret-12345"
@@ -2151,6 +1851,7 @@ class SettingsProfileTests(TestCase):
                 "start_time": "09:00",
                 "end_time": "10:00",
                 "location": "Neues Büro",
+                "category": "presentation",
                 "attendees": [str(invitee.id)],
             },
         )
@@ -2158,6 +1859,7 @@ class SettingsProfileTests(TestCase):
         self.assertRedirects(response, "/calendar/")
         event.refresh_from_db()
         self.assertEqual(event.title, "Neuer Titel")
+        self.assertEqual(event.category, CalendarEvent.CATEGORY_PRESENTATION)
         self.assertEqual(event.location, "Neues Büro")
         self.assertTrue(CalendarEventAttendee.objects.filter(event=event, user=invitee).exists())
 
@@ -2191,38 +1893,6 @@ class SettingsProfileTests(TestCase):
 
         event.refresh_from_db()
         self.assertEqual(event.title, "Fremder Termin")
-
-    def test_calendar_event_edit_ignores_synced_events(self):
-        user = User.objects.create_user(
-            username="mira@example.com", email="mira@example.com", password="secret-12345"
-        )
-        Profile.objects.create(user=user, display_name="Mira")
-        source = CalendarSource.objects.create(
-            user=user, name="Google Kalender", ical_url="https://example.com/cal.ics"
-        )
-        event = CalendarEvent.objects.create(
-            user=user,
-            source=source,
-            external_id="synced-1",
-            title="Synchronisierter Termin",
-            start_at=timezone.now() + timedelta(days=1),
-            end_at=timezone.now() + timedelta(days=1, hours=1),
-        )
-        self.client.login(username="mira@example.com", password="secret-12345")
-
-        self.client.post(
-            "/calendar/",
-            {
-                "form_name": "calendar_event_edit",
-                "event_id": str(event.id),
-                "title": "Manipuliert",
-                "event_date": "2099-09-01",
-                "start_time": "09:00",
-            },
-        )
-
-        event.refresh_from_db()
-        self.assertEqual(event.title, "Synchronisierter Termin")
 
     def test_calendar_event_edit_rejects_an_end_before_its_start(self):
         user = User.objects.create_user(
@@ -2284,167 +1954,14 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(response.context["due_tasks"], [])
         self.assertNotContains(response, "Fällige Aufgaben")
 
-    def test_calendar_sync_request_is_queued_and_visible(self):
-        user = User.objects.create_user(
-            username="mira@example.com", email="mira@example.com", password="secret-12345"
-        )
-        Profile.objects.create(user=user, display_name="Mira")
-        CalendarSource.objects.create(
-            user=user,
-            ical_url="https://calendar.google.com/calendar/ical/example/private/basic.ics",
-        )
-        self.client.login(username="mira@example.com", password="secret-12345")
-
-        response = self.client.post(
-            "/calendar/",
-            {"form_name": "calendar_sync_all"},
-            follow=True,
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Kalendersynchronisierung wurde im Hintergrund vorgemerkt.")
-        source = CalendarSource.objects.get(user=user)
-        self.assertIsNotNone(source.sync_requested_at)
-
-    def test_calendar_visibility_filters_calendar_and_dashboard(self):
-        user = User.objects.create_user(
-            username="mira@example.com", email="mira@example.com", password="secret-12345"
-        )
-        Profile.objects.create(user=user, display_name="Mira")
-        visible_source = CalendarSource.objects.create(
-            user=user,
-            name="Arbeit",
-            color="green",
-            ical_url="https://calendar.google.com/calendar/ical/work/private/basic.ics",
-        )
-        hidden_source = CalendarSource.objects.create(
-            user=user,
-            name="Privat",
-            color="violet",
-            is_visible=False,
-            ical_url="https://calendar.google.com/calendar/ical/private/private/basic.ics",
-        )
-        start_at = timezone.localtime(timezone.now() + timedelta(days=2)).replace(
-            hour=9, minute=0, second=0, microsecond=0
-        )
-        calendar_url = f"/calendar/?year={start_at.year}&month={start_at.month}"
-        CalendarEvent.objects.create(
-            user=user,
-            source=visible_source,
-            external_id="visible-event",
-            title="Sichtbar",
-            start_at=start_at,
-            end_at=start_at + timedelta(hours=1),
-        )
-        CalendarEvent.objects.create(
-            user=user,
-            source=hidden_source,
-            external_id="hidden-event",
-            title="Verborgen",
-            start_at=start_at,
-            end_at=start_at + timedelta(hours=1),
-        )
-        self.client.login(username="mira@example.com", password="secret-12345")
-
-        response = self.client.get(calendar_url)
-
-        self.assertContains(response, "Sichtbar")
-        self.assertContains(response, "tone-green")
-        self.assertNotContains(response, "Verborgen")
-
-        response = self.client.get("/home/")
-
-        self.assertContains(response, "Sichtbar")
-        self.assertNotContains(response, "Verborgen")
-
-        response = self.client.post(
-            calendar_url,
-            {
-                "form_name": "calendar_visibility",
-                "visible_source_ids": [str(hidden_source.id)],
-            },
-        )
-
-        self.assertRedirects(response, calendar_url)
-        visible_source.refresh_from_db()
-        hidden_source.refresh_from_db()
-        self.assertFalse(visible_source.is_visible)
-        self.assertTrue(hidden_source.is_visible)
-
-    def test_calendar_visibility_is_scoped_to_logged_in_user(self):
-        mira = User.objects.create_user(
-            username="mira@example.com", email="mira@example.com", password="secret-12345"
-        )
-        lukas = User.objects.create_user(
-            username="lukas@example.com", email="lukas@example.com", password="secret-12345"
-        )
-        Profile.objects.create(user=mira, display_name="Mira")
-        Profile.objects.create(user=lukas, display_name="Lukas")
-        mira_source = CalendarSource.objects.create(
-            user=mira,
-            name="Mira",
-            ical_url="https://calendar.google.com/calendar/ical/mira/private/basic.ics",
-        )
-        lukas_source = CalendarSource.objects.create(
-            user=lukas,
-            name="Lukas",
-            ical_url="https://calendar.google.com/calendar/ical/lukas/private/basic.ics",
-        )
-        self.client.login(username="lukas@example.com", password="secret-12345")
-
-        response = self.client.post(
-            "/calendar/",
-            {
-                "form_name": "calendar_visibility",
-                "visible_source_ids": [str(mira_source.id)],
-            },
-        )
-
-        self.assertRedirects(response, "/calendar/")
-        mira_source.refresh_from_db()
-        lukas_source.refresh_from_db()
-        self.assertTrue(mira_source.is_visible)
-        self.assertFalse(lukas_source.is_visible)
-
-    def test_sync_queue_processes_hidden_sources_and_skips_disabled_sources(self):
-        user = User.objects.create_user(
-            username="mira@example.com", email="mira@example.com", password="secret-12345"
-        )
-        hidden_source = CalendarSource.objects.create(
-            user=user,
-            name="Hidden",
-            is_visible=False,
-            ical_url="https://calendar.google.com/calendar/ical/hidden/private/basic.ics",
-        )
-        disabled_source = CalendarSource.objects.create(
-            user=user,
-            name="Disabled",
-            enabled=False,
-            ical_url="https://calendar.google.com/calendar/ical/disabled/private/basic.ics",
-        )
-
-        result = queue_calendar_sources([hidden_source, disabled_source])
-
-        self.assertEqual(result["queued"], 1)
-        hidden_source.refresh_from_db()
-        disabled_source.refresh_from_db()
-        self.assertIsNotNone(hidden_source.sync_requested_at)
-        self.assertIsNone(disabled_source.sync_requested_at)
-
     def test_home_page_shows_upcoming_calendar_events(self):
         user = User.objects.create_user(
             username="mira@example.com", email="mira@example.com", password="secret-12345"
         )
         Profile.objects.create(user=user, display_name="Mira")
-        source = CalendarSource.objects.create(
-            user=user,
-            ical_url="https://calendar.google.com/calendar/ical/example/private/basic.ics",
-        )
         start_at = timezone.now() + timedelta(days=2)
         CalendarEvent.objects.create(
             user=user,
-            source=source,
-            external_id="home-event-1",
             title="Sprint Planning",
             start_at=start_at,
             end_at=start_at + timedelta(hours=1),
@@ -2533,80 +2050,6 @@ class SettingsProfileTests(TestCase):
 
         self.assertContains(response, "Rechnung bezahlen")
         self.assertContains(response, "Morgen")
-
-    def test_ical_parser_reads_google_events_and_weekly_recurrence(self):
-        ical = """BEGIN:VCALENDAR
-BEGIN:VEVENT
-UID:abc@example.com
-SUMMARY:Team Sync
-DTSTART;TZID=Europe/Berlin:20260706T090000
-DTEND;TZID=Europe/Berlin:20260706T100000
-RRULE:FREQ=WEEKLY;COUNT=2
-END:VEVENT
-END:VCALENDAR
-"""
-        events = parse_ical_events(
-            ical,
-            window_start=timezone.make_aware(datetime(2026, 7, 1)),
-            window_end=timezone.make_aware(datetime(2026, 7, 31)),
-        )
-
-        self.assertEqual(len(events), 2)
-        self.assertEqual(events[0].title, "Team Sync")
-        self.assertEqual(events[1].start_at.day, 13)
-
-    def test_ical_parser_expands_yearly_recurrence_across_multiple_years(self):
-        ical = """BEGIN:VCALENDAR
-BEGIN:VEVENT
-UID:birthday@example.com
-SUMMARY:Geburtstag
-DTSTART;VALUE=DATE:20200315
-DTEND;VALUE=DATE:20200316
-RRULE:FREQ=YEARLY
-END:VEVENT
-END:VCALENDAR
-"""
-        events = parse_ical_events(
-            ical,
-            window_start=timezone.make_aware(datetime(2026, 1, 1)),
-            window_end=timezone.make_aware(datetime(2027, 6, 1)),
-        )
-
-        self.assertEqual(len(events), 2)
-        self.assertEqual([event.start_at.year for event in events], [2026, 2027])
-        self.assertTrue(all(event.start_at.month == 3 and event.start_at.day == 15 for event in events))
-
-    def test_ical_parser_respects_yearly_interval_and_until(self):
-        ical = """BEGIN:VCALENDAR
-BEGIN:VEVENT
-UID:anniversary@example.com
-SUMMARY:Jubilaeum
-DTSTART;VALUE=DATE:20220701
-DTEND;VALUE=DATE:20220702
-RRULE:FREQ=YEARLY;INTERVAL=2;UNTIL=20280101
-END:VEVENT
-END:VCALENDAR
-"""
-        events = parse_ical_events(
-            ical,
-            window_start=timezone.make_aware(datetime(2022, 1, 1)),
-            window_end=timezone.make_aware(datetime(2030, 1, 1)),
-        )
-
-        self.assertEqual([event.start_at.year for event in events], [2022, 2024, 2026])
-
-
-class FakeIcalResponse:
-    headers = {"content-type": "text/calendar"}
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        return False
-
-    def read(self, _size=-1):
-        return b"BEGIN:VCALENDAR\nEND:VCALENDAR\n"
 
 
 class FakeWeatherResponse:
@@ -3194,42 +2637,105 @@ class TaskTests(TestCase):
         self.assertRedirects(response, "/tasks/")
 
 
-class CalendarFetchSafetyTests(TestCase):
-    def public_dns_result(self):
-        return [(None, None, None, "", ("93.184.216.34", 443))]
+class CalendarFeedTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
+        self.profile = Profile.objects.create(
+            user=self.user,
+            display_name="Mira",
+            timezone_name="Europe/Berlin",
+            calendar_feed_token="mira-feed-token",
+        )
+        self.feed_url = "/calendar/feed/mira-feed-token.ics"
 
-    def private_dns_result(self):
-        return [(None, None, None, "", ("10.0.0.8", 443))]
+    def create_event(self, user, title, start_at, **extra):
+        return CalendarEvent.objects.create(
+            user=user,
+            title=title,
+            start_at=start_at,
+            end_at=extra.pop("end_at", start_at + timedelta(hours=1)),
+            **extra,
+        )
 
-    def test_fetch_ical_rejects_private_dns_targets_before_request(self):
-        with patch("app.services.url_safety.socket.getaddrinfo", return_value=self.private_dns_result()):
-            with patch("app.services.calendar_service._ICAL_OPENER.open") as opener:
-                with self.assertRaisesMessage(ValueError, "interne Netzwerkadressen"):
-                    fetch_ical("https://example.com/calendar.ics")
+    def test_feed_is_public_with_token_and_404_for_unknown_or_inactive(self):
+        response = self.client.get(self.feed_url)
 
-        opener.assert_not_called()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "text/calendar; charset=utf-8")
+        body = response.content.decode("utf-8")
+        self.assertTrue(body.startswith("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"))
+        self.assertTrue(body.endswith("END:VCALENDAR\r\n"))
+        self.assertIn("X-WR-CALNAME:Lunora – Mira", body)
 
-    def test_fetch_ical_rejects_private_redirect_targets(self):
-        headers = Message()
-        headers["Location"] = "https://127.0.0.1/private.ics"
-        redirect = HTTPError("https://example.com/calendar.ics", 302, "Found", headers, None)
+        self.assertEqual(self.client.get("/calendar/feed/wrong-token.ics").status_code, 404)
 
-        with patch("app.services.url_safety.socket.getaddrinfo", return_value=self.public_dns_result()):
-            with patch("app.services.calendar_service._ICAL_OPENER.open", side_effect=redirect) as opener:
-                with self.assertRaisesMessage(ValueError, "interne Netzwerkadressen"):
-                    fetch_ical("https://example.com/calendar.ics")
+        self.user.is_active = False
+        self.user.save(update_fields=["is_active"])
+        self.assertEqual(self.client.get(self.feed_url).status_code, 404)
 
-        self.assertEqual(opener.call_count, 1)
+    def test_feed_contains_own_events_and_accepted_invitations_only(self):
+        other = User.objects.create_user(
+            username="lukas@example.com", email="lukas@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=other, display_name="Lukas")
+        start_at = timezone.now() + timedelta(days=3)
+        own = self.create_event(self.user, "Mathe", start_at, category=CalendarEvent.CATEGORY_EXAM)
+        accepted = self.create_event(other, "Gemeinsames Referat", start_at)
+        declined = self.create_event(other, "Abgesagtes Treffen", start_at)
+        pending = self.create_event(other, "Offene Einladung", start_at)
+        self.create_event(other, "Fremder Termin", start_at)
+        self.create_event(self.user, "Uralt", timezone.now() - timedelta(days=400))
+        CalendarEventAttendee.objects.create(
+            event=accepted, user=self.user, status=CalendarEventAttendee.STATUS_ACCEPTED
+        )
+        CalendarEventAttendee.objects.create(
+            event=declined, user=self.user, status=CalendarEventAttendee.STATUS_DECLINED
+        )
+        CalendarEventAttendee.objects.create(event=pending, user=self.user)
 
-    def test_fetch_ical_reads_public_calendar_response(self):
-        with patch("app.services.url_safety.socket.getaddrinfo", return_value=self.public_dns_result()):
-            with patch(
-                "app.services.calendar_service._ICAL_OPENER.open", return_value=FakeIcalResponse()
-            ) as opener:
-                text = fetch_ical("https://example.com/calendar.ics")
+        body = self.client.get(self.feed_url).content.decode("utf-8")
 
-        self.assertIn("BEGIN:VCALENDAR", text)
-        opener.assert_called_once()
+        self.assertIn(f"UID:lunora-event-{own.id}\r\n", body)
+        self.assertIn("SUMMARY:[Klassenarbeit] Mathe\r\n", body)
+        self.assertIn("CATEGORIES:Klassenarbeit\r\n", body)
+        self.assertIn("SUMMARY:Gemeinsames Referat\r\n", body)
+        self.assertEqual(body.count("BEGIN:VEVENT"), 2)
+        for title in ("Abgesagtes Treffen", "Offene Einladung", "Fremder Termin", "Uralt"):
+            self.assertNotIn(title, body)
+
+    def test_feed_formats_times_escapes_text_and_folds_long_lines(self):
+        start_at = timezone.make_aware(datetime(2099, 3, 2, 8, 15), ZoneInfo("Europe/Berlin"))
+        self.create_event(
+            self.user,
+            "Physik; Kapitel 3, Optik",
+            start_at,
+            location="Raum 1\nNeubau",
+            description="ä" * 60,
+            category=CalendarEvent.CATEGORY_TEST,
+        )
+        all_day_start = timezone.make_aware(datetime(2099, 3, 5), ZoneInfo("Europe/Berlin"))
+        self.create_event(
+            self.user,
+            "Projektabgabe",
+            all_day_start,
+            end_at=all_day_start + timedelta(days=1),
+            is_all_day=True,
+            category=CalendarEvent.CATEGORY_DEADLINE,
+        )
+
+        body = self.client.get(self.feed_url).content.decode("utf-8")
+
+        self.assertIn("DTSTART:20990302T071500Z\r\nDTEND:20990302T081500Z\r\n", body)
+        self.assertIn("SUMMARY:[Test] Physik\\; Kapitel 3\\, Optik\r\n", body)
+        self.assertIn("LOCATION:Raum 1\\nNeubau\r\n", body)
+        self.assertIn("DTSTART;VALUE=DATE:20990305\r\nDTEND;VALUE=DATE:20990306\r\n", body)
+        self.assertIn("SUMMARY:[Abgabe] Projektabgabe\r\n", body)
+        for line in body.split("\r\n"):
+            self.assertLessEqual(len(line.encode("utf-8")), 75, line)
+        unfolded = body.replace("\r\n ", "")
+        self.assertIn("DESCRIPTION:" + "ä" * 60 + "\r\n", unfolded)
 
 
 @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
@@ -3254,79 +2760,6 @@ class ScheduledAutomationTests(TestCase):
             weekly_summary=True,
             timezone_name="Europe/Berlin",
         )
-
-    def test_due_calendar_sources_are_synced_and_recent_sources_are_skipped(self):
-        now = timezone.now()
-        due_source = CalendarSource.objects.create(
-            user=self.user,
-            name="Fällig",
-            ical_url="https://calendar.google.com/calendar/ical/due/private/basic.ics",
-            last_synced_at=now - timedelta(minutes=20),
-            sync_interval_minutes=15,
-        )
-        CalendarSource.objects.create(
-            user=self.user,
-            name="Aktuell",
-            ical_url="https://calendar.google.com/calendar/ical/current/private/basic.ics",
-            last_synced_at=now - timedelta(minutes=5),
-            sync_interval_minutes=15,
-        )
-
-        with patch(
-            "app.services.scheduled_tasks.sync_calendar_source",
-            return_value={"synced": True, "message": "Aktualisiert."},
-        ) as sync_source:
-            result = sync_due_calendars(now=now)
-
-        self.assertEqual(result, {"synced": 1, "failed": 0, "skipped": 1})
-        sync_source.assert_called_once_with(due_source, force=True)
-        due_source.refresh_from_db()
-        self.assertEqual(due_source.last_sync_attempt_at, now)
-
-    def test_manual_sync_request_bypasses_regular_interval(self):
-        now = timezone.now()
-        source = CalendarSource.objects.create(
-            user=self.user,
-            name="Manuell",
-            ical_url="https://calendar.google.com/calendar/ical/manual/private/basic.ics",
-            last_synced_at=now - timedelta(minutes=2),
-            last_sync_attempt_at=now - timedelta(minutes=2),
-            sync_requested_at=now - timedelta(seconds=5),
-            sync_interval_minutes=15,
-        )
-
-        with patch(
-            "app.services.scheduled_tasks.sync_calendar_source",
-            return_value={"synced": True, "message": "Aktualisiert."},
-        ) as sync_source:
-            result = sync_due_calendars(now=now)
-
-        self.assertEqual(result, {"synced": 1, "failed": 0, "skipped": 0})
-        sync_source.assert_called_once_with(source, force=True)
-        source.refresh_from_db()
-        self.assertIsNone(source.sync_requested_at)
-        self.assertEqual(source.last_sync_attempt_at, now)
-
-    def test_failed_sync_is_not_retried_before_interval(self):
-        now = timezone.now()
-        source = CalendarSource.objects.create(
-            user=self.user,
-            name="Fehlerhaft",
-            ical_url="https://calendar.google.com/calendar/ical/failing/private/basic.ics",
-            sync_requested_at=now - timedelta(seconds=5),
-            sync_interval_minutes=15,
-        )
-
-        with patch(
-            "app.services.scheduled_tasks.sync_calendar_source",
-            return_value={"synced": False, "message": "Nicht erreichbar."},
-        ) as sync_source:
-            first_result = sync_due_calendars(now=now)
-            second_result = sync_due_calendars(now=now + timedelta(minutes=1))
-
-        self.assertEqual(first_result, {"synced": 0, "failed": 1, "skipped": 0})
-        self.assertEqual(second_result, {"synced": 0, "failed": 0, "skipped": 1})
-        sync_source.assert_called_once_with(source, force=True)
 
     def test_due_reminder_email_is_sent_only_once(self):
         reminder = CalendarReminder.objects.create(
@@ -3469,7 +2902,6 @@ class ScheduledAutomationTests(TestCase):
 
     def test_automation_command_runs_one_cycle_by_default(self):
         result = {
-            "calendar_sync": {"synced": 1, "failed": 0, "skipped": 2},
             "reminder_emails": {"sent": 1, "failed": 0},
             "weekly_summaries": {"sent": 1, "failed": 0, "skipped": 0},
         }
@@ -3481,7 +2913,7 @@ class ScheduledAutomationTests(TestCase):
             call_command("run_automations", stdout=output)
 
         run_tasks.assert_called_once_with()
-        self.assertIn("Kalender: 1 synchronisiert", output.getvalue())
+        self.assertIn("Erinnerungen: 1 gesendet", output.getvalue())
 
 
 @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
@@ -6371,7 +5803,7 @@ class AdministrationFeatureFlagTests(TestCase):
         self.assertTrue(settings_obj.normal_login_enabled)
         self.assertFalse(settings_obj.calendar_event_creation_enabled)
         self.assertTrue(settings_obj.calendar_reminders_enabled)
-        self.assertFalse(settings_obj.calendar_sync_enabled)
+        self.assertFalse(settings_obj.calendar_feed_enabled)
         self.assertFalse(settings_obj.messages_enabled)
         self.assertTrue(settings_obj.weather_enabled)
         self.assertEqual(settings_obj.updated_by, self.superuser)
@@ -6471,28 +5903,26 @@ class AdministrationFeatureFlagTests(TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertFalse(CalendarReminder.objects.filter(title="Blockierte Erinnerung").exists())
 
-    def test_disabled_calendar_sync_hides_settings_forms_and_blocks_direct_post(self):
-        SystemSettings.objects.create(calendar_sync_enabled=False)
+    def test_disabled_calendar_feed_hides_settings_link_and_blocks_feed(self):
+        profile = Profile.objects.get(user=self.user)
+        profile.calendar_feed_token = "disabled-feed-token"
+        profile.save(update_fields=["calendar_feed_token"])
+        SystemSettings.objects.create(calendar_feed_enabled=False)
         self.client.login(username="mira@example.com", password="secret-12345")
 
         response = self.client.get("/settings/")
         self.assertEqual(response.status_code, 200)
-        self.assertNotContains(response, 'name="form_name" value="calendar_source_add"')
-        self.assertContains(response, "Kalendersynchronisierung pausiert")
+        self.assertContains(response, "Kalender-Abo pausiert")
+        self.assertNotContains(response, "disabled-feed-token")
 
-        response = self.client.post(
-            "/settings/",
-            {
-                "form_name": "calendar_source_add",
-                "new-name": "Privat",
-                "new-ical_url": "https://calendar.google.com/calendar/ical/example/basic.ics",
-                "new-color": "blue",
-                "new-enabled": "on",
-            },
-        )
+        response = self.client.post("/settings/", {"form_name": "calendar_feed_reset"})
+        self.assertEqual(response.status_code, 503)
+        profile.refresh_from_db()
+        self.assertEqual(profile.calendar_feed_token, "disabled-feed-token")
 
-        self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-calendar")
-        self.assertFalse(CalendarSource.objects.filter(user=self.user, name="Privat").exists())
+        self.client.logout()
+        response = self.client.get("/calendar/feed/disabled-feed-token.ics")
+        self.assertEqual(response.status_code, 503)
 
     def test_disabled_messages_and_weather_return_unavailable(self):
         SystemSettings.objects.create(messages_enabled=False, weather_enabled=False)

@@ -1,19 +1,3 @@
-const visibilityForm = document.querySelector("[data-calendar-visibility-form]");
-
-if (visibilityForm) {
-  const submitButton = visibilityForm.querySelector(".calendar-visibility-submit");
-
-  if (submitButton) {
-    submitButton.hidden = true;
-  }
-
-  visibilityForm.querySelectorAll("input[type='checkbox']").forEach((checkbox) => {
-    checkbox.addEventListener("change", () => {
-      visibilityForm.requestSubmit();
-    });
-  });
-}
-
 const eventDialog = document.querySelector("[data-event-dialog]");
 
 if (eventDialog) {
@@ -101,6 +85,7 @@ if (editDialog) {
   const endInput = editForm?.querySelector("input[name='end_time']");
   const allDayInput = editForm?.querySelector("input[name='is_all_day']");
   const locationInput = editForm?.querySelector("input[name='location']");
+  const categorySelect = editForm?.querySelector("select[name='category']");
   const attendeeInputs = editForm?.querySelectorAll("input[name='attendees']") || [];
   const timeFields = editForm?.querySelectorAll("[data-event-edit-time-field]") || [];
 
@@ -124,6 +109,7 @@ if (editDialog) {
     if (endInput) endInput.value = data.end || "";
     if (allDayInput) allDayInput.checked = data.allDay === "true";
     if (locationInput) locationInput.value = data.location || "";
+    if (categorySelect) categorySelect.value = data.category || "other";
 
     const attendeeIds = (data.attendees || "").split(",").filter(Boolean);
     attendeeInputs.forEach((input) => {
@@ -148,6 +134,7 @@ if (editDialog) {
         start: button.dataset.editStart,
         end: button.dataset.editEnd,
         allDay: button.dataset.editAllDay,
+        category: button.dataset.editCategory,
         location: button.dataset.editLocation,
         attendees: button.dataset.editAttendees,
       }),

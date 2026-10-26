@@ -428,3 +428,17 @@ pwaInstallButton?.addEventListener("click", async () => {
 window.addEventListener("lunora:pwa-state-change", syncPwaInstallState);
 window.addEventListener("appinstalled", syncPwaInstallState);
 syncPwaInstallState();
+
+const calendarFeedCopyButton = document.querySelector("[data-calendar-feed-copy]");
+
+calendarFeedCopyButton?.addEventListener("click", async () => {
+  const input = document.querySelector("[data-calendar-feed-url]");
+  const status = document.querySelector("[data-calendar-feed-status]");
+  try {
+    await navigator.clipboard.writeText(input.value);
+    if (status) status.textContent = "Link kopiert.";
+  } catch (_error) {
+    input.select();
+    if (status) status.textContent = "Link markiert – mit Strg+C kopieren.";
+  }
+});

@@ -4,7 +4,6 @@ from datetime import timedelta
 from django.conf import settings
 from django.core.mail import send_mail
 from django.db import IntegrityError, transaction
-from django.db.models import Q
 from django.utils import timezone
 
 from app.models import (
@@ -765,13 +764,10 @@ def _weekly_summary_text(user, current_time):
     horizon = current_time + timedelta(days=7)
     events = list(
         CalendarEvent.objects.filter(
-            Q(source__isnull=True) | Q(source__is_visible=True),
             user=user,
             end_at__gte=current_time,
             start_at__lt=horizon,
-        )
-        .select_related("source")
-        .order_by("start_at", "title")[:5]
+        ).order_by("start_at", "title")[:5]
     )
     reminders = list(
         CalendarReminder.objects.filter(user=user, is_done=False).order_by("due_at", "created_at")[:5]

@@ -37,6 +37,7 @@ urlpatterns = [
         name="weather_map_tile",
     ),
     path("calendar/", view.calendar, name="calendar"),
+    path("calendar/feed/<str:token>.ics", view.calendar_feed, name="calendar_feed"),
     path("tasks/", view.tasks, name="tasks"),
     path("tools/", view.tools, name="tools"),
     path("tools/uml/", view.uml_diagrams, name="uml_diagrams"),
