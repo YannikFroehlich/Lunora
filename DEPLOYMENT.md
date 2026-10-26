@@ -6,7 +6,7 @@
 > auf `main` kein Deployment aus.
 
 Ziel: `lunora.yfserver.de` läuft über einen ausgehenden Cloudflare Tunnel. Nginx
-lauscht nur auf `127.0.0.1:8080`, Gunicorn nur auf einem Unix-Socket. Lokal bleibt
+lauscht nur auf `127.0.0.1:8090`, Gunicorn nur auf einem Unix-Socket. Lokal bleibt
 SQLite in Verwendung; Produktion verwendet die frische PostgreSQL-Datenbank.
 
 ## Noch benötigte Geheimnisse
@@ -35,7 +35,7 @@ Keiner dieser Werte gehört in Git. Die produktive Datei liegt ausschließlich u
 6. Virtuelle Umgebung, Python-Pakete, Migrationen und statische Dateien einrichten.
 7. systemd-Units, Nginx-Konfiguration, Backup-Skript und Auto-Deployment installieren.
 8. Superuser `yannik` mit `webmaster@yfserver.de` anlegen.
-9. Cloudflare Turnstile und anschließend den Tunnel zu `http://localhost:8080` einrichten.
+9. Cloudflare Turnstile und anschließend den Tunnel zu `http://localhost:8090` einrichten.
 10. Django-, E-Mail-, Upload-, Automations-, Backup- und externen HTTPS-Test durchführen.
 11. Erst nach erfolgreichem Test Passwort-SSH deaktivieren und die Firewall festziehen.
 
@@ -151,7 +151,7 @@ den öffentlichen Hostnamen so routen:
 
 ```text
 Hostname: lunora.yfserver.de
-Service:  http://localhost:8080
+Service:  http://localhost:8090
 ```
 
 Cloudflare Access darf nicht vor die gesamte Website geschaltet werden, weil die
@@ -170,7 +170,7 @@ systemctl list-timers --all | grep lunora
 systemctl is-enabled lunora-auto-deploy.timer
 curl --fail --silent --show-error --output /dev/null --write-out '%{http_code}\n' \
   --header 'Host: lunora.yfserver.de' --header 'X-Forwarded-Proto: https' \
-  http://127.0.0.1:8080/login/
+  http://127.0.0.1:8090/login/
 sudo systemctl start lunora-backup.service
 sudo journalctl -u lunora-backup.service --no-pager -n 50
 ```

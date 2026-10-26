@@ -142,7 +142,7 @@ curl \
     --output /dev/null \
     --header 'Host: lunora.yfserver.de' \
     --header 'X-Forwarded-Proto: https' \
-    http://127.0.0.1:8080/login/
+    http://127.0.0.1:8090/login/
 
 write_state "${SUCCESS_STATE}" "${deployed_commit}"
 echo "Lunora ${deployed_commit:0:12} wurde automatisch deployt und geprüft."

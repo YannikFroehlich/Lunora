@@ -92,7 +92,7 @@ location: `Windows PC (PowerShell)`, `Ubuntu server`, or `Cloudflare dashboard`.
   leave the local development checkout on `develop` after a release.
 - The production checkout is `/srv/lunora/app`, the virtual environment is
   `/srv/lunora/venv`, and the service account is `lunora`.
-- Requests follow Cloudflare Tunnel -> Nginx on `127.0.0.1:8080` -> Gunicorn on
+- Requests follow Cloudflare Tunnel -> Nginx on `127.0.0.1:8090` -> Gunicorn on
   `/run/lunora/gunicorn.sock` -> Django. Do not expose Nginx, Gunicorn, PostgreSQL, or
   Redis directly to the LAN or Internet and do not open ports `80`, `443`, `5432`, or
   `6379` in UFW for this deployment.
@@ -116,7 +116,7 @@ location: `Windows PC (PowerShell)`, `Ubuntu server`, or `Cloudflare dashboard`.
 - The initial Django superuser is username `yannik`, e-mail
   `webmaster@yfserver.de`; its password remains only in the password manager.
 - Cloudflare Tunnel `lunora-yfserv1` publishes `lunora.yfserver.de` to
-  `http://localhost:8080`. Public registration is intentional, so do not place
+  `http://localhost:8090`. Public registration is intentional, so do not place
   Cloudflare Access in front of the whole site. Turnstile must remain required for the
   registration hostname. Scoped WAF or rate-limit rules for login, registration, and
   password reset are optional hardening and must not affect other `yfserver.de` apps.
@@ -201,7 +201,7 @@ systemctl list-timers lunora-auto-deploy.timer --no-pager
 systemctl --failed --no-legend
 curl --fail --silent --show-error --output /dev/null --write-out '%{http_code}\n' \
   --header 'Host: lunora.yfserver.de' --header 'X-Forwarded-Proto: https' \
-  http://127.0.0.1:8080/login/
+  http://127.0.0.1:8090/login/
 curl --fail --silent --show-error --output /dev/null --write-out '%{http_code}\n' \
   https://lunora.yfserver.de/login/
 curl --fail --silent --show-error --output /dev/null --write-out '%{http_code}\n' \
