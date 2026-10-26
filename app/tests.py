@@ -318,6 +318,58 @@ class StaticVersioningTests(SimpleTestCase):
         )
 
 
+class DesignTokenTests(SimpleTestCase):
+    """Guard the shared design tokens in base.css against per-page drift."""
+
+    CSS_DIR = BASE_DIR / "app" / "static" / "css"
+    # Below this size a rem font-size is UI text and must come from the --text-* scale;
+    # larger values are display sizes (hero titles, clock, big numbers).
+    DISPLAY_FONT_SIZE_REM = 2.2
+
+    def css_lines(self, *, include_base=True):
+        for path in sorted(self.CSS_DIR.glob("*.css")):
+            if path.name == "base.css" and not include_base:
+                continue
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+                yield f"{path.name}:{number}", line
+
+    def test_page_stylesheets_do_not_override_the_profile_accent(self):
+        offenders = [
+            location
+            for location, line in self.css_lines(include_base=False)
+            if re.search(r"--color-accent(-strong)?\s*:", line)
+        ]
+
+        self.assertEqual(offenders, [], "Pages must follow the profile accent from base.css.")
+
+    def test_accent_tints_are_derived_from_the_accent_variable(self):
+        hard_coded_accent = re.compile(
+            r"rgba?\(\s*(181,\s*150,\s*104|194,\s*162,\s*118|190,\s*148,\s*85)\b|#(c2a276|b59668|9e8055)\b",
+            re.IGNORECASE,
+        )
+        offenders = [
+            location
+            for location, line in self.css_lines()
+            if hard_coded_accent.search(line) and not re.match(r"\s*--color-accent:", line)
+        ]
+
+        self.assertEqual(
+            offenders,
+            [],
+            "Use color-mix(in srgb, var(--color-accent) N%, transparent) instead of a fixed accent tone.",
+        )
+
+    def test_ui_font_sizes_use_the_type_scale(self):
+        offenders = [
+            location
+            for location, line in self.css_lines()
+            for value in re.findall(r"font-size:\s*(\d*\.?\d+)rem", line)
+            if 0 < float(value) < self.DISPLAY_FONT_SIZE_REM
+        ]
+
+        self.assertEqual(offenders, [], "Use a --text-* token from base.css for UI font sizes.")
+
+
 @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
 class PwaTests(TestCase):
     def setUp(self):
