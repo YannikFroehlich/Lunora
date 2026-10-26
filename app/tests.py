@@ -308,7 +308,7 @@ class StaticVersioningTests(SimpleTestCase):
         self.assertLess(max(path.stat().st_size for path in chunk_paths), 500_000)
         self.assertRegex(
             entry_source,
-            r'import\("\./chunks/math-renderer-[A-Za-z0-9_-]+\.js"\)',
+            r'import\(["`]\./chunks/math-renderer-[A-Za-z0-9_-]+\.js["`]\)',
         )
 
         notes_template = (BASE_DIR / "app" / "templates" / "app" / "notes.html").read_text(encoding="utf-8")

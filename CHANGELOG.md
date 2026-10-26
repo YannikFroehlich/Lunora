@@ -6,6 +6,9 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Update the notes editor build to Vite 8 (Rolldown) and vitest 5, KaTeX to 0.19.1, reportlab to
+  5.1 and ruff to 0.17.2, plus the latest compatible transitive Python dependencies (cryptography,
+  aiohttp, certifi, tzdata, …) in `constraints.txt`.
 - Deployments validate the new commit in a temporary directory (own venv, `pip install` with
   constraints, `check --deploy`) before the production checkout is touched, so a broken dependency
   or configuration no longer leaves half-deployed code on disk.
