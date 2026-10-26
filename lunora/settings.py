@@ -141,6 +141,9 @@ if not DEBUG and not ALLOWED_HOSTS:
 
 CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
 
+# Lets a deployment without SMTP yet (e.g. LAN-only) pass `check --deploy` via mail.E001.
+SILENCED_SYSTEM_CHECKS = env_list("DJANGO_SILENCED_SYSTEM_CHECKS")
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",

@@ -153,6 +153,7 @@ Wichtige Variablen:
 - `DJANGO_LANGUAGE_CODE`: Sprache, standardmäßig `de-de`
 - `DJANGO_TIME_ZONE`: Standardzeitzone, standardmäßig `Europe/Berlin`
 - `DJANGO_EMAIL_BACKEND` und die `DJANGO_EMAIL_*`-Variablen: E-Mail-Zustellung für Erinnerungen und Wochenberichte
+- `DJANGO_SILENCED_SYSTEM_CHECKS`: kommagetrennte Django-Check-IDs, die stummgeschaltet werden, z. B. `mail.E001`, solange ein Server ohne SMTP (Console-Backend) läuft und `check --deploy` sonst abbricht
 - `DJANGO_ADMINS`: kommagetrennte `Name:email`-Liste, die bei unbehandelten Serverfehlern benachrichtigt wird, sobald `DJANGO_DEBUG=false` ist; leer und wirkungslos im lokalen Betrieb
 - `DJANGO_SERVER_EMAIL`: Absenderadresse für diese Fehlerbenachrichtigungen
 - `CLOUDFLARE_TURNSTILE_REQUIRED` und die `CLOUDFLARE_TURNSTILE_*`-Variablen: serverseitig validierter Bot-Schutz für die öffentliche Registrierung
