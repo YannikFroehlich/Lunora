@@ -23,7 +23,7 @@
 }
 
 .notification-panel {
-  margin-top: 26px;
+  margin-top: 20px;
   padding: 22px;
 }
 
@@ -50,7 +50,7 @@
   text-decoration: none;
   background: color-mix(in srgb, var(--surface-panel-soft) 72%, transparent);
   border: 1px solid var(--glass-border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-size: 0.86rem;
   font-weight: 700;
   transition: 160ms ease;
@@ -63,7 +63,7 @@
   padding: 0 6px;
   place-items: center;
   background: color-mix(in srgb, var(--color-accent) 14%, transparent);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-size: 0.72rem;
 }
 
@@ -83,7 +83,7 @@
   color: var(--color-accent-strong);
   background: transparent;
   border: 1px solid color-mix(in srgb, var(--color-accent-strong) 24%, var(--glass-border));
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   font: inherit;
   font-size: 0.82rem;
   font-weight: 750;
@@ -105,7 +105,7 @@
   overflow: hidden;
   background: color-mix(in srgb, var(--surface-panel-soft) 74%, transparent);
   border: 1px solid var(--glass-border);
-  border-radius: 17px;
+  border-radius: var(--radius-md);
   transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
 }
 
@@ -149,14 +149,9 @@
   place-items: center;
   color: var(--color-accent-strong);
   background: color-mix(in srgb, var(--color-accent) 14%, transparent);
-  border-radius: 15px;
+  border-radius: var(--radius-md);
   font-size: 1.05rem;
 }
-
-.notification-row.is-task .notification-kind-icon { color: #7456a6; background: rgba(116, 86, 166, 0.12); }
-.notification-row.is-invitation .notification-kind-icon { color: #397b86; background: rgba(57, 123, 134, 0.12); }
-.notification-row.is-note .notification-kind-icon { color: #9a6844; background: rgba(154, 104, 68, 0.12); }
-.notification-row.is-weather .notification-kind-icon { color: #477da5; background: rgba(71, 125, 165, 0.12); }
 
 .notification-copy {
   display: grid;
@@ -228,7 +223,7 @@
   color: var(--color-muted);
   background: transparent;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
 }
 
@@ -246,7 +241,7 @@
   color: var(--color-muted);
   text-align: left;
   border: 1px dashed var(--glass-border);
-  border-radius: 18px;
+  border-radius: var(--radius-md);
 }
 
 .notification-empty-state > span {
@@ -256,7 +251,7 @@
   place-items: center;
   color: var(--color-accent-strong);
   background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-  border-radius: 18px;
+  border-radius: var(--radius-md);
   font-size: 1.35rem;
 }
 
@@ -297,7 +292,7 @@
   .notification-hero-icon {
     width: 60px;
     height: 60px;
-    border-radius: 20px;
+    border-radius: var(--radius-lg);
     font-size: 1.45rem;
   }
 
@@ -334,7 +329,7 @@
   .notification-kind-icon {
     width: 42px;
     height: 42px;
-    border-radius: 13px;
+    border-radius: var(--radius-sm);
   }
 
   .notification-chevron {

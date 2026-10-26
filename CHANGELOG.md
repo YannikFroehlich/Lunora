@@ -6,6 +6,13 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Unify the look across all pages: Calendar, Messages, Weather and Tasks no longer override the
+  accent color with their own green/rose/blue/violet palette (Tasks also dropped its forced dark
+  theme), so every page follows the accent chosen in the settings. Status colors, radii, focus
+  rings, switches, checkboxes and dialog backdrops now come from shared tokens in `base.css`; dark
+  mode derives a lighter accent so accent text stays readable. Also fixes the message search button
+  being cut off, missing padding on search result panels, transparent note dialogs and unmuted
+  text in the vacation planner.
 - Update the notes editor build to Vite 8 (Rolldown) and vitest 5, KaTeX to 0.19.1, reportlab to
   5.1 and ruff to 0.17.2, plus the latest compatible transitive Python dependencies (cryptography,
   aiohttp, certifi, tzdata, …) in `constraints.txt`.

@@ -29,8 +29,9 @@
   --color-muted: #8c7d6b;
   --color-soft: #efe7d9;
   --color-line: rgba(153, 130, 101, 0.18);
-  --color-accent: #b59668;
-  --color-accent-strong: #9e8055;
+  --color-accent: #c2a276;
+  /* Derived from the profile accent (set inline on <html>) so it adapts per theme. */
+  --color-accent-strong: color-mix(in srgb, var(--color-accent) 72%, #3f372e);
   --background-overlay-alpha: 0.33;
   --background-highlight-alpha: 0.35;
   --glass-blur: 28px;
@@ -45,14 +46,28 @@
   --radius-lg: 22px;
   --radius-md: 16px;
   --radius-sm: 12px;
+  --radius-xs: 8px;
+  --radius-pill: 999px;
+
+  /* Semantic status colors; tints are derived with color-mix() at the call site. */
+  --color-on-accent: #fffaf3;
+  --color-danger: #a64d3d;
+  /* Filled danger badges keep light text readable in both themes. */
+  --color-danger-solid: #a64d3d;
+  --color-success: #4f8f62;
+  --color-warning: #b3772f;
 
   --surface-panel: var(--glass-bg);
   --surface-panel-soft: var(--glass-bg-soft);
+  /* Opaque panel for dialogs and popovers that sit above other content. */
+  --surface-panel-solid: #fbf7ef;
   --surface-control: rgba(255, 255, 255, 0.30);
   --surface-control-hover: rgba(255, 255, 255, 0.42);
   --surface-selected: color-mix(in srgb, var(--color-accent) 20%, transparent);
   --focus-ring-color: color-mix(in srgb, var(--color-accent-strong) 42%, transparent);
   --focus-ring: 0 0 0 3px var(--focus-ring-color);
+  /* Border for rounded wrappers that show focus via :focus-within (see below). */
+  --focus-border: color-mix(in srgb, var(--color-accent) 62%, transparent);
   --scrollbar-track: rgba(255, 255, 255, 0.18);
   --scrollbar-thumb: color-mix(in srgb, var(--color-accent-strong) 55%, transparent);
   --scrollbar-thumb-hover: color-mix(in srgb, var(--color-accent-strong) 78%, transparent);
@@ -68,9 +83,13 @@
   --color-soft: #2a241d;
   --color-line: rgba(255, 255, 255, 0.10);
   --color-accent: #d1ad77;
-  --color-accent-strong: #e2c18b;
+  --color-accent-strong: color-mix(in srgb, var(--color-accent) 72%, #fff8ed);
+  --color-danger: #f0a59a;
+  --color-success: #93c59a;
+  --color-warning: #e0b872;
 
   --glass-bg: rgba(32, 27, 22, 0.72);
+  --surface-panel-solid: #221d18;
   --glass-bg-soft: rgba(32, 27, 22, 0.48);
   --glass-border: rgba(255, 255, 255, 0.12);
   --glass-border-soft: rgba(255, 255, 255, 0.09);
@@ -88,12 +107,21 @@
   --empty-border: rgba(255, 255, 255, 0.12);
 }
 
+/* Shared color tones for user-picked colors (calendars, task lists, labels, notes). */
+.tone-blue { --tone: #8bb3cf; }
+.tone-green { --tone: #91a87c; }
+.tone-red { --tone: #d29a97; }
+.tone-sand { --tone: #c5a67d; }
+.tone-violet { --tone: #b5a2c9; }
+
 * {
   box-sizing: border-box;
 }
 
 html {
   min-height: 100%;
+  /* Native checkboxes, radios and ranges follow the profile accent. */
+  accent-color: var(--color-accent);
 }
 
 .skip-link {
@@ -104,7 +132,7 @@ html {
   padding: 10px 18px;
   border-radius: var(--radius-sm);
   background: var(--color-accent);
-  color: #fff;
+  color: var(--color-on-accent);
   font-weight: 600;
   text-decoration: none;
 }
@@ -203,8 +231,8 @@ select:focus-visible,
  * (e.g. a search field's background+border+border-radius div) will render
  * a square-cornered glow that visibly breaks out of the rounded wrapper.
  *
- * Fix: on the wrapper, add `:focus-within { border-color: ...; box-shadow:
- * 0 0 0 3px rgba(181, 150, 104, 0.14); }` (matching the wrapper's own
+ * Fix: on the wrapper, add `:focus-within { border-color: var(--focus-border);
+ * box-shadow: var(--focus-ring); }` (the ring then follows the wrapper's own
  * border-radius), and on the inner input add `:focus-visible { box-shadow:
  * none; }` to suppress this default ring. See .search-field (weather.css)
  * or .notes-search (notes.css) for reference, or .reminder-date-field
@@ -218,7 +246,7 @@ button:disabled,
 }
 
 ::selection {
-  color: #fffaf3;
+  color: var(--color-on-accent);
   background: var(--color-accent-strong);
 }
 
@@ -259,7 +287,7 @@ button:disabled,
 }
 
 .nav-orb.is-active {
-  border-color: rgba(181, 150, 104, 0.42);
+  border-color: color-mix(in srgb, var(--color-accent) 42%, transparent);
   box-shadow: 0 10px 28px rgba(142, 103, 53, 0.18);
 }
 
@@ -276,10 +304,10 @@ button:disabled,
   height: 20px;
   padding: 0 5px;
   place-items: center;
-  color: #fff;
-  background: #a85454;
-  border: 2px solid var(--color-surface, #fffaf4);
-  border-radius: 999px;
+  color: var(--color-on-accent);
+  background: var(--color-danger-solid);
+  border: 2px solid var(--color-bg);
+  border-radius: var(--radius-pill);
   box-shadow: 0 4px 12px rgba(92, 42, 42, 0.28);
   font-size: 0.64rem;
   font-weight: 800;
@@ -341,12 +369,12 @@ button:disabled,
 
 .flash-message.is-error,
 .flash-message.is-warning {
-  border-color: rgba(166, 77, 61, 0.34);
+  border-color: color-mix(in srgb, var(--color-danger) 34%, transparent);
 }
 
 .flash-message.is-error > i,
 .flash-message.is-warning > i {
-  color: #a64d3d;
+  color: var(--color-danger);
 }
 
 .flash-message.is-leaving {
@@ -360,9 +388,9 @@ button:disabled,
   width: 32px;
   height: 32px;
   color: var(--color-muted);
-  background: color-mix(in srgb, var(--surface-glass) 86%, transparent);
+  background: var(--surface-control);
   border: 1px solid var(--glass-border-soft);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   cursor: pointer;
   transition:
     color 160ms ease,
@@ -408,6 +436,17 @@ button:disabled,
   box-shadow: var(--shadow-panel);
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
+}
+
+/* Modal dialogs share one backdrop and an opaque card so content behind never bleeds through. */
+dialog::backdrop {
+  background: rgba(31, 25, 19, 0.46);
+  backdrop-filter: blur(7px);
+}
+
+dialog.glass-panel,
+dialog .glass-panel {
+  --surface-panel: var(--surface-panel-solid);
 }
 
 .page-hero {
@@ -458,7 +497,7 @@ button:disabled,
   right: 48px;
   bottom: 22px;
   z-index: 1;
-  color: rgba(181, 150, 104, 0.22);
+  color: color-mix(in srgb, var(--color-accent) 22%, transparent);
   font-size: 4.2rem;
   transform: rotate(-28deg);
 }
@@ -515,7 +554,7 @@ button:disabled,
   color: var(--color-text);
   background: rgba(226, 214, 196, 0.38);
   border: 1px solid var(--glass-border-soft);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 
 .soft-pill i {
@@ -533,7 +572,7 @@ button:disabled,
 .errorlist {
   margin: 8px 0 0;
   padding: 0;
-  color: #a64d3d;
+  color: var(--color-danger);
   font-size: 0.86rem;
   list-style: none;
 }
@@ -557,7 +596,7 @@ button:disabled,
 }
 
 .primary-button {
-  color: #fffaf3;
+  color: var(--color-on-accent);
   background: var(--color-accent);
   border: 1px solid rgba(141, 108, 66, 0.18);
   box-shadow: 0 12px 24px rgba(145, 104, 55, 0.18);
@@ -619,7 +658,7 @@ button:disabled,
 .month-panel::-webkit-scrollbar-track,
 .suggestion-list::-webkit-scrollbar-track {
   background: var(--scrollbar-track);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 
 .soft-scrollbar::-webkit-scrollbar-thumb,
@@ -631,7 +670,7 @@ button:disabled,
   background: var(--scrollbar-thumb);
   background-clip: content-box;
   border: 2px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 
 .soft-scrollbar::-webkit-scrollbar-thumb:hover,
@@ -675,7 +714,7 @@ button:disabled,
   color: var(--color-accent-strong);
   background: color-mix(in srgb, var(--color-accent) 14%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-accent-strong) 18%, transparent);
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   font-size: 1.1rem;
 }
 
@@ -746,6 +785,111 @@ button:disabled,
   margin-bottom: 14px;
 }
 
+/* Shared form controls: toggle switch and custom checkbox. */
+.switch {
+  position: relative;
+  display: inline-flex;
+  width: 46px;
+  height: 26px;
+  flex: 0 0 auto;
+  align-items: center;
+  overflow: hidden;
+  background: rgba(140, 125, 107, 0.30);
+  border: 1px solid rgba(255, 248, 237, 0.14);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12);
+  transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.switch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+  appearance: none;
+  -webkit-appearance: none;
+  clip-path: inset(50%);
+}
+
+.switch::after {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  content: "";
+  background: var(--color-on-accent);
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(77, 57, 31, 0.24);
+  transition: transform 160ms ease, background 160ms ease;
+}
+
+.switch.is-on,
+.switch:has(input:checked) {
+  background: var(--color-accent);
+  border-color: color-mix(in srgb, var(--color-accent) 72%, #ffffff);
+}
+
+.switch.is-on::after,
+.switch:has(input:checked)::after {
+  transform: translateX(20px);
+}
+
+.switch:focus-within {
+  box-shadow: var(--focus-ring);
+}
+
+[data-theme="dark"] .switch {
+  background: rgba(255, 248, 237, 0.14);
+  border-color: rgba(255, 248, 237, 0.12);
+}
+
+[data-theme="dark"] .switch.is-on,
+[data-theme="dark"] .switch:has(input:checked) {
+  background: var(--color-accent);
+}
+
+:is(.dashboard-visibility-toggle, .source-toggle) input {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  flex: 0 0 18px;
+  place-items: center;
+  margin: 0;
+  appearance: none;
+  color: #3f3020;
+  background: transparent;
+  border: 1.5px solid var(--color-muted);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+
+:is(.dashboard-visibility-toggle, .source-toggle) input::after {
+  content: "✓";
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+:is(.dashboard-visibility-toggle, .source-toggle) input:checked {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 72%, #fff), var(--color-accent-strong));
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 16%, transparent);
+}
+
+:is(.dashboard-visibility-toggle, .source-toggle) input:checked::after {
+  opacity: 1;
+  transform: scale(1);
+}
+
 .auth-shell {
   min-height: calc(100vh - 120px);
   display: grid;
@@ -800,8 +944,8 @@ button:disabled,
 }
 
 .auth-form input:focus {
-  border-color: rgba(181, 150, 104, 0.62);
-  box-shadow: 0 0 0 3px rgba(181, 150, 104, 0.14);
+  border-color: var(--focus-border);
+  box-shadow: var(--focus-ring);
 }
 
 .auth-submit {
@@ -862,6 +1006,21 @@ button:disabled,
 
   .page-hero {
     padding: 28px 24px;
+  }
+}
+
+@media (max-width: 520px) {
+  .page-hero {
+    min-height: auto;
+    padding: 24px 20px;
+  }
+
+  .page-hero h1 {
+    font-size: 2.05rem;
+  }
+
+  .page-hero p {
+    font-size: 0.92rem;
   }
 }
 

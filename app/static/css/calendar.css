@@ -1,39 +1,5 @@
 .calendar-shell {
   max-width: 1540px;
-  --color-accent: #537756;
-  --color-accent-strong: #3e6547;
-  --surface-selected: color-mix(in srgb, var(--color-accent) 18%, transparent);
-  --focus-ring-color: color-mix(in srgb, var(--color-accent-strong) 40%, transparent);
-  --scrollbar-thumb: color-mix(in srgb, var(--color-accent-strong) 48%, transparent);
-  --scrollbar-thumb-hover: color-mix(in srgb, var(--color-accent-strong) 72%, transparent);
-  --empty-border: color-mix(in srgb, var(--color-accent-strong) 24%, transparent);
-}
-
-.calendar-shell .page-hero {
-  background: color-mix(in srgb, var(--surface-panel) 88%, var(--color-accent) 12%);
-  border-color: color-mix(in srgb, var(--color-accent) 22%, var(--glass-border));
-}
-
-.calendar-shell .page-hero::before {
-  background: color-mix(in srgb, var(--color-accent) 15%, transparent);
-}
-
-.calendar-shell .hero-branch {
-  color: color-mix(in srgb, var(--color-accent) 30%, transparent);
-}
-
-.calendar-shell .glass-panel {
-  border-color: color-mix(in srgb, var(--color-accent) 12%, var(--glass-border));
-}
-
-.calendar-shell .primary-button {
-  border-color: color-mix(in srgb, var(--color-accent-strong) 28%, transparent);
-  box-shadow: 0 12px 24px color-mix(in srgb, var(--color-accent-strong) 18%, transparent);
-}
-
-[data-theme="dark"] .calendar-shell {
-  --color-accent: #4f7654;
-  --color-accent-strong: #93c59a;
 }
 
 .calendar-layout {
@@ -144,7 +110,7 @@
 }
 
 .calendar-day.is-today strong {
-  color: #fff;
+  color: var(--color-on-accent);
   background: var(--color-accent);
 }
 
@@ -161,7 +127,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--radius-xs);
   appearance: none;
 }
 
@@ -176,12 +142,6 @@ button.event-chip {
   font-size: 0.74rem;
   font-weight: 650;
 }
-
-.tone-blue { --tone: #8bb3cf; }
-.tone-green { --tone: #91a87c; }
-.tone-red { --tone: #d29a97; }
-.tone-sand { --tone: #c5a67d; }
-.tone-violet { --tone: #b5a2c9; }
 
 .event-chip,
 .timeline-dot {
@@ -249,7 +209,7 @@ button.event-chip {
 
 .calendar-source-form input[type="url"]:focus {
   border-color: color-mix(in srgb, var(--color-accent-strong) 62%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent-strong) 14%, transparent);
+  box-shadow: var(--focus-ring);
 }
 
 .source-toggle {
@@ -264,7 +224,6 @@ button.event-chip {
 .source-toggle input {
   width: 18px;
   height: 18px;
-  accent-color: var(--color-accent);
 }
 
 .source-submit {
@@ -280,7 +239,7 @@ button.event-chip {
 }
 
 .sync-error {
-  color: #a64d3d;
+  color: var(--color-danger);
 }
 
 [data-theme="dark"] .calendar-source-form input[type="url"] {
@@ -363,7 +322,7 @@ button.event-chip {
 }
 
 .source-status.is-error {
-  color: #a64d3d;
+  color: var(--color-danger);
 }
 
 .source-status.is-pending {
@@ -411,11 +370,6 @@ button.event-chip {
   background: transparent;
   border: 0;
   overflow: visible;
-}
-
-.calendar-event-dialog::backdrop {
-  background: rgba(31, 25, 19, 0.46);
-  backdrop-filter: blur(7px);
 }
 
 .event-dialog-card {
@@ -482,7 +436,7 @@ button.event-chip {
 .event-form-field input:focus,
 .event-form-field select:focus {
   border-color: color-mix(in srgb, var(--color-accent-strong) 62%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent-strong) 14%, transparent);
+  box-shadow: var(--focus-ring);
 }
 
 .event-form-field.is-disabled {
@@ -502,7 +456,6 @@ button.event-chip {
 .event-all-day input {
   width: 18px;
   height: 18px;
-  accent-color: var(--color-accent);
 }
 
 .event-form-actions {
@@ -562,7 +515,6 @@ button.event-chip {
   width: 18px;
   height: 18px;
   margin-top: 2px;
-  accent-color: var(--color-accent);
 }
 
 .reminder-row span,
@@ -576,7 +528,7 @@ button.event-chip {
 }
 
 .reminder-row.is-overdue small {
-  color: #a64d3d;
+  color: var(--color-danger);
 }
 
 .reminder-row.is-due-today small {
@@ -596,14 +548,14 @@ button.event-chip {
   color: var(--color-muted);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 9px;
+  border-radius: var(--radius-xs);
 }
 
 .reminder-delete-button:hover,
 .reminder-delete-button:focus-visible {
-  color: #a64d3d;
-  background: rgba(166, 77, 61, 0.08);
-  border-color: rgba(166, 77, 61, 0.18);
+  color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger) 8%, transparent);
+  border-color: color-mix(in srgb, var(--color-danger) 18%, transparent);
 }
 
 .reminder-add-form {
@@ -673,7 +625,7 @@ button.event-chip {
 .reminder-add-form input[type="text"]:focus,
 .reminder-date-field:focus-within {
   border-color: color-mix(in srgb, var(--color-accent-strong) 62%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent-strong) 14%, transparent);
+  box-shadow: var(--focus-ring);
 }
 
 [data-theme="dark"] .reminder-add-form input[type="text"],
@@ -705,7 +657,7 @@ button.event-chip {
   height: 52px;
   place-items: center;
   color: var(--color-accent-strong);
-  background: rgba(255, 255, 255, 0.34);
+  background: var(--surface-control);
   border: 1px solid var(--glass-border-soft);
   border-radius: 50%;
 }
@@ -845,7 +797,7 @@ button.event-chip {
     padding: 0;
     color: transparent;
     font-size: 0;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
   }
 
   .event-more {
@@ -893,19 +845,6 @@ button.event-chip {
 }
 
 @media (max-width: 520px) {
-  .calendar-shell .page-hero {
-    min-height: auto;
-    padding: 24px 20px;
-  }
-
-  .calendar-shell .page-hero h1 {
-    font-size: 2.05rem;
-  }
-
-  .calendar-shell .page-hero p {
-    font-size: 0.92rem;
-  }
-
   .month-toolbar h2 {
     font-size: 1.28rem;
   }
@@ -1004,7 +943,7 @@ button.event-chip {
   overflow-y: auto;
   background: var(--surface-control-hover);
   border: 1px solid var(--glass-border-soft);
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
 }
 
 .recipient-checkbox-list ul {
@@ -1022,7 +961,7 @@ button.event-chip {
   padding: 6px 8px;
   color: var(--color-text);
   font-weight: 500;
-  border-radius: 8px;
+  border-radius: var(--radius-xs);
   cursor: pointer;
 }
 
@@ -1033,7 +972,6 @@ button.event-chip {
 .recipient-checkbox-list input[type="checkbox"] {
   width: 16px;
   height: 16px;
-  accent-color: var(--color-accent);
 }
 
 .invitation-row {
@@ -1077,9 +1015,9 @@ button.event-chip {
   width: 32px;
   height: 32px;
   place-items: center;
-  background: rgba(255, 255, 255, 0.28);
+  background: var(--surface-control);
   border: 1px solid var(--glass-border-soft);
-  border-radius: 9px;
+  border-radius: var(--radius-xs);
   cursor: pointer;
 }
 
@@ -1093,12 +1031,12 @@ button.event-chip {
 }
 
 .invitation-decline {
-  color: #a64d3d;
+  color: var(--color-danger);
 }
 
 .invitation-decline:hover {
-  background: rgba(166, 77, 61, 0.12);
-  border-color: rgba(166, 77, 61, 0.28);
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-danger) 28%, transparent);
 }
 
 [data-theme="dark"] .recipient-checkbox-list,

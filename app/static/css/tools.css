@@ -32,7 +32,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 20px;
-  margin-top: 26px;
+  margin-top: 20px;
 }
 
 .tool-card {
@@ -80,12 +80,12 @@ a.tool-card:hover {
   color: var(--color-accent-strong);
   background: color-mix(in srgb, var(--color-accent) 14%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-accent-strong) 18%, transparent);
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   font-size: 1.2rem;
 }
 
 .uml-create-panel {
-  margin-top: 26px;
+  margin-top: 20px;
   padding: 18px;
 }
 
@@ -109,8 +109,8 @@ a.tool-card:hover {
 }
 
 .uml-create-field:focus-within {
-  border-color: rgba(181, 150, 104, 0.62);
-  box-shadow: 0 0 0 3px rgba(181, 150, 104, 0.14);
+  border-color: var(--focus-border);
+  box-shadow: var(--focus-ring);
 }
 
 .uml-create-field input {
@@ -239,7 +239,7 @@ a.tool-card:hover {
 }
 
 .uml-save-status[data-state="error"] {
-  color: #b0503f;
+  color: var(--color-danger);
   white-space: normal;
 }
 
@@ -273,7 +273,7 @@ a.tool-card:hover {
   color: var(--color-text);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   font-size: 0.86rem;
   font-weight: 600;
   list-style: none;
@@ -319,7 +319,7 @@ a.tool-card:hover {
   color: var(--color-text);
   background: var(--surface-control);
   border: 1px solid var(--glass-border-soft);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
 }
 
 .uml-relation-select select {
@@ -362,7 +362,7 @@ a.tool-card:hover {
   text-align: left;
   background: transparent;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-xs);
 }
 
 .uml-export-list button:hover {
@@ -387,8 +387,8 @@ a.tool-card:hover {
 }
 
 .uml-canvas-wrap:focus-within {
-  border-color: rgba(181, 150, 104, 0.62);
-  box-shadow: 0 0 0 3px rgba(181, 150, 104, 0.14);
+  border-color: var(--focus-border);
+  box-shadow: var(--focus-ring);
 }
 
 .uml-canvas {
@@ -432,13 +432,13 @@ a.tool-card:hover {
   color: #5f5242;
   background: rgba(255, 255, 255, 0.88);
   border: 1px solid rgba(120, 98, 70, 0.16);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-size: 0.8rem;
   pointer-events: none;
 }
 
 .uml-canvas-hint.is-active {
-  color: #fff;
+  color: var(--color-on-accent);
   background: #b3772f;
   border-color: transparent;
 }
@@ -526,7 +526,7 @@ a.tool-card:hover {
 
 .uml-field-error {
   margin: 0 0 12px;
-  color: #b0503f;
+  color: var(--color-danger);
   font-size: 0.84rem;
 }
 
@@ -556,7 +556,7 @@ a.tool-card:hover {
   text-align: left;
   background: transparent;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-xs);
 }
 
 .uml-outline button:hover {
@@ -601,10 +601,6 @@ a.tool-card:hover {
   width: min(760px, calc(100vw - 32px));
   padding: 20px;
   color: var(--color-text);
-}
-
-.uml-dialog::backdrop {
-  background: rgba(20, 15, 10, 0.42);
 }
 
 .uml-dialog form {
@@ -733,9 +729,9 @@ a.tool-card:hover {
   height: 22px;
   padding: 0 6px;
   place-items: center;
-  color: #fff;
+  color: var(--color-on-accent);
   background: #b3772f;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-size: 0.74rem;
   font-weight: 800;
 }
@@ -882,12 +878,12 @@ a.tool-card:hover {
   color: var(--color-muted);
   background: var(--surface-control);
   border: 1px solid var(--glass-border-soft);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 
 .vocab-filter:focus-within {
-  border-color: rgba(181, 150, 104, 0.62);
-  box-shadow: 0 0 0 3px rgba(181, 150, 104, 0.14);
+  border-color: var(--focus-border);
+  box-shadow: var(--focus-ring);
 }
 
 .vocab-filter input {
@@ -959,7 +955,7 @@ a.tool-card:hover {
   width: 24px;
   height: 24px;
   place-items: center;
-  color: #fff;
+  color: var(--color-on-accent);
   background: var(--box-color);
   border-radius: 50%;
   font-size: 0.74rem;
@@ -1053,7 +1049,7 @@ a.tool-card:hover {
   color: var(--color-text);
   background: var(--surface-control);
   border: 1px solid var(--glass-border-soft);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   cursor: pointer;
 }
 
@@ -1094,7 +1090,7 @@ a.tool-card:hover {
   height: 8px;
   overflow: hidden;
   background: var(--surface-control);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 
 .vocab-progress-bar span {
@@ -1120,13 +1116,13 @@ a.tool-card:hover {
 }
 
 .vocab-card[data-state="right"] {
-  background: color-mix(in srgb, #4f8f62 12%, var(--surface-control));
-  border-color: color-mix(in srgb, #4f8f62 60%, transparent);
+  background: color-mix(in srgb, var(--color-success) 12%, var(--surface-control));
+  border-color: color-mix(in srgb, var(--color-success) 60%, transparent);
 }
 
 .vocab-card[data-state="wrong"] {
-  background: color-mix(in srgb, #c0634f 12%, var(--surface-control));
-  border-color: color-mix(in srgb, #c0634f 60%, transparent);
+  background: color-mix(in srgb, var(--color-danger) 12%, var(--surface-control));
+  border-color: color-mix(in srgb, var(--color-danger) 60%, transparent);
 }
 
 .vocab-card-language {
@@ -1197,7 +1193,7 @@ a.tool-card:hover {
   padding: 1px 6px;
   font-family: inherit;
   font-size: 0.72rem;
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--surface-control);
   border: 1px solid currentColor;
   border-radius: 5px;
   opacity: 0.7;
@@ -1205,12 +1201,12 @@ a.tool-card:hover {
 
 .ghost-button.is-right {
   color: #3f7a52;
-  border-color: color-mix(in srgb, #4f8f62 50%, transparent);
+  border-color: color-mix(in srgb, var(--color-success) 50%, transparent);
 }
 
 .ghost-button.is-wrong {
   color: #a8503f;
-  border-color: color-mix(in srgb, #c0634f 50%, transparent);
+  border-color: color-mix(in srgb, var(--color-danger) 50%, transparent);
 }
 
 .vocab-typing {
@@ -1240,14 +1236,14 @@ a.tool-card:hover {
 
 .vocab-choice.is-right {
   color: #2f6b43;
-  background: color-mix(in srgb, #4f8f62 18%, transparent);
-  border-color: #4f8f62;
+  background: color-mix(in srgb, var(--color-success) 18%, transparent);
+  border-color: var(--color-success);
 }
 
 .vocab-choice.is-wrong {
   color: #8e3f31;
-  background: color-mix(in srgb, #c0634f 18%, transparent);
-  border-color: #c0634f;
+  background: color-mix(in srgb, var(--color-danger) 18%, transparent);
+  border-color: var(--color-danger);
 }
 
 .vocab-choice:disabled {
@@ -1267,7 +1263,7 @@ a.tool-card:hover {
   padding: 8px 12px;
   background: var(--surface-control);
   border-left: 3px solid #c0634f;
-  border-radius: 8px;
+  border-radius: var(--radius-xs);
 }
 
 .vocab-summary-actions {

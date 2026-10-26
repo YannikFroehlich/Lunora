@@ -1,39 +1,5 @@
 .messages-shell {
   max-width: 1600px;
-  --color-accent: #9a5660;
-  --color-accent-strong: #87454f;
-  --surface-selected: color-mix(in srgb, var(--color-accent) 18%, transparent);
-  --focus-ring-color: color-mix(in srgb, var(--color-accent-strong) 40%, transparent);
-  --scrollbar-thumb: color-mix(in srgb, var(--color-accent-strong) 48%, transparent);
-  --scrollbar-thumb-hover: color-mix(in srgb, var(--color-accent-strong) 72%, transparent);
-  --empty-border: color-mix(in srgb, var(--color-accent-strong) 24%, transparent);
-}
-
-.messages-shell .page-hero {
-  background: color-mix(in srgb, var(--surface-panel) 88%, var(--color-accent) 12%);
-  border-color: color-mix(in srgb, var(--color-accent) 22%, var(--glass-border));
-}
-
-.messages-shell .page-hero::before {
-  background: color-mix(in srgb, var(--color-accent) 15%, transparent);
-}
-
-.messages-shell .hero-branch {
-  color: color-mix(in srgb, var(--color-accent) 30%, transparent);
-}
-
-.messages-shell .glass-panel {
-  border-color: color-mix(in srgb, var(--color-accent) 12%, var(--glass-border));
-}
-
-.messages-shell .primary-button {
-  border-color: color-mix(in srgb, var(--color-accent-strong) 28%, transparent);
-  box-shadow: 0 12px 24px color-mix(in srgb, var(--color-accent-strong) 18%, transparent);
-}
-
-[data-theme="dark"] .messages-shell {
-  --color-accent: #8e4d56;
-  --color-accent-strong: #e4a1a9;
 }
 
 .messages-layout {
@@ -58,7 +24,7 @@
 
 .message-search {
   display: grid;
-  grid-template-columns: 20px 1fr 46px;
+  grid-template-columns: 20px minmax(0, 1fr) 46px;
   align-items: center;
   gap: 12px;
   padding: 0 0 14px;
@@ -66,6 +32,8 @@
 }
 
 .message-search input {
+  width: 100%;
+  min-width: 0;
   min-height: 44px;
   color: var(--color-text);
   background: transparent;
@@ -75,7 +43,7 @@
 
 .message-search button,
 .start-chat-button {
-  color: #fffaf2;
+  color: var(--color-on-accent);
   background: var(--color-accent);
   border: 0;
   box-shadow: 0 10px 24px color-mix(in srgb, var(--color-accent-strong) 14%, transparent);
@@ -84,7 +52,7 @@
 .message-search button {
   width: 46px;
   height: 46px;
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
 }
 
 .filter-row {
@@ -103,7 +71,7 @@
   text-decoration: none;
   background: var(--surface-control);
   border: 1px solid var(--glass-border-soft);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 
 .filter-row .is-active {
@@ -117,10 +85,10 @@
   min-width: 22px;
   height: 22px;
   place-items: center;
-  color: #fff;
+  color: var(--color-on-accent);
   font-size: 0.72rem;
   background: var(--color-accent);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 
 .new-chat-card {
@@ -166,7 +134,7 @@
   color: var(--color-text);
   background: var(--surface-control-hover);
   border: 1px solid var(--glass-border-soft);
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   outline: 0;
 }
 
@@ -182,7 +150,7 @@
 }
 
 .new-chat-card select option:checked {
-  color: #fffaf2;
+  color: var(--color-on-accent);
   background: var(--color-accent);
 }
 
@@ -202,13 +170,13 @@
 
 .start-chat-button {
   min-height: 42px;
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   font-weight: 750;
 }
 
 .form-error,
 .compose-error {
-  color: #b05b4f;
+  color: var(--color-danger);
   font-size: 0.8rem;
 }
 
@@ -282,9 +250,9 @@
   line-height: 1;
   color: var(--color-muted);
   font-size: 0.72rem;
-  background: rgba(255, 255, 255, 0.28);
+  background: var(--surface-control);
   border: 1px solid var(--glass-border-soft);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 
 .contact-state-badge i {
@@ -295,9 +263,9 @@
 }
 
 .contact-state-badge.is-blocked {
-  color: #f0b5ac;
-  background: rgba(176, 91, 79, 0.18);
-  border-color: rgba(176, 91, 79, 0.34);
+  color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger) 18%, transparent);
+  border-color: color-mix(in srgb, var(--color-danger) 34%, transparent);
 }
 
 .contact-copy small,
@@ -333,11 +301,11 @@
   height: 24px;
   padding: 0 7px;
   place-items: center;
-  color: #fff;
+  color: var(--color-on-accent);
   font-size: 0.76rem;
   font-weight: 800;
   background: var(--color-accent);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 
 .chat-panel {
@@ -381,7 +349,7 @@
   padding: 7px 22px;
   color: var(--color-muted);
   background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 
 .older-messages-link {
@@ -394,7 +362,7 @@
   color: var(--color-accent-strong);
   background: color-mix(in srgb, var(--color-accent) 14%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-accent-strong) 18%, transparent);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-size: 0.84rem;
   font-weight: 700;
   text-decoration: none;
@@ -425,13 +393,13 @@
 
 .message-stream::-webkit-scrollbar-track {
   background: var(--scrollbar-track);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 
 .message-stream::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb);
   border: 2px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background-clip: content-box;
 }
 
@@ -453,7 +421,7 @@
 .bubble > div {
   max-width: min(78%, 460px);
   padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.46);
+  background: var(--surface-control-hover);
   border: 1px solid var(--glass-border-soft);
   border-radius: 16px 16px 16px 6px;
 }
@@ -496,7 +464,7 @@
   padding: 8px;
   background: var(--surface-control);
   border: 1px solid var(--glass-border-soft);
-  border-radius: 16px;
+  border-radius: var(--radius-md);
 }
 
 .compose-bar textarea {
@@ -510,10 +478,10 @@
 .compose-bar .send-button {
   width: 48px;
   height: 48px;
-  color: #fff;
+  color: var(--color-on-accent);
   background: var(--color-accent);
   border: 0;
-  border-radius: 14px;
+  border-radius: var(--radius-md);
 }
 
 .compose-error {
@@ -603,9 +571,9 @@
 }
 
 [data-theme="dark"] .contact-state-badge.is-blocked {
-  color: #ffc2b8;
-  background: rgba(176, 91, 79, 0.22);
-  border-color: rgba(176, 91, 79, 0.36);
+  color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger) 22%, transparent);
+  border-color: color-mix(in srgb, var(--color-danger) 36%, transparent);
 }
 
 
@@ -726,7 +694,7 @@
   padding: 12px;
   background: color-mix(in srgb, var(--color-accent) 16%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-accent-strong) 28%, transparent);
-  border-radius: 14px;
+  border-radius: var(--radius-md);
 }
 
 .pinned-messages > strong {
@@ -748,9 +716,9 @@
   padding: 9px 10px;
   color: inherit;
   text-decoration: none;
-  background: rgba(255, 255, 255, 0.26);
+  background: var(--surface-control);
   border: 1px solid var(--glass-border-soft);
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
 }
 
 .pinned-messages a:hover {
@@ -853,9 +821,9 @@
   min-height: 28px;
   padding: 3px 8px;
   color: var(--color-text);
-  background: rgba(255, 255, 255, 0.34);
+  background: var(--surface-control);
   border: 1px solid var(--glass-border-soft);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 
 .reaction-pill.is-own {
@@ -878,7 +846,7 @@
   padding: 8px;
   background: rgba(255, 250, 242, 0.96);
   border: 1px solid color-mix(in srgb, var(--color-accent-strong) 28%, transparent);
-  border-radius: 16px;
+  border-radius: var(--radius-md);
   box-shadow: 0 24px 60px rgba(58, 45, 29, 0.18);
   backdrop-filter: blur(18px);
 }
@@ -902,7 +870,7 @@
   place-items: center;
   background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 
 .context-reactions button:hover,
@@ -922,11 +890,11 @@
   text-align: left;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 11px;
+  border-radius: var(--radius-sm);
 }
 
 .message-context-menu > button.is-danger {
-  color: #a94f44;
+  color: var(--color-danger);
 }
 
 .message-action-form {
@@ -1008,7 +976,7 @@
   align-items: center;
   gap: 16px;
   padding: 22px;
-  background: rgba(255, 255, 255, 0.30);
+  background: var(--surface-control);
   border: 1px solid var(--glass-border-soft);
   border-radius: var(--radius-md);
 }
@@ -1019,10 +987,10 @@
   height: 54px;
   flex: 0 0 auto;
   place-items: center;
-  color: #fffaf2;
+  color: var(--color-on-accent);
   font-size: 1.35rem;
   background: var(--color-accent);
-  border-radius: 18px;
+  border-radius: var(--radius-md);
   box-shadow: 0 14px 32px color-mix(in srgb, var(--color-accent-strong) 18%, transparent);
 }
 
@@ -1058,9 +1026,9 @@
 
 .overview-stats article,
 .overview-message-card {
-  background: rgba(255, 255, 255, 0.24);
+  background: var(--surface-control);
   border: 1px solid var(--glass-border-soft);
-  border-radius: 16px;
+  border-radius: var(--radius-md);
 }
 
 .overview-stats article {
@@ -1153,13 +1121,13 @@
   min-height: 60px;
   padding: 14px 16px;
   color: var(--color-muted);
-  background: rgba(176, 91, 79, 0.10);
-  border: 1px solid rgba(176, 91, 79, 0.22);
-  border-radius: 16px;
+  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 22%, transparent);
+  border-radius: var(--radius-md);
 }
 
 .compose-disabled-card i {
-  color: #b05b4f;
+  color: var(--color-danger);
 }
 
 .chat-management-section {
@@ -1184,13 +1152,13 @@
   font-weight: 750;
   background: color-mix(in srgb, var(--color-accent) 18%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-accent-strong) 28%, transparent);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 
 .management-status.is-danger {
-  color: #b05b4f;
-  background: rgba(176, 91, 79, 0.12);
-  border-color: rgba(176, 91, 79, 0.24);
+  color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-danger) 24%, transparent);
 }
 
 .chat-management-form {
@@ -1227,9 +1195,9 @@
   font-size: 0.84rem;
   font-weight: 750;
   text-align: center;
-  background: rgba(255, 255, 255, 0.28);
+  background: var(--surface-control);
   border: 1px solid var(--glass-border-soft);
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
 }
 
@@ -1245,14 +1213,14 @@
 }
 
 .management-wide-button.is-danger {
-  color: #b05b4f;
-  background: rgba(176, 91, 79, 0.10);
-  border-color: rgba(176, 91, 79, 0.22);
+  color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-danger) 22%, transparent);
 }
 
 .management-wide-button.is-danger:hover {
-  background: rgba(176, 91, 79, 0.16);
-  border-color: rgba(176, 91, 79, 0.34);
+  background: color-mix(in srgb, var(--color-danger) 16%, transparent);
+  border-color: color-mix(in srgb, var(--color-danger) 34%, transparent);
 }
 
 .management-note {
@@ -1290,7 +1258,7 @@
   overflow-y: auto;
   background: var(--surface-control-hover);
   border: 1px solid var(--glass-border-soft);
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
 }
 
 .recipient-checkbox-list ul {
@@ -1308,7 +1276,7 @@
   padding: 6px 8px;
   color: var(--color-text);
   font-weight: 500;
-  border-radius: 8px;
+  border-radius: var(--radius-xs);
   cursor: pointer;
 }
 
@@ -1319,7 +1287,6 @@
 .recipient-checkbox-list input[type="checkbox"] {
   width: 16px;
   height: 16px;
-  accent-color: var(--color-accent);
 }
 
 .add-member-form {
@@ -1336,7 +1303,7 @@
   color: var(--color-text);
   background: var(--surface-control);
   border: 1px solid var(--glass-border-soft);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   outline: 0;
 }
 
@@ -1348,7 +1315,7 @@
   color: var(--color-accent-strong);
   background: var(--surface-control);
   border: 1px solid var(--glass-border-soft);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
 }
 
@@ -1364,7 +1331,7 @@
   display: block;
   max-width: 100%;
   max-height: 260px;
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   object-fit: cover;
 }
 
@@ -1375,9 +1342,9 @@
   padding: 10px 12px;
   color: inherit;
   text-decoration: none;
-  background: rgba(255, 255, 255, 0.34);
+  background: var(--surface-control);
   border: 1px solid var(--glass-border-soft);
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
 }
 
 .attachment-chip:hover {
@@ -1406,9 +1373,9 @@
   padding: 6px 10px;
   color: inherit;
   text-decoration: none;
-  background: rgba(255, 255, 255, 0.30);
+  background: var(--surface-control);
   border-left: 3px solid var(--color-accent-strong);
-  border-radius: 8px;
+  border-radius: var(--radius-xs);
 }
 
 .reply-quote strong {
@@ -1447,7 +1414,7 @@
   color: var(--color-accent-strong);
   background: var(--surface-control-hover);
   border: 1px solid var(--glass-border-soft);
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
 }
 
@@ -1465,7 +1432,7 @@
   padding: 8px 12px;
   background: var(--surface-control);
   border: 1px solid var(--glass-border-soft);
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
 }
 
 .reply-preview-strip > div {
@@ -1513,14 +1480,14 @@
   color: var(--color-muted);
   background: transparent;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   cursor: pointer;
 }
 
 #cancel-reply-button:hover,
 #cancel-attachment-button:hover {
   color: var(--color-text);
-  background: rgba(255, 255, 255, 0.28);
+  background: var(--surface-control);
 }
 
 .typing-indicator {

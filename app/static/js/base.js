@@ -154,7 +154,6 @@ function applyTheme(theme, { persist = false } = {}) {
 function setAccentPreview(color) {
   if (!color) return;
   document.documentElement.style.setProperty("--color-accent", color);
-  document.documentElement.style.setProperty("--color-accent-strong", color);
 }
 
 function applySoftnessPreview(value) {
