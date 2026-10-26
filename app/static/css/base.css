@@ -49,6 +49,17 @@
   --radius-xs: 8px;
   --radius-pill: 999px;
 
+  /* Type scale for UI text. Display sizes (hero titles, clock, big numbers) stay as clamp() values. */
+  --text-2xs: 0.7rem;
+  --text-xs: 0.76rem;
+  --text-sm: 0.82rem;
+  --text-md: 0.88rem;
+  --text-base: 0.95rem;
+  --text-lg: 1.05rem;
+  --text-xl: 1.3rem;
+  --text-2xl: 1.45rem;
+  --text-3xl: 2rem;
+
   /* Semantic status colors; tints are derived with color-mix() at the call site. */
   /* Dark text on accent fills: the profile accents are mid-light, so white text fails contrast. */
   --color-on-accent: #2b241c;
@@ -312,7 +323,7 @@ button:disabled,
   border: 2px solid var(--color-bg);
   border-radius: var(--radius-pill);
   box-shadow: 0 4px 12px rgba(92, 42, 42, 0.28);
-  font-size: 0.64rem;
+  font-size: var(--text-2xs);
   font-weight: 800;
   line-height: 1;
 }
@@ -361,7 +372,7 @@ button:disabled,
 
 .flash-message span {
   min-width: 0;
-  font-size: 0.95rem;
+  font-size: var(--text-base);
   font-weight: 700;
   line-height: 1.35;
 }
@@ -409,7 +420,7 @@ button:disabled,
 }
 
 .flash-close i {
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
 }
 
 @keyframes flash-enter {
@@ -492,7 +503,7 @@ dialog .glass-panel {
   z-index: 1;
   margin: 10px 0 0;
   color: var(--color-muted);
-  font-size: 1rem;
+  font-size: var(--text-lg);
 }
 
 .hero-branch {
@@ -517,7 +528,7 @@ dialog .glass-panel {
 .panel-title span,
 .glass-panel h2 {
   margin: 0;
-  font-size: 1.02rem;
+  font-size: var(--text-lg);
   font-weight: 650;
 }
 
@@ -576,7 +587,7 @@ dialog .glass-panel {
   margin: 8px 0 0;
   padding: 0;
   color: var(--color-danger);
-  font-size: 0.86rem;
+  font-size: var(--text-md);
   list-style: none;
 }
 
@@ -718,7 +729,7 @@ dialog .glass-panel {
   background: color-mix(in srgb, var(--color-accent) 14%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-accent-strong) 18%, transparent);
   border-radius: var(--radius-md);
-  font-size: 1.1rem;
+  font-size: var(--text-lg);
 }
 
 .empty-state-card strong,
@@ -740,7 +751,7 @@ dialog .glass-panel {
 .avatar.small {
   width: 30px;
   height: 30px;
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
 }
 
 .status-dot {
@@ -871,7 +882,7 @@ dialog .glass-panel {
 
 :is(.dashboard-visibility-toggle, .source-toggle) input::after {
   content: "✓";
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   font-weight: 800;
   line-height: 1;
   opacity: 0;
@@ -910,7 +921,7 @@ dialog .glass-panel {
 }
 
 .auth-brand i {
-  font-size: 1.4rem;
+  font-size: var(--text-2xl);
 }
 
 .auth-panel h1 {
@@ -1016,11 +1027,11 @@ dialog .glass-panel {
   }
 
   .page-hero h1 {
-    font-size: 2.05rem;
+    font-size: var(--text-3xl);
   }
 
   .page-hero p {
-    font-size: 0.92rem;
+    font-size: var(--text-base);
   }
 }
 

@@ -16,7 +16,7 @@
   gap: 12px;
   margin-bottom: 34px;
   color: var(--color-heading);
-  font-size: 1.08rem;
+  font-size: var(--text-lg);
 }
 
 .offline-brand img {
@@ -29,7 +29,7 @@
   display: block;
   margin-bottom: 8px;
   color: #3f718a;
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -46,7 +46,7 @@
   max-width: 430px;
   margin: 14px 0 0;
   color: var(--color-muted);
-  font-size: 1.04rem;
+  font-size: var(--text-lg);
   line-height: 1.6;
 }
 

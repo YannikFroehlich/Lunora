@@ -41,7 +41,7 @@
 .month-toolbar h2 {
   margin: 0 10px;
   font-family: var(--font-display);
-  font-size: 1.9rem;
+  font-size: var(--text-3xl);
   font-weight: 500;
 }
 
@@ -122,7 +122,7 @@
   overflow: hidden;
   padding: 5px 8px;
   color: var(--color-text);
-  font-size: 0.76rem;
+  font-size: var(--text-xs);
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -139,7 +139,7 @@ button.event-chip {
   display: block;
   margin-top: 6px;
   color: var(--color-muted);
-  font-size: 0.74rem;
+  font-size: var(--text-xs);
   font-weight: 650;
 }
 
@@ -259,7 +259,7 @@ button.event-chip {
 .calendar-filter-panel .panel-title p {
   margin-top: 4px;
   color: var(--color-muted);
-  font-size: 0.84rem;
+  font-size: var(--text-sm);
 }
 
 .calendar-visibility-form {
@@ -316,7 +316,7 @@ button.event-chip {
   margin-top: 3px;
   overflow: hidden;
   color: var(--color-muted);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -359,7 +359,7 @@ button.event-chip {
   background: transparent;
   border: 0;
   border-radius: 0;
-  font-size: 0.95rem;
+  font-size: var(--text-base);
 }
 
 .calendar-event-dialog {
@@ -389,7 +389,7 @@ button.event-chip {
   margin: 8px 0 0;
   color: var(--color-heading);
   font-family: var(--font-display);
-  font-size: 1.75rem;
+  font-size: var(--text-3xl);
   font-weight: 500;
 }
 
@@ -412,7 +412,7 @@ button.event-chip {
 .event-form-field > span {
   margin-bottom: 7px;
   color: var(--color-heading);
-  font-size: 0.88rem;
+  font-size: var(--text-md);
   font-weight: 700;
 }
 
@@ -481,7 +481,7 @@ button.event-chip {
 .event-row-actions .icon-button {
   width: 26px;
   height: 26px;
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
 }
 
 .upcoming-row {
@@ -598,7 +598,7 @@ button.event-chip {
 
 .reminder-date-field span {
   color: var(--color-heading);
-  font-size: 0.86rem;
+  font-size: var(--text-md);
   font-weight: 700;
 }
 
@@ -665,7 +665,7 @@ button.event-chip {
 .month-stats strong {
   color: var(--color-heading);
   font-family: var(--font-display);
-  font-size: 1.8rem;
+  font-size: var(--text-3xl);
   font-weight: 500;
 }
 
@@ -723,7 +723,7 @@ button.event-chip {
     width: auto;
     margin: 0;
     overflow: hidden;
-    font-size: 1.45rem;
+    font-size: var(--text-2xl);
     text-align: center;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -766,7 +766,7 @@ button.event-chip {
 
   .weekday-row {
     padding: 4px 0 8px;
-    font-size: 0.72rem;
+    font-size: var(--text-xs);
     font-weight: 750;
   }
 
@@ -787,7 +787,7 @@ button.event-chip {
   .calendar-day strong {
     min-width: 24px;
     min-height: 24px;
-    font-size: 0.82rem;
+    font-size: var(--text-sm);
   }
 
   .event-chip {
@@ -802,7 +802,7 @@ button.event-chip {
 
   .event-more {
     margin-top: 0;
-    font-size: 0.66rem;
+    font-size: var(--text-2xs);
     line-height: 1;
   }
 
@@ -820,11 +820,11 @@ button.event-chip {
   .month-stats i {
     width: 38px;
     height: 38px;
-    font-size: 0.92rem;
+    font-size: var(--text-base);
   }
 
   .month-stats strong {
-    font-size: 1.45rem;
+    font-size: var(--text-2xl);
   }
 
   .mini-chart {
@@ -846,7 +846,7 @@ button.event-chip {
 
 @media (max-width: 520px) {
   .month-toolbar h2 {
-    font-size: 1.28rem;
+    font-size: var(--text-xl);
   }
 
   .calendar-day {
@@ -857,7 +857,7 @@ button.event-chip {
   .calendar-day strong {
     min-width: 22px;
     min-height: 22px;
-    font-size: 0.78rem;
+    font-size: var(--text-xs);
   }
 
   .month-stats {
@@ -932,7 +932,7 @@ button.event-chip {
 
 .event-chip.is-invited i {
   flex-shrink: 0;
-  font-size: 0.68rem;
+  font-size: var(--text-2xs);
 }
 
 .recipient-checkbox-list {

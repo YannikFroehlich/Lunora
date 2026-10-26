@@ -96,7 +96,7 @@
   background: var(--surface-control-hover);
   border: 1px solid var(--glass-border-soft);
   border-radius: var(--radius-pill);
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   font-weight: 700;
 }
 
@@ -141,7 +141,7 @@
 
 .dashboard-empty-state i {
   color: var(--color-accent-strong);
-  font-size: 2rem;
+  font-size: var(--text-3xl);
 }
 
 .dashboard-empty-state h2 {
@@ -172,7 +172,7 @@
   padding: 8px 16px;
   color: var(--color-accent-strong) !important;
   font-family: var(--font-display);
-  font-size: 1.45rem !important;
+  font-size: var(--text-2xl) !important;
   font-weight: 700;
   background: color-mix(in srgb, var(--color-accent) 16%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-accent-strong) 18%, transparent);
@@ -267,7 +267,7 @@
   max-width: 150px;
   overflow: hidden;
   color: var(--color-muted);
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -295,7 +295,7 @@
 .clock-face span {
   margin-top: 12px;
   color: var(--color-accent-strong);
-  font-size: 1.05rem;
+  font-size: var(--text-lg);
   font-weight: 700;
 }
 
@@ -324,7 +324,7 @@
   background: linear-gradient(145deg, color-mix(in srgb, var(--color-accent) 84%, white 16%), var(--color-accent));
   border-radius: var(--radius-md);
   font-family: var(--font-display);
-  font-size: 2rem;
+  font-size: var(--text-3xl);
   font-weight: 700;
   text-align: center;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.34), 0 12px 24px color-mix(in srgb, var(--color-accent-strong) 24%, transparent);
@@ -337,7 +337,7 @@
 
 .date-strip strong {
   color: var(--color-heading);
-  font-size: 1.35rem;
+  font-size: var(--text-xl);
 }
 
 .date-block span {
@@ -407,7 +407,7 @@
 
 .action-tile i {
   color: var(--color-accent-strong);
-  font-size: 1.6rem;
+  font-size: var(--text-2xl);
   line-height: 1;
 }
 
@@ -426,7 +426,7 @@
   height: 24px;
   padding: 0 7px;
   color: var(--color-on-solid);
-  font-size: 0.74rem;
+  font-size: var(--text-xs);
   font-weight: 800;
   line-height: 1;
   background: var(--color-danger-solid);
@@ -470,7 +470,7 @@
 .tool-tile i {
   margin-top: 5px;
   color: var(--color-accent-strong);
-  font-size: 1.4rem;
+  font-size: var(--text-2xl);
 }
 
 .tool-tile strong,
@@ -486,7 +486,7 @@
 .tool-tile span {
   margin-top: 4px;
   color: var(--color-muted);
-  font-size: 0.88rem;
+  font-size: var(--text-md);
 }
 
 .notes-panel {
@@ -528,7 +528,7 @@
 .event-list small {
   margin-top: 5px;
   color: var(--color-muted);
-  font-size: 0.85rem;
+  font-size: var(--text-md);
 }
 
 .event-dot {
@@ -581,20 +581,20 @@
 
 .stat-tile i {
   color: var(--color-accent-strong);
-  font-size: 1.2rem;
+  font-size: var(--text-xl);
 }
 
 .stat-tile strong {
   color: var(--color-heading);
   font-family: var(--font-display);
-  font-size: 1.9rem;
+  font-size: var(--text-3xl);
   font-weight: 600;
   line-height: 1;
 }
 
 .stat-tile span {
   color: var(--color-muted);
-  font-size: 0.85rem;
+  font-size: var(--text-md);
 }
 
 .stat-period-toggle {
@@ -615,7 +615,7 @@
   border: 0;
   border-radius: var(--radius-pill);
   font-family: inherit;
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   cursor: pointer;
   transition: color 160ms ease, background 160ms ease;
 }
@@ -675,7 +675,7 @@
 .notice-content small {
   margin-top: 5px;
   color: var(--color-muted);
-  font-size: 0.85rem;
+  font-size: var(--text-md);
 }
 
 .notice-action-form {
@@ -742,7 +742,7 @@
 }
 
 .weather-row-compact .weather-icon {
-  font-size: 2.1rem;
+  font-size: var(--text-3xl);
 }
 
 .weather-row strong {

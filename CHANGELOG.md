@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Font sizes follow one shared type scale instead of about 40 slightly different values, so labels,
+  captions and headings look the same size on every page.
 - Unify the look across all pages: Calendar, Messages, Weather and Tasks no longer override the
   accent color with their own green/rose/blue/violet palette (Tasks also dropped its forced dark
   theme), so every page follows the accent chosen in the settings. Status colors, radii, focus

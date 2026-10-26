@@ -52,7 +52,7 @@
 .admin-settings-panel .setting-line small {
   margin-top: 4px;
   color: var(--color-muted);
-  font-size: 0.86rem;
+  font-size: var(--text-md);
 }
 
 .admin-metric-grid {
@@ -74,7 +74,7 @@
 
 .admin-metric-grid strong {
   color: var(--color-heading);
-  font-size: 2rem;
+  font-size: var(--text-3xl);
 }
 
 .admin-metric-grid span,
