@@ -221,6 +221,9 @@
 }
 
 .weather-key-state {
+  background: var(--surface-panel);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   grid-template-columns: 42px minmax(0, 1fr);
   justify-content: start;
   place-items: center start;
@@ -342,7 +345,7 @@
 .meta-item {
   min-width: 0;
   padding: 11px 12px;
-  background: rgba(255, 255, 255, 0.18);
+  background: var(--surface-control);
   border: 1px solid var(--glass-border-soft);
   border-radius: var(--radius-sm);
 }
@@ -541,7 +544,7 @@
 
 .hour-card small,
 .days-panel small {
-  color: #7e9ab2;
+  color: color-mix(in srgb, #7e9ab2 55%, var(--color-heading));
 }
 
 .days-panel {
@@ -596,7 +599,7 @@
 .forecast-summary article {
   min-width: 0;
   padding: 14px 12px;
-  background: rgba(255, 255, 255, 0.14);
+  background: var(--surface-control);
   border: 1px solid var(--glass-border-soft);
   border-radius: var(--radius-md);
 }
@@ -632,9 +635,9 @@
 
 .quality-badge {
   padding: 6px 12px;
-  color: #5f743f;
-  background: rgba(133, 157, 99, 0.16);
-  border: 1px solid rgba(133, 157, 99, 0.24);
+  color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-success) 24%, transparent);
   border-radius: var(--radius-pill);
   font-size: 0.82rem;
   font-weight: 700;
@@ -790,7 +793,7 @@
 
 .weather-map-layer-button.is-active {
   color: var(--color-on-accent);
-  background: var(--color-accent-strong);
+  background: var(--color-accent);
   border-color: transparent;
   box-shadow: 0 8px 20px color-mix(in srgb, var(--color-accent-strong) 26%, transparent);
 }
@@ -1174,7 +1177,7 @@
   gap: 8px;
   padding: 9px 12px;
   color: var(--color-on-accent);
-  background: color-mix(in srgb, var(--color-accent-strong) 88%, rgba(38, 31, 25, 0.34));
+  background: var(--color-accent);
   border: 1px solid rgba(255, 255, 255, 0.24);
   border-radius: var(--radius-sm);
   box-shadow: 0 10px 24px rgba(38, 31, 25, 0.24);
@@ -1435,7 +1438,7 @@
   gap: 7px;
   padding: 8px 10px;
   color: var(--color-text);
-  background: rgba(255, 255, 255, 0.16);
+  background: var(--surface-control);
   border: 1px solid var(--glass-border-soft);
   border-radius: var(--radius-pill);
   font-weight: 700;

@@ -578,7 +578,7 @@
 
 .notes-bulk-chip.is-danger:hover,
 .notes-bulk-chip.is-danger:focus-visible {
-  color: var(--color-on-accent);
+  color: var(--color-on-solid);
   background: var(--color-danger-solid);
   border-color: var(--color-danger-solid);
 }
@@ -635,7 +635,7 @@
 
 .note-card-meta em {
   padding: 3px 7px;
-  color: var(--color-on-accent);
+  color: var(--color-on-solid);
   background: var(--color-danger-solid);
   border-radius: var(--radius-pill);
   font-style: normal;

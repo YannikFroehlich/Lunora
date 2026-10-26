@@ -788,7 +788,7 @@
 }
 
 [data-theme="dark"] .read-receipt {
-  color: rgba(238, 231, 220, 0.54);
+  color: var(--color-muted);
 }
 
 [data-theme="dark"] .read-receipt.is-read {

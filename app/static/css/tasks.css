@@ -70,6 +70,10 @@
   font-size: 0.86rem;
 }
 
+.task-view-link.is-active em {
+  color: var(--color-heading);
+}
+
 .task-view-link span {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -909,7 +913,7 @@
 }
 
 .task-label-chip {
-  color: var(--tone, var(--color-accent));
+  color: color-mix(in srgb, var(--tone, var(--color-accent)) 35%, var(--color-heading));
   background: color-mix(in srgb, var(--tone, var(--color-accent)) 22%, transparent);
   border: 1px solid color-mix(in srgb, var(--tone, var(--color-accent)) 45%, transparent);
 }

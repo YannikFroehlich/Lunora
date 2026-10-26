@@ -106,7 +106,7 @@
 }
 
 .calendar-day.is-muted strong {
-  color: rgba(122, 107, 88, 0.50);
+  color: color-mix(in srgb, var(--color-muted) 85%, transparent);
 }
 
 .calendar-day.is-today strong {

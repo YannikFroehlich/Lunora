@@ -26,12 +26,12 @@
   --color-bg: #f4efe3;
   --color-text: #3f372e;
   --color-heading: #4b4035;
-  --color-muted: #8c7d6b;
+  --color-muted: #6f6252;
   --color-soft: #efe7d9;
   --color-line: rgba(153, 130, 101, 0.18);
   --color-accent: #c2a276;
   /* Derived from the profile accent (set inline on <html>) so it adapts per theme. */
-  --color-accent-strong: color-mix(in srgb, var(--color-accent) 72%, #3f372e);
+  --color-accent-strong: color-mix(in srgb, var(--color-accent) 45%, #3f372e);
   --background-overlay-alpha: 0.33;
   --background-highlight-alpha: 0.35;
   --glass-blur: 28px;
@@ -50,12 +50,15 @@
   --radius-pill: 999px;
 
   /* Semantic status colors; tints are derived with color-mix() at the call site. */
-  --color-on-accent: #fffaf3;
-  --color-danger: #a64d3d;
+  /* Dark text on accent fills: the profile accents are mid-light, so white text fails contrast. */
+  --color-on-accent: #2b241c;
+  /* Light text on solid danger/warning or dark fills. */
+  --color-on-solid: #fffaf3;
+  --color-danger: #9a3f31;
   /* Filled danger badges keep light text readable in both themes. */
   --color-danger-solid: #a64d3d;
-  --color-success: #4f8f62;
-  --color-warning: #b3772f;
+  --color-success: #2f6b42;
+  --color-warning: #8f5a1c;
 
   --surface-panel: var(--glass-bg);
   --surface-panel-soft: var(--glass-bg-soft);
@@ -79,14 +82,14 @@
   --color-bg: #15120f;
   --color-text: #eee7dc;
   --color-heading: #fff8ed;
-  --color-muted: #b9aa96;
+  --color-muted: #c9bba7;
   --color-soft: #2a241d;
   --color-line: rgba(255, 255, 255, 0.10);
   --color-accent: #d1ad77;
-  --color-accent-strong: color-mix(in srgb, var(--color-accent) 72%, #fff8ed);
-  --color-danger: #f0a59a;
-  --color-success: #93c59a;
-  --color-warning: #e0b872;
+  --color-accent-strong: color-mix(in srgb, var(--color-accent) 60%, #fff8ed);
+  --color-danger: #f5b3a9;
+  --color-success: #a3d4a9;
+  --color-warning: #ebc88f;
 
   --glass-bg: rgba(32, 27, 22, 0.72);
   --surface-panel-solid: #221d18;
@@ -247,7 +250,7 @@ button:disabled,
 
 ::selection {
   color: var(--color-on-accent);
-  background: var(--color-accent-strong);
+  background: var(--color-accent);
 }
 
 .floating-nav {
@@ -304,7 +307,7 @@ button:disabled,
   height: 20px;
   padding: 0 5px;
   place-items: center;
-  color: var(--color-on-accent);
+  color: var(--color-on-solid);
   background: var(--color-danger-solid);
   border: 2px solid var(--color-bg);
   border-radius: var(--radius-pill);
@@ -552,7 +555,7 @@ dialog .glass-panel {
   gap: 10px;
   padding: 10px 18px;
   color: var(--color-text);
-  background: rgba(226, 214, 196, 0.38);
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
   border: 1px solid var(--glass-border-soft);
   border-radius: var(--radius-pill);
 }
@@ -623,7 +626,7 @@ dialog .glass-panel {
   height: 48px;
   place-items: center;
   flex: 0 0 auto;
-  color: #8a6841;
+  color: #765737;
   font-weight: 700;
   background: linear-gradient(145deg, #f0dfc7, #fff8ef);
   border: 1px solid rgba(176, 145, 101, 0.25);
@@ -753,14 +756,11 @@ dialog .glass-panel {
   margin: 16px 0 0;
   padding: 12px 16px;
   color: var(--color-accent-strong);
-  background: rgba(255, 252, 246, 0.62);
+  background: var(--surface-panel);
   border: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   border-radius: var(--radius-sm);
-}
-
-[data-theme="dark"] .api-notice {
-  background: rgba(255, 248, 237, 0.08);
-  border-color: rgba(255, 255, 255, 0.12);
 }
 
 [data-density="balanced"] .site-main {

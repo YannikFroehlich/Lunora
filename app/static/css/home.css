@@ -18,6 +18,14 @@
   gap: 12px;
 }
 
+/* The bar sits on the page background, so its buttons need a glass surface to stay readable. */
+.dashboard-customizer-bar .ghost-button {
+  background: var(--surface-panel);
+  border-color: var(--glass-border);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+}
+
 .dashboard-edit-actions {
   display: flex;
   align-items: center;
@@ -417,7 +425,7 @@
   min-width: 24px;
   height: 24px;
   padding: 0 7px;
-  color: var(--color-on-accent);
+  color: var(--color-on-solid);
   font-size: 0.74rem;
   font-weight: 800;
   line-height: 1;
@@ -795,7 +803,7 @@
 
 [data-theme="dark"] .tool-tile span,
 [data-theme="dark"] .stat-tile span {
-  color: rgba(255, 248, 237, 0.58);
+  color: var(--color-muted);
 }
 
 [data-theme="dark"] .stat-period-toggle {
@@ -804,7 +812,7 @@
 }
 
 [data-theme="dark"] .stat-period-toggle__button {
-  color: rgba(255, 248, 237, 0.58);
+  color: var(--color-muted);
 }
 
 [data-theme="dark"] .stat-period-toggle__button:hover {

@@ -336,7 +336,7 @@
 
 .calendar-day.is-today strong {
     align-items: center;
-    background: var(--color-accent-strong);
+    background: var(--color-accent);
     border-radius: var(--radius-pill);
     color: var(--color-on-accent);
     display: inline-flex;

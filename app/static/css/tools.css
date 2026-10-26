@@ -438,7 +438,7 @@ a.tool-card:hover {
 }
 
 .uml-canvas-hint.is-active {
-  color: var(--color-on-accent);
+  color: var(--color-on-solid);
   background: #b3772f;
   border-color: transparent;
 }
@@ -729,7 +729,7 @@ a.tool-card:hover {
   height: 22px;
   padding: 0 6px;
   place-items: center;
-  color: var(--color-on-accent);
+  color: var(--color-on-solid);
   background: #b3772f;
   border-radius: var(--radius-pill);
   font-size: 0.74rem;
@@ -955,7 +955,7 @@ a.tool-card:hover {
   width: 24px;
   height: 24px;
   place-items: center;
-  color: var(--color-on-accent);
+  color: var(--color-on-solid);
   background: var(--box-color);
   border-radius: 50%;
   font-size: 0.74rem;

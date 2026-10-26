@@ -37,8 +37,10 @@
   display: flex;
   gap: 7px;
   padding: 7px;
-  background: var(--surface-control);
-  border: 1px solid var(--glass-border-soft);
+  background: var(--surface-panel);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   border-radius: var(--radius-md);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.34), 0 14px 34px rgba(75, 56, 31, 0.07);
   backdrop-filter: blur(18px);
@@ -123,7 +125,6 @@
 }
 
 [data-theme="dark"] .settings-section-tabs {
-  background: rgba(255, 248, 237, 0.07);
   border-color: rgba(255, 248, 237, 0.12);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 14px 34px rgba(0, 0, 0, 0.14);
 }
@@ -481,7 +482,7 @@
   overflow: hidden;
   border: 1px solid var(--glass-border-soft);
   border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.16);
+  background: var(--surface-control);
 }
 
 .notification-matrix-header,
@@ -494,7 +495,7 @@
 .notification-matrix-header {
   padding: 10px 14px;
   color: var(--color-muted);
-  background: rgba(255, 255, 255, 0.18);
+  background: var(--surface-control);
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.05em;

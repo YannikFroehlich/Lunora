@@ -13,6 +13,9 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   mode derives a lighter accent so accent text stays readable. Also fixes the message search button
   being cut off, missing padding on search result panels, transparent note dialogs and unmuted
   text in the vacation planner.
+- Improve legibility in light and dark mode: notices and tab bars that sat directly on the background
+  image get a glass surface, buttons and badges on the accent color use dark text, and muted text,
+  accent text and status colors were darkened (light) or lightened (dark) to reach readable contrast.
 - Update the notes editor build to Vite 8 (Rolldown) and vitest 5, KaTeX to 0.19.1, reportlab to
   5.1 and ruff to 0.17.2, plus the latest compatible transitive Python dependencies (cryptography,
   aiohttp, certifi, tzdata, …) in `constraints.txt`.
