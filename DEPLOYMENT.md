@@ -1,13 +1,42 @@
 # Lunora auf Ubuntu bereitstellen
 
-> **Stand 21. Oktober 2026:** Es gibt derzeit keinen Produktionsserver; der bisherige Host
-> existiert nicht mehr, und `lunora.yfserver.de` antwortet mit einem Cloudflare-Tunnel-Fehler.
-> Diese Anleitung bleibt für das Neuaufsetzen gültig. Solange kein Server läuft, löst ein Push
-> auf `main` kein Deployment aus.
+> **Stand 26. Oktober 2026:** Lunora läuft vorerst **nur im LAN** auf dem Heimserver `yfsrv1`
+> unter `http://192.168.178.175:8090`, ohne Cloudflare Tunnel; `lunora.yfserver.de` antwortet
+> weiterhin mit einem Tunnel-Fehler. Jeder Merge auf `main` wird automatisch deployt. Die
+> Abweichungen vom Zielbild stehen unter „LAN-Betrieb“.
 
 Ziel: `lunora.yfserver.de` läuft über einen ausgehenden Cloudflare Tunnel. Nginx
 lauscht nur auf `127.0.0.1:8090`, Gunicorn nur auf einem Unix-Socket. Lokal bleibt
 SQLite in Verwendung; Produktion verwendet die frische PostgreSQL-Datenbank.
+
+## LAN-Betrieb
+
+`yfsrv1` betreibt außerdem Docker-Dienste (RoundRush mit Caddy auf `80`/`443`, `nexora` auf
+`8001`, `shdashboard` auf `8080`, Home Assistant auf `8123`). Sie dürfen nicht angefasst
+werden. Abweichend von der Anleitung unten gilt:
+
+- **Bootstrap:** `scripts/bootstrap-ubuntu.sh` wurde nicht unverändert ausgeführt. Die Pakete
+  ohne `cloudflared` wurden mit einer temporären `/usr/sbin/policy-rc.d` (`exit 101`)
+  installiert, damit apt Nginx nicht startet, solange dessen Standardseite Port `80` von
+  Caddy belegen will. Danach wurde `/etc/nginx/sites-enabled/default` entfernt.
+- **Nginx:** Die Konfiguration wird mit einer lokalen Änderung installiert, damit sie im LAN
+  erreichbar ist:
+
+  ```bash
+  sed 's/listen 127\.0\.0\.1:8090;/listen 8090;/' deploy/nginx-lunora.conf | sudo tee /etc/nginx/sites-available/lunora >/dev/null
+  ```
+
+  Die UFW-Regel `Lunora LAN` erlaubt `8090/tcp` nur aus `192.168.178.0/24`.
+- **`/etc/lunora/lunora.env`:** `DJANGO_SECURE_SSL_REDIRECT`, `DJANGO_SESSION_COOKIE_SECURE`,
+  `DJANGO_CSRF_COOKIE_SECURE` und `DJANGO_USE_X_FORWARDED_PROTO` sind `false`,
+  `DJANGO_SECURE_HSTS_SECONDS=0`. Ohne SMTP-Passwort läuft das Console-Backend; weil
+  Django 6.1 das bei `check --deploy` als Fehler meldet, steht dort
+  `DJANGO_SILENCED_SYSTEM_CHECKS=mail.E001`. `CLOUDFLARE_TURNSTILE_REQUIRED=false`, alle
+  drei VAPID-Werte sind leer (Web Push braucht HTTPS). `DJANGO_ALLOWED_HOSTS` enthält neben
+  der IP und `yfsrv1` auch `lunora.yfserver.de` für den Health-Check des Auto-Deployments.
+- **Öffentlich machen:** Tunnel und Turnstile einrichten, die HTTPS-Schalter, SMTP und VAPID
+  wie in `deploy/lunora.env.example` setzen, `DJANGO_SILENCED_SYSTEM_CHECKS` entfernen, Nginx
+  ohne die `sed`-Änderung neu installieren und die UFW-Regel `Lunora LAN` löschen.
 
 ## Noch benötigte Geheimnisse
 
@@ -93,8 +122,9 @@ GitHub-Actions-Runner auf dem Produktionsserver. Stattdessen prüft
 `lunora-auto-deploy.timer` ausschließlich ausgehend und ohne GitHub-Token ungefähr jede
 Minute `origin/main`. Jeder Push oder Merge auf `main` ist damit produktionswirksam.
 Der Workflow `.github/workflows/ci.yml` führt Django- und Frontend-Tests auf isolierter
-GitHub-Infrastruktur aus. GitHub-Branchschutz sollte direkte Pushes blockieren und den
-Statuscheck `Tests` vor dem Merge verlangen.
+GitHub-Infrastruktur aus. Der Branchschutz von `main` blockiert direkte Pushes, auch für
+Admins: Änderungen kommen nur per Pull Request von `develop` auf `main`, und der
+Statuscheck `Tests` muss vor dem Merge grün sein.
 
 Bei einem neuen Fast-Forward-Commit führt der root-eigene Treiber diese Schritte aus:
 
