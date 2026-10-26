@@ -196,61 +196,6 @@ button.event-chip {
   border-bottom: 0;
 }
 
-.calendar-source-form input[type="url"] {
-  width: 100%;
-  min-height: 46px;
-  padding: 0 14px;
-  color: var(--color-text);
-  background: var(--surface-control);
-  border: 1px solid var(--glass-border-soft);
-  border-radius: var(--radius-sm);
-  outline: 0;
-}
-
-.calendar-source-form input[type="url"]:focus {
-  border-color: color-mix(in srgb, var(--color-accent-strong) 62%, transparent);
-  box-shadow: var(--focus-ring);
-}
-
-.source-toggle {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 16px;
-  color: var(--color-text);
-  font-weight: 600;
-}
-
-.source-toggle input {
-  width: 18px;
-  height: 18px;
-}
-
-.source-submit {
-  width: 100%;
-  margin-top: 18px;
-}
-
-.sync-meta,
-.sync-error {
-  margin: 14px 0 0;
-  color: var(--color-muted);
-  line-height: 1.45;
-}
-
-.sync-error {
-  color: var(--color-danger);
-}
-
-[data-theme="dark"] .calendar-source-form input[type="url"] {
-  background: var(--surface-control);
-  border-color: rgba(255, 248, 237, 0.12);
-}
-
-.calendar-connect-state {
-  margin-bottom: 16px;
-}
-
 .calendar-filter-panel .panel-title h2,
 .calendar-filter-panel .panel-title p {
   margin: 0;
@@ -262,33 +207,34 @@ button.event-chip {
   font-size: var(--text-sm);
 }
 
-.calendar-visibility-form {
+.calendar-category-legend {
   display: grid;
-  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.calendar-source-row {
+.calendar-category-row {
   display: grid;
-  grid-template-columns: 18px 14px minmax(0, 1fr);
+  grid-template-columns: 14px minmax(0, 1fr);
   align-items: center;
   gap: 12px;
-  min-height: 54px;
-  padding: 10px 0;
+  min-height: 42px;
   border-bottom: 1px solid var(--color-line);
-  cursor: pointer;
 }
 
-.calendar-source-row:last-of-type {
+.calendar-category-row:last-child {
   border-bottom: 0;
 }
 
-.calendar-source-row input {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--tone);
+.calendar-category-row strong {
+  overflow: hidden;
+  color: var(--color-heading);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.source-color-dot,
+.calendar-category-dot,
 .upcoming-dot {
   display: inline-block;
   width: 10px;
@@ -296,42 +242,6 @@ button.event-chip {
   background: var(--tone);
   border-radius: 50%;
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--tone) 18%, transparent);
-}
-
-.source-copy,
-.source-copy strong,
-.source-copy small {
-  display: block;
-  min-width: 0;
-}
-
-.source-copy strong {
-  overflow: hidden;
-  color: var(--color-heading);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.source-status {
-  margin-top: 3px;
-  overflow: hidden;
-  color: var(--color-muted);
-  font-size: var(--text-sm);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.source-status.is-error {
-  color: var(--color-danger);
-}
-
-.source-status.is-pending {
-  color: var(--color-accent-strong);
-}
-
-.calendar-visibility-submit {
-  width: 100%;
-  margin-top: 8px;
 }
 
 .calendar-empty-actions {

@@ -3,7 +3,6 @@ from django.contrib import admin
 from app.models import (
     CalendarEvent,
     CalendarReminder,
-    CalendarSource,
     ChatMessage,
     ChatMessageReaction,
     Conversation,
@@ -47,7 +46,7 @@ class SystemSettingsAdmin(admin.ModelAdmin):
         "normal_login_enabled",
         "calendar_event_creation_enabled",
         "calendar_reminders_enabled",
-        "calendar_sync_enabled",
+        "calendar_feed_enabled",
         "messages_enabled",
         "notes_enabled",
         "vacation_planner_enabled",
@@ -96,17 +95,10 @@ class ChatMessageReactionAdmin(admin.ModelAdmin):
     autocomplete_fields = ("message", "user")
 
 
-@admin.register(CalendarSource)
-class CalendarSourceAdmin(admin.ModelAdmin):
-    list_display = ("name", "user", "color", "is_visible", "enabled", "last_synced_at", "updated_at")
-    list_filter = ("color", "is_visible", "enabled")
-    search_fields = ("name", "user__username", "ical_url")
-
-
 @admin.register(CalendarEvent)
 class CalendarEventAdmin(admin.ModelAdmin):
-    list_display = ("title", "user", "source", "start_at", "end_at")
-    list_filter = ("is_all_day", "start_at")
+    list_display = ("title", "user", "category", "start_at", "end_at")
+    list_filter = ("category", "is_all_day", "start_at")
     search_fields = ("title", "description", "location", "user__username")
 
 

@@ -8,7 +8,7 @@ Lunora ist ein kleines Django-basiertes Workspace-Dashboard mit ruhiger Glas-UI.
 - Profil- und Erscheinungsbild-Einstellungen mit Theme, Akzentfarbe, Dichte, Datumsformat, Zeitformat und Zeitzone
 - Anpassbares Dashboard mit Uhr, Wetterausblick, Schnellzugriffen, kommenden Terminen, Nachrichten-Badge und kontogespeicherter Widget-Reihenfolge
 - Wetterseite mit Ortssuche, Demo-Daten ohne API-Key, OpenWeather-Anbindung und Regenradar-Proxy
-- Kalenderseite mit privatem iCal-/Google-Kalender-Link, Synchronisierung, Monatsübersicht, Tagesliste, kommenden Terminen und Erinnerungen
+- Eigenständiger Kalender für Klassenarbeiten, Tests, Referate und Abgaben mit Kategorien, Monatsübersicht, Tagesliste, kommenden Terminen und Erinnerungen; per privatem Abo-Link (iCal) in Google Kalender, Apple Kalender oder Outlook abonnierbar
 - Nachrichtenseite mit Direktunterhaltungen, ungelesenen Nachrichten, Live-Updates, Reaktionen, angepinnten Nachrichten, Lesestatus, Stummschalten und Blockieren
 - Zentrale Benachrichtigungs-Inbox mit ungelesenem Badge, Filter und Lesestatus sowie detaillierten Kanalregeln pro Kategorie für Inbox, E-Mail und Web Push
 - Web-Push-Zustellung für Termineinladungen, Erinnerungen, Aufgaben, Notizaktivitäten, Freigaben und Wetterwarnungen mit Ruhezeit, Geräte-Test und automatischer Wiederholung
@@ -72,18 +72,14 @@ http://127.0.0.1:8000/
 
 `runserver` läuft dauerhaft, bis er mit `Ctrl+C` beendet wird.
 
-Automatische Kalender-Synchronisierung, fällige Erinnerungs-E-Mails und Wochenberichte laufen in einem zweiten Prozess:
+Fällige Erinnerungs-E-Mails, Web-Push-Hinweise und Wochenberichte laufen in einem zweiten Prozess:
 
 ```powershell
 python manage.py run_automations --loop
 ```
 
-Kalender-Aktionen in der Website merken eine Synchronisierung nur in der Datenbank vor;
-der Web-Request selbst lädt keine externen iCal-Dateien. Deshalb muss dieser Prozess im
-Deployment dauerhaft, beispielsweise als eigener systemd-Service, laufen. Atomare
-Markierungen verhindern doppelte Kalender-Syncs, falls sich zwei Durchläufe überschneiden.
-Fehlgeschlagene Quellen werden frühestens nach ihrem konfigurierten Sync-Intervall erneut
-versucht. Benachrichtigungsereignisse werden anhand der kontoweiten Schalter und der
+Dieser Prozess muss im Deployment dauerhaft, beispielsweise als eigener systemd-Service,
+laufen. Benachrichtigungsereignisse werden anhand der kontoweiten Schalter und der
 Kanalregeln für Kalender, Aufgaben, Notizen und Wetter verteilt. Web-Push-Hinweise
 werden bei erteilter Browserfreigabe über den Service Worker zugestellt, auch wenn kein
 Lunora-Tab geöffnet ist; während der persönlichen Ruhezeit bleiben sie bis zum nächsten
@@ -266,6 +262,6 @@ python manage.py purge_expired_notes
 
 - Keine echten Secrets, API-Keys, privaten Kalenderlinks, lokalen Datenbanken oder Uploads committen.
 - `.env`, `db.sqlite3` und `media/` sind lokale Entwicklungsdaten.
-- Kalenderquellen können private iCal-URLs enthalten und sollten nicht geloggt oder öffentlich angezeigt werden.
+- Kalender-Abo-Links (`/calendar/feed/<token>.ics`) sind ohne Login abrufbar; das Token ist das einzige Geheimnis. Es wird nur in den eigenen Einstellungen angezeigt und lässt sich dort neu erzeugen oder deaktivieren. Google Kalender aktualisiert abonnierte Kalender nur etwa alle 8–24 Stunden.
 - Notizanhänge liegen unter `DJANGO_PRIVATE_MEDIA_ROOT` und dürfen nur über die berechtigungsgeprüften Download-Endpunkte ausgeliefert werden.
 - Wetter-API-Keys bleiben serverseitig und werden nicht an Browser-JavaScript weitergegeben.

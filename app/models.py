@@ -19,7 +19,7 @@ class SystemSettings(models.Model):
     normal_login_enabled = models.BooleanField(default=True)
     calendar_event_creation_enabled = models.BooleanField(default=True)
     calendar_reminders_enabled = models.BooleanField(default=True)
-    calendar_sync_enabled = models.BooleanField(default=True)
+    calendar_feed_enabled = models.BooleanField(default=True)
     messages_enabled = models.BooleanField(default=True)
     notes_enabled = models.BooleanField(default=True)
     vacation_planner_enabled = models.BooleanField(default=True)
@@ -115,6 +115,8 @@ class Profile(models.Model):
     note_shortcuts = models.JSONField(default=dict, blank=True)
     dashboard_layout = models.JSONField(default=default_dashboard_layout, blank=True)
     weather_default_city = models.CharField(max_length=120, blank=True, default="Bünde,de")
+    # Secret for the public iCal subscription URL; null until the user creates a link.
+    calendar_feed_token = models.CharField(max_length=64, blank=True, null=True, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -380,53 +382,33 @@ class ChatMessageAttachment(models.Model):
         return self.original_name
 
 
-class CalendarSource(models.Model):
-    COLOR_CHOICES = [
-        ("blue", "Blau"),
-        ("green", "Grün"),
-        ("red", "Rot"),
-        ("sand", "Sand"),
-        ("violet", "Violett"),
-    ]
-
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="calendar_sources"
-    )
-    name = models.CharField(max_length=120, default="Google Kalender")
-    ical_url = models.URLField(max_length=1000)
-    color = models.CharField(max_length=12, choices=COLOR_CHOICES, default="blue")
-    is_visible = models.BooleanField(default=True)
-    enabled = models.BooleanField(default=True)
-    sync_interval_minutes = models.PositiveSmallIntegerField(default=15)
-    sync_requested_at = models.DateTimeField(blank=True, null=True)
-    last_sync_attempt_at = models.DateTimeField(blank=True, null=True)
-    last_synced_at = models.DateTimeField(blank=True, null=True)
-    last_error = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(fields=["user", "ical_url"], name="unique_calendar_source_url_per_user"),
-        ]
-
-    def __str__(self):
-        return self.name
-
-
 class CalendarEvent(models.Model):
+    CATEGORY_EXAM = "exam"
+    CATEGORY_TEST = "test"
+    CATEGORY_PRESENTATION = "presentation"
+    CATEGORY_DEADLINE = "deadline"
+    CATEGORY_OTHER = "other"
+    CATEGORY_CHOICES = [
+        (CATEGORY_EXAM, "Klassenarbeit"),
+        (CATEGORY_TEST, "Test"),
+        (CATEGORY_PRESENTATION, "Referat"),
+        (CATEGORY_DEADLINE, "Abgabe"),
+        (CATEGORY_OTHER, "Sonstiges"),
+    ]
+    # Reuses the existing tone-* color classes of the calendar UI.
+    CATEGORY_TONES = {
+        CATEGORY_EXAM: "red",
+        CATEGORY_TEST: "violet",
+        CATEGORY_PRESENTATION: "blue",
+        CATEGORY_DEADLINE: "green",
+        CATEGORY_OTHER: "sand",
+    }
+
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="calendar_events"
     )
-    source = models.ForeignKey(
-        CalendarSource,
-        on_delete=models.CASCADE,
-        related_name="events",
-        blank=True,
-        null=True,
-    )
-    external_id = models.CharField(max_length=500, blank=True, default="")
     title = models.CharField(max_length=255)
+    category = models.CharField(max_length=16, choices=CATEGORY_CHOICES, default=CATEGORY_OTHER)
     description = models.TextField(blank=True)
     location = models.CharField(max_length=255, blank=True)
     start_at = models.DateTimeField()
@@ -449,11 +431,6 @@ class CalendarEvent(models.Model):
 
     class Meta:
         ordering = ["start_at", "title"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["source", "external_id"], name="unique_calendar_event_per_source"
-            ),
-        ]
 
     def __str__(self):
         return self.title

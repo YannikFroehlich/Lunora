@@ -1,70 +1,24 @@
 from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
+from django.http import Http404, HttpResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
+from django.views.decorators.http import require_GET
 
 from app.forms import CalendarEventEditForm, CalendarEventForm, CalendarReminderForm
-from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, CalendarSource
-from app.services.calendar_sync_queue import queue_calendar_sources
+from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, Profile
+from app.services.calendar_service import build_calendar_feed
 from app.services.system_settings import disabled_feature_response, feature_enabled
-from app.services.user_preferences import format_user_datetime
 from app.view_models import get_calendar_context
-
-
-def _calendar_source_items(sources, user):
-    items = []
-    for source in sources:
-        if source.sync_requested_at:
-            status_label = "Synchronisierung vorgemerkt"
-            status_kind = "pending"
-        elif source.last_error:
-            status_label = source.last_error
-            status_kind = "error"
-        elif source.last_synced_at:
-            status_label = f"Zuletzt: {format_user_datetime(source.last_synced_at, user)}"
-            status_kind = "synced"
-        elif source.enabled:
-            status_label = "Noch nicht synchronisiert"
-            status_kind = "idle"
-        else:
-            status_label = "Sync deaktiviert"
-            status_kind = "muted"
-        items.append({"source": source, "status_label": status_label, "status_kind": status_kind})
-    return items
 
 
 @login_required
 def calendar(request):
-    sources = list(CalendarSource.objects.filter(user=request.user).order_by("name", "id"))
-    sync_result = None
-    calendar_sync_enabled = feature_enabled("calendar_sync")
     calendar_event_creation_enabled = feature_enabled("calendar_event_creation")
     calendar_reminders_enabled = feature_enabled("calendar_reminders")
     event_form = CalendarEventForm(user=request.user) if calendar_event_creation_enabled else None
     edit_form = None
     editing_event_id = None
-
-    if request.method == "POST" and request.POST.get("form_name") == "calendar_sync_all":
-        if not calendar_sync_enabled:
-            django_messages.warning(request, "Kalendersynchronisierung ist vorübergehend deaktiviert.")
-            return redirect(request.get_full_path())
-        sync_result = queue_calendar_sources(sources)
-        if sync_result.get("queued"):
-            django_messages.success(request, sync_result.get("message", "Synchronisierung vorgemerkt."))
-        else:
-            django_messages.info(request, sync_result.get("message", "Kalender ist aktuell."))
-        return redirect(request.get_full_path())
-
-    if request.method == "POST" and request.POST.get("form_name") == "calendar_visibility":
-        visible_ids = {
-            int(source_id) for source_id in request.POST.getlist("visible_source_ids") if source_id.isdigit()
-        }
-        owned_visible_ids = list(
-            CalendarSource.objects.filter(user=request.user, pk__in=visible_ids).values_list("pk", flat=True)
-        )
-        CalendarSource.objects.filter(user=request.user).update(is_visible=False)
-        CalendarSource.objects.filter(user=request.user, pk__in=owned_visible_ids).update(is_visible=True)
-        return redirect(request.get_full_path())
 
     if request.method == "POST" and request.POST.get("form_name") == "calendar_event_add":
         if not calendar_event_creation_enabled:
@@ -82,7 +36,6 @@ def calendar(request):
         event = CalendarEvent.objects.filter(
             pk=editing_event_id,
             user=request.user,
-            source__isnull=True,
         ).first()
         if event is None:
             django_messages.error(request, "Termin konnte nicht bearbeitet werden.")
@@ -99,7 +52,6 @@ def calendar(request):
         deleted_count, _details = CalendarEvent.objects.filter(
             pk=request.POST.get("event_id"),
             user=request.user,
-            source__isnull=True,
         ).delete()
         if deleted_count:
             django_messages.success(request, "Termin gelöscht.")
@@ -113,7 +65,6 @@ def calendar(request):
             CalendarEvent.objects.filter(
                 recurrence_id=recurrence_id,
                 user=request.user,
-                source__isnull=True,
             ).delete()
             django_messages.success(request, "Terminserie gelöscht.")
         return redirect(request.get_full_path())
@@ -160,7 +111,6 @@ def calendar(request):
     else:
         reminder_form = CalendarReminderForm() if calendar_reminders_enabled else None
 
-    sources = list(CalendarSource.objects.filter(user=request.user).order_by("name", "id"))
     context = get_calendar_context(
         request.user,
         year=request.GET.get("year"),
@@ -168,18 +118,31 @@ def calendar(request):
     )
     context.update(
         {
-            "calendar_source": sources[0] if sources else None,
-            "calendar_sources": _calendar_source_items(sources, request.user),
-            "visible_calendar_count": sum(1 for source in sources if source.is_visible),
             "event_form": event_form,
             "edit_form": edit_form
             or (CalendarEventEditForm(user=request.user) if calendar_event_creation_enabled else None),
             "editing_event_id": editing_event_id,
             "reminder_form": reminder_form,
-            "sync_result": sync_result,
-            "calendar_sync_enabled": calendar_sync_enabled,
             "calendar_event_creation_enabled": calendar_event_creation_enabled,
             "calendar_reminders_enabled": calendar_reminders_enabled,
         }
     )
     return render(request, "app/calendar.html", context)
+
+
+@require_GET
+def calendar_feed(request, token):
+    """Public iCal subscription feed; the secret token in the URL is the only credential."""
+    if not feature_enabled("calendar_feed"):
+        return disabled_feature_response(request, "calendar_feed")
+    profile = (
+        Profile.objects.select_related("user").filter(calendar_feed_token=token, user__is_active=True).first()
+    )
+    if profile is None:
+        raise Http404
+    body = build_calendar_feed(profile.user, calendar_name=f"Lunora – {profile.name}")
+    response = HttpResponse(body, content_type="text/calendar; charset=utf-8")
+    response["Content-Disposition"] = 'inline; filename="lunora.ics"'
+    response["Cache-Control"] = "private, no-cache"
+    response["X-Robots-Tag"] = "noindex"
+    return response

@@ -12,18 +12,16 @@ from django.views.decorators.http import require_http_methods
 
 from app.forms import (
     AppearanceForm,
-    CalendarSourceForm,
     NotificationCategoryPreferencesForm,
     NotificationPreferencesForm,
     ProfileForm,
     RegionPreferencesForm,
     WeatherPreferencesForm,
 )
-from app.models import CalendarSource, Profile
-from app.services.calendar_sync_queue import queue_calendar_sources
+from app.models import Profile
+from app.services.calendar_service import disable_calendar_feed, reset_calendar_feed_token
 from app.services.dashboard import normalize_dashboard_layout, validate_dashboard_layout
 from app.services.system_settings import disabled_feature_response, feature_enabled
-from app.services.user_preferences import format_user_datetime
 from app.view_models import get_dashboard_context, get_settings_context
 
 
@@ -96,34 +94,6 @@ def get_or_create_profile(user):
     return profile
 
 
-def _calendar_source_status(source, user):
-    if source.sync_requested_at:
-        return {"label": "Synchronisierung vorgemerkt", "kind": "pending"}
-    if source.last_error:
-        return {"label": source.last_error, "kind": "error"}
-    if source.last_synced_at:
-        return {"label": f"Zuletzt: {format_user_datetime(source.last_synced_at, user)}", "kind": "synced"}
-    if source.enabled:
-        return {"label": "Noch nicht synchronisiert", "kind": "idle"}
-    return {"label": "Sync deaktiviert", "kind": "muted"}
-
-
-def _calendar_source_form_items(sources, user, bound_form=None, bound_source_id=None):
-    items = []
-    for source in sources:
-        form = (
-            bound_form
-            if source.id == bound_source_id
-            else CalendarSourceForm(
-                instance=source,
-                user=user,
-                prefix=f"source-{source.id}",
-            )
-        )
-        items.append({"source": source, "form": form, "status": _calendar_source_status(source, user)})
-    return items
-
-
 @login_required
 def home(request):
     profile = get_or_create_profile(request.user)
@@ -161,10 +131,7 @@ def settings(request):
     profile = get_or_create_profile(request.user)
     return_to = get_safe_settings_return_url(request)
     form_name = request.POST.get("form_name") if request.method == "POST" else ""
-    bound_calendar_form = None
-    bound_calendar_source_id = None
-    calendar_sync_enabled = feature_enabled("calendar_sync")
-    calendar_add_form = CalendarSourceForm(user=request.user, prefix="new")
+    calendar_feed_enabled = feature_enabled("calendar_feed")
     profile_form = ProfileForm(instance=profile)
     appearance_form = AppearanceForm(instance=profile)
     region_form = RegionPreferencesForm(instance=profile)
@@ -192,95 +159,21 @@ def settings(request):
             region_form.save()
             django_messages.success(request, "Sprache & Region gespeichert.")
             return redirect(_settings_section_url("profile", return_to))
-    elif form_name == "calendar_source_add":
-        if not calendar_sync_enabled:
-            django_messages.warning(request, "Kalendersynchronisierung ist vorübergehend deaktiviert.")
-            return redirect(_settings_section_url("calendar", return_to))
-        calendar_add_form = CalendarSourceForm(request.POST, user=request.user, prefix="new")
-        if calendar_add_form.is_valid():
-            calendar_source = calendar_add_form.save(commit=False)
-            calendar_source.user = request.user
-            calendar_source.save()
-            queue_result = queue_calendar_sources([calendar_source])
-            if queue_result.get("queued"):
-                django_messages.success(
-                    request,
-                    f"{calendar_source.name} gespeichert. Synchronisierung wurde im Hintergrund vorgemerkt.",
-                )
-            else:
-                django_messages.success(request, f"{calendar_source.name} gespeichert. Sync ist deaktiviert.")
-            return redirect(_settings_section_url("calendar", return_to))
-    elif form_name == "calendar_source_update":
-        if not calendar_sync_enabled:
-            django_messages.warning(request, "Kalendersynchronisierung ist vorübergehend deaktiviert.")
-            return redirect(_settings_section_url("calendar", return_to))
-        calendar_source = CalendarSource.objects.filter(
-            user=request.user, pk=request.POST.get("source_id")
-        ).first()
-        if not calendar_source:
-            django_messages.error(request, "Kalender wurde nicht gefunden.")
-            return redirect(_settings_section_url("calendar", return_to))
-        bound_calendar_source_id = calendar_source.id
-        old_ical_url = calendar_source.ical_url
-        was_enabled = calendar_source.enabled
-        bound_calendar_form = CalendarSourceForm(
-            request.POST,
-            instance=calendar_source,
-            user=request.user,
-            prefix=f"source-{calendar_source.id}",
-        )
-        if bound_calendar_form.is_valid():
-            calendar_source = bound_calendar_form.save(commit=False)
-            calendar_source.user = request.user
-            calendar_source.save()
-            if not calendar_source.enabled:
-                CalendarSource.objects.filter(pk=calendar_source.pk).update(sync_requested_at=None)
-                calendar_source.sync_requested_at = None
-            if calendar_source.ical_url != old_ical_url:
-                calendar_source.events.all().delete()
-                if calendar_source.enabled:
-                    queue_calendar_sources([calendar_source])
-                    django_messages.success(
-                        request,
-                        f"{calendar_source.name} gespeichert. Neue Synchronisierung wurde vorgemerkt.",
-                    )
-                else:
-                    django_messages.success(
-                        request, f"{calendar_source.name} gespeichert. Sync ist deaktiviert."
-                    )
-            elif calendar_source.enabled and not was_enabled:
-                queue_calendar_sources([calendar_source])
-                django_messages.success(
-                    request,
-                    f"{calendar_source.name} aktiviert. Synchronisierung wurde vorgemerkt.",
-                )
-            elif not calendar_source.enabled:
-                django_messages.success(request, f"{calendar_source.name} gespeichert. Sync ist deaktiviert.")
-            else:
-                django_messages.success(request, f"{calendar_source.name} gespeichert.")
-            return redirect(_settings_section_url("calendar", return_to))
-    elif form_name == "calendar_source_delete":
-        if not calendar_sync_enabled:
-            django_messages.warning(request, "Kalendersynchronisierung ist vorübergehend deaktiviert.")
-            return redirect(_settings_section_url("calendar", return_to))
-        deleted_count, _details = CalendarSource.objects.filter(
-            user=request.user,
-            pk=request.POST.get("source_id"),
-        ).delete()
-        if deleted_count:
-            django_messages.success(request, "Kalender gelöscht.")
-        return redirect(_settings_section_url("calendar", return_to))
-    elif form_name == "calendar_sync_all":
-        if not calendar_sync_enabled:
-            django_messages.warning(request, "Kalendersynchronisierung ist vorübergehend deaktiviert.")
-            return redirect(_settings_section_url("calendar", return_to))
-        sync_result = queue_calendar_sources(
-            CalendarSource.objects.filter(user=request.user).order_by("name", "id"),
-        )
-        if sync_result.get("queued"):
-            django_messages.success(request, sync_result.get("message", "Synchronisierung vorgemerkt."))
+    elif form_name in {"calendar_feed_reset", "calendar_feed_disable"}:
+        if not calendar_feed_enabled:
+            return disabled_feature_response(request, "calendar_feed")
+        if form_name == "calendar_feed_reset":
+            had_link = bool(profile.calendar_feed_token)
+            reset_calendar_feed_token(profile)
+            django_messages.success(
+                request,
+                "Neuer Abo-Link erstellt. Der alte Link funktioniert nicht mehr."
+                if had_link
+                else "Abo-Link erstellt.",
+            )
         else:
-            django_messages.info(request, sync_result.get("message", "Kalender ist aktuell."))
+            disable_calendar_feed(profile)
+            django_messages.success(request, "Abo-Link deaktiviert.")
         return redirect(_settings_section_url("calendar", return_to))
     elif form_name == "notifications":
         notification_form = NotificationPreferencesForm(request.POST, instance=profile)
@@ -301,7 +194,11 @@ def settings(request):
             django_messages.success(request, "Wettereinstellungen gespeichert.")
             return redirect(_settings_section_url("weather", return_to))
 
-    calendar_sources = list(CalendarSource.objects.filter(user=request.user).order_by("name", "id"))
+    calendar_feed_url = (
+        request.build_absolute_uri(reverse("calendar_feed", args=[profile.calendar_feed_token]))
+        if profile.calendar_feed_token
+        else ""
+    )
     context = get_settings_context(notification_form, notification_preferences_form)
     context.update(
         {
@@ -309,19 +206,12 @@ def settings(request):
             "profile_form": profile_form,
             "appearance_form": appearance_form,
             "region_form": region_form,
-            "calendar_source": calendar_sources[0] if calendar_sources else None,
-            "calendar_source_form": calendar_add_form,
-            "calendar_source_forms": _calendar_source_form_items(
-                calendar_sources,
-                request.user,
-                bound_form=bound_calendar_form,
-                bound_source_id=bound_calendar_source_id,
-            ),
+            "calendar_feed_url": calendar_feed_url,
             "notification_form": notification_form,
             "notification_preferences_form": notification_preferences_form,
             "weather_form": weather_form,
             "return_to": return_to,
-            "calendar_sync_enabled": calendar_sync_enabled,
+            "calendar_feed_enabled": calendar_feed_enabled,
         }
     )
     return render(request, "app/settings.html", context)

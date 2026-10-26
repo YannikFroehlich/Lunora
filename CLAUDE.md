@@ -29,7 +29,7 @@ npm run build
 npm test
 ```
 
-Background automations — calendar sync, due reminder e-mails, weekly summaries. Exactly **one** loop process per deployment, otherwise external calendars and mail providers get hit twice:
+Background automations — due reminder e-mails, Web Push, weekly summaries. Exactly **one** loop process per deployment, otherwise mail and push providers get hit twice:
 
 ```bash
 python manage.py run_automations --loop
@@ -97,11 +97,11 @@ Conversations can be group chats (`Conversation.is_group`, created by `start_con
 
 ### Calendar
 
-`app/services/calendar_service.py` contains a hand-written iCal unfolder/parser (including weekly recurrence expansion) — no `icalendar` dependency. Fetching is SSRF-hardened: `app/services/url_safety.py` rejects non-public hosts/ports and re-validates resolved addresses, and `NoRedirectHandler` blocks redirects so a public URL cannot bounce to an internal one. iCal URLs are private user data — do not log full URLs or surface them outside the owning user's settings page.
+The calendar is standalone: there is no import of external calendars (the former `CalendarSource` iCal sync was removed, together with its SSRF-hardened fetcher). Every `CalendarEvent` is created in Lunora and carries a `category` (`exam`/`test`/`presentation`/`deadline`/`other`, German labels in `CATEGORY_CHOICES`); `CATEGORY_TONES` maps each to one of the existing `tone-*` CSS color classes, so the UI color comes from the category rather than a per-source color.
 
-Synced events dedupe on `(source, external_id)`; manually created events have `source = None` and are excluded from source-based clearing.
+Export goes the other way: `app/services/calendar_service.py` renders a hand-written RFC 5545 feed (`build_calendar_feed` — CRLF line endings, 75-octet line folding, text escaping, `DATE` values for all-day events) — no `icalendar` dependency. `calendar_feed` serves it at `/calendar/feed/<token>.ics` **without login**; `Profile.calendar_feed_token` (null until the user creates a link in settings, rotated/cleared via `reset_calendar_feed_token`/`disable_calendar_feed`) is the only credential, so never log or render it outside the owner's settings page. The feed contains the user's own events plus invitations they *accepted* (declined/pending ones stay out), from `FEED_LOOKBACK_DAYS` ago onwards; UIDs are `lunora-event-<pk>` so subscribers update events in place. It is gated by the `calendar_feed` flag (disabled → 503, unknown token or inactive user → 404). Google Calendar polls subscribed feeds on its own schedule (roughly every 8–24 h) and ignores `REFRESH-INTERVAL`; that latency cannot be fixed server-side.
 
-Manual events can invite other Lunora users via `CalendarEventAttendee` (`CalendarEventForm.attendees`, checkbox-multi-select same as `ConversationStartForm.recipient` in Messages) — synced/iCal events cannot, since they're read-only mirrors of an external feed, not something a Lunora user "owns" in a shareable sense. `view_models.get_calendar_context` unions the requesting user's own events with `Q(attendees__user=user)` so invitees see the event on their own calendar (`.distinct()` is required — the join can otherwise multiply an event with several attendees). Accept/decline goes through the `calendar()` view's `event_rsvp` form_name branch, scoped to the requesting user's own `CalendarEventAttendee` row only.
+Manual events can invite other Lunora users via `CalendarEventAttendee` (`CalendarEventForm.attendees`, checkbox-multi-select same as `ConversationStartForm.recipient` in Messages). `view_models.get_calendar_context` unions the requesting user's own events with `Q(attendees__user=user)` so invitees see the event on their own calendar (`.distinct()` is required — the join can otherwise multiply an event with several attendees). Accept/decline goes through the `calendar()` view's `event_rsvp` form_name branch, scoped to the requesting user's own `CalendarEventAttendee` row only.
 
 ### Weather
 

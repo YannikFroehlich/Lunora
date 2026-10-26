@@ -8,7 +8,7 @@ from app.services.scheduled_tasks import run_scheduled_tasks
 
 
 class Command(BaseCommand):
-    help = "Führt Kalender-Syncs und Benachrichtigungen einmalig oder dauerhaft im Hintergrund aus."
+    help = "Führt Benachrichtigungen und Wochenberichte einmalig oder dauerhaft im Hintergrund aus."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -44,14 +44,12 @@ class Command(BaseCommand):
                 return
 
     def _summary(self, result):
-        sync = result["calendar_sync"]
         reminders = result["reminder_emails"]
         weekly = result["weekly_summaries"]
         notification_emails = result.get("notification_emails", {"sent": 0, "failed": 0})
         web_push = result.get("web_push", {"sent": 0, "failed": 0})
         return (
-            f"Kalender: {sync['synced']} synchronisiert, {sync['failed']} fehlgeschlagen, "
-            f"{sync['skipped']} übersprungen | Erinnerungen: {reminders['sent']} gesendet, "
+            f"Erinnerungen: {reminders['sent']} gesendet, "
             f"{reminders['failed']} fehlgeschlagen | Wochenberichte: {weekly['sent']} gesendet, "
             f"{weekly['failed']} fehlgeschlagen | Weitere E-Mails: {notification_emails['sent']} gesendet, "
             f"{notification_emails['failed']} fehlgeschlagen | Web Push: {web_push['sent']} gesendet, "

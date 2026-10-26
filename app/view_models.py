@@ -486,19 +486,12 @@ def _display_name(user):
 
 
 def _calendar_visible_events_query(user):
-    """Events the user owns (from a visible source or manually created) plus events they were invited to."""
-    return CalendarEvent.objects.filter(
-        (Q(user=user) & (Q(source__isnull=True) | Q(source__is_visible=True))) | Q(attendees__user=user)
-    ).distinct()
+    """Events the user owns plus events they were invited to."""
+    return CalendarEvent.objects.filter(Q(user=user) | Q(attendees__user=user)).distinct()
 
 
 def _dashboard_upcoming_events(user, now):
-    events = (
-        _calendar_visible_events_query(user)
-        .filter(end_at__gte=now)
-        .select_related("source")
-        .order_by("start_at")[:5]
-    )
+    events = _calendar_visible_events_query(user).filter(end_at__gte=now).order_by("start_at")[:5]
     return [
         {
             "title": event.title,
@@ -531,7 +524,6 @@ def get_calendar_context(user, *, year=None, month=None):
     events = list(
         _calendar_visible_events_query(user)
         .filter(start_at__lt=range_end, end_at__gt=range_start)
-        .select_related("source")
         .order_by("start_at", "title")
     )
     events_by_date = _group_calendar_events_by_date(events, visible_start, visible_end, user)
@@ -610,7 +602,11 @@ def get_calendar_context(user, *, year=None, month=None):
         "pending_invitations": _pending_invitation_items(user),
         "calendar_reminders_enabled": calendar_reminders_enabled,
         "calendar_event_creation_enabled": feature_enabled("calendar_event_creation"),
-        "calendar_sync_enabled": feature_enabled("calendar_sync"),
+        "calendar_feed_enabled": feature_enabled("calendar_feed"),
+        "calendar_categories": [
+            {"label": label, "tone": CalendarEvent.CATEGORY_TONES[key]}
+            for key, label in CalendarEvent.CATEGORY_CHOICES
+        ],
         "tasks_enabled": tasks_enabled,
         "due_tasks": due_tasks,
     }
@@ -640,11 +636,11 @@ def _calendar_event_time_label(event, user):
 
 
 def _calendar_event_tone(event):
-    return event.source.color if event.source_id else "sand"
+    return CalendarEvent.CATEGORY_TONES.get(event.category, "sand")
 
 
 def _calendar_event_manage_fields(event, user):
-    can_manage = event.user_id == user.id and event.source_id is None
+    can_manage = event.user_id == user.id
     fields = {
         "event_id": event.id,
         "recurrence_id": event.recurrence_id,
@@ -660,6 +656,7 @@ def _calendar_event_manage_fields(event, user):
                 "edit_start_time": event_start.strftime("%H:%M"),
                 "edit_end_time": event_end.strftime("%H:%M"),
                 "edit_is_all_day": event.is_all_day,
+                "edit_category": event.category,
                 "edit_location": event.location,
                 "edit_attendee_ids": ",".join(
                     str(user_id) for user_id in event.attendees.values_list("user_id", flat=True)
@@ -670,17 +667,12 @@ def _calendar_event_manage_fields(event, user):
 
 
 def _upcoming_calendar_events(user, now):
-    events = (
-        _calendar_visible_events_query(user)
-        .filter(end_at__gte=now)
-        .select_related("source")
-        .order_by("start_at")[:6]
-    )
+    events = _calendar_visible_events_query(user).filter(end_at__gte=now).order_by("start_at")[:6]
     return [
         {
             "date": format_user_date(event.start_at, user),
             "title": event.title,
-            "category": _calendar_event_category(event, user),
+            "category": event.get_category_display(),
             "icon": "fa-calendar-day",
             "tone": _calendar_event_tone(event),
             "is_invited": event.user_id != user.id,
@@ -688,14 +680,6 @@ def _upcoming_calendar_events(user, now):
         }
         for event in events
     ]
-
-
-def _calendar_event_category(event, user):
-    if event.source_id:
-        return event.source.name
-    if event.user_id != user.id:
-        return "Einladung"
-    return "Eigener Termin"
 
 
 def _pending_invitation_items(user):

@@ -31,13 +31,6 @@
                 </button>
                 {% endif %}
                 <a class="ghost-button" href="{% url 'calendar' %}"><i class="fa-regular fa-calendar"></i> Heute</a>
-                {% if calendar_sources and calendar_sync_enabled %}
-                <form method="post" class="inline-form">
-                    {% csrf_token %}
-                    <input type="hidden" name="form_name" value="calendar_sync_all">
-                    <button class="primary-button" type="submit"><i class="fa-solid fa-rotate"></i> Alle synchronisieren</button>
-                </form>
-                {% endif %}
             </div>
 
             <div class="weekday-row">
@@ -65,6 +58,7 @@
                             data-edit-start="{{ event.edit_start_time }}"
                             data-edit-end="{{ event.edit_end_time }}"
                             data-edit-all-day="{{ event.edit_is_all_day|yesno:'true,false' }}"
+                            data-edit-category="{{ event.edit_category }}"
                             data-edit-location="{{ event.edit_location }}"
                             data-edit-attendees="{{ event.edit_attendee_ids }}">{{ event.label }}</button>
                         {% else %}
@@ -83,47 +77,21 @@
         <aside class="side-stack">
             <section class="glass-panel calendar-filter-panel">
                 <div class="panel-title panel-title-between">
-                    <div><h2>Meine Kalender</h2><p>{{ visible_calendar_count }} sichtbar</p></div>
-                    {% if calendar_sync_enabled %}
-                    <a class="icon-button" href="{% url 'settings' %}?next={{ request.get_full_path|urlencode }}" aria-label="Kalender verwalten">
-                        <i class="fa-solid fa-gear"></i>
+                    <div><h2>Kategorien</h2><p>Farben im Kalender</p></div>
+                    {% if calendar_feed_enabled %}
+                    <a class="icon-button" href="{% url 'settings' %}?next={{ request.get_full_path|urlencode }}#settings-calendar" aria-label="Kalender abonnieren" title="Kalender abonnieren">
+                        <i class="fa-solid fa-rss"></i>
                     </a>
                     {% endif %}
                 </div>
-                {% if calendar_sources %}
-                <form class="calendar-visibility-form" method="post" data-calendar-visibility-form>
-                    {% csrf_token %}
-                    <input type="hidden" name="form_name" value="calendar_visibility">
-                    {% for item in calendar_sources %}
-                    <label class="calendar-source-row tone-{{ item.source.color }}">
-                        <input type="checkbox" name="visible_source_ids" value="{{ item.source.id }}" {% if item.source.is_visible %}checked{% endif %}>
-                        <span class="source-color-dot" aria-hidden="true"></span>
-                        <span class="source-copy">
-                            <strong>{{ item.source.name }}</strong>
-                            <small class="source-status is-{{ item.status_kind }}">{{ item.status_label }}</small>
-                        </span>
-                    </label>
+                <ul class="calendar-category-legend">
+                    {% for category in calendar_categories %}
+                    <li class="calendar-category-row tone-{{ category.tone }}">
+                        <span class="calendar-category-dot" aria-hidden="true"></span>
+                        <strong>{{ category.label }}</strong>
+                    </li>
                     {% endfor %}
-                    <button class="ghost-button calendar-visibility-submit" type="submit">
-                        <i class="fa-regular fa-eye"></i>
-                        Ansicht aktualisieren
-                    </button>
-                </form>
-                {% else %}
-                <div class="empty-state-card is-compact">
-                    <i class="fa-regular fa-calendar-plus" aria-hidden="true"></i>
-                    <div>
-                        <strong>Noch kein Kalender</strong>
-                        <p>Füge deine privaten iCal-Links in den Einstellungen hinzu.</p>
-                    </div>
-                    {% if calendar_sync_enabled %}
-                    <a class="ghost-button calendar-empty-action" href="{% url 'settings' %}?next={{ request.get_full_path|urlencode }}" data-calendar-empty-action="connect">
-                        <i class="fa-solid fa-link" aria-hidden="true"></i>
-                        Kalender verbinden
-                    </a>
-                    {% endif %}
-                </div>
-                {% endif %}
+                </ul>
             </section>
 
             <section class="glass-panel today-events">
@@ -149,6 +117,7 @@
                             data-edit-start="{{ event.edit_start_time }}"
                             data-edit-end="{{ event.edit_end_time }}"
                             data-edit-all-day="{{ event.edit_is_all_day|yesno:'true,false' }}"
+                            data-edit-category="{{ event.edit_category }}"
                             data-edit-location="{{ event.edit_location }}"
                             data-edit-attendees="{{ event.edit_attendee_ids }}"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>
                         <form method="post">
@@ -173,10 +142,6 @@
                 <div class="empty-state-card is-compact">
                     <i class="fa-regular fa-calendar-check" aria-hidden="true"></i>
                     <div>
-                        {% if calendar_sources and visible_calendar_count == 0 %}
-                        <strong>Alle Kalender ausgeblendet</strong>
-                        <p>Aktiviere mindestens eine Checkbox, um Termine zu sehen.</p>
-                        {% else %}
                         <strong>Heute ist frei</strong>
                         <p>Für heute stehen keine Termine an.</p>
                         {% if calendar_event_creation_enabled %}
@@ -184,7 +149,6 @@
                             <i class="fa-solid fa-plus" aria-hidden="true"></i>
                             Termin anlegen
                         </button>
-                        {% endif %}
                         {% endif %}
                     </div>
                 </div>
@@ -212,6 +176,7 @@
                             data-edit-start="{{ event.edit_start_time }}"
                             data-edit-end="{{ event.edit_end_time }}"
                             data-edit-all-day="{{ event.edit_is_all_day|yesno:'true,false' }}"
+                            data-edit-category="{{ event.edit_category }}"
                             data-edit-location="{{ event.edit_location }}"
                             data-edit-attendees="{{ event.edit_attendee_ids }}"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>
                         <form method="post">
@@ -236,19 +201,9 @@
                 <div class="empty-state-card is-compact">
                     <i class="fa-regular fa-calendar-plus" aria-hidden="true"></i>
                     <div>
-                        {% if calendar_sources and visible_calendar_count == 0 %}
-                        <strong>Alle Kalender ausgeblendet</strong>
-                        <p>Aktiviere mindestens eine Checkbox, um kommende Termine zu sehen.</p>
-                        {% else %}
                         <strong>Keine kommenden Termine</strong>
-                        <p>{% if calendar_sources %}Deine sichtbaren Kalender haben aktuell keine kommenden Termine.{% elif calendar_sync_enabled %}Verbinde einen Kalender, um deine nächsten Termine hier zu sehen.{% else %}Sobald Termine vorhanden sind, erscheinen sie hier.{% endif %}</p>
+                        <p>Trage Klassenarbeiten, Tests oder Abgaben ein, um sie hier zu sehen.</p>
                         <div class="calendar-empty-actions">
-                            {% if not calendar_sources and calendar_sync_enabled %}
-                            <a class="ghost-button calendar-empty-action" href="{% url 'settings' %}?next={{ request.get_full_path|urlencode }}" data-calendar-empty-action="connect-upcoming">
-                                <i class="fa-solid fa-link" aria-hidden="true"></i>
-                                Kalender verbinden
-                            </a>
-                            {% endif %}
                             {% if calendar_event_creation_enabled %}
                             <button class="ghost-button calendar-empty-action" type="button" data-event-dialog-open data-calendar-empty-action="event-upcoming">
                                 <i class="fa-solid fa-plus" aria-hidden="true"></i>
@@ -256,7 +211,6 @@
                             </button>
                             {% endif %}
                         </div>
-                        {% endif %}
                     </div>
                 </div>
                 {% endif %}
@@ -421,6 +375,12 @@
                 <span>{{ event_form.is_all_day.label }}</span>
             </label>
 
+            <label class="event-form-field is-wide" for="{{ event_form.category.id_for_label }}">
+                <span>{{ event_form.category.label }}</span>
+                {{ event_form.category }}
+                {{ event_form.category.errors }}
+            </label>
+
             <label class="event-form-field" for="{{ event_form.repeat.id_for_label }}">
                 <span>{{ event_form.repeat.label }}</span>
                 {{ event_form.repeat }}
@@ -505,6 +465,12 @@
                 <span>{{ edit_form.is_all_day.label }}</span>
             </label>
 
+            <label class="event-form-field is-wide" for="{{ edit_form.category.id_for_label }}">
+                <span>{{ edit_form.category.label }}</span>
+                {{ edit_form.category }}
+                {{ edit_form.category.errors }}
+            </label>
+
             <label class="event-form-field is-wide" for="{{ edit_form.location.id_for_label }}">
                 <span>{{ edit_form.location.label }}</span>
                 {{ edit_form.location }}
@@ -531,9 +497,5 @@
 {% endblock %}
 
 {% block page_js %}
-{% if calendar_event_creation_enabled %}
 <script src="{% versioned_static 'js/calendar.js' %}"></script>
-{% else %}
-<script src="{% versioned_static 'js/calendar.js' %}"></script>
-{% endif %}
 {% endblock %}

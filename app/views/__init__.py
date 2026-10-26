@@ -7,7 +7,7 @@ from .auth_views import (
     LunoraPasswordResetView,
     register,
 )
-from .calendar_views import calendar
+from .calendar_views import calendar, calendar_feed
 from .core_views import dashboard_layout_update, home, settings
 from .message_views import chat_attachment_download, chat_typing_ping, messages, messages_live_updates
 from .note_views import (
@@ -74,6 +74,7 @@ from .weather_views import dashboard_weather, weather, weather_map_tile, weather
 
 __all__ = [
     "calendar",
+    "calendar_feed",
     "administration",
     "home",
     "dashboard_layout_update",

@@ -13,7 +13,6 @@ from app.models import (
     CalendarEvent,
     CalendarEventAttendee,
     CalendarReminder,
-    CalendarSource,
     ChatMessage,
     CustomHoliday,
     HolidayOverride,
@@ -32,7 +31,6 @@ from app.services.calendar_service import expand_manual_recurrence
 from app.services.chat_files import infer_attachment_kind, validate_note_upload
 from app.services.image_uploads import PROFILE_IMAGE_ACCEPT, validate_profile_image_file
 from app.services.notification_preferences import CATEGORY_DEFINITIONS
-from app.services.url_safety import validate_calendar_url
 from app.services.user_preferences import get_user_zoneinfo, localtime_for_user
 
 LOGIN_ATTEMPT_LIMIT = 5
@@ -116,7 +114,7 @@ class SystemSettingsForm(forms.ModelForm):
             "normal_login_enabled",
             "calendar_event_creation_enabled",
             "calendar_reminders_enabled",
-            "calendar_sync_enabled",
+            "calendar_feed_enabled",
             "messages_enabled",
             "notes_enabled",
             "vacation_planner_enabled",
@@ -129,7 +127,7 @@ class SystemSettingsForm(forms.ModelForm):
             "normal_login_enabled": "Login und Registrierung für Nutzer",
             "calendar_event_creation_enabled": "Kalender: eigene Termine erstellen",
             "calendar_reminders_enabled": "Kalender: Erinnerungen",
-            "calendar_sync_enabled": "Kalender: Synchronisierung und Quellen",
+            "calendar_feed_enabled": "Kalender: Abo-Link für Google & Co.",
             "messages_enabled": "Nachrichten",
             "notes_enabled": "Notizen",
             "vacation_planner_enabled": "Urlaubsplaner",
@@ -142,7 +140,7 @@ class SystemSettingsForm(forms.ModelForm):
             "normal_login_enabled": forms.CheckboxInput(),
             "calendar_event_creation_enabled": forms.CheckboxInput(),
             "calendar_reminders_enabled": forms.CheckboxInput(),
-            "calendar_sync_enabled": forms.CheckboxInput(),
+            "calendar_feed_enabled": forms.CheckboxInput(),
             "messages_enabled": forms.CheckboxInput(),
             "notes_enabled": forms.CheckboxInput(),
             "vacation_planner_enabled": forms.CheckboxInput(),
@@ -633,65 +631,6 @@ class ConversationStartForm(forms.Form):
         return self.cleaned_data.get("body", "").strip()
 
 
-class CalendarSourceForm(forms.ModelForm):
-    name = forms.CharField(
-        label="Kalendername",
-        max_length=120,
-        widget=forms.TextInput(
-            attrs={"placeholder": "z. B. Arbeit, Familie oder Geburtstage", "autocomplete": "off"}
-        ),
-    )
-
-    ical_url = forms.CharField(
-        label="Google Kalender-Link",
-        widget=forms.URLInput(
-            attrs={
-                "placeholder": "https://calendar.google.com/calendar/ical/...",
-                "autocomplete": "off",
-            }
-        ),
-        help_text="Nutze den privaten iCal-Link aus den Google-Kalendereinstellungen.",
-    )
-
-    class Meta:
-        model = CalendarSource
-        fields = ["name", "ical_url", "color", "enabled"]
-        labels = {
-            "color": "Farbe",
-            "enabled": "Automatisch synchronisieren",
-        }
-        widgets = {
-            "color": forms.RadioSelect(),
-        }
-
-    def __init__(self, *args, user=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.user = user
-        self.fields["enabled"].required = False
-        if not self.instance.pk:
-            self.fields["enabled"].initial = True
-
-    def clean_name(self):
-        return self.cleaned_data["name"].strip()
-
-    def clean_ical_url(self):
-        url = self.cleaned_data["ical_url"].strip()
-        try:
-            normalized_url = validate_calendar_url(url)
-        except ValueError as error:
-            raise forms.ValidationError(str(error)) from error
-
-        user = self.user or getattr(self.instance, "user", None)
-        if user:
-            duplicate_sources = CalendarSource.objects.filter(user=user, ical_url=normalized_url)
-            if self.instance.pk:
-                duplicate_sources = duplicate_sources.exclude(pk=self.instance.pk)
-            if duplicate_sources.exists():
-                raise forms.ValidationError("Dieser Kalender-Link ist bereits gespeichert.")
-
-        return normalized_url
-
-
 class CalendarReminderForm(forms.ModelForm):
     due_at = forms.DateTimeField(
         label="Fällig am",
@@ -840,7 +779,7 @@ class _CalendarEventDateTimeForm(forms.Form):
         max_length=255,
         widget=forms.TextInput(
             attrs={
-                "placeholder": "z. B. Zahnarzttermin",
+                "placeholder": "z. B. Mathe-Klassenarbeit",
                 "autocomplete": "off",
                 "autofocus": True,
             }
@@ -864,6 +803,12 @@ class _CalendarEventDateTimeForm(forms.Form):
         input_formats=["%H:%M"],
     )
     is_all_day = forms.BooleanField(label="Ganztägig", required=False)
+    category = forms.ChoiceField(
+        label="Kategorie",
+        choices=CalendarEvent.CATEGORY_CHOICES,
+        initial=CalendarEvent.CATEGORY_OTHER,
+        required=False,
+    )
     location = forms.CharField(
         label="Ort",
         max_length=255,
@@ -888,6 +833,9 @@ class _CalendarEventDateTimeForm(forms.Form):
 
     def clean_title(self):
         return self.cleaned_data["title"].strip()
+
+    def clean_category(self):
+        return self.cleaned_data.get("category") or CalendarEvent.CATEGORY_OTHER
 
     def clean_location(self):
         return self.cleaned_data.get("location", "").strip()
@@ -1003,8 +951,8 @@ class CalendarEventForm(_CalendarEventDateTimeForm):
             [
                 CalendarEvent(
                     user=user,
-                    source=None,
                     title=self.cleaned_data["title"],
+                    category=self.cleaned_data["category"],
                     location=self.cleaned_data["location"],
                     start_at=occurrence_start,
                     end_at=occurrence_start + duration,
@@ -1046,6 +994,7 @@ class CalendarEventEditForm(_CalendarEventDateTimeForm):
                     "start_time": instance_start.time(),
                     "end_time": instance_end.time(),
                     "is_all_day": instance.is_all_day,
+                    "category": instance.category,
                     "location": instance.location,
                     "attendees": list(instance.attendees.values_list("user_id", flat=True)),
                 }
@@ -1054,11 +1003,14 @@ class CalendarEventEditForm(_CalendarEventDateTimeForm):
     def save(self):
         event = self.instance
         event.title = self.cleaned_data["title"]
+        event.category = self.cleaned_data["category"]
         event.location = self.cleaned_data["location"]
         event.start_at = self.cleaned_data["start_at"]
         event.end_at = self.cleaned_data["end_at"]
         event.is_all_day = self.cleaned_data["is_all_day"]
-        event.save(update_fields=["title", "location", "start_at", "end_at", "is_all_day", "updated_at"])
+        event.save(
+            update_fields=["title", "category", "location", "start_at", "end_at", "is_all_day", "updated_at"]
+        )
 
         new_attendee_ids = {attendee.id for attendee in self.cleaned_data.get("attendees") or []}
         existing_attendee_ids = set(event.attendees.values_list("user_id", flat=True))
