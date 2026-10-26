@@ -32,8 +32,11 @@ git fetch --prune origin main
 # that can only be checked by applying them.
 preflight_dir=$(mktemp -d)
 trap 'rm -rf -- "${preflight_dir}"' EXIT
-mkdir "${preflight_dir}/app"
-git archive origin/main | tar -x -C "${preflight_dir}/app"
+# Not `git archive | tar -x`: under lunora-auto-deploy.service's RestrictSUIDSGID=true, GNU tar
+# 1.35 on Ubuntu 26.04 fails every file with "Function not implemented". A throwaway index
+# keeps the live checkout's index untouched.
+GIT_INDEX_FILE="${preflight_dir}/index" git read-tree origin/main
+GIT_INDEX_FILE="${preflight_dir}/index" git checkout-index --all --prefix="${preflight_dir}/app/"
 python3 -m venv "${preflight_dir}/venv"
 "${preflight_dir}/venv/bin/python" -m pip install --require-virtualenv --quiet --disable-pip-version-check \
     -r "${preflight_dir}/app/requirements.txt" -c "${preflight_dir}/app/constraints.txt"
