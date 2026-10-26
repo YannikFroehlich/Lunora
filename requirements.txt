@@ -5,4 +5,4 @@ Pillow==13.0.0
 psycopg[binary]==3.3.6
 pywebpush==2.5.0
 redis==8.1.0
-reportlab==5.0.1
+reportlab==5.1.0

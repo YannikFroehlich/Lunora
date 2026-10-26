@@ -6,7 +6,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(300px, 0.38fr);
   gap: 22px;
-  margin-top: 22px;
+  margin-top: 20px;
 }
 
 .admin-settings-panel,
@@ -52,64 +52,7 @@
 .admin-settings-panel .setting-line small {
   margin-top: 4px;
   color: var(--color-muted);
-  font-size: 0.86rem;
-}
-
-.admin-settings-panel .switch {
-  position: relative;
-  display: inline-flex;
-  width: 46px;
-  height: 26px;
-  flex: 0 0 auto;
-  align-items: center;
-  overflow: hidden;
-  background: rgba(140, 125, 107, 0.30);
-  border: 1px solid rgba(255, 248, 237, 0.14);
-  border-radius: 999px;
-  cursor: pointer;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12);
-  transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
-}
-
-.admin-settings-panel .switch input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: 0;
-  padding: 0;
-  opacity: 0;
-  pointer-events: none;
-  appearance: none;
-  -webkit-appearance: none;
-  clip-path: inset(50%);
-}
-
-.admin-settings-panel .switch::after {
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 18px;
-  height: 18px;
-  content: "";
-  background: #fffaf3;
-  border-radius: 50%;
-  box-shadow: 0 2px 8px rgba(77, 57, 31, 0.24);
-  transition: transform 160ms ease, background 160ms ease;
-}
-
-.admin-settings-panel .switch.is-on,
-.admin-settings-panel .switch:has(input:checked) {
-  background: var(--color-accent);
-  border-color: color-mix(in srgb, var(--color-accent) 72%, #ffffff);
-}
-
-.admin-settings-panel .switch.is-on::after,
-.admin-settings-panel .switch:has(input:checked)::after {
-  transform: translateX(20px);
-}
-
-.admin-settings-panel .switch:focus-within {
-  box-shadow: var(--focus-ring);
+  font-size: var(--text-md);
 }
 
 .admin-metric-grid {
@@ -131,7 +74,7 @@
 
 .admin-metric-grid strong {
   color: var(--color-heading);
-  font-size: 2rem;
+  font-size: var(--text-3xl);
 }
 
 .admin-metric-grid span,

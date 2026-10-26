@@ -1,5 +1,10 @@
 # Lunora auf Ubuntu bereitstellen
 
+> **Stand 21. Oktober 2026:** Es gibt derzeit keinen Produktionsserver; der bisherige Host
+> existiert nicht mehr, und `lunora.yfserver.de` antwortet mit einem Cloudflare-Tunnel-Fehler.
+> Diese Anleitung bleibt für das Neuaufsetzen gültig. Solange kein Server läuft, löst ein Push
+> auf `main` kein Deployment aus.
+
 Ziel: `lunora.yfserver.de` läuft über einen ausgehenden Cloudflare Tunnel. Nginx
 lauscht nur auf `127.0.0.1:8080`, Gunicorn nur auf einem Unix-Socket. Lokal bleibt
 SQLite in Verwendung; Produktion verwendet die frische PostgreSQL-Datenbank.

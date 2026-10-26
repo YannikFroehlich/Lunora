@@ -6,6 +6,21 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Font sizes follow one shared type scale instead of about 40 slightly different values, so labels,
+  captions and headings look the same size on every page.
+- Unify the look across all pages: Calendar, Messages, Weather and Tasks no longer override the
+  accent color with their own green/rose/blue/violet palette (Tasks also dropped its forced dark
+  theme), so every page follows the accent chosen in the settings. Status colors, radii, focus
+  rings, switches, checkboxes and dialog backdrops now come from shared tokens in `base.css`; dark
+  mode derives a lighter accent so accent text stays readable. Also fixes the message search button
+  being cut off, missing padding on search result panels, transparent note dialogs and unmuted
+  text in the vacation planner.
+- Improve legibility in light and dark mode: notices and tab bars that sat directly on the background
+  image get a glass surface, buttons and badges on the accent color use dark text, and muted text,
+  accent text and status colors were darkened (light) or lightened (dark) to reach readable contrast.
+- Update the notes editor build to Vite 8 (Rolldown) and vitest 5, KaTeX to 0.19.1, reportlab to
+  5.1 and ruff to 0.17.2, plus the latest compatible transitive Python dependencies (cryptography,
+  aiohttp, certifi, tzdata, …) in `constraints.txt`.
 - Deployments validate the new commit in a temporary directory (own venv, `pip install` with
   constraints, `check --deploy`) before the production checkout is touched, so a broken dependency
   or configuration no longer leaves half-deployed code on disk.

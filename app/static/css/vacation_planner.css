@@ -1,6 +1,6 @@
 .vacation-shell {
     display: grid;
-    gap: 0.85rem;
+    gap: 20px;
 }
 
 .vacation-hero {
@@ -40,8 +40,8 @@
 .holiday-panel textarea {
     background: rgba(255, 255, 255, 0.64);
     border: 1px solid rgba(75, 63, 48, 0.14);
-    border-radius: 8px;
-    color: var(--text-primary);
+    border-radius: var(--radius-xs);
+    color: var(--color-heading);
     font: inherit;
     min-height: 42px;
     padding: 0.65rem 0.75rem;
@@ -75,8 +75,8 @@
 
 .year-config-form label span,
 .vacation-form label span {
-    color: var(--text-muted);
-    font-size: 0.82rem;
+    color: var(--color-muted);
+    font-size: var(--text-sm);
     font-weight: 700;
 }
 
@@ -93,8 +93,8 @@
 
 .metric-card span,
 .donut-card span {
-    color: var(--text-muted);
-    font-size: 0.86rem;
+    color: var(--color-muted);
+    font-size: var(--text-md);
     font-weight: 700;
 }
 
@@ -107,12 +107,12 @@
 }
 
 .metric-card small {
-    color: var(--text-soft);
+    color: var(--color-muted);
 }
 
 .metric-card.is-danger strong,
 .donut-card.is-danger strong {
-    color: #a64d3d;
+    color: var(--color-danger);
 }
 
 .donut-card {
@@ -124,7 +124,7 @@
 .vacation-donut {
     aspect-ratio: 1;
     background:
-        radial-gradient(circle, var(--panel-bg, rgba(255,255,255,0.78)) 0 55%, transparent 56%),
+        radial-gradient(circle, var(--surface-panel-solid) 0 55%, transparent 56%),
         conic-gradient(var(--color-accent-strong) calc(var(--usage) * 1%), rgba(124, 112, 92, 0.18) 0);
     border-radius: 50%;
     flex: 0 0 68px;
@@ -151,18 +151,18 @@
 .live-preview {
     background: rgba(127, 145, 107, 0.12);
     border: 1px solid rgba(127, 145, 107, 0.25);
-    border-radius: 8px;
+    border-radius: var(--radius-xs);
     display: grid;
     gap: 0.25rem;
     padding: 0.65rem;
 }
 
 .live-preview strong {
-    font-size: 1.35rem;
+    font-size: var(--text-xl);
 }
 
 .live-preview small {
-    color: var(--text-muted);
+    color: var(--color-muted);
 }
 
 .vacation-list,
@@ -173,9 +173,9 @@
 
 .vacation-item,
 .holiday-list article {
-    background: rgba(255, 255, 255, 0.38);
+    background: var(--surface-control-hover);
     border: 1px solid rgba(75, 63, 48, 0.12);
-    border-radius: 8px;
+    border-radius: var(--radius-xs);
     padding: 0.75rem;
 }
 
@@ -195,24 +195,24 @@
 
 .vacation-item-head span,
 .holiday-list small {
-    color: var(--text-muted);
+    color: var(--color-muted);
     display: block;
-    font-size: 0.82rem;
+    font-size: var(--text-sm);
     margin-top: 0.2rem;
 }
 
 .state-pill {
     background: rgba(158, 177, 182, 0.22);
-    border-radius: 999px;
-    color: var(--text-primary);
-    font-size: 0.76rem;
+    border-radius: var(--radius-pill);
+    color: var(--color-heading);
+    font-size: var(--text-xs);
     font-weight: 800;
     padding: 0.25rem 0.6rem;
     white-space: nowrap;
 }
 
 .state-pill.is-warning {
-    background: rgba(194, 162, 118, 0.22);
+    background: color-mix(in srgb, var(--color-accent) 22%, transparent);
 }
 
 .status-current .state-pill {
@@ -232,8 +232,8 @@
 
 .vacation-facts span,
 .day-chip {
-    border-radius: 999px;
-    font-size: 0.68rem;
+    border-radius: var(--radius-pill);
+    font-size: var(--text-2xs);
     font-weight: 750;
     padding: 0.16rem 0.42rem;
 }
@@ -243,7 +243,7 @@
 }
 
 .overlap-note {
-    color: #a64d3d;
+    color: var(--color-danger);
     font-weight: 700;
 }
 
@@ -265,9 +265,9 @@
 }
 
 .month-stat {
-    background: rgba(255, 255, 255, 0.38);
+    background: var(--surface-control-hover);
     border: 1px solid rgba(75, 63, 48, 0.12);
-    border-radius: 8px;
+    border-radius: var(--radius-xs);
     padding: 12px 14px;
 }
 
@@ -277,15 +277,15 @@
 }
 
 .month-stat span {
-    color: var(--text-muted);
+    color: var(--color-muted);
     display: block;
-    font-size: 0.78rem;
+    font-size: var(--text-xs);
     font-weight: 700;
 }
 
 .month-stat strong {
     display: block;
-    font-size: 1.4rem;
+    font-size: var(--text-2xl);
     margin-top: 4px;
 }
 
@@ -299,16 +299,16 @@
 }
 
 .weekday-label {
-    color: var(--text-muted);
-    font-size: 0.78rem;
+    color: var(--color-muted);
+    font-size: var(--text-xs);
     font-weight: 800;
     text-align: center;
 }
 
 .calendar-day {
-    background: rgba(255, 255, 255, 0.38);
+    background: var(--surface-control-hover);
     border: 1px solid rgba(75, 63, 48, 0.1);
-    border-radius: 8px;
+    border-radius: var(--radius-xs);
     display: grid;
     gap: 0.2rem;
     min-height: 68px;
@@ -336,11 +336,11 @@
 
 .calendar-day.is-today strong {
     align-items: center;
-    background: var(--color-accent-strong);
-    border-radius: 999px;
-    color: #fffaf3;
+    background: var(--color-accent);
+    border-radius: var(--radius-pill);
+    color: var(--color-on-accent);
     display: inline-flex;
-    font-size: 0.8rem;
+    font-size: var(--text-sm);
     height: 22px;
     justify-content: center;
     width: 22px;
@@ -363,7 +363,7 @@
 
 .check-line {
     align-items: center;
-    color: var(--text-muted);
+    color: var(--color-muted);
     display: flex;
     font-weight: 700;
     gap: 0.45rem;
@@ -377,7 +377,7 @@
 .text-danger-button {
     background: transparent;
     border: 0;
-    color: #a64d3d;
+    color: var(--color-danger);
     cursor: pointer;
     font: inherit;
     font-weight: 800;
@@ -407,7 +407,7 @@
 }
 
 .empty-state {
-    color: var(--text-muted);
+    color: var(--color-muted);
     margin: 0;
 }
 
@@ -429,7 +429,7 @@
     background: transparent;
     border: 0;
     border-radius: 0;
-    font-size: 0.95rem;
+    font-size: var(--text-base);
 }
 
 .official-list article.is-disabled {

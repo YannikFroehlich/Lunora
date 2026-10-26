@@ -71,8 +71,10 @@ Do not commit real secrets, API keys, VAPID private keys, uploaded media, privat
 
 ## Production Operations Runbook
 
-The production baseline below was verified on 24 August 2026. Treat it as operational
-context, not as a substitute for checking current state before a deployment. When
+The production baseline below was verified on 24 August 2026. As of 21 October 2026 that
+host no longer exists and nothing is deployed; a new server is planned eventually, so read
+the baseline as the setup to recreate. Treat it as operational context, not as a substitute
+for checking current state before a deployment. When
 guiding the operator interactively, label every instruction with its execution
 location: `Windows PC (PowerShell)`, `Ubuntu server`, or `Cloudflare dashboard`.
 
