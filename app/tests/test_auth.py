@@ -72,7 +72,8 @@ class TurnstileValidationTests(SimpleTestCase):
     def test_fails_closed_when_siteverify_is_unavailable(self, _mocked_urlopen):
         from app.services.turnstile import verify_registration_token
 
-        self.assertFalse(verify_registration_token("valid-token"))
+        with self.assertLogs("app.services.turnstile", "WARNING"):
+            self.assertFalse(verify_registration_token("valid-token"))
 
 
 class TwoFactorTests(TestCase):

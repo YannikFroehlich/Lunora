@@ -1053,6 +1053,12 @@ dialog .glass-panel {
   font-weight: 800;
 }
 
+/* Inline logo (partials/logo_mark.html), drawn in currentColor so it follows the profile accent. */
+.logo-mark {
+  flex: none;
+  color: var(--color-accent);
+}
+
 .auth-brand-logo {
   width: 30px;
   height: 30px;
