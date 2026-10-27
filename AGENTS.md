@@ -51,11 +51,11 @@ New user-gated features should respect the flag system: guard the view with `fea
 
 ## Testing Guidelines
 
-Python tests live in `app/tests.py` and use Django's `TestCase` and test client, grouped into per-area classes. Name test methods with `test_` and focus on observable behavior: redirects, rendered templates, response status codes, context-visible content, JSON payloads, form behavior, and service output. External HTTP is stubbed with local fake response objects patched over the relevant service helper — tests must not reach the network.
+Python tests live in the `app/tests/` package (one `test_<area>.py` module per area, shared fixtures in `helpers.py`) and use Django's `TestCase` and test client, grouped into per-area classes. Name test methods with `test_` and focus on observable behavior: redirects, rendered templates, response status codes, context-visible content, JSON payloads, form behavior, and service output. External HTTP is stubbed with local fake response objects patched over the relevant service helper — tests must not reach the network.
 
 Existing coverage includes settings/profile updates, profile image validation, the iCal subscription feed, manual events and attendee invitations, reminders, tasks, scheduled automations, notification idempotency, detailed channel preferences, Web-Push quiet hours and test delivery, weather map and point endpoints, messaging permissions, unread counts, message actions, read receipts, live update responses, global search, static asset versioning, administration feature flags, dashboard customization, the vacation planner, and the notes workspace including revision conflicts and share roles.
 
-Run a single case with `python manage.py test app.tests.NotesTests.test_stale_revision_returns_conflict_without_overwriting`. Run `python manage.py test`, `ruff check .`, `ruff format --check .`, `npm run lint`, `npm run format:check`, and, when `frontend/` changed, `npm test` and `npm run build` before opening a pull request — CI enforces all of these.
+Run a single case with `python manage.py test app.tests.test_notes.NotesTests.test_stale_revision_returns_conflict_without_overwriting`. Run `python manage.py test`, `ruff check .`, `ruff format --check .`, `npm run lint`, `npm run format:check`, and, when `frontend/` changed, `npm test` and `npm run build` before opening a pull request — CI enforces all of these.
 
 ## Commit & Pull Request Guidelines
 
