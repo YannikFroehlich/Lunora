@@ -1,8 +1,9 @@
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q
 from django.shortcuts import render
+from django.urls import reverse
 
-from app.models import Conversation, Task, VacationPeriod
+from app.models import Conversation, Task, UmlDiagram, VacationPeriod, VocabularyList
 from app.services.note_search import build_snippet, highlight_text, parse_search_query, search_notes
 from app.services.notes import accessible_notes
 from app.services.system_settings import feature_flags
@@ -59,6 +60,15 @@ def _search_shortcuts(flags):
             "url_name": "calendar",
         }
     )
+    if flags["tools"]:
+        shortcuts.append(
+            {
+                "label": "Werkzeuge öffnen",
+                "description": "Vokabeltrainer und UML-Diagramme",
+                "icon": "fa-solid fa-toolbox",
+                "url_name": "tools",
+            }
+        )
     return shortcuts
 
 
@@ -142,8 +152,45 @@ def global_search(request):
             for period in periods
         ]
 
+    tool_results = []
+    if query and flags["tools"]:
+        vocabulary_lists = (
+            VocabularyList.objects.filter(Q(owner=request.user) | Q(shares__user=request.user))
+            .filter(
+                Q(title__icontains=query)
+                | Q(cards__term__icontains=query)
+                | Q(cards__translation__icontains=query)
+            )
+            .distinct()
+            .order_by("-updated_at", "-id")[:SEARCH_RESULT_LIMIT]
+        )
+        tool_results = [
+            {
+                "title": item.title,
+                "subtitle": "Vokabelliste" if item.owner_id == request.user.id else "Geteilte Vokabelliste",
+                "icon": "fa-language",
+                # Shared lists have no detail page for recipients; they are copied from the overview.
+                "url": reverse("vocabulary_list_detail", args=[item.pk])
+                if item.owner_id == request.user.id
+                else reverse("vocabulary_lists"),
+            }
+            for item in vocabulary_lists
+        ]
+        diagrams = UmlDiagram.objects.filter(owner=request.user, title__icontains=query).order_by(
+            "-updated_at", "-id"
+        )[:SEARCH_RESULT_LIMIT]
+        tool_results += [
+            {
+                "title": diagram.title,
+                "subtitle": "UML-Klassendiagramm",
+                "icon": "fa-diagram-project",
+                "url": reverse("uml_diagram_editor", args=[diagram.pk]),
+            }
+            for diagram in diagrams
+        ]
+
     has_search_results = bool(
-        notes_results or message_results or event_results or task_results or vacation_results
+        notes_results or message_results or event_results or task_results or vacation_results or tool_results
     )
 
     return render(
@@ -159,9 +206,11 @@ def global_search(request):
             "event_results": event_results,
             "task_results": task_results,
             "vacation_results": vacation_results,
+            "tool_results": tool_results,
             "notes_enabled": flags["notes"],
             "messages_enabled": flags["messages"],
             "tasks_enabled": flags["tasks"],
             "vacation_planner_enabled": flags["vacation_planner"],
+            "tools_enabled": flags["tools"],
         },
     )

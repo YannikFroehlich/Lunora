@@ -858,6 +858,43 @@ a.tool-card:hover {
   margin-top: 14px;
 }
 
+.vocab-share-list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vocab-share-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.vocab-share-list li i {
+  color: var(--color-muted);
+}
+
+.vocab-details .vocab-share-list form {
+  display: block;
+  margin: 0;
+}
+
+.vocab-section-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 28px 0 0;
+  padding: 8px 14px;
+  color: var(--color-heading);
+  font-size: var(--text-lg);
+  background: var(--surface-panel);
+  border-radius: var(--radius-pill);
+  backdrop-filter: blur(var(--glass-blur));
+}
+
 .vocab-danger-actions {
   display: flex;
   flex-wrap: wrap;

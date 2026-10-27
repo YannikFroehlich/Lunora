@@ -37,6 +37,8 @@ from app.models import (
 class ProfileAdmin(admin.ModelAdmin):
     list_display = ("display_name", "user", "theme", "timezone_name", "updated_at")
     search_fields = ("display_name", "user__username", "user__email")
+    # Clearing "totp_enabled_at" switches a locked-out user's 2FA off; the secrets stay hidden.
+    exclude = ("totp_secret", "totp_last_step", "totp_recovery_codes")
 
 
 @admin.register(SystemSettings)

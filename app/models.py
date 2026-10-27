@@ -117,6 +117,13 @@ class Profile(models.Model):
     weather_default_city = models.CharField(max_length=120, blank=True, default="Bünde,de")
     # Secret for the public iCal subscription URL; null until the user creates a link.
     calendar_feed_token = models.CharField(max_length=64, blank=True, null=True, unique=True)
+    # TOTP two-factor login (app/services/two_factor.py); active while totp_enabled_at is set.
+    totp_secret = models.CharField(max_length=64, blank=True)
+    totp_enabled_at = models.DateTimeField(blank=True, null=True)
+    # Last accepted time step, so a code cannot be replayed within its validity window.
+    totp_last_step = models.BigIntegerField(blank=True, null=True)
+    # SHA-256 hashes of the unused one-time recovery codes.
+    totp_recovery_codes = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -651,6 +658,24 @@ class VocabularyCard(models.Model):
 
     def __str__(self):
         return f"{self.term} – {self.translation}"
+
+
+class VocabularyListShare(models.Model):
+    # Read-only: recipients copy a shared list to practice it, because Leitner progress lives on the cards.
+    vocabulary_list = models.ForeignKey(VocabularyList, on_delete=models.CASCADE, related_name="shares")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="shared_vocabulary_lists"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(fields=["vocabulary_list", "user"], name="unique_vocabulary_share"),
+        ]
+
+    def __str__(self):
+        return f"{self.user} – {self.vocabulary_list}"
 
 
 class UserNotification(models.Model):

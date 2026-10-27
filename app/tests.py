@@ -5,9 +5,10 @@ import os
 import re
 import sys
 import uuid
+import zipfile
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
-from io import StringIO
+from io import BytesIO, StringIO
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -60,12 +61,14 @@ from app.models import (
     VacationYear,
     VocabularyCard,
     VocabularyList,
+    VocabularyListShare,
     WeatherLocation,
     WebPushDelivery,
     WebPushSubscription,
     WeeklySummaryDelivery,
     timezone_choices,
 )
+from app.services import two_factor
 from app.services.dashboard import DASHBOARD_WIDGET_IDS, default_dashboard_layout, normalize_dashboard_layout
 from app.services.image_uploads import PROFILE_IMAGE_MAX_BYTES
 from app.services.note_content import NOTE_TEMPLATES, empty_note_document, validate_note_document
@@ -1193,13 +1196,14 @@ class SettingsProfileTests(TestCase):
         response = self.client.get("/settings/")
 
         self.assertContains(response, 'role="tablist"')
-        self.assertContains(response, "data-settings-tab=", count=6)
+        self.assertContains(response, "data-settings-tab=", count=7)
         self.assertContains(response, 'data-settings-panel="appearance"')
         self.assertContains(response, 'data-settings-panel="profile"', count=2)
         self.assertContains(response, 'data-settings-panel="calendar"')
         self.assertContains(response, 'data-settings-panel="notifications"')
         self.assertContains(response, 'data-settings-panel="weather"')
         self.assertContains(response, 'data-settings-panel="app"')
+        self.assertContains(response, 'data-settings-panel="security"', count=2)
         self.assertContains(response, "Sprache &amp; Region speichern")
         self.assertContains(response, 'name="form_name" value="calendar_feed_reset"')
         self.assertContains(response, 'name="form_name" value="appearance"')
@@ -8817,3 +8821,303 @@ class VocabularyTrainerTests(TestCase):
         self.assertEqual(self.client.get("/tools/vocabulary/").status_code, 503)
         card = VocabularyCard.objects.create(vocabulary_list=self.vocabulary_list, term="a", translation="b")
         self.assertEqual(self._review(card, {"correct": True}).status_code, 503)
+
+
+class VocabularySharingTests(TestCase):
+    def setUp(self):
+        self.lea = User.objects.create_user(username="lea", email="lea@example.com", password="pw-12345!")
+        self.tom = User.objects.create_user(username="tom", email="tom@example.com", password="pw-12345!")
+        self.vocabulary_list = VocabularyList.objects.create(owner=self.lea, title="Unit 3")
+        VocabularyCard.objects.create(
+            vocabulary_list=self.vocabulary_list, term="house", translation="Haus", box=4, correct_count=3
+        )
+        self.detail_url = f"/tools/vocabulary/{self.vocabulary_list.pk}/"
+
+    def test_owner_shares_by_email_or_username_and_removes_share(self):
+        self.client.login(username="lea", password="pw-12345!")
+
+        self.client.post(self.detail_url, {"form_name": "vocab_share_add", "recipient": "TOM@example.com"})
+        self.assertTrue(
+            VocabularyListShare.objects.filter(vocabulary_list=self.vocabulary_list, user=self.tom)
+        )
+        response = self.client.get(self.detail_url)
+        self.assertEqual(response.context["shares"][0]["user_id"], self.tom.pk)
+
+        self.client.post(self.detail_url, {"form_name": "vocab_share_remove", "user_id": self.tom.pk})
+        self.assertFalse(VocabularyListShare.objects.exists())
+
+    def test_share_rejects_self_unknown_and_duplicate_recipients(self):
+        self.client.login(username="lea", password="pw-12345!")
+        for recipient in ("lea", "niemand@example.com", ""):
+            response = self.client.post(
+                self.detail_url, {"form_name": "vocab_share_add", "recipient": recipient}, follow=True
+            )
+            self.assertEqual(list(response.context["messages"])[0].level_tag, "error")
+        self.client.post(self.detail_url, {"form_name": "vocab_share_add", "recipient": "tom"})
+        response = self.client.post(
+            self.detail_url, {"form_name": "vocab_share_add", "recipient": "tom"}, follow=True
+        )
+        self.assertIn("bereits geteilt", str(list(response.context["messages"])[-1]))
+        self.assertEqual(VocabularyListShare.objects.count(), 1)
+
+    def test_recipient_sees_list_read_only_and_copies_it_with_fresh_progress(self):
+        VocabularyListShare.objects.create(vocabulary_list=self.vocabulary_list, user=self.tom)
+        self.client.login(username="tom", password="pw-12345!")
+
+        overview = self.client.get("/tools/vocabulary/")
+        self.assertEqual(overview.context["shared_lists"][0]["title"], "Unit 3")
+        self.assertEqual(self.client.get(self.detail_url).status_code, 404)
+        self.client.post(self.detail_url, {"form_name": "vocab_share_add", "recipient": "tom"})
+
+        response = self.client.post(
+            "/tools/vocabulary/", {"form_name": "vocab_list_copy", "list_id": self.vocabulary_list.pk}
+        )
+        copy = VocabularyList.objects.get(owner=self.tom)
+        self.assertRedirects(response, f"/tools/vocabulary/{copy.pk}/")
+        card = copy.cards.get()
+        self.assertEqual((card.term, card.translation, card.box, card.correct_count), ("house", "Haus", 1, 0))
+        self.assertEqual(self.vocabulary_list.cards.get().box, 4)
+
+    def test_only_shared_lists_can_be_copied_and_recipient_can_leave(self):
+        self.client.login(username="tom", password="pw-12345!")
+        response = self.client.post(
+            "/tools/vocabulary/", {"form_name": "vocab_list_copy", "list_id": self.vocabulary_list.pk}
+        )
+        self.assertEqual(response.status_code, 404)
+
+        VocabularyListShare.objects.create(vocabulary_list=self.vocabulary_list, user=self.tom)
+        self.client.post(
+            "/tools/vocabulary/", {"form_name": "vocab_share_leave", "list_id": self.vocabulary_list.pk}
+        )
+        self.assertFalse(VocabularyListShare.objects.exists())
+        self.assertTrue(VocabularyList.objects.filter(pk=self.vocabulary_list.pk).exists())
+
+
+class GlobalSearchToolTests(TestCase):
+    def setUp(self):
+        self.mira = User.objects.create_user(username="mira", email="mira@example.com", password="pw-12345!")
+        self.lukas = User.objects.create_user(
+            username="lukas", email="lukas@example.com", password="pw-12345!"
+        )
+        self.client.login(username="mira", password="pw-12345!")
+
+    def test_search_finds_own_and_shared_vocabulary_and_own_diagrams(self):
+        own = VocabularyList.objects.create(owner=self.mira, title="Unit 5")
+        VocabularyCard.objects.create(vocabulary_list=own, term="rocket", translation="Rakete")
+        shared = VocabularyList.objects.create(owner=self.lukas, title="Raketen-Vokabeln")
+        VocabularyListShare.objects.create(vocabulary_list=shared, user=self.mira)
+        VocabularyList.objects.create(owner=self.lukas, title="Rakete privat")
+        diagram = UmlDiagram.objects.create(owner=self.mira, title="Raketensteuerung")
+        UmlDiagram.objects.create(owner=self.lukas, title="Rakete fremd")
+
+        results = self.client.get("/search/?q=rakete").context["tool_results"]
+
+        by_title = {item["title"]: item for item in results}
+        self.assertEqual(set(by_title), {"Unit 5", "Raketen-Vokabeln", "Raketensteuerung"})
+        self.assertEqual(by_title["Unit 5"]["url"], f"/tools/vocabulary/{own.pk}/")
+        self.assertEqual(by_title["Raketen-Vokabeln"]["url"], "/tools/vocabulary/")
+        self.assertEqual(by_title["Raketensteuerung"]["url"], f"/tools/uml/{diagram.pk}/")
+
+    def test_search_skips_tools_when_flag_is_off(self):
+        VocabularyList.objects.create(owner=self.mira, title="Rakete")
+        SystemSettings.objects.update_or_create(pk=1, defaults={"tools_enabled": False})
+
+        response = self.client.get("/search/?q=rakete")
+
+        self.assertEqual(response.context["tool_results"], [])
+        self.assertNotContains(response, "Werkzeuge öffnen")
+
+
+class DataExportTests(TestCase):
+    def setUp(self):
+        self.lea = User.objects.create_user(username="lea", email="lea@example.com", password="pw-12345!")
+        self.tom = User.objects.create_user(username="tom", email="tom@example.com", password="pw-12345!")
+        Profile.objects.create(user=self.lea, display_name="Lea", calendar_feed_token="geheimer-token")
+
+    def _download(self):
+        response = self.client.get("/settings/export/")
+        try:
+            content = b"".join(response.streaming_content)
+        finally:
+            response.close()
+        return response, zipfile.ZipFile(BytesIO(content))
+
+    def test_export_requires_login(self):
+        self.assertRedirects(self.client.get("/settings/export/"), "/login/?next=/settings/export/")
+
+    def test_export_contains_own_data_and_attachments_only(self):
+        note = Note.objects.create(owner=self.lea, title="Mathe", plain_text="Integrale")
+        NoteAttachment.objects.create(
+            note=note,
+            uploaded_by=self.lea,
+            file=SimpleUploadedFile("../formel.txt", b"e=mc2"),
+            kind=NoteAttachment.KIND_FILE,
+            original_name="../formel.txt",
+            content_type="text/plain",
+            size=5,
+        )
+        Note.objects.create(owner=self.tom, title="Toms Notiz")
+        Task.objects.create(user=self.lea, title="Hausaufgaben")
+        vocabulary_list = VocabularyList.objects.create(owner=self.lea, title="Unit 3")
+        VocabularyCard.objects.create(vocabulary_list=vocabulary_list, term="house", translation="Haus")
+        UmlDiagram.objects.create(owner=self.lea, title="Klassen")
+        conversation = Conversation.objects.create(created_by=self.lea)
+        ConversationMember.objects.create(conversation=conversation, user=self.lea)
+        ConversationMember.objects.create(conversation=conversation, user=self.tom)
+        ChatMessage.objects.create(conversation=conversation, sender=self.lea, body="Hallo Tom")
+        ChatMessage.objects.create(conversation=conversation, sender=self.tom, body="Antwort von Tom")
+        self.client.login(username="lea", password="pw-12345!")
+
+        response, archive = self._download()
+
+        self.assertEqual(response["Content-Type"], "application/zip")
+        self.assertIn("lunora-export-lea-", response["Content-Disposition"])
+        self.assertEqual(response["Cache-Control"], "private, no-store")
+        names = archive.namelist()
+        self.assertIn(f"notizen/{note.pk}-mathe.md", names)
+        attachment_path = next(name for name in names if name.startswith("notizen/anhaenge/"))
+        self.assertTrue(attachment_path.endswith("-formel.txt"))
+        self.assertNotIn("..", attachment_path)
+        self.assertEqual(archive.read(attachment_path), b"e=mc2")
+        self.assertTrue(any(name.startswith("uml/") for name in names))
+
+        notes = json.loads(archive.read("notizen.json"))
+        self.assertEqual([item["title"] for item in notes["notes"]], ["Mathe"])
+        self.assertEqual(json.loads(archive.read("aufgaben.json"))["tasks"][0]["title"], "Hausaufgaben")
+        self.assertEqual(json.loads(archive.read("vokabeln.json"))[0]["cards"][0]["term"], "house")
+        messages = json.loads(archive.read("nachrichten.json"))
+        self.assertEqual([item["body"] for item in messages], ["Hallo Tom"])
+        account = archive.read("konto.json").decode("utf-8")
+        self.assertIn('"display_name": "Lea"', account)
+        self.assertNotIn("geheimer-token", account)
+
+
+class TwoFactorTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(username="lea", email="lea@example.com", password="pw-12345!")
+        self.profile = Profile.objects.create(user=self.user, display_name="Lea")
+
+    def _enable(self):
+        secret = two_factor.generate_secret()
+        codes = two_factor.enable(
+            self.profile, secret, two_factor.totp_code(secret, two_factor.current_step())
+        )
+        # Forget the setup step so the current code can be used for a login.
+        self.profile.totp_last_step = None
+        self.profile.save(update_fields=["totp_last_step"])
+        return secret, codes
+
+    def _password_step(self, next_url=""):
+        url = f"/login/?next={next_url}" if next_url else "/login/"
+        return self.client.post(url, {"username": "lea@example.com", "password": "pw-12345!"})
+
+    def test_totp_matches_rfc_6238_test_vector(self):
+        secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"  # base32 of "12345678901234567890"
+        self.assertEqual(two_factor.totp_code(secret, 1), "287082")
+        self.assertEqual(two_factor.matching_step(secret, "287 082", now=59), 1)
+        self.assertIsNone(two_factor.matching_step(secret, "287082", now=59, after_step=1))
+        self.assertIsNone(two_factor.matching_step(secret, "abcdef", now=59))
+
+    def test_qr_code_is_a_compact_svg(self):
+        svg = two_factor.qr_code_svg(two_factor.provisioning_uri(self.user, two_factor.generate_secret()))
+        self.assertTrue(svg.startswith("<svg"))
+        self.assertLess(len(svg), 30_000)
+
+    def test_setup_in_settings_requires_a_valid_code_and_shows_recovery_codes_once(self):
+        self.client.login(username="lea", password="pw-12345!")
+        self.client.post("/settings/", {"form_name": "two_factor_setup"})
+        secret = self.client.session["two_factor_setup_secret"]
+        response = self.client.get("/settings/")
+        self.assertContains(response, secret)
+        self.assertContains(response, "<svg")
+
+        self.client.post("/settings/", {"form_name": "two_factor_enable", "code": "000000"})
+        self.profile.refresh_from_db()
+        self.assertIsNone(self.profile.totp_enabled_at)
+
+        code = two_factor.totp_code(secret, two_factor.current_step())
+        response = self.client.post(
+            "/settings/", {"form_name": "two_factor_enable", "code": code}, follow=True
+        )
+        self.profile.refresh_from_db()
+        self.assertIsNotNone(self.profile.totp_enabled_at)
+        self.assertEqual(len(response.context["two_factor_new_codes"]), two_factor.RECOVERY_CODE_COUNT)
+        self.assertEqual(len(self.profile.totp_recovery_codes), two_factor.RECOVERY_CODE_COUNT)
+        self.assertNotIn(response.context["two_factor_new_codes"][0], self.profile.totp_recovery_codes)
+        self.assertIsNone(self.client.get("/settings/").context["two_factor_new_codes"])
+
+    def test_login_without_two_factor_is_unchanged(self):
+        response = self._password_step()
+        self.assertRedirects(response, "/home/", fetch_redirect_response=False)
+        self.assertIn("_auth_user_id", self.client.session)
+
+    def test_login_requires_code_and_rejects_replay(self):
+        secret, _codes = self._enable()
+
+        response = self._password_step(next_url="/notes/")
+        self.assertRedirects(response, "/login/zwei-faktor/")
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+        code = two_factor.totp_code(secret, two_factor.current_step())
+        response = self.client.post("/login/zwei-faktor/", {"code": code})
+        self.assertRedirects(response, "/notes/", fetch_redirect_response=False)
+        self.assertEqual(self.client.session["_auth_user_id"], str(self.user.pk))
+
+        self.client.logout()
+        self._password_step()
+        response = self.client.post("/login/zwei-faktor/", {"code": code})
+        self.assertContains(response, "bereits verwendet")
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_recovery_code_works_exactly_once(self):
+        _secret, codes = self._enable()
+
+        self._password_step()
+        self.client.post("/login/zwei-faktor/", {"code": codes[0].upper()})
+        self.assertIn("_auth_user_id", self.client.session)
+        self.profile.refresh_from_db()
+        self.assertEqual(len(self.profile.totp_recovery_codes), two_factor.RECOVERY_CODE_COUNT - 1)
+
+        self.client.logout()
+        self._password_step()
+        self.client.post("/login/zwei-faktor/", {"code": codes[0]})
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_wrong_codes_lock_the_account_across_login_attempts(self):
+        secret, _codes = self._enable()
+        for _ in range(5):
+            self._password_step()
+            self.client.post("/login/zwei-faktor/", {"code": "000000"})
+
+        self._password_step()
+        code = two_factor.totp_code(secret, two_factor.current_step())
+        response = self.client.post("/login/zwei-faktor/", {"code": code})
+
+        self.assertContains(response, "Zu viele falsche Codes")
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_code_page_without_password_step_redirects_to_login(self):
+        self.assertRedirects(self.client.get("/login/zwei-faktor/"), "/login/")
+
+    def test_admin_login_goes_through_lunora_login(self):
+        response = self.client.get("/admin/login/?next=/admin/")
+        self.assertRedirects(response, "/login/?next=/admin/", fetch_redirect_response=False)
+
+    def test_disable_and_new_recovery_codes_require_password(self):
+        _secret, codes = self._enable()
+        self.client.force_login(self.user)
+
+        self.client.post("/settings/", {"form_name": "two_factor_disable", "password": "falsch"})
+        self.profile.refresh_from_db()
+        self.assertIsNotNone(self.profile.totp_enabled_at)
+
+        response = self.client.post(
+            "/settings/", {"form_name": "two_factor_recovery_codes", "password": "pw-12345!"}, follow=True
+        )
+        self.assertNotIn(codes[0], response.context["two_factor_new_codes"])
+
+        self.client.post("/settings/", {"form_name": "two_factor_disable", "password": "pw-12345!"})
+        self.profile.refresh_from_db()
+        self.assertIsNone(self.profile.totp_enabled_at)
+        self.assertEqual((self.profile.totp_secret, self.profile.totp_recovery_codes), ("", []))

@@ -1,0 +1,30 @@
+{% extends 'app/base.html' %}
+
+{% block title %}Bestätigungscode | Lunora{% endblock %}
+
+{% block content %}
+<section class="auth-shell">
+    <div class="glass-panel auth-panel">
+        <div class="auth-brand">
+            <i class="fa-solid fa-seedling"></i>
+            <span>Lunora</span>
+        </div>
+        <h1>Bestätigungscode</h1>
+        <p>Gib den 6-stelligen Code aus deiner Authenticator-App ein. Kein Zugriff auf die App? Dann nutze einen deiner Wiederherstellungscodes.</p>
+
+        <form class="auth-form" method="post">
+            {% csrf_token %}
+            {% if error %}
+            <div class="form-errors">{{ error }}</div>
+            {% endif %}
+
+            <label class="field-label" for="two-factor-code">Code</label>
+            <input id="two-factor-code" type="text" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="20" autofocus required>
+
+            <button class="primary-button auth-submit" type="submit">Bestätigen</button>
+        </form>
+
+        <p class="auth-switch"><a href="{% url 'login' %}">Zurück zur Anmeldung</a></p>
+    </div>
+</section>
+{% endblock %}

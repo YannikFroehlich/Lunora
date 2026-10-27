@@ -74,5 +74,36 @@
         <p>Lege oben deine erste Liste an, z. B. für die aktuelle Unit im Englischbuch.</p>
     </div>
     {% endif %}
+
+    {% if shared_lists %}
+    <h2 class="vocab-section-title"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i> Mit dir geteilt</h2>
+    <ul class="uml-diagram-list">
+        {% for item in shared_lists %}
+        <li class="glass-panel uml-diagram-card">
+            <div class="uml-diagram-link">
+                <span class="tool-card-icon" aria-hidden="true"><i class="fa-solid fa-language"></i></span>
+                <span>
+                    <strong>{{ item.title }}</strong>
+                    <small>von {{ item.owner_name }} · {{ item.languages }} · {{ item.card_count }} Vokabel(n)</small>
+                </span>
+            </div>
+            <div class="uml-diagram-actions">
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="vocab_list_copy">
+                    <input type="hidden" name="list_id" value="{{ item.id }}">
+                    <button class="ghost-button" type="submit"><i class="fa-regular fa-copy" aria-hidden="true"></i> Übernehmen</button>
+                </form>
+                <form method="post" data-confirm="Diese geteilte Liste ausblenden?">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="vocab_share_leave">
+                    <input type="hidden" name="list_id" value="{{ item.id }}">
+                    <button class="icon-button" type="submit" aria-label="„{{ item.title }}“ ausblenden" title="Ausblenden"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                </form>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
 </section>
 {% endblock %}

@@ -1,13 +1,15 @@
 import json
+import tempfile
 from urllib.parse import urlencode, urlparse, urlunparse
 
 from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
-from django.http import JsonResponse
+from django.http import FileResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.utils.safestring import mark_safe
 from django.views.decorators.http import require_http_methods
 
 from app.forms import (
@@ -19,8 +21,10 @@ from app.forms import (
     WeatherPreferencesForm,
 )
 from app.models import Profile
+from app.services import two_factor
 from app.services.calendar_service import disable_calendar_feed, reset_calendar_feed_token
 from app.services.dashboard import normalize_dashboard_layout, validate_dashboard_layout
+from app.services.data_export import export_filename, write_user_export
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.view_models import get_dashboard_context, get_settings_context
 
@@ -79,7 +83,7 @@ def get_safe_settings_return_url(request):
 
 
 def _settings_section_url(section, return_to):
-    allowed_sections = {"appearance", "profile", "calendar", "notifications", "weather", "app"}
+    allowed_sections = {"appearance", "profile", "calendar", "notifications", "weather", "security", "app"}
     if section not in allowed_sections:
         raise ValueError(f"Unknown settings section: {section}")
     query = urlencode({"next": return_to})
@@ -193,7 +197,12 @@ def settings(request):
             weather_form.save()
             django_messages.success(request, "Wettereinstellungen gespeichert.")
             return redirect(_settings_section_url("weather", return_to))
+    elif form_name.startswith("two_factor_"):
+        _handle_two_factor_form(request, profile, form_name)
+        return redirect(_settings_section_url("security", return_to))
 
+    setup_secret = request.session.get(TWO_FACTOR_SETUP_SESSION_KEY) if not profile.totp_enabled_at else None
+    setup_uri = two_factor.provisioning_uri(request.user, setup_secret) if setup_secret else ""
     calendar_feed_url = (
         request.build_absolute_uri(reverse("calendar_feed", args=[profile.calendar_feed_token]))
         if profile.calendar_feed_token
@@ -212,6 +221,62 @@ def settings(request):
             "weather_form": weather_form,
             "return_to": return_to,
             "calendar_feed_enabled": calendar_feed_enabled,
+            "two_factor_enabled": bool(profile.totp_enabled_at),
+            "two_factor_recovery_remaining": len(profile.totp_recovery_codes),
+            "two_factor_setup_secret": setup_secret,
+            "two_factor_setup_uri": setup_uri,
+            # The SVG is generated server-side from our own URI, never from user input.
+            "two_factor_setup_qr": mark_safe(two_factor.qr_code_svg(setup_uri)) if setup_uri else "",
+            "two_factor_new_codes": request.session.pop(TWO_FACTOR_NEW_CODES_SESSION_KEY, None),
         }
     )
     return render(request, "app/settings.html", context)
+
+
+TWO_FACTOR_SETUP_SESSION_KEY = "two_factor_setup_secret"
+TWO_FACTOR_NEW_CODES_SESSION_KEY = "two_factor_new_codes"
+
+
+def _handle_two_factor_form(request, profile, form_name):
+    session = request.session
+    if form_name == "two_factor_setup" and not profile.totp_enabled_at:
+        session[TWO_FACTOR_SETUP_SESSION_KEY] = two_factor.generate_secret()
+    elif form_name == "two_factor_cancel":
+        session.pop(TWO_FACTOR_SETUP_SESSION_KEY, None)
+    elif form_name == "two_factor_enable" and session.get(TWO_FACTOR_SETUP_SESSION_KEY):
+        codes = two_factor.enable(
+            profile, session[TWO_FACTOR_SETUP_SESSION_KEY], request.POST.get("code", "")
+        )
+        if codes is None:
+            django_messages.error(
+                request, "Der Code stimmt nicht. Prüfe die Uhrzeit deines Handys und versuche es erneut."
+            )
+            return
+        session.pop(TWO_FACTOR_SETUP_SESSION_KEY, None)
+        session[TWO_FACTOR_NEW_CODES_SESSION_KEY] = codes
+        django_messages.success(request, "Zwei-Faktor-Anmeldung aktiviert.")
+    elif form_name in {"two_factor_disable", "two_factor_recovery_codes"} and profile.totp_enabled_at:
+        # Re-entering the password keeps someone at an unlocked, signed-in device from switching 2FA off.
+        if not request.user.check_password(request.POST.get("password", "")):
+            django_messages.error(request, "Das Passwort ist falsch.")
+        elif form_name == "two_factor_disable":
+            two_factor.disable(profile)
+            django_messages.success(request, "Zwei-Faktor-Anmeldung deaktiviert.")
+        else:
+            session[TWO_FACTOR_NEW_CODES_SESSION_KEY] = two_factor.regenerate_recovery_codes(profile)
+            django_messages.success(
+                request, "Neue Wiederherstellungscodes erstellt. Die alten gelten nicht mehr."
+            )
+
+
+@login_required
+def data_export(request):
+    # A temporary file keeps memory flat even when notes carry large attachments.
+    archive = tempfile.TemporaryFile()
+    write_user_export(request.user, archive)
+    archive.seek(0)
+    response = FileResponse(
+        archive, as_attachment=True, filename=export_filename(request.user), content_type="application/zip"
+    )
+    response["Cache-Control"] = "private, no-store"
+    return response

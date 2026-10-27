@@ -5,10 +5,11 @@ from .auth_views import (
     LunoraPasswordResetConfirmView,
     LunoraPasswordResetDoneView,
     LunoraPasswordResetView,
+    login_two_factor,
     register,
 )
 from .calendar_views import calendar, calendar_feed
-from .core_views import dashboard_layout_update, home, settings
+from .core_views import dashboard_layout_update, data_export, home, settings
 from .message_views import chat_attachment_download, chat_typing_ping, messages, messages_live_updates
 from .note_views import (
     note_action_api,
@@ -78,6 +79,7 @@ __all__ = [
     "administration",
     "home",
     "dashboard_layout_update",
+    "data_export",
     "messages",
     "messages_live_updates",
     "chat_typing_ping",
@@ -140,6 +142,7 @@ __all__ = [
     "official_holiday_override_reset",
     "LunoraLoginView",
     "LunoraPasswordResetView",
+    "login_two_factor",
     "LunoraPasswordResetDoneView",
     "LunoraPasswordResetConfirmView",
     "LunoraPasswordResetCompleteView",
