@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- The Lunora logo on the dashboard and the sign-in pages follows your accent color (and a
+  dashboard widget's own color) instead of always staying sand-colored.
 - The calendar is no longer school-specific: event categories are now Termin, Meeting, Deadline,
   Privat and Sonstiges, and new events start as "Termin". Existing Klassenarbeiten, Tests and
   Referate become "Termin", Abgaben become "Deadline". Open tasks with a due date now also appear
