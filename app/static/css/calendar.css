@@ -834,6 +834,36 @@ button.event-chip {
   }
 }
 
+.event-chip.task-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--surface-control);
+}
+
+.task-chip input {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  margin: 0;
+}
+
+.task-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 760px) {
+  .event-chip.task-chip {
+    box-shadow: inset 0 0 0 1px var(--color-muted);
+  }
+
+  .task-chip input,
+  .task-chip span {
+    display: none;
+  }
+}
+
 .event-chip.is-invited {
   display: flex;
   align-items: center;

@@ -779,7 +779,7 @@ class _CalendarEventDateTimeForm(forms.Form):
         max_length=255,
         widget=forms.TextInput(
             attrs={
-                "placeholder": "z. B. Mathe-Klassenarbeit",
+                "placeholder": "z. B. Zahnarzttermin",
                 "autocomplete": "off",
                 "autofocus": True,
             }
@@ -806,7 +806,7 @@ class _CalendarEventDateTimeForm(forms.Form):
     category = forms.ChoiceField(
         label="Kategorie",
         choices=CalendarEvent.CATEGORY_CHOICES,
-        initial=CalendarEvent.CATEGORY_OTHER,
+        initial=CalendarEvent.CATEGORY_APPOINTMENT,
         required=False,
     )
     location = forms.CharField(

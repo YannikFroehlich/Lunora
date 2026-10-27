@@ -1,6 +1,8 @@
+import importlib
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from django.apps import apps as django_apps
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.utils import timezone
@@ -56,8 +58,10 @@ class CalendarFeedTests(TestCase):
         )
         Profile.objects.create(user=other, display_name="Lukas")
         start_at = timezone.now() + timedelta(days=3)
-        own = self.create_event(self.user, "Mathe", start_at, category=CalendarEvent.CATEGORY_EXAM)
-        accepted = self.create_event(other, "Gemeinsames Referat", start_at)
+        own = self.create_event(
+            self.user, "Quartalsplanung", start_at, category=CalendarEvent.CATEGORY_MEETING
+        )
+        accepted = self.create_event(other, "Gemeinsames Essen", start_at)
         declined = self.create_event(other, "Abgesagtes Treffen", start_at)
         pending = self.create_event(other, "Offene Einladung", start_at)
         self.create_event(other, "Fremder Termin", start_at)
@@ -73,9 +77,10 @@ class CalendarFeedTests(TestCase):
         body = self.client.get(self.feed_url).content.decode("utf-8")
 
         self.assertIn(f"UID:lunora-event-{own.id}\r\n", body)
-        self.assertIn("SUMMARY:[Klassenarbeit] Mathe\r\n", body)
-        self.assertIn("CATEGORIES:Klassenarbeit\r\n", body)
-        self.assertIn("SUMMARY:Gemeinsames Referat\r\n", body)
+        self.assertIn("SUMMARY:[Meeting] Quartalsplanung\r\n", body)
+        self.assertIn("CATEGORIES:Meeting\r\n", body)
+        self.assertIn("SUMMARY:Gemeinsames Essen\r\n", body)
+        self.assertIn("CATEGORIES:Termin\r\n", body)
         self.assertEqual(body.count("BEGIN:VEVENT"), 2)
         for title in ("Abgesagtes Treffen", "Offene Einladung", "Fremder Termin", "Uralt"):
             self.assertNotIn(title, body)
@@ -88,7 +93,7 @@ class CalendarFeedTests(TestCase):
             start_at,
             location="Raum 1\nNeubau",
             description="ä" * 60,
-            category=CalendarEvent.CATEGORY_TEST,
+            category=CalendarEvent.CATEGORY_PERSONAL,
         )
         all_day_start = timezone.make_aware(datetime(2099, 3, 5), ZoneInfo("Europe/Berlin"))
         self.create_event(
@@ -103,11 +108,35 @@ class CalendarFeedTests(TestCase):
         body = self.client.get(self.feed_url).content.decode("utf-8")
 
         self.assertIn("DTSTART:20990302T071500Z\r\nDTEND:20990302T081500Z\r\n", body)
-        self.assertIn("SUMMARY:[Test] Physik\\; Kapitel 3\\, Optik\r\n", body)
+        self.assertIn("SUMMARY:[Privat] Physik\\; Kapitel 3\\, Optik\r\n", body)
         self.assertIn("LOCATION:Raum 1\\nNeubau\r\n", body)
         self.assertIn("DTSTART;VALUE=DATE:20990305\r\nDTEND;VALUE=DATE:20990306\r\n", body)
-        self.assertIn("SUMMARY:[Abgabe] Projektabgabe\r\n", body)
+        self.assertIn("SUMMARY:[Deadline] Projektabgabe\r\n", body)
         for line in body.split("\r\n"):
             self.assertLessEqual(len(line.encode("utf-8")), 75, line)
         unfolded = body.replace("\r\n ", "")
         self.assertIn("DESCRIPTION:" + "ä" * 60 + "\r\n", unfolded)
+
+
+class CalendarCategoryMigrationTests(TestCase):
+    def test_school_categories_become_appointments(self):
+        migration = importlib.import_module("app.migrations.0052_general_calendar_categories")
+        user = User.objects.create_user(username="mira", password="secret-12345")
+        start_at = timezone.now()
+        for category in ("exam", "test", "presentation", "deadline", "other"):
+            CalendarEvent.objects.create(
+                user=user, title=category, category=category, start_at=start_at, end_at=start_at
+            )
+
+        migration.map_school_categories(django_apps, None)
+
+        self.assertEqual(
+            dict(CalendarEvent.objects.values_list("title", "category")),
+            {
+                "exam": "appointment",
+                "test": "appointment",
+                "presentation": "appointment",
+                "deadline": "deadline",
+                "other": "other",
+            },
+        )

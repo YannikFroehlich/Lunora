@@ -96,7 +96,8 @@ def build_calendar_feed(user, *, calendar_name, now=None):
 def _ics_event_lines(event):
     category_label = event.get_category_display()
     summary = event.title
-    if event.category != CalendarEvent.CATEGORY_OTHER:
+    # Plain appointments and "other" need no label; Google Calendar ignores CATEGORIES.
+    if event.category not in (CalendarEvent.CATEGORY_APPOINTMENT, CalendarEvent.CATEGORY_OTHER):
         summary = f"[{category_label}] {summary}"
     lines = [
         "BEGIN:VEVENT",

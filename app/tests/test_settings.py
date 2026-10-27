@@ -5,6 +5,7 @@ from datetime import datetime, time, timedelta
 from io import BytesIO
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 from django.contrib.auth.models import User
 from django.core import mail
@@ -851,7 +852,7 @@ class SettingsProfileTests(TestCase):
         response = self.client.get("/calendar/")
 
         self.assertEqual(response.status_code, 200)
-        for label in ("Klassenarbeit", "Test", "Referat", "Abgabe", "Sonstiges"):
+        for label in ("Termin", "Meeting", "Deadline", "Privat", "Sonstiges"):
             with self.subTest(label=label):
                 self.assertContains(response, f"<strong>{label}</strong>")
         self.assertContains(response, "/settings/?next=/calendar/#settings-calendar")
@@ -879,7 +880,7 @@ class SettingsProfileTests(TestCase):
         start_at = timezone.make_aware(datetime(2026, 7, 8, 9, 0))
         CalendarEvent.objects.create(
             user=user,
-            category=CalendarEvent.CATEGORY_EXAM,
+            category=CalendarEvent.CATEGORY_DEADLINE,
             title="Design Review",
             start_at=start_at,
             end_at=start_at + timedelta(hours=1),
@@ -1279,7 +1280,7 @@ class SettingsProfileTests(TestCase):
                 "start_time": "09:00",
                 "end_time": "10:00",
                 "location": "Neues Büro",
-                "category": "presentation",
+                "category": "meeting",
                 "attendees": [str(invitee.id)],
             },
         )
@@ -1287,7 +1288,7 @@ class SettingsProfileTests(TestCase):
         self.assertRedirects(response, "/calendar/")
         event.refresh_from_db()
         self.assertEqual(event.title, "Neuer Titel")
-        self.assertEqual(event.category, CalendarEvent.CATEGORY_PRESENTATION)
+        self.assertEqual(event.category, CalendarEvent.CATEGORY_MEETING)
         self.assertEqual(event.location, "Neues Büro")
         self.assertTrue(CalendarEventAttendee.objects.filter(event=event, user=invitee).exists())
 
@@ -1368,6 +1369,60 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(due_task_titles, {"Heute fällig", "Überfällig"})
         self.assertContains(response, "Fällige Aufgaben")
 
+    def test_calendar_month_grid_shows_open_tasks_on_their_local_due_date(self):
+        user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=user, display_name="Mira", timezone_name="Europe/Berlin")
+        other = User.objects.create_user(
+            username="lukas@example.com", email="lukas@example.com", password="secret-12345"
+        )
+        berlin = ZoneInfo("Europe/Berlin")
+        # 23:30 in Berlin is already the next day in UTC; the chip must stay on the local date.
+        late_task = Task.objects.create(
+            user=user, title="Steuererklärung", due_at=datetime(2099, 3, 10, 23, 30, tzinfo=berlin)
+        )
+        Task.objects.create(
+            user=user, title="Erledigt", due_at=datetime(2099, 3, 10, 9, tzinfo=berlin), is_done=True
+        )
+        Task.objects.create(user=other, title="Fremd", due_at=datetime(2099, 3, 10, 9, tzinfo=berlin))
+        busy_start = datetime(2099, 3, 12, 8, tzinfo=berlin)
+        for index in range(3):
+            CalendarEvent.objects.create(
+                user=user,
+                title=f"Termin {index}",
+                start_at=busy_start + timedelta(hours=index),
+                end_at=busy_start + timedelta(hours=index, minutes=30),
+            )
+        Task.objects.create(user=user, title="Kein Platz", due_at=busy_start)
+        self.client.force_login(user)
+
+        response = self.client.get("/calendar/?year=2099&month=3")
+
+        days = {day["date_input"]: day for week in response.context["calendar_rows"] for day in week}
+        self.assertEqual(
+            days["2099-03-10"]["tasks"], [{"id": late_task.id, "label": "Steuererklärung", "time": "23:30"}]
+        )
+        self.assertEqual(days["2099-03-11"]["tasks"], [])
+        self.assertEqual(days["2099-03-12"]["tasks"], [])
+        self.assertEqual(days["2099-03-12"]["overflow"], 1)
+        self.assertContains(response, 'aria-label="Aufgabe „Steuererklärung“ erledigen"')
+        self.assertNotContains(response, "Fremd")
+
+        response = self.client.post(
+            "/tasks/",
+            {
+                "form_name": "task_toggle",
+                "task_id": str(late_task.id),
+                "is_done": "on",
+                "return_to": "/calendar/?year=2099&month=3",
+            },
+        )
+
+        self.assertRedirects(response, "/calendar/?year=2099&month=3", fetch_redirect_response=False)
+        late_task.refresh_from_db()
+        self.assertTrue(late_task.is_done)
+
     def test_calendar_due_tasks_hidden_when_tasks_disabled(self):
         user = User.objects.create_user(
             username="mira@example.com", email="mira@example.com", password="secret-12345"
@@ -1381,6 +1436,7 @@ class SettingsProfileTests(TestCase):
 
         self.assertEqual(response.context["due_tasks"], [])
         self.assertNotContains(response, "Fällige Aufgaben")
+        self.assertNotContains(response, "task-chip")
 
     def test_home_page_shows_upcoming_calendar_events(self):
         user = User.objects.create_user(
