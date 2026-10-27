@@ -13,9 +13,7 @@ from django.core.exceptions import ImproperlyConfigured
 from django.core.files.storage import default_storage
 from django.test import SimpleTestCase, TestCase, override_settings
 
-from app.models import (
-    Profile,
-)
+from app.models import Profile, SystemSettings
 from app.services.note_files import private_note_storage
 from app.templatetags.static_versioning import versioned_static
 from app.view_models import (
@@ -428,3 +426,35 @@ class PrivateMediaStorageTests(SimpleTestCase):
     def test_test_runner_keeps_uploads_out_of_real_media_folders(self):
         self.assertNotEqual(os.path.abspath(private_note_storage.location), str(BASE_DIR / "private_media"))
         self.assertNotEqual(os.path.abspath(default_storage.location), str(BASE_DIR / "media"))
+
+
+class CommandPaletteTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="lea", email="lea@example.com", password="pw-12345!")
+
+    def test_palette_is_rendered_for_signed_in_users_only(self):
+        self.assertNotContains(self.client.get("/login/"), "data-command-palette")
+
+        self.client.force_login(self.user)
+        response = self.client.get("/home/")
+
+        self.assertContains(response, "data-command-palette")
+        self.assertContains(response, 'aria-keyshortcuts="Control+K Meta+K"')
+        self.assertContains(response, 'href="/settings/#settings-security"')
+        self.assertNotContains(response, 'id="command-administration"')
+
+    def test_palette_hides_disabled_features_and_shows_admin_for_superusers(self):
+        SystemSettings.objects.update_or_create(
+            pk=1, defaults={"notes_enabled": False, "tools_enabled": False}
+        )
+        admin = User.objects.create_superuser(
+            username="admin", email="admin@example.com", password="pw-12345!"
+        )
+        self.client.force_login(admin)
+
+        response = self.client.get("/home/")
+
+        self.assertNotContains(response, 'id="command-notes"')
+        self.assertNotContains(response, 'id="command-vocabulary"')
+        self.assertContains(response, 'id="command-tasks"')
+        self.assertContains(response, 'id="command-administration"')

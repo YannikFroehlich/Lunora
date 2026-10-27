@@ -1,0 +1,85 @@
+{% url 'settings' as settings_url %}
+<dialog class="command-palette" aria-label="Befehlspalette" data-command-palette>
+    <form class="glass-panel command-palette-panel" method="get" action="{% url 'global_search' %}" role="search" data-command-form>
+        <label class="command-palette-input">
+            <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+            <span class="visually-hidden">Seite öffnen oder suchen</span>
+            <input type="search" name="q" placeholder="Seite öffnen oder suchen …" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="true" aria-controls="command-palette-list" aria-autocomplete="list" data-command-input>
+            <kbd>Esc</kbd>
+        </label>
+        <div id="command-palette-list" class="command-palette-list" role="listbox" aria-label="Befehle">
+            {% comment %}Each item: data-keywords holds extra search terms; ids are needed for aria-activedescendant.{% endcomment %}
+            <a class="command-palette-item" id="command-home" role="option" href="{% url 'home' %}" data-command-item data-keywords="start übersicht widgets">
+                <i class="fa-solid fa-house" aria-hidden="true"></i><span>Dashboard</span><small>Seite</small>
+            </a>
+            <a class="command-palette-item" id="command-notifications" role="option" href="{% url 'notification_center' %}" data-command-item data-keywords="posteingang inbox hinweise">
+                <i class="fa-solid fa-bell" aria-hidden="true"></i><span>Benachrichtigungen</span><small>Seite</small>
+            </a>
+            {% if feature_flags.notes %}
+            <a class="command-palette-item" id="command-notes" role="option" href="{% url 'notes' %}" data-command-item data-keywords="notiz dokumente schreiben">
+                <i class="fa-regular fa-note-sticky" aria-hidden="true"></i><span>Notizen</span><small>Seite</small>
+            </a>
+            {% endif %}
+            {% if feature_flags.messages %}
+            <a class="command-palette-item" id="command-messages" role="option" href="{% url 'messages' %}" data-command-item data-keywords="chat nachricht gruppen">
+                <i class="fa-regular fa-comments" aria-hidden="true"></i><span>Nachrichten</span><small>Seite</small>
+            </a>
+            {% endif %}
+            <a class="command-palette-item" id="command-calendar" role="option" href="{% url 'calendar' %}" data-command-item data-keywords="termine klassenarbeit test erinnerungen">
+                <i class="fa-regular fa-calendar" aria-hidden="true"></i><span>Kalender</span><small>Seite</small>
+            </a>
+            {% if feature_flags.tasks %}
+            <a class="command-palette-item" id="command-tasks" role="option" href="{% url 'tasks' %}" data-command-item data-keywords="todo aufgabe hausaufgaben listen">
+                <i class="fa-regular fa-square-check" aria-hidden="true"></i><span>Aufgaben</span><small>Seite</small>
+            </a>
+            {% endif %}
+            {% if feature_flags.weather %}
+            <a class="command-palette-item" id="command-weather" role="option" href="{% url 'weather' %}" data-command-item data-keywords="vorhersage regen temperatur">
+                <i class="fa-solid fa-cloud-sun" aria-hidden="true"></i><span>Wetter</span><small>Seite</small>
+            </a>
+            {% endif %}
+            {% if feature_flags.vacation_planner %}
+            <a class="command-palette-item" id="command-vacation" role="option" href="{% url 'vacation_planner' %}" data-command-item data-keywords="urlaub feiertage ferien">
+                <i class="fa-solid fa-umbrella-beach" aria-hidden="true"></i><span>Urlaubsplaner</span><small>Seite</small>
+            </a>
+            {% endif %}
+            {% if feature_flags.tools %}
+            <a class="command-palette-item" id="command-tools" role="option" href="{% url 'tools' %}" data-command-item data-keywords="schule helfer">
+                <i class="fa-solid fa-toolbox" aria-hidden="true"></i><span>Werkzeuge</span><small>Seite</small>
+            </a>
+            <a class="command-palette-item" id="command-vocabulary" role="option" href="{% url 'vocabulary_lists' %}" data-command-item data-keywords="vokabeln sprachen lernen karteikarten englisch">
+                <i class="fa-solid fa-language" aria-hidden="true"></i><span>Vokabeltrainer</span><small>Werkzeug</small>
+            </a>
+            <a class="command-palette-item" id="command-uml" role="option" href="{% url 'uml_diagrams' %}" data-command-item data-keywords="klassendiagramm informatik java">
+                <i class="fa-solid fa-diagram-project" aria-hidden="true"></i><span>UML-Klassendiagramme</span><small>Werkzeug</small>
+            </a>
+            {% endif %}
+            <a class="command-palette-item" id="command-settings-appearance" role="option" href="{{ settings_url }}#settings-appearance" data-command-item data-keywords="design theme dunkel hell farbe akzent">
+                <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i><span>Darstellung</span><small>Einstellungen</small>
+            </a>
+            <a class="command-palette-item" id="command-settings-profile" role="option" href="{{ settings_url }}#settings-profile" data-command-item data-keywords="name profilbild sprache zeitzone datum">
+                <i class="fa-regular fa-user" aria-hidden="true"></i><span>Profil</span><small>Einstellungen</small>
+            </a>
+            <a class="command-palette-item" id="command-settings-notifications" role="option" href="{{ settings_url }}#settings-notifications" data-command-item data-keywords="benachrichtigungen e-mail push ruhezeiten">
+                <i class="fa-regular fa-bell" aria-hidden="true"></i><span>Benachrichtigungseinstellungen</span><small>Einstellungen</small>
+            </a>
+            <a class="command-palette-item" id="command-settings-security" role="option" href="{{ settings_url }}#settings-security" data-command-item data-keywords="sicherheit zwei-faktor 2fa geräte sitzungen abmelden konto löschen">
+                <i class="fa-solid fa-shield-halved" aria-hidden="true"></i><span>Sicherheit &amp; Geräte</span><small>Einstellungen</small>
+            </a>
+            <a class="command-palette-item" id="command-data-export" role="option" href="{% url 'data_export' %}" data-command-item data-keywords="export backup herunterladen dsgvo zip">
+                <i class="fa-solid fa-download" aria-hidden="true"></i><span>Daten herunterladen</span><small>Einstellungen</small>
+            </a>
+            {% if request.user.is_superuser %}
+            <a class="command-palette-item" id="command-administration" role="option" href="{% url 'administration' %}" data-command-item data-keywords="admin funktionen schalter">
+                <i class="fa-solid fa-shield-halved" aria-hidden="true"></i><span>Administration</span><small>Seite</small>
+            </a>
+            {% endif %}
+            <a class="command-palette-item" id="command-search" role="option" href="{% url 'global_search' %}" data-command-search hidden>
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                <span>Überall suchen nach „<span data-command-query></span>“</span>
+                <small>Suche</small>
+            </a>
+        </div>
+        <p class="command-palette-hint"><kbd>↑</kbd><kbd>↓</kbd> auswählen · <kbd>Enter</kbd> öffnen · <kbd>Strg</kbd>+<kbd>K</kbd> schließen</p>
+    </form>
+</dialog>

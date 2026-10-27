@@ -43,7 +43,7 @@
                 <i class="fa-solid fa-cloud-sun" aria-hidden="true"></i>
                 <span>Wetter</span>
             </button>
-            <button class="settings-section-tab" type="button" role="tab" id="settings-tab-security" aria-selected="false" aria-controls="settings-panel-security settings-panel-export" tabindex="-1" data-settings-tab="security">
+            <button class="settings-section-tab" type="button" role="tab" id="settings-tab-security" aria-selected="false" aria-controls="settings-panel-security settings-panel-devices settings-panel-export settings-panel-delete" tabindex="-1" data-settings-tab="security">
                 <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
                 <span>Sicherheit</span>
             </button>
@@ -490,6 +490,40 @@
                 {% endif %}
             </section>
 
+            <section id="settings-panel-devices" class="glass-panel security-panel" role="tabpanel" aria-labelledby="settings-tab-security" data-settings-panel="security">
+                <div class="panel-title"><i class="fa-solid fa-laptop" aria-hidden="true"></i><h2>Angemeldete Geräte</h2></div>
+                <p class="panel-description">Hier siehst du, wo du gerade bei Lunora angemeldet bist. Ein unbekanntes Gerät? Melde es ab und ändere dein Passwort.</p>
+                <ul class="device-list">
+                    {% for device in device_sessions %}
+                    <li class="device-row">
+                        <i class="fa-solid fa-display" aria-hidden="true"></i>
+                        <span>
+                            <strong>{{ device.label }}{% if device.is_current %} <span class="device-current">Dieses Gerät</span>{% endif %}</strong>
+                            <small>Zuletzt aktiv {{ device.last_seen }} · angemeldet seit {{ device.signed_in }}</small>
+                        </span>
+                        {% if not device.is_current %}
+                        <form method="post">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_name" value="session_revoke">
+                            <input type="hidden" name="session_id" value="{{ device.id }}">
+                            <input type="hidden" name="return_to" value="{{ return_to }}">
+                            <button class="ghost-button" type="submit">Abmelden</button>
+                        </form>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+                <form class="calendar-form-actions" method="post" data-confirm="Alle anderen Geräte abmelden?">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="session_revoke_others">
+                    <input type="hidden" name="return_to" value="{{ return_to }}">
+                    <button class="ghost-button" type="submit">
+                        <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i>
+                        Alle anderen Geräte abmelden
+                    </button>
+                </form>
+            </section>
+
             <section id="settings-panel-export" class="glass-panel security-panel" role="tabpanel" aria-labelledby="settings-tab-security" data-settings-panel="security">
                 <div class="panel-title"><i class="fa-solid fa-file-zipper" aria-hidden="true"></i><h2>Datenexport</h2></div>
                 <p class="panel-description">Lade alle Daten, die du in Lunora angelegt hast, als ZIP-Archiv herunter: Notizen mit Anhängen, Aufgaben, Termine, gesendete Nachrichten, Vokabellisten, UML-Diagramme, Urlaube und deine Einstellungen.</p>
@@ -499,6 +533,36 @@
                         Daten herunterladen
                     </a>
                 </div>
+            </section>
+
+            <section id="settings-panel-delete" class="glass-panel security-panel" role="tabpanel" aria-labelledby="settings-tab-security" data-settings-panel="security">
+                <div class="panel-title"><i class="fa-solid fa-user-xmark" aria-hidden="true"></i><h2>Konto löschen</h2></div>
+                <p class="panel-description">Löscht dein Konto endgültig mit allen Notizen und Anhängen, Aufgaben, Terminen, gesendeten Nachrichten, Vokabellisten, Diagrammen und Einstellungen. Notizen, die du mit anderen geteilt hast, verschwinden auch bei ihnen. Lade vorher deine Daten herunter, wenn du sie behalten möchtest.</p>
+                {% if account_deletion_blocked_reason %}
+                <div class="empty-state-card is-compact">
+                    <i class="fa-solid fa-lock" aria-hidden="true"></i>
+                    <div><strong>Nicht verfügbar</strong><p>{{ account_deletion_blocked_reason }}</p></div>
+                </div>
+                {% else %}
+                <form class="two-factor-form" method="post" data-confirm="Konto und alle Daten endgültig löschen? Das kann nicht rückgängig gemacht werden.">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="account_delete">
+                    <input type="hidden" name="return_to" value="{{ return_to }}">
+                    <label class="settings-calendar-form" for="account-delete-password">
+                        <span class="field-label">Passwort zur Bestätigung</span>
+                        <span class="calendar-input-pill">
+                            <i class="fa-solid fa-key" aria-hidden="true"></i>
+                            <input id="account-delete-password" type="password" name="password" autocomplete="current-password" required>
+                        </span>
+                    </label>
+                    <div class="calendar-form-actions">
+                        <button class="ghost-button danger-button" type="submit">
+                            <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+                            Konto endgültig löschen
+                        </button>
+                    </div>
+                </form>
+                {% endif %}
             </section>
 
             <section id="settings-panel-app" class="glass-panel app-install-panel" role="tabpanel" aria-labelledby="settings-tab-app" data-settings-panel="app" data-pwa-install-panel>

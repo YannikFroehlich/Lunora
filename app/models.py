@@ -135,6 +135,28 @@ class Profile(models.Model):
         return self.name
 
 
+class UserSession(models.Model):
+    """Device metadata for a signed-in session, so users can review and revoke their logins.
+
+    Rows are written by app.middleware.UserSessionMiddleware; the session itself stays in
+    Django's session store, and rows whose session is gone are pruned when listed.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="device_sessions"
+    )
+    session_key = models.CharField(max_length=40, unique=True)
+    user_agent = models.CharField(max_length=300, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ["-last_seen_at", "-id"]
+
+    def __str__(self):
+        return f"{self.user} – {self.session_key[:8]}"
+
+
 class WeatherLocation(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="weather_locations"

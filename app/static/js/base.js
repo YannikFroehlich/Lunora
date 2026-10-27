@@ -404,16 +404,93 @@ window.addEventListener("appinstalled", () => {
   announcePwaState();
 });
 
-document.addEventListener("keydown", (event) => {
-  if (event.key.toLowerCase() !== "k" || !(event.ctrlKey || event.metaKey)) return;
-  if (event.target.closest?.("input, textarea, select, [contenteditable='true']")) return;
+function normalizeCommandText(value) {
+  return value.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
+}
 
-  const searchLink = document.querySelector(".nav-orb[aria-label='Suche']");
-  if (!searchLink) return;
+// Ctrl/Cmd+K opens a palette of pages and settings; typing filters it, Enter opens the
+// highlighted entry or falls back to the global search for the typed text.
+function initCommandPalette() {
+  const dialog = document.querySelector("[data-command-palette]");
+  if (!dialog) return;
+  const form = dialog.querySelector("[data-command-form]");
+  const input = dialog.querySelector("[data-command-input]");
+  const searchOption = dialog.querySelector("[data-command-search]");
+  const queryLabel = dialog.querySelector("[data-command-query]");
+  const items = Array.from(dialog.querySelectorAll("[data-command-item]")).map((element) => ({
+    element,
+    text: normalizeCommandText(`${element.textContent} ${element.dataset.keywords || ""}`),
+  }));
+  let visible = [];
+  let activeIndex = 0;
 
-  event.preventDefault();
-  window.location.href = searchLink.href;
-});
+  function setActive(index) {
+    activeIndex = index;
+    const active = visible[index];
+    // Clear every entry, not just visible ones, so a filtered-out item never keeps the highlight.
+    [...items.map((item) => item.element), searchOption].forEach((element) =>
+      element.classList.toggle("is-active", element === active),
+    );
+    if (active) {
+      input.setAttribute("aria-activedescendant", active.id);
+      active.scrollIntoView({ block: "nearest" });
+    } else {
+      input.removeAttribute("aria-activedescendant");
+    }
+  }
+
+  function filter() {
+    const query = input.value.trim();
+    const words = normalizeCommandText(query).split(/\s+/).filter(Boolean);
+    const matches = [];
+    items.forEach((item) => {
+      const match = words.every((word) => item.text.includes(word));
+      item.element.hidden = !match;
+      if (match) matches.push(item.element);
+    });
+    searchOption.hidden = !query;
+    queryLabel.textContent = query;
+    searchOption.href = `${form.action}?${new URLSearchParams({ q: query })}`;
+    // Commands come first; the search entry stays reachable at the end of the list.
+    visible = query ? [...matches, searchOption] : matches;
+    setActive(0);
+  }
+
+  function open() {
+    input.value = "";
+    filter();
+    dialog.showModal();
+    input.focus();
+  }
+
+  input.addEventListener("input", filter);
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      if (!visible.length) return;
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      setActive((activeIndex + step + visible.length) % visible.length);
+    } else if (event.key === "Enter" && visible[activeIndex]) {
+      event.preventDefault();
+      window.location.href = visible[activeIndex].href;
+    }
+  });
+  // A click on the backdrop lands on the dialog element itself, outside the panel.
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) dialog.close();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key.toLowerCase() !== "k" || !(event.ctrlKey || event.metaKey)) return;
+    event.preventDefault();
+    if (dialog.open) {
+      dialog.close();
+    } else {
+      open();
+    }
+  });
+}
+
+initCommandPalette();
 
 function registerLunoraServiceWorker() {
   const serviceWorkerUrl = document.documentElement.dataset.serviceWorkerUrl;

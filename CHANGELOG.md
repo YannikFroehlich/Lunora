@@ -6,6 +6,12 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Command palette: press Ctrl+K (Cmd+K on Mac) on any page to jump to a page or settings section by
+  typing, or to search everywhere for the typed text.
+- See where you are signed in: the "Sicherheit" settings tab lists your devices with browser, system
+  and last activity, and signs out single devices or all others at once.
+- Delete your account yourself in the "Sicherheit" settings tab after confirming your password. All
+  your data is removed, including attachments and your profile picture.
 - Get notified when someone shares a vocabulary list with you: the share shows up in the
   notification inbox and, if enabled, by e-mail or Web Push. A new "Werkzeuge" row in the
   notification settings controls these channels separately from notes.

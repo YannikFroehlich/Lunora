@@ -3,6 +3,7 @@ import tempfile
 from urllib.parse import urlencode, urlparse, urlunparse
 
 from django.contrib import messages as django_messages
+from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.http import FileResponse, JsonResponse
@@ -22,10 +23,19 @@ from app.forms import (
 )
 from app.models import Profile
 from app.services import two_factor
+from app.services.accounts import account_deletion_blocked_reason, delete_account
 from app.services.calendar_service import disable_calendar_feed, reset_calendar_feed_token
 from app.services.dashboard import normalize_dashboard_layout, validate_dashboard_layout
 from app.services.data_export import export_filename, write_user_export
 from app.services.system_settings import disabled_feature_response, feature_enabled
+from app.services.user_preferences import format_user_datetime
+from app.services.user_sessions import (
+    active_sessions,
+    device_label,
+    revoke_other_sessions,
+    revoke_session,
+    track_session,
+)
 from app.view_models import get_dashboard_context, get_settings_context
 
 
@@ -200,8 +210,34 @@ def settings(request):
     elif form_name.startswith("two_factor_"):
         _handle_two_factor_form(request, profile, form_name)
         return redirect(_settings_section_url("security", return_to))
+    elif form_name == "session_revoke":
+        session_id = request.POST.get("session_id", "")
+        if session_id.isdigit() and revoke_session(
+            request.user, int(session_id), current_key=request.session.session_key
+        ):
+            django_messages.success(request, "Gerät abgemeldet.")
+        return redirect(_settings_section_url("security", return_to))
+    elif form_name == "session_revoke_others":
+        count = revoke_other_sessions(request.user, current_key=request.session.session_key)
+        django_messages.success(request, f"{count} andere Sitzung(en) abgemeldet.")
+        return redirect(_settings_section_url("security", return_to))
+    elif form_name == "account_delete":
+        blocked_reason = account_deletion_blocked_reason(request.user)
+        if blocked_reason:
+            django_messages.error(request, blocked_reason)
+        elif not request.user.check_password(request.POST.get("password", "")):
+            django_messages.error(request, "Das Passwort ist falsch. Dein Konto wurde nicht gelöscht.")
+        else:
+            delete_account(request.user)
+            logout(request)
+            django_messages.success(request, "Dein Konto und alle zugehörigen Daten wurden gelöscht.")
+            return redirect("login")
+        return redirect(_settings_section_url("security", return_to))
 
     setup_secret = request.session.get(TWO_FACTOR_SETUP_SESSION_KEY) if not profile.totp_enabled_at else None
+    # Track before listing, so the current device shows up even on its first settings visit.
+    track_session(request)
+    current_key = request.session.session_key
     setup_uri = two_factor.provisioning_uri(request.user, setup_secret) if setup_secret else ""
     calendar_feed_url = (
         request.build_absolute_uri(reverse("calendar_feed", args=[profile.calendar_feed_token]))
@@ -228,6 +264,17 @@ def settings(request):
             # The SVG is generated server-side from our own URI, never from user input.
             "two_factor_setup_qr": mark_safe(two_factor.qr_code_svg(setup_uri)) if setup_uri else "",
             "two_factor_new_codes": request.session.pop(TWO_FACTOR_NEW_CODES_SESSION_KEY, None),
+            "device_sessions": [
+                {
+                    "id": row.pk,
+                    "label": device_label(row.user_agent),
+                    "is_current": row.session_key == current_key,
+                    "last_seen": format_user_datetime(row.last_seen_at, request.user),
+                    "signed_in": format_user_datetime(row.created_at, request.user),
+                }
+                for row in active_sessions(request.user)
+            ],
+            "account_deletion_blocked_reason": account_deletion_blocked_reason(request.user),
         }
     )
     return render(request, "app/settings.html", context)
