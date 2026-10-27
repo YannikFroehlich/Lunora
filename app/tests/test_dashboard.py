@@ -8,6 +8,7 @@ from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 
 from app.models import (
+    Bookmark,
     CalendarEvent,
     CalendarReminder,
     Note,
@@ -85,6 +86,8 @@ class DashboardCustomizationTests(TestCase):
             "tasks",
             "notifications",
             "stats",
+            "habits",
+            "bookmarks",
         ]
         self.profile.dashboard_layout = self._layout(order=order)
         self.profile.save(update_fields=["dashboard_layout"])
@@ -267,6 +270,8 @@ class DashboardCustomizationTests(TestCase):
                 "tasks",
                 "notifications",
                 "stats",
+                "habits",
+                "bookmarks",
             ],
             hidden=["clock", "weather"],
             widgets={
@@ -537,3 +542,42 @@ class DashboardStatsWidgetTests(TestCase):
         self.assertEqual(response.status_code, 200)
         dashboard_stats.assert_not_called()
         self.assertEqual(response.context["dashboard_stats"], {})
+
+
+class DashboardBookmarkWidgetTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="mira", email="mira@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=self.user, display_name="Mira")
+        self.client.force_login(self.user)
+
+    def test_bookmarks_are_added_listed_and_removed_per_user(self):
+        response = self.client.post(
+            "/home/bookmarks/", {"form_name": "bookmark_add", "title": "Bank", "url": "bank.example.com"}
+        )
+        self.assertRedirects(response, "/home/", fetch_redirect_response=False)
+        bookmark = Bookmark.objects.get(owner=self.user)
+        self.assertEqual(bookmark.url, "https://bank.example.com")
+
+        other = User.objects.create_user(username="lukas", password="secret-12345")
+        foreign = Bookmark.objects.create(owner=other, title="Fremd", url="https://fremd.example.com")
+
+        response = self.client.get("/home/")
+        self.assertContains(
+            response, 'href="https://bank.example.com" target="_blank" rel="noopener noreferrer"'
+        )
+        self.assertContains(response, "bank.example.com")
+        self.assertNotContains(response, "Fremd")
+
+        self.client.post("/home/bookmarks/", {"form_name": "bookmark_delete", "bookmark_id": foreign.id})
+        self.client.post("/home/bookmarks/", {"form_name": "bookmark_delete", "bookmark_id": bookmark.id})
+        self.assertFalse(Bookmark.objects.filter(owner=self.user).exists())
+        self.assertTrue(Bookmark.objects.filter(pk=foreign.pk).exists())
+
+    def test_only_web_links_are_accepted(self):
+        for url in ("javascript:alert(1)", "ftp://example.com/datei", "data:text/html,hi"):
+            with self.subTest(url=url):
+                self.client.post("/home/bookmarks/", {"form_name": "bookmark_add", "title": "X", "url": url})
+        self.assertFalse(Bookmark.objects.exists())
+        self.assertEqual(self.client.get("/home/bookmarks/").status_code, 405)

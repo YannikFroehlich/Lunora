@@ -1,4 +1,5 @@
 import json
+from datetime import date
 
 from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
@@ -7,11 +8,14 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods
 
-from app.models import UmlDiagram
+from app.forms import HabitForm
+from app.models import Habit, UmlDiagram
+from app.services.habits import habit_items, toggle_habit_check
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.uml_content import validate_uml_document
-from app.services.user_preferences import format_user_datetime
+from app.services.user_preferences import format_user_datetime, localtime_for_user
 from app.view_models import get_tools_context
+from app.views.navigation import local_return_to
 
 UML_TITLE_MAX_LENGTH = UmlDiagram._meta.get_field("title").max_length
 
@@ -35,6 +39,49 @@ def tools(request):
     if not feature_enabled("tools"):
         return disabled_feature_response(request, "tools")
     return render(request, "app/tools.html", get_tools_context(request.user))
+
+
+@login_required
+def habits(request):
+    if not feature_enabled("tools"):
+        return disabled_feature_response(request, "tools")
+
+    today = localtime_for_user(profile_or_user=request.user).date()
+    form_name = request.POST.get("form_name") if request.method == "POST" else None
+    habit_form = HabitForm()
+    if form_name == "habit_add":
+        habit_form = HabitForm(request.POST)
+        if habit_form.is_valid():
+            habit = habit_form.save(commit=False)
+            habit.owner = request.user
+            habit.save()
+            django_messages.success(request, "Gewohnheit angelegt.")
+            return redirect("habits")
+    elif form_name == "habit_toggle":
+        try:
+            day = date.fromisoformat(request.POST.get("date", ""))
+        except ValueError:
+            day = None
+        if day:
+            toggle_habit_check(request.user, request.POST.get("habit_id") or 0, day, today)
+        return redirect(local_return_to(request) or "habits")
+    elif form_name == "habit_delete":
+        if Habit.objects.filter(owner=request.user, pk=request.POST.get("habit_id") or 0).delete()[0]:
+            django_messages.success(request, "Gewohnheit gelöscht.")
+        return redirect("habits")
+
+    return render(
+        request,
+        "app/habits.html",
+        {"active_page": "tools", "habits": habit_items(request.user, today), "habit_form": habit_form},
+    )
+
+
+@login_required
+def focus_timer(request):
+    if not feature_enabled("tools"):
+        return disabled_feature_response(request, "tools")
+    return render(request, "app/focus_timer.html", {"active_page": "tools"})
 
 
 @login_required

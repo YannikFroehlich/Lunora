@@ -1,0 +1,31 @@
+{% url 'habits' as habits_url %}
+{% include "app/partials/dashboard_widget_head.html" with icon="fa-solid fa-seedling" title="Gewohnheiten" link_url=habits_url link_label="Gewohnheiten öffnen" %}
+<ul class="widget-list">
+    {% for habit in dashboard_habits %}
+    <li data-dashboard-item{% if forloop.counter > widget.options.limit %} hidden{% endif %}>
+        <span class="event-dot tone-{{ habit.color }}"></span>
+        <span class="widget-list-content">
+            <strong>{{ habit.title }}</strong>
+            <small>{% if habit.streak %}<i class="fa-solid fa-fire" aria-hidden="true"></i> {{ habit.streak_label }} in Folge{% else %}{{ habit.cadence_label }}{% endif %}</small>
+        </span>
+        {% with today=habit.days|last %}
+        {% if habit.done_now and not today.checked %}
+        <span class="notice-action is-done" title="Diese Woche erledigt"><i class="fa-solid fa-check" aria-hidden="true"></i><span class="visually-hidden">Diese Woche erledigt</span></span>
+        {% else %}
+        <form method="post" action="{{ habits_url }}" class="widget-list-action">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="habit_toggle">
+            <input type="hidden" name="habit_id" value="{{ habit.id }}">
+            <input type="hidden" name="date" value="{{ today.date }}">
+            <input type="hidden" name="return_to" value="{% url 'home' %}">
+            <button type="submit" class="notice-action{% if today.checked %} is-done{% endif %}" aria-pressed="{{ today.checked|yesno:'true,false' }}" aria-label="„{{ habit.title }}“ heute erledigt" title="{% if today.checked %}Heute erledigt – zum Zurücknehmen klicken{% else %}Heute erledigt{% endif %}">
+                <i class="fa-solid fa-check" aria-hidden="true"></i>
+            </button>
+        </form>
+        {% endif %}
+        {% endwith %}
+    </li>
+    {% empty %}
+    <li class="widget-empty"><i class="fa-solid fa-seedling" aria-hidden="true"></i> <span>Noch keine Gewohnheiten. <a href="{{ habits_url }}">Jetzt anlegen</a></span></li>
+    {% endfor %}
+</ul>

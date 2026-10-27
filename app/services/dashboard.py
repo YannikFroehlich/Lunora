@@ -82,6 +82,14 @@ DASHBOARD_WIDGETS = (
         feature_flag="tasks",
     ),
     DashboardWidget(
+        id="habits",
+        label="Gewohnheiten",
+        template="app/partials/dashboard_habits.html",
+        class_name="list-panel",
+        options={"limit": 5},
+        feature_flag="tools",
+    ),
+    DashboardWidget(
         id="weather",
         label="Wetter",
         template="app/partials/dashboard_weather.html",
@@ -109,6 +117,12 @@ DASHBOARD_WIDGETS = (
         label="Zuletzt genutzt",
         template="app/partials/dashboard_recent_tools.html",
         class_name="recent-panel",
+    ),
+    DashboardWidget(
+        id="bookmarks",
+        label="Lesezeichen",
+        template="app/partials/dashboard_bookmarks.html",
+        class_name="bookmarks-panel",
     ),
 )
 
@@ -278,10 +292,11 @@ def dashboard_presets():
             "label": "Fokus",
             "icon": "fa-bullseye",
             "layout": _preset(
-                ["tasks", "clock", "upcoming_events", "notifications", "weather"],
-                ["welcome", "stats", "quick_actions", "recent_tools"],
+                ["tasks", "habits", "clock", "upcoming_events", "notifications", "weather"],
+                ["welcome", "stats", "quick_actions", "recent_tools", "bookmarks"],
                 {
                     "tasks": {"size": "large", "limit": 8},
+                    "habits": {"size": "small", "limit": 5},
                     "clock": {"size": "small"},
                     "upcoming_events": {"size": "medium", "limit": 5},
                     "notifications": {"size": "medium", "limit": 5},
@@ -295,7 +310,7 @@ def dashboard_presets():
             "icon": "fa-compress",
             "layout": _preset(
                 ["clock", "tasks", "upcoming_events", "notifications", "weather", "quick_actions"],
-                ["welcome", "stats", "recent_tools"],
+                ["welcome", "stats", "recent_tools", "habits", "bookmarks"],
                 {
                     "clock": {"size": "small"},
                     "tasks": {"size": "small", "limit": 3},

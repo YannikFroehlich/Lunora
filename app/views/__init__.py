@@ -9,7 +9,7 @@ from .auth_views import (
     register,
 )
 from .calendar_views import calendar, calendar_feed
-from .core_views import dashboard_layout_update, data_export, home, settings
+from .core_views import dashboard_bookmarks, dashboard_layout_update, data_export, home, settings
 from .message_views import chat_attachment_download, chat_typing_ping, messages, messages_live_updates
 from .note_views import (
     note_action_api,
@@ -52,7 +52,7 @@ from .notification_views import (
 from .pwa_views import offline, service_worker
 from .search_views import global_search
 from .tasks_views import tasks
-from .tools_views import tools, uml_diagram_api, uml_diagram_editor, uml_diagrams
+from .tools_views import focus_timer, habits, tools, uml_diagram_api, uml_diagram_editor, uml_diagrams
 from .vacation_planner_views import (
     custom_holiday_delete,
     custom_holiday_save,
@@ -123,6 +123,9 @@ __all__ = [
     "global_search",
     "tasks",
     "tools",
+    "habits",
+    "focus_timer",
+    "dashboard_bookmarks",
     "uml_diagrams",
     "uml_diagram_editor",
     "uml_diagram_api",

@@ -6,6 +6,16 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- New "Gewohnheiten" tool: track daily or weekly habits, tick off today or the past week, and see
+  your streak. A new dashboard widget ticks today's habits off without leaving the dashboard.
+- New "Fokus-Timer" tool: focus intervals with short and long breaks, a sound and an optional
+  browser notification at the end of each phase, and adjustable lengths that this browser
+  remembers.
+- New "Lesezeichen" dashboard widget for your own links to frequently used websites.
+- Import data from other apps in the "Sicherheit" settings tab: Markdown files become notes (a
+  Lunora export imports back as the same notes) and .ics calendar files become events; events that
+  were already imported are skipped.
+- The tools area is no longer described as school-only.
 - Fix deleting, restoring, moving and saving notes failing with "Der Server hat keine gültige
   Antwort gesendet" on the PostgreSQL production database. Browser notifications for note
   mentions/comments and calendar invitations could fail the same way and are fixed too.

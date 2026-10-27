@@ -1323,3 +1323,25 @@
     align-items: stretch;
   }
 }
+
+.data-import-input {
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px;
+  color: var(--color-muted);
+  background: var(--surface-control);
+  border: 1px dashed var(--glass-border-soft);
+  border-radius: var(--radius-sm);
+}
+
+.data-import-input::file-selector-button {
+  margin-right: 12px;
+  padding: 7px 14px;
+  color: var(--color-heading);
+  font: inherit;
+  font-weight: 600;
+  background: var(--surface-control-hover);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}

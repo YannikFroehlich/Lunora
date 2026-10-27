@@ -28,6 +28,7 @@ from app.services.web_push import (
     remove_web_push_subscription,
     send_test_web_push,
 )
+from app.views.navigation import local_return_to
 
 
 @login_required
@@ -102,16 +103,8 @@ def notification_toggle_read(request, notification_id):
     notification.read_at = None if notification.read_at else timezone.now()
     notification.save(update_fields=["read_at"])
 
-    return_to = request.POST.get("return_to")
-    if (
-        return_to
-        and return_to.startswith("/")
-        and url_has_allowed_host_and_scheme(
-            return_to,
-            allowed_hosts={request.get_host()},
-            require_https=request.is_secure(),
-        )
-    ):
+    return_to = local_return_to(request)
+    if return_to:
         return redirect(return_to)
 
     selected_filter = request.POST.get("status", "unread")

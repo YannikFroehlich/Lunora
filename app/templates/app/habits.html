@@ -1,0 +1,88 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}Gewohnheiten | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell tools-shell">
+    <header class="page-hero">
+        <div>
+            <a class="tools-back-link" href="{% url 'tools' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Werkzeuge</a>
+            <h1>Gewohnheiten</h1>
+            <p>Hake täglich oder wöchentlich ab, was du dir vorgenommen hast, und halte deine Serie.</p>
+        </div>
+        <i class="fa-solid fa-seedling hero-branch" aria-hidden="true"></i>
+    </header>
+
+    <section class="glass-panel uml-create-panel">
+        <form class="vocab-create-form" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="habit_add">
+            <label class="vocab-field vocab-field-wide">
+                <span>{{ habit_form.title.label }}</span>
+                {{ habit_form.title }}
+            </label>
+            <label class="vocab-field">
+                <span>{{ habit_form.cadence.label }}</span>
+                {{ habit_form.cadence }}
+            </label>
+            <label class="vocab-field">
+                <span>{{ habit_form.color.label }}</span>
+                {{ habit_form.color }}
+            </label>
+            <button class="primary-button" type="submit"><i class="fa-solid fa-plus" aria-hidden="true"></i> Anlegen</button>
+            {% if habit_form.errors %}<ul class="errorlist">{% for field in habit_form %}{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}{% endfor %}</ul>{% endif %}
+        </form>
+    </section>
+
+    {% if habits %}
+    <ul class="uml-diagram-list">
+        {% for habit in habits %}
+        <li class="glass-panel habit-card tone-{{ habit.color }}">
+            <div class="habit-summary">
+                <span class="tool-card-icon habit-icon" aria-hidden="true"><i class="fa-solid fa-seedling"></i></span>
+                <span>
+                    <strong>{{ habit.title }}</strong>
+                    <small>
+                        {{ habit.cadence_label }}
+                        {% if habit.streak %}· <i class="fa-solid fa-fire" aria-hidden="true"></i> {{ habit.streak_label }} in Folge{% endif %}
+                        {% if habit.done_now %}· {% if habit.cadence == "weekly" %}diese Woche{% else %}heute{% endif %} erledigt{% endif %}
+                    </small>
+                </span>
+            </div>
+            <div class="habit-days" role="group" aria-label="Letzte 7 Tage für „{{ habit.title }}“">
+                {% for day in habit.days %}
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="habit_toggle">
+                    <input type="hidden" name="habit_id" value="{{ habit.id }}">
+                    <input type="hidden" name="date" value="{{ day.date }}">
+                    <button class="habit-day{% if day.checked %} is-checked{% endif %}{% if day.is_today %} is-today{% endif %}" type="submit" aria-pressed="{{ day.checked|yesno:'true,false' }}" aria-label="{{ day.label }} {{ day.number }}.{% if day.is_today %} (heute){% endif %}">
+                        <span>{{ day.label }}</span>
+                        <i class="fa-solid {% if day.checked %}fa-check{% else %}fa-minus{% endif %}" aria-hidden="true"></i>
+                    </button>
+                </form>
+                {% endfor %}
+            </div>
+            <form method="post" data-confirm="„{{ habit.title }}“ mit allen Einträgen löschen?">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="habit_delete">
+                <input type="hidden" name="habit_id" value="{{ habit.id }}">
+                <button class="icon-button" type="submit" aria-label="„{{ habit.title }}“ löschen" title="Löschen"><i class="fa-regular fa-trash-can" aria-hidden="true"></i></button>
+            </form>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state-card uml-empty">
+        <i class="fa-solid fa-seedling" aria-hidden="true"></i>
+        <strong>Noch keine Gewohnheiten</strong>
+        <p>Lege oben deine erste an, z. B. „10 Minuten lesen“ oder „Sport“ einmal pro Woche.</p>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

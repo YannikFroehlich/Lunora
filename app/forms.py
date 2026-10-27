@@ -10,11 +10,13 @@ from django.core.files.storage import default_storage
 from django.db.models import Q
 
 from app.models import (
+    Bookmark,
     CalendarEvent,
     CalendarEventAttendee,
     CalendarReminder,
     ChatMessage,
     CustomHoliday,
+    Habit,
     HolidayOverride,
     NotificationPreference,
     Profile,
@@ -134,7 +136,7 @@ class SystemSettingsForm(forms.ModelForm):
             "weather_enabled": "Wetter",
             "dashboard_customization_enabled": "Dashboard anpassen",
             "tasks_enabled": "Aufgaben",
-            "tools_enabled": "Werkzeuge (Schul-Tools wie UML-Editor)",
+            "tools_enabled": "Werkzeuge (Gewohnheiten, Fokus-Timer, UML, Vokabeln)",
         }
         widgets = {
             "normal_login_enabled": forms.CheckboxInput(),
@@ -731,6 +733,43 @@ class TaskListForm(forms.ModelForm):
         labels = {"name": "Listenname", "color": "Farbe"}
         widgets = {
             "name": forms.TextInput(attrs={"placeholder": "Neue Liste …", "autocomplete": "off"}),
+        }
+
+
+class BookmarkForm(forms.ModelForm):
+    url = forms.URLField(
+        label="Adresse",
+        max_length=500,
+        assume_scheme="https",
+        # A text input, so "example.com" passes the browser and assume_scheme can add https://.
+        widget=forms.TextInput(
+            attrs={"placeholder": "example.com", "inputmode": "url", "autocomplete": "off"}
+        ),
+    )
+
+    class Meta:
+        model = Bookmark
+        fields = ["title", "url"]
+        labels = {"title": "Name"}
+        widgets = {
+            "title": forms.TextInput(attrs={"placeholder": "z. B. Bank", "autocomplete": "off"}),
+        }
+
+    def clean_url(self):
+        # URLField also accepts ftp:// etc.; links on the dashboard stay plain web links.
+        url = self.cleaned_data["url"]
+        if not url.lower().startswith(("http://", "https://")):
+            raise forms.ValidationError("Nur http- und https-Adressen sind erlaubt.")
+        return url
+
+
+class HabitForm(forms.ModelForm):
+    class Meta:
+        model = Habit
+        fields = ["title", "cadence", "color"]
+        labels = {"title": "Gewohnheit", "cadence": "Rhythmus", "color": "Farbe"}
+        widgets = {
+            "title": forms.TextInput(attrs={"placeholder": "z. B. 10 Minuten lesen", "autocomplete": "off"}),
         }
 
 

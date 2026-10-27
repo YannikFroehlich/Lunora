@@ -1,0 +1,42 @@
+{% include "app/partials/dashboard_widget_head.html" with icon="fa-solid fa-bookmark" title="Lesezeichen" %}
+{% if dashboard_bookmarks %}
+<ul class="bookmark-grid">
+    {% for bookmark in dashboard_bookmarks %}
+    <li class="bookmark-item">
+        <a class="tool-tile" href="{{ bookmark.url }}" target="_blank" rel="noopener noreferrer">
+            <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
+            <span class="tool-tile-text">
+                <strong>{{ bookmark.title }}</strong>
+                <span>{{ bookmark.host }}</span>
+            </span>
+        </a>
+        <form method="post" action="{% url 'dashboard_bookmarks' %}" class="bookmark-delete" data-confirm="Lesezeichen „{{ bookmark.title }}“ entfernen?">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="bookmark_delete">
+            <input type="hidden" name="bookmark_id" value="{{ bookmark.id }}">
+            <button type="submit" aria-label="Lesezeichen „{{ bookmark.title }}“ entfernen" title="Entfernen">
+                <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+            </button>
+        </form>
+    </li>
+    {% endfor %}
+</ul>
+{% else %}
+<p class="widget-empty"><i class="fa-regular fa-bookmark" aria-hidden="true"></i> Lege Links zu Seiten an, die du oft brauchst.</p>
+{% endif %}
+<details class="bookmark-add"{% if not dashboard_bookmarks %} open{% endif %}>
+    <summary><i class="fa-solid fa-plus" aria-hidden="true"></i> Lesezeichen hinzufügen</summary>
+    <form method="post" action="{% url 'dashboard_bookmarks' %}" class="bookmark-add-form">
+        {% csrf_token %}
+        <input type="hidden" name="form_name" value="bookmark_add">
+        <label>
+            <span class="visually-hidden">{{ bookmark_form.title.label }}</span>
+            {{ bookmark_form.title }}
+        </label>
+        <label>
+            <span class="visually-hidden">{{ bookmark_form.url.label }}</span>
+            {{ bookmark_form.url }}
+        </label>
+        <button class="primary-button" type="submit">Speichern</button>
+    </form>
+</details>

@@ -1334,3 +1334,230 @@ a.tool-card:hover {
     flex-wrap: wrap;
   }
 }
+
+/* ---- Habits ---------------------------------------------------------------------------------- */
+
+.habit-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+}
+
+.habit-summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.habit-summary > span:last-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.habit-summary strong {
+  overflow: hidden;
+  color: var(--color-heading);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.habit-summary small {
+  color: var(--color-muted);
+}
+
+.habit-summary .fa-fire {
+  color: var(--color-warning);
+}
+
+.habit-icon {
+  color: color-mix(in srgb, var(--tone) 68%, var(--color-heading));
+  background: color-mix(in srgb, var(--tone) 22%, transparent);
+}
+
+.habit-days {
+  display: flex;
+  gap: 6px;
+}
+
+.habit-days form,
+.habit-card > form {
+  margin: 0;
+}
+
+.habit-day {
+  display: grid;
+  width: 40px;
+  gap: 4px;
+  justify-items: center;
+  padding: 6px 0;
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  font-weight: 650;
+  background: var(--surface-control);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.habit-day:hover {
+  background: var(--surface-control-hover);
+}
+
+.habit-day.is-today {
+  border-color: color-mix(in srgb, var(--tone) 70%, transparent);
+}
+
+.habit-day.is-checked {
+  color: var(--color-on-accent);
+  background: var(--tone);
+  border-color: transparent;
+}
+
+@media (max-width: 760px) {
+  .habit-card {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .habit-days {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-content: space-between;
+  }
+
+  .habit-days form {
+    flex: 1;
+  }
+
+  .habit-day {
+    width: 100%;
+  }
+}
+
+/* ---- Focus timer ----------------------------------------------------------------------------- */
+
+.focus-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.focus-panel {
+  display: grid;
+  justify-items: center;
+  gap: 18px;
+  padding: 28px 20px;
+}
+
+.focus-phases {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.focus-phase {
+  padding: 6px 14px;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  font-weight: 650;
+  background: var(--surface-control);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-pill);
+}
+
+.focus-phase.is-active {
+  color: var(--color-on-accent);
+  background: var(--color-accent);
+  border-color: transparent;
+}
+
+.focus-ring {
+  position: relative;
+  width: min(280px, 70vw);
+  aspect-ratio: 1;
+}
+
+.focus-ring svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.focus-ring circle {
+  fill: none;
+  stroke-width: 8;
+}
+
+.focus-ring-track {
+  stroke: var(--surface-control-hover);
+}
+
+.focus-ring-progress {
+  stroke: var(--color-accent);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 400ms linear;
+}
+
+.focus-time {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 4px;
+}
+
+.focus-time strong {
+  color: var(--color-heading);
+  font-size: clamp(2.6rem, 9vw, 3.6rem);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.focus-time span {
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.focus-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+.focus-settings {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+}
+
+.focus-settings h2 {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.focus-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: 12px;
+}
+
+.focus-settings p {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 900px) {
+  .focus-layout {
+    grid-template-columns: 1fr;
+  }
+}

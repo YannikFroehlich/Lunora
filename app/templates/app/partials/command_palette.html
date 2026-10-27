@@ -25,7 +25,7 @@
                 <i class="fa-regular fa-comments" aria-hidden="true"></i><span>Nachrichten</span><small>Seite</small>
             </a>
             {% endif %}
-            <a class="command-palette-item" id="command-calendar" role="option" href="{% url 'calendar' %}" data-command-item data-keywords="termine klassenarbeit test erinnerungen">
+            <a class="command-palette-item" id="command-calendar" role="option" href="{% url 'calendar' %}" data-command-item data-keywords="termine meeting deadline erinnerungen">
                 <i class="fa-regular fa-calendar" aria-hidden="true"></i><span>Kalender</span><small>Seite</small>
             </a>
             {% if feature_flags.tasks %}
@@ -44,8 +44,14 @@
             </a>
             {% endif %}
             {% if feature_flags.tools %}
-            <a class="command-palette-item" id="command-tools" role="option" href="{% url 'tools' %}" data-command-item data-keywords="schule helfer">
+            <a class="command-palette-item" id="command-tools" role="option" href="{% url 'tools' %}" data-command-item data-keywords="helfer tools">
                 <i class="fa-solid fa-toolbox" aria-hidden="true"></i><span>Werkzeuge</span><small>Seite</small>
+            </a>
+            <a class="command-palette-item" id="command-habits" role="option" href="{% url 'habits' %}" data-command-item data-keywords="gewohnheiten routine serie streak tracker">
+                <i class="fa-solid fa-seedling" aria-hidden="true"></i><span>Gewohnheiten</span><small>Werkzeug</small>
+            </a>
+            <a class="command-palette-item" id="command-focus" role="option" href="{% url 'focus_timer' %}" data-command-item data-keywords="pomodoro timer konzentration pause">
+                <i class="fa-solid fa-hourglass-half" aria-hidden="true"></i><span>Fokus-Timer</span><small>Werkzeug</small>
             </a>
             <a class="command-palette-item" id="command-vocabulary" role="option" href="{% url 'vocabulary_lists' %}" data-command-item data-keywords="vokabeln sprachen lernen karteikarten englisch">
                 <i class="fa-solid fa-language" aria-hidden="true"></i><span>Vokabeltrainer</span><small>Werkzeug</small>
@@ -68,6 +74,9 @@
             </a>
             <a class="command-palette-item" id="command-data-export" role="option" href="{% url 'data_export' %}" data-command-item data-keywords="export backup herunterladen dsgvo zip">
                 <i class="fa-solid fa-download" aria-hidden="true"></i><span>Daten herunterladen</span><small>Einstellungen</small>
+            </a>
+            <a class="command-palette-item" id="command-data-import" role="option" href="{{ settings_url }}#settings-security" data-command-item data-keywords="import hochladen markdown ics kalender notizen übernehmen">
+                <i class="fa-solid fa-file-import" aria-hidden="true"></i><span>Daten importieren</span><small>Einstellungen</small>
             </a>
             {% if request.user.is_superuser %}
             <a class="command-palette-item" id="command-administration" role="option" href="{% url 'administration' %}" data-command-item data-keywords="admin funktionen schalter">

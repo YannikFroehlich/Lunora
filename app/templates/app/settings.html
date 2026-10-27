@@ -535,6 +535,26 @@
                 </div>
             </section>
 
+            <section id="settings-panel-import" class="glass-panel security-panel" role="tabpanel" aria-labelledby="settings-tab-security" data-settings-panel="security">
+                <div class="panel-title"><i class="fa-solid fa-file-import" aria-hidden="true"></i><h2>Datenimport</h2></div>
+                <p class="panel-description">Übernimm Daten aus anderen Apps: Markdown-Dateien (.md, .txt) werden zu Notizen, Kalenderdateien (.ics, etwa aus Google Kalender, Apple Kalender oder Outlook) zu Terminen. Bis zu 20 Dateien mit je höchstens 2 MB; Termine, die schon importiert wurden, werden übersprungen.</p>
+                <form class="two-factor-form" method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="data_import">
+                    <input type="hidden" name="return_to" value="{{ return_to }}">
+                    <label class="settings-calendar-form" for="data-import-files">
+                        <span class="field-label">Dateien</span>
+                        <input id="data-import-files" class="data-import-input" type="file" name="files" accept=".md,.markdown,.txt,.ics,text/markdown,text/plain,text/calendar" multiple required>
+                    </label>
+                    <div class="calendar-form-actions">
+                        <button class="primary-button" type="submit">
+                            <i class="fa-solid fa-file-import" aria-hidden="true"></i>
+                            Importieren
+                        </button>
+                    </div>
+                </form>
+            </section>
+
             <section id="settings-panel-delete" class="glass-panel security-panel" role="tabpanel" aria-labelledby="settings-tab-security" data-settings-panel="security">
                 <div class="panel-title"><i class="fa-solid fa-user-xmark" aria-hidden="true"></i><h2>Konto löschen</h2></div>
                 <p class="panel-description">Löscht dein Konto endgültig mit allen Notizen und Anhängen, Aufgaben, Terminen, gesendeten Nachrichten, Vokabellisten, Diagrammen und Einstellungen. Notizen, die du mit anderen geteilt hast, verschwinden auch bei ihnen. Lade vorher deine Daten herunter, wenn du sie behalten möchtest.</p>

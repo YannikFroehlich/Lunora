@@ -720,6 +720,100 @@
   transform: translateY(-1px);
 }
 
+.notice-action.is-done {
+  color: var(--color-on-accent);
+  background: var(--widget-tone);
+  border-color: transparent;
+}
+
+.widget-list-content small .fa-fire {
+  color: var(--color-warning);
+}
+
+/* Bookmarks */
+.bookmark-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bookmark-item {
+  position: relative;
+  min-width: 0;
+}
+
+.bookmark-item .tool-tile {
+  padding-right: 38px;
+}
+
+.bookmark-delete {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  margin: 0;
+  transform: translateY(-50%);
+}
+
+.bookmark-delete button {
+  display: inline-grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  color: var(--color-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.bookmark-delete button:hover {
+  color: var(--color-danger);
+  background: var(--surface-control-hover);
+}
+
+.bookmark-add {
+  margin-top: 12px;
+}
+
+.bookmark-add summary {
+  width: fit-content;
+  color: var(--widget-tone-strong);
+  font-size: var(--text-sm);
+  font-weight: 650;
+  list-style: none;
+  cursor: pointer;
+}
+
+.bookmark-add summary::-webkit-details-marker {
+  display: none;
+}
+
+.bookmark-add-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.bookmark-add-form input {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 12px;
+  color: var(--color-text);
+  background: var(--surface-control);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-sm);
+}
+
+@container (max-width: 440px) {
+  .bookmark-add-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* Weather */
 .weather-days {
   display: grid;
