@@ -6,6 +6,9 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- The vacation calendar is larger and works directly: right-click a day (tap it on a phone) or drag
+  across several days to add a vacation or a custom holiday, or to edit the vacations and holidays
+  on those days, in a dialog without leaving the calendar.
 - New "Gewohnheiten" tool: track daily or weekly habits, tick off today or the past week, and see
   your streak. A new dashboard widget ticks today's habits off without leaving the dashboard.
 - New "Fokus-Timer" tool: focus intervals with short and long breaks, a sound and an optional

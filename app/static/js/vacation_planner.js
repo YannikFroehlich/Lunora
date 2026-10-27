@@ -130,8 +130,231 @@
       return;
     }
     event.preventDefault();
+    clearSelection();
     showMonth(url).catch(() => {
       window.location.href = url.href;
     });
   });
+
+  // Calendar shortcuts: right-click a day, or drag across days, for a menu that opens the page's own
+  // forms in a dialog. The forms post as usual; their action gets #vacation-calendar, which the
+  // browser keeps across the redirect, so the page comes back to the calendar.
+  const menu = document.querySelector("[data-calendar-menu]");
+  const dialog = document.querySelector("[data-calendar-dialog]");
+  const dialogBody = dialog?.querySelector("[data-calendar-dialog-body]");
+  const CALENDAR_ANCHOR = "#vacation-calendar";
+  let selection = null;
+  let dragStart = null;
+  let moved = null;
+
+  function formatDay(iso, withMonth = true) {
+    const options = withMonth ? { day: "numeric", month: "long" } : { day: "numeric" };
+    return new Date(`${iso}T00:00`).toLocaleDateString("de-DE", options);
+  }
+
+  function selectionLabel() {
+    if (selection.start === selection.end) {
+      return formatDay(selection.start);
+    }
+    const sameMonth = selection.start.slice(0, 7) === selection.end.slice(0, 7);
+    return `${formatDay(selection.start, !sameMonth)} – ${formatDay(selection.end)}`;
+  }
+
+  function setSelection(start, end) {
+    selection = start <= end ? { start, end } : { start: end, end: start };
+    for (const day of document.querySelectorAll(".calendar-day[data-date]")) {
+      day.classList.toggle("is-selected", day.dataset.date >= selection.start && day.dataset.date <= selection.end);
+    }
+  }
+
+  function clearSelection() {
+    selection = null;
+    document.querySelectorAll(".calendar-day.is-selected").forEach((day) => day.classList.remove("is-selected"));
+  }
+
+  function hideMenu() {
+    if (menu) {
+      menu.hidden = true;
+    }
+  }
+
+  function menuButton(icon, label, action) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute("role", "menuitem");
+    button.innerHTML = `<i class="fa-solid ${icon}" aria-hidden="true"></i>`;
+    button.append(document.createTextNode(label));
+    button.addEventListener("click", () => {
+      hideMenu();
+      action();
+    });
+    return button;
+  }
+
+  function inSelection(iso) {
+    return iso >= selection.start && iso <= selection.end;
+  }
+
+  function openMenu(x, y) {
+    const items = [];
+    const ready = document.querySelector("[data-vacation-calendar]")?.dataset.yearReady === "true";
+    if (!ready) {
+      items.push(menuButton("fa-sliders", "Jahr zuerst einrichten", () => focusPlannerArea("year")));
+    } else {
+      items.push(menuButton("fa-plane-departure", "Urlaub anlegen", openNewPeriod));
+      if (selection.start === selection.end) {
+        items.push(menuButton("fa-star-half-stroke", "Eigenen Feiertag anlegen", openNewHoliday));
+      }
+    }
+
+    const periodIds = new Set();
+    document.querySelectorAll(".calendar-day[data-date]").forEach((day) => {
+      if (inSelection(day.dataset.date)) {
+        day.querySelectorAll("[data-period-id]").forEach((chip) => periodIds.add(chip.dataset.periodId));
+      }
+    });
+    periodIds.forEach((id) => {
+      const article = document.querySelector(`.vacation-item[data-period-id="${id}"]`);
+      if (article) {
+        const label = `${article.dataset.periodLabel} bearbeiten`;
+        items.push(menuButton("fa-pen", label, () => openDetails(article, label)));
+      }
+    });
+    document.querySelectorAll("[data-holiday-date]").forEach((article) => {
+      if (inSelection(article.dataset.holidayDate)) {
+        const verb = article.dataset.holidayKind === "custom" ? "bearbeiten" : "anpassen";
+        const label = `${article.dataset.holidayLabel} ${verb}`;
+        items.push(menuButton("fa-calendar-day", label, () => openDetails(article, label)));
+      }
+    });
+
+    const heading = document.createElement("strong");
+    heading.textContent = selectionLabel();
+    menu.replaceChildren(heading, ...items);
+    menu.hidden = false;
+    const { width, height } = menu.getBoundingClientRect();
+    menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - width - 8))}px`;
+    menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - height - 8))}px`;
+    menu.querySelector("button")?.focus();
+  }
+
+  function restoreDialogContent() {
+    if (!moved) {
+      return;
+    }
+    moved.node.querySelectorAll("form[data-original-action]").forEach((form) => {
+      form.setAttribute("action", form.dataset.originalAction);
+      delete form.dataset.originalAction;
+    });
+    moved.placeholder.replaceWith(moved.node);
+    if (moved.node.tagName === "DETAILS") {
+      moved.node.open = moved.wasOpen;
+    }
+    moved = null;
+  }
+
+  function openInDialog(node, title, focusSelector) {
+    restoreDialogContent();
+    // Keep the moved form's height in the page, so the calendar doesn't jump while the dialog is open.
+    const placeholder = document.createElement("div");
+    placeholder.style.height = `${node.offsetHeight}px`;
+    node.before(placeholder);
+    moved = { node, placeholder, wasOpen: node.open };
+    if (node.tagName === "DETAILS") {
+      node.open = true;
+    }
+    const forms = node.tagName === "FORM" ? [node] : node.querySelectorAll("form");
+    forms.forEach((form) => {
+      form.dataset.originalAction = form.getAttribute("action");
+      form.setAttribute("action", form.dataset.originalAction + CALENDAR_ANCHOR);
+    });
+    dialogBody.replaceChildren(node);
+    dialog.querySelector("[data-calendar-dialog-title]").textContent = title;
+    dialog.showModal();
+    node.querySelector(focusSelector || "input:not([type='hidden']), select, textarea")?.focus();
+  }
+
+  function openNewPeriod() {
+    const form = document.querySelector("[data-new-period-form]");
+    form.querySelector('[name="start_date"]').value = selection.start;
+    const end = form.querySelector('[name="end_date"]');
+    end.value = selection.end;
+    end.dispatchEvent(new Event("change"));
+    openInDialog(form, `Urlaub anlegen · ${selectionLabel()}`, 'select[name="name"]');
+  }
+
+  function openNewHoliday() {
+    const form = document.querySelector("[data-new-holiday-form]");
+    form.querySelector('[name="date"]').value = selection.start;
+    openInDialog(form, `Eigener Feiertag · ${selectionLabel()}`, 'input[name="name"]');
+  }
+
+  function openDetails(article, title) {
+    openInDialog(article.querySelector("details"), title);
+  }
+
+  if (menu && dialog) {
+    dialog.addEventListener("close", () => {
+      restoreDialogContent();
+      clearSelection();
+    });
+    dialog.querySelector("[data-calendar-dialog-close]").addEventListener("click", () => dialog.close());
+
+    document.addEventListener("contextmenu", (event) => {
+      const day = event.target.closest(".calendar-day[data-date]");
+      if (!day) {
+        hideMenu();
+        return;
+      }
+      event.preventDefault();
+      if (!selection || !inSelection(day.dataset.date)) {
+        setSelection(day.dataset.date, day.dataset.date);
+      }
+      // The ContextMenu key / Shift+F10 report no pointer position: open beside the focused day.
+      const rect = day.getBoundingClientRect();
+      const fromKeyboard = event.clientX === 0 && event.clientY === 0;
+      openMenu(fromKeyboard ? rect.left + 12 : event.clientX, fromKeyboard ? rect.bottom - 8 : event.clientY);
+    });
+
+    document.addEventListener("mousedown", (event) => {
+      if (!menu.hidden && !menu.contains(event.target)) {
+        hideMenu();
+        clearSelection();
+      }
+      const day = event.button === 0 && event.target.closest(".calendar-day[data-date]");
+      if (day) {
+        dragStart = day.dataset.date;
+        setSelection(dragStart, dragStart);
+      }
+    });
+
+    document.addEventListener("mouseover", (event) => {
+      const day = dragStart && event.target.closest(".calendar-day[data-date]");
+      if (day) {
+        setSelection(dragStart, day.dataset.date);
+      }
+    });
+
+    document.addEventListener("mouseup", (event) => {
+      if (!dragStart) {
+        return;
+      }
+      dragStart = null;
+      // Touch screens have no right-click (iOS not even a long-press menu), so a tap opens the menu.
+      if (selection && (selection.start !== selection.end || window.matchMedia("(pointer: coarse)").matches)) {
+        openMenu(event.clientX, event.clientY);
+      } else {
+        clearSelection();
+      }
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !menu.hidden) {
+        hideMenu();
+        clearSelection();
+      }
+    });
+    window.addEventListener("scroll", hideMenu, { passive: true });
+    window.addEventListener("resize", hideMenu);
+  }
 })();
