@@ -255,6 +255,7 @@ def dashboard_open_tasks(user, now, limit=5):
     )[:limit]
     return [
         {
+            "id": task.id,
             "title": task.title,
             "due_label": _task_due_label(task, now, user),
             "due_state": _task_due_state(task, now, user),
@@ -265,7 +266,7 @@ def dashboard_open_tasks(user, now, limit=5):
 
 
 def dashboard_today_tasks(user, now, limit=5):
-    """Open tasks due today or overdue, for the dashboard notification widget."""
+    """Open tasks due today or overdue, for the calendar sidebar."""
     candidates = Task.objects.filter(user=user, is_done=False, due_at__isnull=False).order_by(
         F("due_at").asc(nulls_last=True)
     )

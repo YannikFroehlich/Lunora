@@ -1,16 +1,17 @@
-<div class="panel-title">
-    <i class="fa-solid fa-chart-simple"></i>
+<header class="widget-head">
+    <span class="widget-icon" aria-hidden="true"><i class="fa-solid fa-chart-simple"></i></span>
     <h2>Statistik</h2>
     {% if dashboard_stats %}
     <div class="stat-period-toggle" role="tablist" aria-label="Zeitraum">
-        <button type="button" class="stat-period-toggle__button is-active" data-stats-period-toggle="week" role="tab" aria-selected="true">Woche</button>
-        <button type="button" class="stat-period-toggle__button" data-stats-period-toggle="month" role="tab" aria-selected="false">Monat</button>
+        <button type="button" class="stat-period-toggle__button{% if widget.options.period == 'week' %} is-active{% endif %}" data-stats-period-toggle="week" role="tab" aria-selected="{% if widget.options.period == 'week' %}true{% else %}false{% endif %}">Woche</button>
+        <button type="button" class="stat-period-toggle__button{% if widget.options.period == 'month' %} is-active{% endif %}" data-stats-period-toggle="month" role="tab" aria-selected="{% if widget.options.period == 'month' %}true{% else %}false{% endif %}">Monat</button>
     </div>
     {% endif %}
-</div>
+</header>
 {% if dashboard_stats %}
-<div class="stat-grid" data-stats-panel="week">
-    {% for tile in dashboard_stats.week %}
+{% for period, tiles in dashboard_stats.items %}
+<div class="stat-grid" data-stats-panel="{{ period }}"{% if period != widget.options.period %} hidden{% endif %}>
+    {% for tile in tiles %}
     <a class="stat-tile" href="{% url tile.url_name %}">
         <i class="fa-solid {{ tile.icon }}" aria-hidden="true"></i>
         <strong>{{ tile.value }}</strong>
@@ -18,15 +19,7 @@
     </a>
     {% endfor %}
 </div>
-<div class="stat-grid" data-stats-panel="month" hidden>
-    {% for tile in dashboard_stats.month %}
-    <a class="stat-tile" href="{% url tile.url_name %}">
-        <i class="fa-solid {{ tile.icon }}" aria-hidden="true"></i>
-        <strong>{{ tile.value }}</strong>
-        <span>{{ tile.label }}</span>
-    </a>
-    {% endfor %}
-</div>
+{% endfor %}
 {% else %}
-<p class="empty-events">Noch keine Aktivität zum Anzeigen.</p>
+<p class="widget-empty">Noch keine Aktivität zum Anzeigen.</p>
 {% endif %}

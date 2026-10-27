@@ -6,6 +6,15 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Redesigned, more customizable dashboard: every widget can be small, medium, large or full width
+  and get its own color, list widgets show 3, 5 or 8 entries, the weather widget can hide
+  tomorrow, the statistics widget opens on week or month, and the quick-access widget shows only
+  the tiles you pick. Three one-click presets ("Übersicht", "Fokus", "Kompakt") are a starting
+  point. Widgets now share one header style and only take the height their content needs instead
+  of stretching into empty space; tasks with their "erledigt" button moved out of the
+  notifications widget into the tasks widget, and "Letzte Tools" became "Zuletzt genutzt", ordered
+  by the sections you opened last in this browser. Also fixes a screen-reader status text that was
+  visible in the weather widget.
 - New logo: a simple gold "orbit" mark replaces the detailed moon illustration on the dashboard,
   login and password pages, offline page, favicon and app icons, and stays legible as a 16 px tab
   icon. Installed apps pick up the new icon after their next update.
