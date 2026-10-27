@@ -15,6 +15,7 @@ from app.models import (
     Profile,
     Task,
     UserNotification,
+    VocabularyListShare,
     WeatherLocation,
     WeeklySummaryDelivery,
 )
@@ -43,6 +44,7 @@ NOTIFICATION_PRESENTATION = {
     UserNotification.KIND_NOTE_COMMENT: ("fa-comment-dots", "Kommentar", "note"),
     UserNotification.KIND_NOTE_SHARE: ("fa-share-nodes", "Freigabe", "note"),
     UserNotification.KIND_WEATHER_ALERT: ("fa-cloud-bolt", "Wetter", "weather"),
+    UserNotification.KIND_VOCABULARY_SHARE: ("fa-language", "Vokabeln", "tools"),
 }
 
 
@@ -218,6 +220,25 @@ def materialize_note_share_notifications(shares):
     return _create_missing_user_notifications(rows)
 
 
+def materialize_vocabulary_share_notifications(shares):
+    rows = []
+    for share in shares:
+        vocabulary_list = share.vocabulary_list
+        rows.append(
+            {
+                "recipient_id": share.user_id,
+                "actor_id": vocabulary_list.owner_id,
+                "kind": UserNotification.KIND_VOCABULARY_SHARE,
+                "title": f"{_display_name(vocabulary_list.owner)} hat eine Vokabelliste mit dir geteilt",
+                "body": vocabulary_list.title,
+                # Recipients have no detail page; shared lists are copied from the overview.
+                "url": "/tools/vocabulary/",
+                "source_key": f"vocabulary-share:{share.pk}",
+            }
+        )
+    return _create_missing_user_notifications(rows)
+
+
 def materialize_user_notification_sources(user, *, now=None, include_reminders=True, include_tasks=True):
     """Backfill all inbox-capable sources for one user without duplicating entries."""
     created = materialize_due_user_notifications(
@@ -243,7 +264,13 @@ def materialize_user_notification_sources(user, *, now=None, include_reminders=T
     )
     created += materialize_event_invitation_notifications(invitations)
     created += materialize_note_activity_notifications(note_activity)
+    vocabulary_shares = list(
+        VocabularyListShare.objects.filter(user=user)
+        .select_related("vocabulary_list", "vocabulary_list__owner", "vocabulary_list__owner__profile")
+        .order_by("created_at", "id")
+    )
     created += materialize_note_share_notifications(note_shares)
+    created += materialize_vocabulary_share_notifications(vocabulary_shares)
     return created
 
 
@@ -702,6 +729,7 @@ def send_pending_user_notification_emails(
     *,
     now=None,
     include_note_shares=True,
+    include_vocabulary_shares=True,
     include_weather=True,
 ):
     """Send inbox-backed e-mails for notification types without a source delivery column."""
@@ -709,6 +737,8 @@ def send_pending_user_notification_emails(
     kinds = []
     if include_note_shares:
         kinds.append(UserNotification.KIND_NOTE_SHARE)
+    if include_vocabulary_shares:
+        kinds.append(UserNotification.KIND_VOCABULARY_SHARE)
     if include_weather:
         kinds.append(UserNotification.KIND_WEATHER_ALERT)
     if not kinds:

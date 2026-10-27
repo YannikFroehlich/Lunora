@@ -8,6 +8,7 @@ from django.db.models import Count, Q
 from django.utils import timezone
 
 from app.models import VocabularyCard, VocabularyList, VocabularyListShare
+from app.services.notifications import materialize_vocabulary_share_notifications
 
 # Leitner system: a correct answer moves a card one box up, a wrong one back to box 1.
 # The interval says how long a card rests in a box before it is due again.
@@ -141,6 +142,7 @@ def share_list(vocabulary_list, identifier):
     share, created = VocabularyListShare.objects.get_or_create(vocabulary_list=vocabulary_list, user=user)
     if not created:
         return None, "Die Liste ist mit diesem Konto bereits geteilt."
+    materialize_vocabulary_share_notifications([share])
     return share, None
 
 

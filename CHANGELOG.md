@@ -6,6 +6,9 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Get notified when someone shares a vocabulary list with you: the share shows up in the
+  notification inbox and, if enabled, by e-mail or Web Push. A new "Werkzeuge" row in the
+  notification settings controls these channels separately from notes.
 - Optional two-factor login: in the new "Sicherheit" settings tab, users can connect an authenticator
   app via QR code and get ten one-time recovery codes. After the password, the login then asks for a
   6-digit code; wrong codes are throttled per account, and the admin sign-in goes through the same

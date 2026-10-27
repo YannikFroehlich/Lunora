@@ -685,6 +685,7 @@ class UserNotification(models.Model):
     KIND_NOTE_MENTION = "note_mention"
     KIND_NOTE_COMMENT = "note_comment"
     KIND_NOTE_SHARE = "note_share"
+    KIND_VOCABULARY_SHARE = "vocabulary_share"
     KIND_WEATHER_ALERT = "weather_alert"
     KIND_CHOICES = [
         (KIND_CALENDAR_REMINDER, "Kalendererinnerung"),
@@ -693,6 +694,7 @@ class UserNotification(models.Model):
         (KIND_NOTE_MENTION, "Notizerwähnung"),
         (KIND_NOTE_COMMENT, "Notizkommentar"),
         (KIND_NOTE_SHARE, "Notizfreigabe"),
+        (KIND_VOCABULARY_SHARE, "Vokabelfreigabe"),
         (KIND_WEATHER_ALERT, "Wetterwarnung"),
     ]
 
@@ -745,11 +747,13 @@ class NotificationPreference(models.Model):
     CATEGORY_TASKS = "tasks"
     CATEGORY_NOTES = "notes"
     CATEGORY_WEATHER = "weather"
+    CATEGORY_TOOLS = "tools"
     CATEGORY_CHOICES = [
         (CATEGORY_CALENDAR, "Kalender"),
         (CATEGORY_TASKS, "Aufgaben"),
         (CATEGORY_NOTES, "Notizen"),
         (CATEGORY_WEATHER, "Wetter"),
+        (CATEGORY_TOOLS, "Werkzeuge"),
     ]
 
     user = models.ForeignKey(
