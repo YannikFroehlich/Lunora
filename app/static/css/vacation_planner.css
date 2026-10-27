@@ -257,8 +257,7 @@
     align-items: start;
     display: grid;
     gap: 20px;
-    grid-template-columns: minmax(180px, 260px) 720px;
-    justify-content: center;
+    grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
 }
 
 .calendar-month-stats {
@@ -295,8 +294,7 @@
     display: grid;
     gap: 0.25rem;
     grid-template-columns: repeat(7, minmax(0, 1fr));
-    margin: 0 auto;
-    max-width: 720px;
+    gap: 0.4rem;
     width: 100%;
 }
 
@@ -315,12 +313,127 @@
     display: grid;
     gap: 0.2rem;
     grid-template-columns: minmax(0, 1fr);
-    min-height: 68px;
-    padding: 0.4rem;
+    min-height: 108px;
+    padding: 0.5rem;
+    cursor: context-menu;
+    user-select: none;
+}
+
+.calendar-day:focus-visible {
+    border-color: var(--focus-border);
+    box-shadow: var(--focus-ring);
+}
+
+.calendar-day.is-selected {
+    background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+    border-color: color-mix(in srgb, var(--color-accent-strong) 55%, transparent);
+}
+
+.calendar-hint {
+    margin: -6px 0 14px;
+    color: var(--color-muted);
+    font-size: var(--text-sm);
+}
+
+/* Right-click menu on a calendar day (vacation_planner.js); same look as the messages menu. */
+.vacation-context-menu {
+    position: fixed;
+    z-index: 9999;
+    display: grid;
+    min-width: 240px;
+    max-width: min(320px, calc(100vw - 16px));
+    padding: 8px;
+    background: var(--surface-panel-solid);
+    border: 1px solid color-mix(in srgb, var(--color-accent-strong) 28%, transparent);
+    border-radius: var(--radius-md);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.22);
+}
+
+.vacation-context-menu[hidden] {
+    display: none;
+}
+
+.vacation-context-menu strong {
+    padding: 4px 10px 8px;
+    color: var(--color-muted);
+    font-size: var(--text-xs);
+}
+
+.vacation-context-menu button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 38px;
+    padding: 8px 10px;
+    color: var(--color-text);
+    font: inherit;
+    text-align: left;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
+
+.vacation-context-menu button:hover,
+.vacation-context-menu button:focus-visible {
+    background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+
+.vacation-context-menu button i {
+    width: 16px;
+    color: var(--color-accent-strong);
+}
+
+/* The page's own forms are moved into this dialog while editing from the calendar. */
+.vacation-dialog {
+    width: min(520px, calc(100vw - 32px));
+    padding: 0;
+    color: var(--color-text);
+    background: transparent;
+    border: 0;
+}
+
+.vacation-dialog > .glass-panel {
+    display: grid;
+    gap: 14px;
+    padding: 22px;
+}
+
+.vacation-dialog-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.vacation-dialog-head h2 {
+    margin: 0;
+    font-size: var(--text-lg);
+}
+
+.vacation-dialog details > summary {
+    display: none;
+}
+
+.vacation-dialog details,
+.vacation-dialog details > form,
+.vacation-dialog .vacation-form,
+.vacation-dialog .holiday-form {
+    display: grid;
+    gap: 12px;
+}
+
+.vacation-dialog input,
+.vacation-dialog select,
+.vacation-dialog textarea {
+    width: 100%;
 }
 
 /* Long names ("Erster Weihnachtstag") are cut instead of spilling over the pill; the full name is in title. */
 .calendar-day .day-chip {
+    font-size: var(--text-xs);
+    padding: 0.2rem 0.5rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -496,7 +609,7 @@
     }
 
     .calendar-day {
-        min-height: 56px;
+        min-height: 64px;
         padding: 0.3rem;
     }
 

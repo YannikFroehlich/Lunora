@@ -150,6 +150,29 @@ class VacationPlannerTests(TestCase):
         self.assertContains(response, "Urlaub planen")
         self.assertNotContains(response, "Jahr zuerst einrichten")
 
+    def test_calendar_marks_days_vacations_and_holidays_for_the_context_menu(self):
+        period = VacationPeriod.objects.create(
+            user=self.user, name="tarifurlaub", start_date=date(2026, 12, 21), end_date=date(2026, 12, 23)
+        )
+        CustomHoliday.objects.create(
+            vacation_year=self.vacation_year,
+            date=date(2026, 12, 31),
+            name="Silvester frei",
+            day_value=Decimal("0.5"),
+        )
+
+        response = self.client.get("/vacation-planner/?year=2026&month=12")
+
+        self.assertContains(response, 'data-year-ready="true"')
+        self.assertContains(response, 'data-date="2026-12-21" tabindex="0"')
+        # vacation_planner.js connects calendar chips to the list entries holding their edit forms.
+        self.assertContains(response, f'class="day-chip vacation-chip" data-period-id="{period.pk}"', count=3)
+        self.assertContains(response, f'data-period-id="{period.pk}" data-period-label="Tarifurlaub"')
+        self.assertContains(response, 'data-holiday-date="2026-12-31" data-holiday-kind="custom"')
+        self.assertContains(response, 'data-holiday-date="2026-12-25" data-holiday-kind="official"')
+        self.assertContains(response, "data-new-period-form")
+        self.assertContains(response, "data-new-holiday-form")
+
     def test_empty_planner_without_year_points_to_year_setup(self):
         self.vacation_year.delete()
 

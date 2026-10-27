@@ -88,7 +88,7 @@
                 <i class="fa-solid fa-plane-departure" aria-hidden="true"></i>
                 <h2>Urlaub anlegen</h2>
             </div>
-            <form class="vacation-form" method="post" action="{% url 'vacation_period_save' %}" data-preview-form>
+            <form class="vacation-form" method="post" action="{% url 'vacation_period_save' %}" data-preview-form data-new-period-form>
                 {% csrf_token %}
                 <input type="hidden" name="year" value="{{ selected_year }}">
                 <input type="hidden" name="month" value="{{ selected_month }}">
@@ -129,7 +129,7 @@
             </div>
             <div class="vacation-list">
                 {% for item in period_items %}
-                <article class="vacation-item status-{{ item.status.key }}">
+                <article class="vacation-item status-{{ item.status.key }}" data-period-id="{{ item.period.id }}" data-period-label="{{ item.period.get_name_display }}">
                     <div class="vacation-item-head">
                         <div>
                             <strong>{{ item.period.get_name_display }}</strong>
@@ -209,7 +209,7 @@
         </section>
     </div>
 
-    <section class="glass-panel calendar-panel" id="vacation-calendar" data-vacation-calendar>
+    <section class="glass-panel calendar-panel" id="vacation-calendar" data-vacation-calendar data-year-ready="{{ year_context.vacation_year|yesno:'true,false' }}">
         <div class="panel-title panel-title-between">
             <span><i class="fa-regular fa-calendar-days" aria-hidden="true"></i> {{ calendar_model.month_label }}</span>
             <nav class="month-actions" aria-label="Monat wechseln">
@@ -218,6 +218,7 @@
                 <a class="icon-button" href="{% url 'vacation_planner' %}?year={{ calendar_model.next_month.year }}&month={{ calendar_model.next_month.month }}#vacation-calendar" data-calendar-nav aria-label="Nächster Monat"><i class="fa-solid fa-chevron-right"></i></a>
             </nav>
         </div>
+        <p class="calendar-hint">Rechtsklick auf einen Tag (am Handy antippen) oder mit gedrückter Maustaste über mehrere Tage ziehen, um Urlaube und Feiertage direkt hier anzulegen oder zu bearbeiten.</p>
         <div class="calendar-body">
             <aside class="calendar-month-stats">
                 <div class="month-stat">
@@ -243,13 +244,13 @@
                 {% endfor %}
                 {% for week in calendar_model.rows %}
                 {% for day in week %}
-                <article class="calendar-day {% if day.muted %}is-muted{% endif %} {% if day.weekend %}is-weekend{% endif %} {% if day.today %}is-today{% endif %}">
+                <article class="calendar-day {% if day.muted %}is-muted{% endif %} {% if day.weekend %}is-weekend{% endif %} {% if day.today %}is-today{% endif %}" data-date="{{ day.date|date:'Y-m-d' }}" tabindex="0" aria-label="{{ day.date|date:'l, j. F Y' }}">
                     <strong>{{ day.number }}</strong>
                     {% if day.holiday %}
                     <span class="day-chip holiday-chip" title="{{ day.holiday.names|join:', ' }}">{{ day.holiday.names|join:', ' }}</span>
                     {% endif %}
                     {% for vacation in day.vacations %}
-                    <span class="day-chip vacation-chip" title="{{ vacation.get_name_display }}">{{ vacation.get_name_display }}</span>
+                    <span class="day-chip vacation-chip" data-period-id="{{ vacation.id }}" title="{{ vacation.get_name_display }}">{{ vacation.get_name_display }}</span>
                     {% endfor %}
                     {% if day.overflow %}<span class="day-chip muted-chip">+{{ day.overflow }}</span>{% endif %}
                 </article>
@@ -265,7 +266,7 @@
                 <i class="fa-solid fa-star-half-stroke" aria-hidden="true"></i>
                 <h2>Eigene Feiertage</h2>
             </div>
-            <form class="holiday-form" method="post" action="{% url 'custom_holiday_save' %}">
+            <form class="holiday-form" method="post" action="{% url 'custom_holiday_save' %}" data-new-holiday-form>
                 {% csrf_token %}
                 <input type="hidden" name="year" value="{{ selected_year }}">
                 <input type="hidden" name="month" value="{{ selected_month }}">
@@ -281,7 +282,7 @@
             </form>
             <div class="holiday-list">
                 {% for holiday in holiday_items.custom %}
-                <article>
+                <article data-holiday-date="{{ holiday.date|date:'Y-m-d' }}" data-holiday-kind="custom" data-holiday-label="{{ holiday.name }}">
                     <span><strong>{{ holiday.name }}</strong><small>{{ holiday.date }} · {{ holiday.day_value|floatformat:1 }} Tag(e)</small></span>
                     <details>
                         <summary><i class="fa-solid fa-pen" aria-hidden="true"></i> Bearbeiten</summary>
@@ -329,7 +330,7 @@
             </div>
             <div class="holiday-list official-list">
                 {% for item in holiday_items.official %}
-                <article class="{% if item.is_disabled %}is-disabled{% endif %}">
+                <article class="{% if item.is_disabled %}is-disabled{% endif %}" data-holiday-date="{{ item.holiday.date|date:'Y-m-d' }}" data-holiday-kind="official" data-holiday-label="{{ item.name }}">
                     <span><strong>{{ item.name }}</strong><small>{{ item.holiday.date }} · {{ item.day_value|floatformat:1 }} Tag(e)</small></span>
                     <details>
                         <summary><i class="fa-solid fa-pen" aria-hidden="true"></i> Anpassen</summary>
@@ -375,6 +376,17 @@
             </div>
         </section>
     </div>
+
+    <div class="vacation-context-menu" role="menu" aria-label="Kalendertag" data-calendar-menu hidden></div>
+    <dialog class="vacation-dialog" aria-labelledby="vacation-dialog-title" data-calendar-dialog>
+        <div class="glass-panel">
+            <div class="vacation-dialog-head">
+                <h2 id="vacation-dialog-title" data-calendar-dialog-title></h2>
+                <button class="icon-button" type="button" aria-label="Schließen" data-calendar-dialog-close><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+            </div>
+            <div data-calendar-dialog-body></div>
+        </div>
+    </dialog>
 </section>
 {% endblock %}
 
