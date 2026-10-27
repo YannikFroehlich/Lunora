@@ -5,7 +5,7 @@
     <li data-dashboard-item{% if forloop.counter > widget.options.limit %} hidden{% endif %}>
         <span class="event-dot tone-{{ event.tone }}"></span>
         <span class="widget-list-content">
-            <strong>{{ event.title }}</strong>
+            <strong>{% if event.url %}<a href="{{ event.url }}">{{ event.title }}</a>{% else %}{{ event.title }}{% endif %}</strong>
             <small>{{ event.date }} · {{ event.time }}</small>
         </span>
     </li>

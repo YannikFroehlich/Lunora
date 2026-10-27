@@ -3,6 +3,7 @@ const eventDialog = document.querySelector("[data-event-dialog]");
 if (eventDialog) {
   const eventForm = eventDialog.querySelector("[data-event-create-form]");
   const dateInput = eventForm?.querySelector("input[name='event_date']");
+  const endDateInput = eventForm?.querySelector("input[name='end_date']");
   const titleInput = eventForm?.querySelector("input[name='title']");
   const allDayInput = eventForm?.querySelector("input[name='is_all_day']");
   const timeFields = eventForm?.querySelectorAll("[data-event-time-field]") || [];
@@ -33,9 +34,17 @@ if (eventDialog) {
     });
   };
 
-  const openEventDialog = (date = "") => {
+  const openEventDialog = (date = "", endDate = "") => {
     if (date && dateInput) {
       dateInput.value = date;
+      if (endDateInput) {
+        endDateInput.value = endDate;
+      }
+    }
+    // A range dragged across days becomes an all-day event over those days.
+    if (endDate && allDayInput) {
+      allDayInput.checked = true;
+      syncTimeFields();
     }
 
     if (!eventDialog.open) {
@@ -72,6 +81,59 @@ if (eventDialog) {
   if (eventDialog.dataset.hasErrors === "true") {
     openEventDialog();
   }
+
+  // Right-click a day (tap on touch screens) or drag across days to open the dialog for that date or
+  // range. Chips, links and the task checkbox keep their own clicks.
+  let dragStart = null;
+  let dragEnd = null;
+  const interactive = "button, a, input, label, .task-chip";
+
+  const markRange = () => {
+    const [first, last] = [dragStart, dragEnd].sort();
+    document.querySelectorAll(".calendar-day[data-date]").forEach((day) => {
+      day.classList.toggle("is-selected", Boolean(dragStart) && day.dataset.date >= first && day.dataset.date <= last);
+    });
+  };
+
+  document.addEventListener("contextmenu", (event) => {
+    const day = event.target.closest(".calendar-day[data-date]");
+    if (!day || event.target.closest(interactive)) {
+      return;
+    }
+    event.preventDefault();
+    openEventDialog(day.dataset.date);
+  });
+
+  document.addEventListener("mousedown", (event) => {
+    const day = event.button === 0 && event.target.closest(".calendar-day[data-date]");
+    if (day && !event.target.closest(interactive)) {
+      dragStart = day.dataset.date;
+      dragEnd = dragStart;
+      markRange();
+    }
+  });
+
+  document.addEventListener("mouseover", (event) => {
+    const day = dragStart && event.target.closest(".calendar-day[data-date]");
+    if (day && day.dataset.date !== dragEnd) {
+      dragEnd = day.dataset.date;
+      markRange();
+    }
+  });
+
+  document.addEventListener("mouseup", () => {
+    if (!dragStart) {
+      return;
+    }
+    const [first, last] = [dragStart, dragEnd].sort();
+    dragStart = null;
+    markRange();
+    if (first !== last) {
+      openEventDialog(first, last);
+    } else if (window.matchMedia("(pointer: coarse)").matches) {
+      openEventDialog(first);
+    }
+  });
 }
 
 const editDialog = document.querySelector("[data-event-edit-dialog]");
@@ -81,6 +143,7 @@ if (editDialog) {
   const idInput = editForm?.querySelector("[data-event-edit-id-input]");
   const titleInput = editForm?.querySelector("input[name='title']");
   const dateInput = editForm?.querySelector("input[name='event_date']");
+  const endDateInput = editForm?.querySelector("input[name='end_date']");
   const startInput = editForm?.querySelector("input[name='start_time']");
   const endInput = editForm?.querySelector("input[name='end_time']");
   const allDayInput = editForm?.querySelector("input[name='is_all_day']");
@@ -105,6 +168,7 @@ if (editDialog) {
     if (idInput) idInput.value = data.eventId || "";
     if (titleInput) titleInput.value = data.title || "";
     if (dateInput) dateInput.value = data.date || "";
+    if (endDateInput) endDateInput.value = data.endDate || "";
     if (startInput) startInput.value = data.start || "";
     if (endInput) endInput.value = data.end || "";
     if (allDayInput) allDayInput.checked = data.allDay === "true";
@@ -131,6 +195,7 @@ if (editDialog) {
         eventId: button.dataset.eventId,
         title: button.dataset.editTitle,
         date: button.dataset.editDate,
+        endDate: button.dataset.editEndDate,
         start: button.dataset.editStart,
         end: button.dataset.editEnd,
         allDay: button.dataset.editAllDay,

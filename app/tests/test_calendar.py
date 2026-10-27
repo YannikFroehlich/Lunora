@@ -1,5 +1,6 @@
 import importlib
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from django.apps import apps as django_apps
@@ -11,6 +12,9 @@ from app.models import (
     CalendarEvent,
     CalendarEventAttendee,
     Profile,
+    SystemSettings,
+    VacationPeriod,
+    VacationYear,
 )
 
 
@@ -116,6 +120,132 @@ class CalendarFeedTests(TestCase):
             self.assertLessEqual(len(line.encode("utf-8")), 75, line)
         unfolded = body.replace("\r\n ", "")
         self.assertIn("DESCRIPTION:" + "ä" * 60 + "\r\n", unfolded)
+
+
+class CalendarVacationAndRangeTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
+        Profile.objects.create(
+            user=self.user,
+            display_name="Mira",
+            timezone_name="Europe/Berlin",
+            calendar_feed_token="mira-token",
+        )
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+    def _days(self, response):
+        return {day["date_input"]: day for week in response.context["calendar_rows"] for day in week}
+
+    def test_month_grid_shows_vacations_and_holidays_as_markers(self):
+        VacationYear.objects.create(user=self.user, year=2026, allowance_days=Decimal("30"), subdivision="NW")
+        VacationPeriod.objects.create(
+            user=self.user, name="tarifurlaub", start_date=date(2026, 12, 21), end_date=date(2026, 12, 23)
+        )
+
+        days = self._days(self.client.get("/calendar/?year=2026&month=12"))
+
+        self.assertEqual([marker["label"] for marker in days["2026-12-22"]["markers"]], ["Tarifurlaub"])
+        self.assertEqual(days["2026-12-22"]["markers"][0]["tone"], "green")
+        self.assertEqual(
+            days["2026-12-22"]["markers"][0]["url"], "/vacation-planner/?year=2026&month=12#vacation-calendar"
+        )
+        self.assertEqual(days["2026-12-22"]["events"], [])
+        self.assertEqual(
+            days["2026-12-25"]["markers"],
+            [
+                {
+                    "label": "Erster Weihnachtstag",
+                    "tone": "red",
+                    "url": "/vacation-planner/?year=2026&month=12#vacation-calendar",
+                }
+            ],
+        )
+        self.assertEqual(days["2026-12-24"]["markers"], [])
+
+        SystemSettings.objects.update_or_create(pk=1, defaults={"vacation_planner_enabled": False})
+        days = self._days(self.client.get("/calendar/?year=2026&month=12"))
+        self.assertEqual(days["2026-12-22"]["markers"], [])
+
+    def test_upcoming_lists_include_vacations_in_date_order(self):
+        today = timezone.localdate(timezone=ZoneInfo("Europe/Berlin"))
+        VacationPeriod.objects.create(
+            user=self.user,
+            name="sonderurlaub",
+            start_date=today + timedelta(days=5),
+            end_date=today + timedelta(days=6),
+        )
+        start_at = timezone.make_aware(
+            datetime.combine(today + timedelta(days=9), datetime.min.time()), ZoneInfo("Europe/Berlin")
+        )
+        CalendarEvent.objects.create(user=self.user, title="Zahnarzt", start_at=start_at, end_at=start_at)
+
+        calendar_items = self.client.get("/calendar/").context["upcoming_events"]
+        dashboard_items = self.client.get("/home/").context["upcoming_dashboard_events"]
+
+        self.assertEqual([item["title"] for item in calendar_items], ["Sonderurlaub", "Zahnarzt"])
+        self.assertTrue(calendar_items[0]["category"].startswith("Urlaub bis "))
+        self.assertEqual([item["title"] for item in dashboard_items], ["Sonderurlaub", "Zahnarzt"])
+        self.assertTrue(dashboard_items[0]["time"].startswith("Urlaub bis "))
+        self.assertTrue(dashboard_items[0]["url"].startswith("/vacation-planner/?year="))
+
+    def test_feed_contains_vacations_as_all_day_events(self):
+        period = VacationPeriod.objects.create(
+            user=self.user,
+            name="tarifurlaub",
+            start_date=date(2099, 7, 1),
+            end_date=date(2099, 7, 14),
+            notes="Ostsee",
+        )
+
+        body = self.client.get("/calendar/feed/mira-token.ics").content.decode("utf-8")
+
+        self.assertIn(
+            f"BEGIN:VEVENT\r\nUID:lunora-vacation-{period.pk}\r\n",
+            body,
+        )
+        self.assertIn(
+            "DTSTART;VALUE=DATE:20990701\r\nDTEND;VALUE=DATE:20990715\r\nSUMMARY:Tarifurlaub\r\n", body
+        )
+        self.assertIn("CATEGORIES:Urlaub\r\nDESCRIPTION:Ostsee\r\n", body)
+
+    def test_event_can_span_several_days_with_an_end_date(self):
+        response = self.client.post(
+            "/calendar/?year=2099&month=8",
+            {
+                "form_name": "calendar_event_add",
+                "title": "Messe",
+                "event_date": "2099-08-10",
+                "end_date": "2099-08-12",
+                "is_all_day": "on",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        event = CalendarEvent.objects.get(user=self.user, title="Messe")
+        berlin = ZoneInfo("Europe/Berlin")
+        self.assertEqual(event.start_at.astimezone(berlin), datetime(2099, 8, 10, tzinfo=berlin))
+        self.assertEqual(event.end_at.astimezone(berlin), datetime(2099, 8, 13, tzinfo=berlin))
+        days = self._days(self.client.get("/calendar/?year=2099&month=8"))
+        self.assertEqual(
+            [len(days[f"2099-08-{day:02d}"]["events"]) for day in (9, 10, 11, 12, 13)], [0, 1, 1, 1, 0]
+        )
+        self.assertEqual(days["2099-08-11"]["events"][0]["edit_end_date"], "2099-08-12")
+
+        response = self.client.post(
+            "/calendar/?year=2099&month=8",
+            {
+                "form_name": "calendar_event_add",
+                "title": "Rückwärts",
+                "event_date": "2099-08-10",
+                "end_date": "2099-08-09",
+                "is_all_day": "on",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("end_date", response.context["event_form"].errors)
+        self.assertFalse(CalendarEvent.objects.filter(title="Rückwärts").exists())
 
 
 class CalendarCategoryMigrationTests(TestCase):
