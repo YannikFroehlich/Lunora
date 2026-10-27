@@ -20,7 +20,11 @@ def verify_registration_token(token):
         return True
 
     token = (token or "").strip()
-    if not token or len(token) > TURNSTILE_TOKEN_MAX_LENGTH:
+    if not token:
+        logger.warning("Turnstile token missing: the widget produced no response before submit.")
+        return False
+    if len(token) > TURNSTILE_TOKEN_MAX_LENGTH:
+        logger.warning("Turnstile token exceeds the maximum length.")
         return False
 
     payload = urlencode(
@@ -56,7 +60,8 @@ def verify_registration_token(token):
         return False
 
     if not result.get("success"):
-        logger.info("Turnstile rejected a registration token.")
+        # Error codes are Cloudflare's fixed identifiers (e.g. "timeout-or-duplicate"), never secrets.
+        logger.warning("Turnstile rejected a registration token: %s", result.get("error-codes"))
         return False
 
     if result.get("action") != TURNSTILE_ACTION:
@@ -64,4 +69,11 @@ def verify_registration_token(token):
         return False
 
     hostname = str(result.get("hostname", "")).casefold()
-    return hostname == settings.CLOUDFLARE_TURNSTILE_EXPECTED_HOSTNAME.casefold()
+    if hostname != settings.CLOUDFLARE_TURNSTILE_EXPECTED_HOSTNAME.casefold():
+        logger.warning(
+            "Turnstile hostname %r does not match CLOUDFLARE_TURNSTILE_EXPECTED_HOSTNAME %r.",
+            hostname,
+            settings.CLOUDFLARE_TURNSTILE_EXPECTED_HOSTNAME,
+        )
+        return False
+    return True

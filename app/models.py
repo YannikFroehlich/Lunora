@@ -412,24 +412,24 @@ class ChatMessageAttachment(models.Model):
 
 
 class CalendarEvent(models.Model):
-    CATEGORY_EXAM = "exam"
-    CATEGORY_TEST = "test"
-    CATEGORY_PRESENTATION = "presentation"
+    CATEGORY_APPOINTMENT = "appointment"
+    CATEGORY_MEETING = "meeting"
     CATEGORY_DEADLINE = "deadline"
+    CATEGORY_PERSONAL = "personal"
     CATEGORY_OTHER = "other"
     CATEGORY_CHOICES = [
-        (CATEGORY_EXAM, "Klassenarbeit"),
-        (CATEGORY_TEST, "Test"),
-        (CATEGORY_PRESENTATION, "Referat"),
-        (CATEGORY_DEADLINE, "Abgabe"),
+        (CATEGORY_APPOINTMENT, "Termin"),
+        (CATEGORY_MEETING, "Meeting"),
+        (CATEGORY_DEADLINE, "Deadline"),
+        (CATEGORY_PERSONAL, "Privat"),
         (CATEGORY_OTHER, "Sonstiges"),
     ]
     # Reuses the existing tone-* color classes of the calendar UI.
     CATEGORY_TONES = {
-        CATEGORY_EXAM: "red",
-        CATEGORY_TEST: "violet",
-        CATEGORY_PRESENTATION: "blue",
-        CATEGORY_DEADLINE: "green",
+        CATEGORY_APPOINTMENT: "blue",
+        CATEGORY_MEETING: "violet",
+        CATEGORY_DEADLINE: "red",
+        CATEGORY_PERSONAL: "green",
         CATEGORY_OTHER: "sand",
     }
 
@@ -437,7 +437,7 @@ class CalendarEvent(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="calendar_events"
     )
     title = models.CharField(max_length=255)
-    category = models.CharField(max_length=16, choices=CATEGORY_CHOICES, default=CATEGORY_OTHER)
+    category = models.CharField(max_length=16, choices=CATEGORY_CHOICES, default=CATEGORY_APPOINTMENT)
     description = models.TextField(blank=True)
     location = models.CharField(max_length=255, blank=True)
     start_at = models.DateTimeField()

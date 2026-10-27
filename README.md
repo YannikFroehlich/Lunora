@@ -8,7 +8,7 @@ Lunora ist ein kleines Django-basiertes Workspace-Dashboard mit ruhiger Glas-UI.
 - Profil- und Erscheinungsbild-Einstellungen mit Theme, Akzentfarbe, Dichte, Datumsformat, Zeitformat und Zeitzone
 - Anpassbares Dashboard mit Uhr, Wetterausblick, Schnellzugriffen, kommenden Terminen, Nachrichten-Badge und kontogespeicherter Widget-Reihenfolge
 - Wetterseite mit Ortssuche, Demo-Daten ohne API-Key, OpenWeather-Anbindung und Regenradar-Proxy
-- Eigenständiger Kalender für Klassenarbeiten, Tests, Referate und Abgaben mit Kategorien, Monatsübersicht, Tagesliste, kommenden Terminen und Erinnerungen; per privatem Abo-Link (iCal) in Google Kalender, Apple Kalender oder Outlook abonnierbar
+- Eigenständiger Kalender mit Kategorien (Termin, Meeting, Deadline, Privat, Sonstiges), fälligen Aufgaben in der Monatsübersicht, Tagesliste, kommenden Terminen und Erinnerungen; per privatem Abo-Link (iCal) in Google Kalender, Apple Kalender oder Outlook abonnierbar
 - Nachrichtenseite mit Direktunterhaltungen, ungelesenen Nachrichten, Live-Updates, Reaktionen, angepinnten Nachrichten, Lesestatus, Stummschalten und Blockieren
 - Zentrale Benachrichtigungs-Inbox mit ungelesenem Badge, Filter und Lesestatus sowie detaillierten Kanalregeln pro Kategorie für Inbox, E-Mail und Web Push
 - Web-Push-Zustellung für Termineinladungen, Erinnerungen, Aufgaben, Notizaktivitäten, Freigaben und Wetterwarnungen mit Ruhezeit, Geräte-Test und automatischer Wiederholung

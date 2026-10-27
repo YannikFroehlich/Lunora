@@ -65,6 +65,16 @@
                         <span class="event-chip tone-{{ event.tone }} {% if event.is_invited %}is-invited{% endif %}" title="{{ event.time }} · {{ event.label }}">{% if event.is_invited %}<i class="fa-solid fa-user-group" aria-hidden="true"></i>{% endif %}{{ event.label }}</span>
                         {% endif %}
                         {% endfor %}
+                        {% for task in day.tasks %}
+                        <form class="event-chip task-chip" method="post" action="{% url 'tasks' %}" title="Aufgabe fällig {{ task.time }} · {{ task.label }}">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_name" value="task_toggle">
+                            <input type="hidden" name="task_id" value="{{ task.id }}">
+                            <input type="hidden" name="return_to" value="{{ request.get_full_path }}">
+                            <input type="checkbox" name="is_done" onchange="this.form.submit()" aria-label="Aufgabe „{{ task.label }}“ erledigen">
+                            <span>{{ task.label }}</span>
+                        </form>
+                        {% endfor %}
                         {% if day.overflow %}
                         <span class="event-more">+{{ day.overflow }} weitere</span>
                         {% endif %}
@@ -202,7 +212,7 @@
                     <i class="fa-regular fa-calendar-plus" aria-hidden="true"></i>
                     <div>
                         <strong>Keine kommenden Termine</strong>
-                        <p>Trage Klassenarbeiten, Tests oder Abgaben ein, um sie hier zu sehen.</p>
+                        <p>Trage Termine, Meetings oder Deadlines ein, um sie hier zu sehen.</p>
                         <div class="calendar-empty-actions">
                             {% if calendar_event_creation_enabled %}
                             <button class="ghost-button calendar-empty-action" type="button" data-event-dialog-open data-calendar-empty-action="event-upcoming">

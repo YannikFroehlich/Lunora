@@ -538,12 +538,22 @@ def get_calendar_context(user, *, year=None, month=None):
         .order_by("start_at", "title")
     )
     events_by_date = _group_calendar_events_by_date(events, visible_start, visible_end, user)
+    tasks_enabled = feature_enabled("tasks")
+    tasks_by_date = {}
+    if tasks_enabled:
+        for task in Task.objects.filter(
+            user=user, is_done=False, due_at__gte=range_start, due_at__lt=range_end
+        ).order_by("due_at", "id"):
+            tasks_by_date.setdefault(localtime_for_user(task.due_at, user).date(), []).append(task)
 
     rows = []
     for week in weeks:
         row = []
         for day in week:
             day_events = events_by_date.get(day, [])
+            day_tasks = tasks_by_date.get(day, [])
+            # Events and tasks share the three visible slots per day; tasks fill what events leave.
+            shown_tasks = day_tasks[: max(0, 3 - len(day_events))]
             row.append(
                 {
                     "number": str(day.day),
@@ -561,7 +571,15 @@ def get_calendar_context(user, *, year=None, month=None):
                         }
                         for event in day_events[:3]
                     ],
-                    "overflow": max(0, len(day_events) - 3),
+                    "tasks": [
+                        {
+                            "id": task.id,
+                            "label": task.title,
+                            "time": format_user_time(task.due_at, user),
+                        }
+                        for task in shown_tasks
+                    ],
+                    "overflow": len(day_events) + len(day_tasks) - min(len(day_events), 3) - len(shown_tasks),
                 }
             )
         rows.append(row)
@@ -588,7 +606,6 @@ def get_calendar_context(user, *, year=None, month=None):
     busy_days = {localtime_for_user(event.start_at, user).date() for event in month_events}
     calendar_reminders_enabled = feature_enabled("calendar_reminders")
     reminder_items = _calendar_reminder_items(user, now) if calendar_reminders_enabled else []
-    tasks_enabled = feature_enabled("tasks")
     due_tasks = dashboard_today_tasks(user, now, limit=8) if tasks_enabled else []
     chart_bars = _calendar_chart_bars(month_events, year, month, user)
     prev_month = _shift_month(year, month, -1)

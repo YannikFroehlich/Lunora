@@ -6,6 +6,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- The calendar is no longer school-specific: event categories are now Termin, Meeting, Deadline,
+  Privat and Sonstiges, and new events start as "Termin". Existing Klassenarbeiten, Tests and
+  Referate become "Termin", Abgaben become "Deadline". Open tasks with a due date now also appear
+  in the month view on their due day and can be ticked off there directly.
 - Settings page polish: the section tabs size to their labels ("Benachrichtigungen" no longer
   overflows) and scroll sideways below 920 px, the selected theme and density options are clearly
   filled instead of only outlined, hovering an option no longer looks like selecting it, hover
