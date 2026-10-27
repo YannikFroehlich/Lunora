@@ -11,12 +11,12 @@ const APP_SHELL_URLS = [
   "{% versioned_static 'css/base.css' %}",
   "{% versioned_static 'css/offline.css' %}",
   "{% static 'img/lunora_background.webp' %}?v=brand-3",
-  "{% static 'img/lunora_logo.png' %}?v=brand-3",
-  "{% static 'img/icon-192.png' %}?v=brand-3",
-  "{% static 'img/icon-512.png' %}?v=brand-3",
-  "{% static 'img/icon-maskable-512.png' %}?v=brand-3",
-  "{% static 'img/favicon-32.png' %}?v=brand-3",
-  "{% static 'img/apple-touch-icon.png' %}?v=brand-3",
+  "{% static 'img/lunora_logo.svg' %}?v=brand-4",
+  "{% static 'img/icon-192.png' %}?v=brand-4",
+  "{% static 'img/icon-512.png' %}?v=brand-4",
+  "{% static 'img/icon-maskable-512.png' %}?v=brand-4",
+  "{% static 'img/favicon-32.png' %}?v=brand-4",
+  "{% static 'img/apple-touch-icon.png' %}?v=brand-4",
 ];
 
 self.addEventListener("install", (event) => {
@@ -116,8 +116,8 @@ self.addEventListener("push", (event) => {
   const title = payload.title || "Lunora";
   const options = {
     body: payload.body || "Du hast eine neue Benachrichtigung.",
-    icon: "{% static 'img/icon-192.png' %}?v=brand-3",
-    badge: "{% static 'img/favicon-32.png' %}?v=brand-3",
+    icon: "{% static 'img/icon-192.png' %}?v=brand-4",
+    badge: "{% static 'img/favicon-32.png' %}?v=brand-4",
     tag: payload.tag || "lunora-notification",
     data: {
       url: typeof payload.url === "string" && payload.url.startsWith("/")

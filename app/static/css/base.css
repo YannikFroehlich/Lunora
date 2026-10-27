@@ -1053,8 +1053,9 @@ dialog .glass-panel {
   font-weight: 800;
 }
 
-.auth-brand i {
-  font-size: var(--text-2xl);
+.auth-brand-logo {
+  width: 30px;
+  height: 30px;
 }
 
 .auth-panel h1 {
