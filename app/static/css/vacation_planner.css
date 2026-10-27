@@ -249,6 +249,8 @@
 
 .calendar-panel {
     overflow: hidden;
+    /* Month links jump here via #vacation-calendar; keep the title clear of the fixed nav orbs. */
+    scroll-margin-top: 88px;
 }
 
 .calendar-body {
@@ -306,13 +308,22 @@
 }
 
 .calendar-day {
+    align-content: start;
     background: var(--surface-control-hover);
     border: 1px solid rgba(75, 63, 48, 0.1);
     border-radius: var(--radius-xs);
     display: grid;
     gap: 0.2rem;
+    grid-template-columns: minmax(0, 1fr);
     min-height: 68px;
     padding: 0.4rem;
+}
+
+/* Long names ("Erster Weihnachtstag") are cut instead of spilling over the pill; the full name is in title. */
+.calendar-day .day-chip {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 [data-theme="dark"] .calendar-day {
@@ -487,12 +498,6 @@
     .calendar-day {
         min-height: 56px;
         padding: 0.3rem;
-    }
-
-    .day-chip {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
     }
 
     .vacation-empty-card .vacation-empty-action {

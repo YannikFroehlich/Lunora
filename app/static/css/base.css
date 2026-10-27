@@ -293,7 +293,9 @@ button:disabled,
 .nav-orb:hover,
 .icon-button:hover {
   transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.82);
+  /* Tinted over the theme's own glass, so the accent icon keeps its contrast in dark mode too. */
+  background: color-mix(in srgb, var(--color-accent) 22%, var(--surface-panel-solid));
+  border-color: color-mix(in srgb, var(--color-accent) 42%, transparent);
 }
 
 .nav-form {
@@ -907,28 +909,6 @@ dialog .glass-panel {
   border-radius: var(--radius-sm);
 }
 
-[data-density="balanced"] .site-main {
-  padding: clamp(92px, 5.2vw, 104px) clamp(22px, 2.6vw, 48px) 42px;
-}
-
-[data-density="compact"] .site-main {
-  padding: clamp(88px, 5vw, 98px) clamp(20px, 2.4vw, 44px) 36px;
-}
-
-[data-density="balanced"] .page-hero {
-  min-height: 112px;
-  padding: 28px 36px;
-}
-
-[data-density="compact"] .page-hero {
-  min-height: 100px;
-  padding: 24px 30px;
-}
-
-[data-density="compact"] .panel-title {
-  margin-bottom: 14px;
-}
-
 /* Shared form controls: toggle switch and custom checkbox. */
 .switch {
   position: relative;
@@ -1133,11 +1113,6 @@ dialog .glass-panel {
   }
 
   .site-main {
-    padding: 86px 16px 32px;
-  }
-
-  [data-density="balanced"] .site-main,
-  [data-density="compact"] .site-main {
     padding: 86px 16px 32px;
   }
 

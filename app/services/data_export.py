@@ -10,10 +10,12 @@ from django.utils import timezone
 from django.utils.text import slugify
 
 from app.models import (
+    Bookmark,
     CalendarEvent,
     CalendarReminder,
     ChatMessage,
     ChatMessageAttachment,
+    Habit,
     Note,
     NoteFolder,
     NoteTemplate,
@@ -40,6 +42,8 @@ Dieses Archiv enthält alle Daten, die du in Lunora angelegt hast:
 - vokabeln.json: Vokabellisten mit Lernfortschritt
 - uml/*.json: UML-Diagramme (lassen sich im Editor wieder importieren)
 - urlaub.json: Urlaubsjahre, Urlaube und eigene Feiertage
+- gewohnheiten.json: Gewohnheiten mit allen abgehakten Tagen
+- lesezeichen.json: Lesezeichen vom Dashboard
 
 Erstellt am {created}.
 """
@@ -49,7 +53,6 @@ PROFILE_FIELDS = [
     "theme",
     "accent_color",
     "background_softness",
-    "density",
     "date_format",
     "time_format",
     "timezone_name",
@@ -82,6 +85,10 @@ def write_user_export(user, fileobj):
         _add_json(archive, "nachrichten.json", _messages(user, archive))
         _add_json(archive, "vokabeln.json", _vocabulary(user))
         _add_json(archive, "urlaub.json", _vacation(user))
+        _add_json(archive, "gewohnheiten.json", _habits(user))
+        _add_json(
+            archive, "lesezeichen.json", list(Bookmark.objects.filter(owner=user).values("title", "url"))
+        )
         for diagram in UmlDiagram.objects.filter(owner=user):
             name = f"uml/{diagram.pk}-{slugify(diagram.title) or 'diagramm'}.json"
             _add_json(archive, name, {"title": diagram.title, "document": diagram.document})
@@ -264,3 +271,16 @@ def _vacation(user):
             VacationPeriod.objects.filter(user=user).values("name", "start_date", "end_date", "notes")
         ),
     }
+
+
+def _habits(user):
+    return [
+        {
+            "title": habit.title,
+            "cadence": habit.cadence,
+            "color": habit.color,
+            "created_at": habit.created_at,
+            "checked_days": [check.date for check in habit.checks.all()],
+        }
+        for habit in Habit.objects.filter(owner=user).prefetch_related("checks")
+    ]

@@ -336,44 +336,6 @@
     });
   }
 
-  // Packs widgets like a masonry wall on multi-column widths: each widget spans as many tiny
-  // grid rows as it is tall, so short widgets no longer stretch to their row's tallest neighbour.
-  function initDashboardMasonry(grid) {
-    const ROW_HEIGHT = 2;
-    const multiColumn = window.matchMedia("(min-width: 760px)");
-    let frame = 0;
-
-    function layout() {
-      frame = 0;
-      const enabled = multiColumn.matches;
-      grid.classList.toggle("is-masonry", enabled);
-      Array.from(grid.children).forEach((child) => {
-        if (!enabled || child.hidden) {
-          child.style.gridRowEnd = "";
-          return;
-        }
-        const gap = parseFloat(window.getComputedStyle(child).marginBottom) || 0;
-        const height = child.getBoundingClientRect().height;
-        child.style.gridRowEnd = `span ${Math.max(1, Math.ceil((height + gap) / ROW_HEIGHT))}`;
-      });
-    }
-
-    function schedule() {
-      if (!frame) {
-        frame = window.setTimeout(layout, 16);
-      }
-    }
-
-    if ("ResizeObserver" in window) {
-      const observer = new ResizeObserver(schedule);
-      Array.from(grid.children).forEach((child) => observer.observe(child));
-    }
-    multiColumn.addEventListener("change", schedule);
-    window.addEventListener("load", schedule, { once: true });
-    schedule();
-    return schedule;
-  }
-
   const RECENT_SECTIONS_STORAGE_KEY = "lunora-recent-sections";
   const VISIBLE_RECENT_TILES = 4;
 
@@ -409,7 +371,7 @@
   const WIDGET_SIZE_LABELS = { small: "klein", medium: "mittel", large: "groß", full: "volle Breite" };
   const WIDGET_TONES = ["sand", "blue", "green", "violet", "red"];
 
-  function initDashboardCustomizer(relayout) {
+  function initDashboardCustomizer() {
     const customizer = document.querySelector("[data-dashboard-customizer]");
     const grid = document.querySelector("[data-dashboard-grid]");
     if (!customizer || !grid) {
@@ -574,7 +536,6 @@
           .map((tileInput) => tileInput.value);
       }
       applyWidgetSettings(widget);
-      relayout();
       if (key === "size") {
         setAnnouncement(`${labelFor(widgetId)} ist jetzt ${WIDGET_SIZE_LABELS[settings.size] || settings.size}.`);
       } else {
@@ -624,7 +585,6 @@
       if (!editing) {
         closeSettingsPanels();
       }
-      relayout();
     }
 
     function setEditing(nextEditing) {
@@ -739,7 +699,6 @@
           if (panel) {
             panel.hidden = !opening;
             settingsButton.setAttribute("aria-expanded", String(opening));
-            relayout();
           }
           return;
         }
@@ -804,12 +763,9 @@
     renderDraft({ reorder: false });
   }
 
-  const dashboardGrid = document.querySelector("[data-dashboard-grid]");
-  const relayoutDashboard = dashboardGrid ? initDashboardMasonry(dashboardGrid) : () => {};
-
   initUnreadMessagesBadge();
   initDashboardWeather();
   initDashboardStatsPeriodToggle();
   initRecentTools();
-  initDashboardCustomizer(relayoutDashboard);
+  initDashboardCustomizer();
 })();

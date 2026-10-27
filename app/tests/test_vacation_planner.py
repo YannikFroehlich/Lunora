@@ -358,6 +358,9 @@ class VacationPlannerTests(TestCase):
         self.assertEqual(vacation_year.allowance_days, Decimal("25.5"))
         self.assertEqual(vacation_year.subdivision, "BY")
         self.assertContains(response, "Urlaubsjahr gespeichert.")
+        # The saved values, not the suggestion (default NW), are shown again after the redirect.
+        self.assertEqual(response.context["year_form"]["subdivision"].value(), "BY")
+        self.assertEqual(response.context["year_form"]["allowance_days"].value(), Decimal("25.5"))
 
     def test_vacation_year_save_view_rejects_non_half_step_allowance(self):
         response = self.client.post(

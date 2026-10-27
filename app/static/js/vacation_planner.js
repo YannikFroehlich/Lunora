@@ -99,4 +99,39 @@
     event.preventDefault();
     focusPlannerArea(trigger.dataset.vacationFocus);
   });
+
+  // Month navigation within the same year only swaps the calendar instead of reloading the page;
+  // a different year changes every panel, so that link navigates normally (its #anchor keeps the scroll spot).
+  async function showMonth(url) {
+    const response = await fetch(url, { headers: { Accept: "text/html" } });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const page = new DOMParser().parseFromString(await response.text(), "text/html");
+    const fresh = page.querySelector("[data-vacation-calendar]");
+    if (!fresh) {
+      throw new Error("calendar missing");
+    }
+    document.querySelector("[data-vacation-calendar]").replaceWith(fresh);
+    const month = url.searchParams.get("month");
+    for (const input of document.querySelectorAll('input[type="hidden"][name="month"]')) {
+      input.value = month;
+    }
+    history.replaceState(null, "", url);
+  }
+
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest("[data-calendar-nav]");
+    if (!link || event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) {
+      return;
+    }
+    const url = new URL(link.href);
+    if (url.searchParams.get("year") !== shell.dataset.vacationYear) {
+      return;
+    }
+    event.preventDefault();
+    showMonth(url).catch(() => {
+      window.location.href = url.href;
+    });
+  });
 })();

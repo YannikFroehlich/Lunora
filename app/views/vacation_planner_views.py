@@ -80,9 +80,12 @@ def vacation_planner(request):
     vacation_year = context["year_context"]["vacation_year"]
     context.update(
         {
+            # A ModelForm's initial overrides instance values, so suggestions only apply to an unsaved year.
             "year_form": VacationYearForm(
                 instance=vacation_year,
-                initial={
+                initial=None
+                if vacation_year
+                else {
                     "allowance_days": context["year_context"]["suggested_allowance"],
                     "subdivision": context["year_context"]["suggested_subdivision"],
                 },

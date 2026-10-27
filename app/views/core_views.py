@@ -11,22 +11,24 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.safestring import mark_safe
-from django.views.decorators.http import require_http_methods
+from django.views.decorators.http import require_http_methods, require_POST
 
 from app.forms import (
     AppearanceForm,
+    BookmarkForm,
     NotificationCategoryPreferencesForm,
     NotificationPreferencesForm,
     ProfileForm,
     RegionPreferencesForm,
     WeatherPreferencesForm,
 )
-from app.models import Profile
+from app.models import Bookmark, Profile
 from app.services import two_factor
 from app.services.accounts import account_deletion_blocked_reason, delete_account
 from app.services.calendar_service import disable_calendar_feed, reset_calendar_feed_token
 from app.services.dashboard import normalize_dashboard_layout, validate_dashboard_layout
 from app.services.data_export import export_filename, write_user_export
+from app.services.data_import import import_files
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.user_preferences import format_user_datetime
 from app.services.user_sessions import (
@@ -140,6 +142,31 @@ def dashboard_layout_update(request):
     return JsonResponse({"ok": True, "layout": layout})
 
 
+MAX_BOOKMARKS = 24
+
+
+@login_required
+@require_POST
+def dashboard_bookmarks(request):
+    form_name = request.POST.get("form_name")
+    if form_name == "bookmark_add":
+        form = BookmarkForm(request.POST)
+        if Bookmark.objects.filter(owner=request.user).count() >= MAX_BOOKMARKS:
+            django_messages.error(request, f"Du kannst höchstens {MAX_BOOKMARKS} Lesezeichen anlegen.")
+        elif form.is_valid():
+            bookmark = form.save(commit=False)
+            bookmark.owner = request.user
+            bookmark.save()
+            django_messages.success(request, "Lesezeichen hinzugefügt.")
+        else:
+            django_messages.error(
+                request, " ".join(error for errors in form.errors.values() for error in errors)
+            )
+    elif form_name == "bookmark_delete":
+        Bookmark.objects.filter(owner=request.user, pk=request.POST.get("bookmark_id") or 0).delete()
+    return redirect("home")
+
+
 @login_required
 def settings(request):
     profile = get_or_create_profile(request.user)
@@ -220,6 +247,20 @@ def settings(request):
     elif form_name == "session_revoke_others":
         count = revoke_other_sessions(request.user, current_key=request.session.session_key)
         django_messages.success(request, f"{count} andere Sitzung(en) abgemeldet.")
+        return redirect(_settings_section_url("security", return_to))
+    elif form_name == "data_import":
+        successes, errors = import_files(
+            request.user,
+            request.FILES.getlist("files"),
+            notes_enabled=feature_enabled("notes"),
+            calendar_enabled=feature_enabled("calendar_event_creation"),
+        )
+        if not successes and not errors:
+            errors = ["Bitte wähle mindestens eine Datei aus."]
+        for message in successes:
+            django_messages.success(request, message)
+        for message in errors:
+            django_messages.error(request, message)
         return redirect(_settings_section_url("security", return_to))
     elif form_name == "account_delete":
         blocked_reason = account_deletion_blocked_reason(request.user)

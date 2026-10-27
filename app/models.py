@@ -68,11 +68,6 @@ class Profile(models.Model):
         ("light", "Heller Modus"),
         ("dark", "Dunkler Modus"),
     ]
-    DENSITY_CHOICES = [
-        ("comfortable", "Komfortabel"),
-        ("balanced", "Ausgeglichen"),
-        ("compact", "Kompakt"),
-    ]
     ACCENT_COLOR_CHOICES = [
         ("#c2a276", "Sand"),
         ("#7f916b", "Salbei"),
@@ -99,7 +94,6 @@ class Profile(models.Model):
     theme = models.CharField(max_length=12, choices=THEME_CHOICES, default="light")
     accent_color = models.CharField(max_length=7, choices=ACCENT_COLOR_CHOICES, default="#c2a276")
     background_softness = models.PositiveSmallIntegerField(default=55)
-    density = models.CharField(max_length=12, choices=DENSITY_CHOICES, default="comfortable")
     date_format = models.CharField(max_length=24, choices=DATE_FORMAT_CHOICES, default="de_numeric")
     time_format = models.CharField(max_length=12, choices=TIME_FORMAT_CHOICES, default="24h")
     timezone_name = models.CharField(max_length=64, choices=timezone_choices, default="Europe/Berlin")
@@ -443,6 +437,8 @@ class CalendarEvent(models.Model):
     start_at = models.DateTimeField()
     end_at = models.DateTimeField()
     is_all_day = models.BooleanField(default=False)
+    # UID of the .ics VEVENT this was imported from, so importing the same file twice skips it.
+    import_uid = models.CharField(max_length=255, blank=True, default="", db_index=True)
     recurrence_id = models.UUIDField(null=True, blank=True, db_index=True)
     recurrence_rule = models.CharField(
         max_length=10,
@@ -698,6 +694,64 @@ class VocabularyListShare(models.Model):
 
     def __str__(self):
         return f"{self.user} – {self.vocabulary_list}"
+
+
+class Habit(models.Model):
+    CADENCE_DAILY = "daily"
+    CADENCE_WEEKLY = "weekly"
+    CADENCE_CHOICES = [
+        (CADENCE_DAILY, "Täglich"),
+        (CADENCE_WEEKLY, "Wöchentlich"),
+    ]
+    # The shared .tone-* palette from base.css.
+    COLOR_CHOICES = [
+        ("sand", "Sand"),
+        ("blue", "Blau"),
+        ("green", "Grün"),
+        ("violet", "Violett"),
+        ("red", "Rosé"),
+    ]
+
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="habits")
+    title = models.CharField(max_length=120)
+    cadence = models.CharField(max_length=10, choices=CADENCE_CHOICES, default=CADENCE_DAILY)
+    color = models.CharField(max_length=10, choices=COLOR_CHOICES, default="green")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return self.title
+
+
+class HabitCheck(models.Model):
+    # One row per day the habit was done; weekly habits count any check in the ISO week.
+    habit = models.ForeignKey(Habit, on_delete=models.CASCADE, related_name="checks")
+    date = models.DateField()
+
+    class Meta:
+        ordering = ["-date"]
+        constraints = [
+            models.UniqueConstraint(fields=["habit", "date"], name="unique_habit_check_per_day"),
+        ]
+
+    def __str__(self):
+        return f"{self.habit} – {self.date}"
+
+
+class Bookmark(models.Model):
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="bookmarks")
+    title = models.CharField(max_length=80)
+    # Only http(s) URLs, enforced by BookmarkForm; templates render it as a plain link.
+    url = models.URLField(max_length=500)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return self.title
 
 
 class UserNotification(models.Model):

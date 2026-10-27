@@ -1,13 +1,17 @@
 import calendar
 from datetime import datetime, time, timedelta
+from urllib.parse import urlparse
 
 from django.db.models import F, Q
 from django.utils import timezone
 
+from app.forms import BookmarkForm
 from app.models import (
+    Bookmark,
     CalendarEvent,
     CalendarEventAttendee,
     CalendarReminder,
+    Habit,
     Note,
     NoteShare,
     Task,
@@ -29,6 +33,7 @@ from app.services.dashboard import (
     default_dashboard_layout,
     normalize_dashboard_layout,
 )
+from app.services.habits import habit_items
 from app.services.message_queries import unread_total_for_user
 from app.services.notifications import dashboard_latest_notifications
 from app.services.system_settings import feature_enabled, feature_flags
@@ -82,6 +87,15 @@ def get_dashboard_context(user=None):
     else:
         dashboard_notifications = []
     dashboard_stats = _dashboard_stats(user, now, flags) if user and "stats" in visible_widget_ids else {}
+    dashboard_habits = habit_items(user, now.date()) if user and "habits" in visible_widget_ids else []
+    dashboard_bookmarks = (
+        [
+            {"id": item.pk, "title": item.title, "url": item.url, "host": urlparse(item.url).hostname or ""}
+            for item in Bookmark.objects.filter(owner=user)
+        ]
+        if user and "bookmarks" in visible_widget_ids
+        else []
+    )
 
     return {
         "active_page": "home",
@@ -109,6 +123,9 @@ def get_dashboard_context(user=None):
         "dashboard_tasks_enabled": flags["tasks"],
         "dashboard_notifications": dashboard_notifications,
         "dashboard_stats": dashboard_stats,
+        "dashboard_habits": dashboard_habits,
+        "dashboard_bookmarks": dashboard_bookmarks,
+        "bookmark_form": BookmarkForm(),
         "clock": {
             "time": format_user_time(now, user),
             "weekday": get_user_weekday_name(now, user),
@@ -371,7 +388,7 @@ def _dashboard_tool_shortcuts(
             -1,
             {
                 "title": "Werkzeuge",
-                "subtitle": "UML & Vokabeln",
+                "subtitle": "Gewohnheiten, Timer & mehr",
                 "icon": "fa-toolbox",
                 "url_name": "tools",
             },
@@ -380,7 +397,21 @@ def _dashboard_tool_shortcuts(
 
 
 # Catalog for the /tools/ hub. An entry without url_name renders as "coming soon".
-SCHOOL_TOOLS = (
+TOOLS = (
+    {
+        "id": "habits",
+        "title": "Gewohnheiten",
+        "description": "Tägliche und wöchentliche Gewohnheiten abhaken und deine Serien im Blick behalten.",
+        "icon": "fa-seedling",
+        "url_name": "habits",
+    },
+    {
+        "id": "focus",
+        "title": "Fokus-Timer",
+        "description": "Konzentriert arbeiten in festen Intervallen mit kurzen und langen Pausen.",
+        "icon": "fa-hourglass-half",
+        "url_name": "focus_timer",
+    },
     {
         "id": "uml",
         "title": "UML-Klassendiagramm",
@@ -404,7 +435,10 @@ def get_tools_context(user):
     due_cards = (
         VocabularyCard.objects.filter(vocabulary_list__owner=user).filter(due_filter(timezone.now())).count()
     )
+    habit_count = Habit.objects.filter(owner=user).count()
     meta = {
+        "habits": f"{habit_count} Gewohnheit(en)" if habit_count else "Noch keine Gewohnheiten",
+        "focus": "Läuft direkt im Browser",
         "uml": f"{diagram_count} Diagramm(e)" if diagram_count else "Noch keine Diagramme",
         "vocabulary": (
             f"{vocabulary_count} Liste(n) · {due_cards} fällig"
@@ -412,7 +446,7 @@ def get_tools_context(user):
             else "Noch keine Vokabellisten"
         ),
     }
-    tools = [{**tool, "meta": meta.get(tool["id"])} for tool in SCHOOL_TOOLS]
+    tools = [{**tool, "meta": meta.get(tool["id"])} for tool in TOOLS]
     return {"active_page": "tools", "tools": tools}
 
 

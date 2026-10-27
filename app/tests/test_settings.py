@@ -17,12 +17,15 @@ from django.utils import timezone
 
 from app.forms import ProfileForm
 from app.models import (
+    Bookmark,
     CalendarEvent,
     CalendarEventAttendee,
     CalendarReminder,
     ChatMessage,
     Conversation,
     ConversationMember,
+    Habit,
+    HabitCheck,
     Note,
     NoteAttachment,
     NotificationPreference,
@@ -384,7 +387,6 @@ class SettingsProfileTests(TestCase):
                 "theme": "dark",
                 "accent_color": "#7f916b",
                 "background_softness": "82",
-                "density": "compact",
             },
         )
 
@@ -393,7 +395,6 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(user.profile.theme, "dark")
         self.assertEqual(user.profile.accent_color, "#7f916b")
         self.assertEqual(user.profile.background_softness, 82)
-        self.assertEqual(user.profile.density, "compact")
         self.assertEqual(user.profile.date_format, "iso")
         self.assertEqual(user.profile.time_format, "12h")
         self.assertEqual(user.profile.timezone_name, "UTC")
@@ -408,7 +409,6 @@ class SettingsProfileTests(TestCase):
             theme="dark",
             accent_color="#7f916b",
             background_softness=82,
-            density="compact",
         )
         self.client.login(username="mira@example.com", password="secret-12345")
 
@@ -430,7 +430,6 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(user.profile.theme, "dark")
         self.assertEqual(user.profile.accent_color, "#7f916b")
         self.assertEqual(user.profile.background_softness, 82)
-        self.assertEqual(user.profile.density, "compact")
 
     def test_logged_in_user_can_save_notification_preferences_without_changing_weather(self):
         user = User.objects.create_user(
@@ -514,7 +513,6 @@ class SettingsProfileTests(TestCase):
                 "theme": "dark",
                 "accent_color": "#7f916b",
                 "background_softness": "101",
-                "density": "compact",
             },
         )
 
@@ -628,7 +626,7 @@ class SettingsProfileTests(TestCase):
         self.assertContains(response, 'data-settings-panel="notifications"')
         self.assertContains(response, 'data-settings-panel="weather"')
         self.assertContains(response, 'data-settings-panel="app"')
-        self.assertContains(response, 'data-settings-panel="security"', count=4)
+        self.assertContains(response, 'data-settings-panel="security"', count=5)
         self.assertContains(response, "Sprache &amp; Region speichern")
         self.assertContains(response, 'name="form_name" value="calendar_feed_reset"')
         self.assertContains(response, 'name="form_name" value="appearance"')
@@ -1569,6 +1567,10 @@ class DataExportTests(TestCase):
         vocabulary_list = VocabularyList.objects.create(owner=self.lea, title="Unit 3")
         VocabularyCard.objects.create(vocabulary_list=vocabulary_list, term="house", translation="Haus")
         UmlDiagram.objects.create(owner=self.lea, title="Klassen")
+        habit = Habit.objects.create(owner=self.lea, title="Lesen")
+        HabitCheck.objects.create(habit=habit, date=datetime(2026, 10, 1).date())
+        Habit.objects.create(owner=self.tom, title="Toms Gewohnheit")
+        Bookmark.objects.create(owner=self.lea, title="Bank", url="https://bank.example.com")
         conversation = Conversation.objects.create(created_by=self.lea)
         ConversationMember.objects.create(conversation=conversation, user=self.lea)
         ConversationMember.objects.create(conversation=conversation, user=self.tom)
@@ -1595,6 +1597,14 @@ class DataExportTests(TestCase):
         self.assertEqual(json.loads(archive.read("vokabeln.json"))[0]["cards"][0]["term"], "house")
         messages = json.loads(archive.read("nachrichten.json"))
         self.assertEqual([item["body"] for item in messages], ["Hallo Tom"])
+        habits = json.loads(archive.read("gewohnheiten.json"))
+        self.assertEqual(
+            [(item["title"], item["checked_days"]) for item in habits], [("Lesen", ["2026-10-01"])]
+        )
+        self.assertEqual(
+            json.loads(archive.read("lesezeichen.json")),
+            [{"title": "Bank", "url": "https://bank.example.com"}],
+        )
         account = archive.read("konto.json").decode("utf-8")
         self.assertIn('"display_name": "Lea"', account)
         self.assertNotIn("geheimer-token", account)

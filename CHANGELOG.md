@@ -6,6 +6,26 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- New "Gewohnheiten" tool: track daily or weekly habits, tick off today or the past week, and see
+  your streak. A new dashboard widget ticks today's habits off without leaving the dashboard.
+- New "Fokus-Timer" tool: focus intervals with short and long breaks, a sound and an optional
+  browser notification at the end of each phase, and adjustable lengths that this browser
+  remembers.
+- New "Lesezeichen" dashboard widget for your own links to frequently used websites.
+- Import data from other apps in the "Sicherheit" settings tab: Markdown files become notes (a
+  Lunora export imports back as the same notes) and .ics calendar files become events; events that
+  were already imported are skipped.
+- The tools area is no longer described as school-only.
+- Fix the vacation planner showing the suggested federal state (e.g. Nordrhein-Westfalen) instead
+  of the saved one after saving a year; the saved state was stored but not displayed.
+- The vacation calendar switches months without reloading the page or jumping to the top, and long
+  holiday names no longer spill out of their labels.
+- Round header and icon buttons keep a readable icon on hover in dark mode with every accent color.
+- The "Kompaktheit" appearance setting is removed; all pages use the comfortable spacing.
+- Dashboard widgets sit on a phone-style grid: "Klein" is a 2×2 tile, "Mittel" a wide 4×2 tile,
+  "Groß" a 4×4 tile and "Volle Breite" a strip across the whole width. Widgets line up without
+  holes, small ones pair up side by side on tablets, and phones keep one column. Widgets you had
+  set to "Groß" become "Volle Breite" so they stay as wide as before.
 - Fix deleting, restoring, moving and saving notes failing with "Der Server hat keine gültige
   Antwort gesendet" on the PostgreSQL production database. Browser notifications for note
   mentions/comments and calendar invitations could fail the same way and are fixed too.

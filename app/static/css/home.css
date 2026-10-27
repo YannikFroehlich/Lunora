@@ -98,30 +98,57 @@
   font-size: var(--text-sm);
 }
 
-/* 12-column grid: small 4, medium 6, large 8, full 12 columns on wide screens. */
+/* Phone-home-screen grid: every size is a fixed footprint of cells, so widgets tile without holes.
+   small 2x2, medium 4x2 (wide), large 4x4, full = a whole-width strip. Rows grow when content needs
+   more room and the neighbours in that row stretch along; dense flow backfills gaps. */
 .dashboard-grid {
+  --dashboard-columns: 8;
+  --dashboard-row: 150px;
   display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  align-items: start;
-  gap: 22px;
-}
-
-/* home.js packs widgets like a masonry wall: tiny rows, each widget spans its own height.
-   Dense flow lets a later widget fill a hole that a wider one left behind. */
-.dashboard-grid.is-masonry {
+  grid-template-columns: repeat(var(--dashboard-columns), minmax(0, 1fr));
+  grid-auto-rows: minmax(var(--dashboard-row), auto);
   grid-auto-flow: row dense;
-  grid-auto-rows: 2px;
-  row-gap: 0;
-}
-
-.dashboard-grid.is-masonry > * {
-  margin-bottom: 22px;
+  gap: 22px;
 }
 
 .dashboard-widget,
 .dashboard-empty-state {
-  grid-column: span 12;
+  grid-column: 1 / -1;
   min-width: 0;
+}
+
+.dashboard-widget--small {
+  grid-column: span 2;
+  grid-row: span 2;
+}
+
+.dashboard-widget--medium {
+  grid-column: span 4;
+  grid-row: span 2;
+}
+
+.dashboard-widget--large {
+  grid-column: span 4;
+  grid-row: span 4;
+}
+
+/* Tablet: four cells, so small is half and everything else the full width. */
+@media (max-width: 1179px) {
+  .dashboard-grid {
+    --dashboard-columns: 4;
+  }
+}
+
+/* Phone: one column at natural height, the order stays the same. */
+@media (max-width: 559px) {
+  .dashboard-grid {
+    grid-auto-rows: auto;
+  }
+
+  .dashboard-grid > .dashboard-widget {
+    grid-column: 1 / -1;
+    grid-row: auto;
+  }
 }
 
 .dashboard-widget {
@@ -135,23 +162,6 @@
   --widget-tone: var(--tone);
   --widget-tone-strong: color-mix(in srgb, var(--tone) 68%, var(--color-heading));
   background-image: linear-gradient(180deg, color-mix(in srgb, var(--tone) 16%, transparent), transparent 140px);
-}
-
-@media (min-width: 760px) {
-  .dashboard-widget--small,
-  .dashboard-widget--medium {
-    grid-column: span 6;
-  }
-}
-
-@media (min-width: 1180px) {
-  .dashboard-widget--small {
-    grid-column: span 4;
-  }
-
-  .dashboard-widget--large {
-    grid-column: span 8;
-  }
 }
 
 .dashboard-grid.is-editing .dashboard-widget {
@@ -720,6 +730,100 @@
   transform: translateY(-1px);
 }
 
+.notice-action.is-done {
+  color: var(--color-on-accent);
+  background: var(--widget-tone);
+  border-color: transparent;
+}
+
+.widget-list-content small .fa-fire {
+  color: var(--color-warning);
+}
+
+/* Bookmarks */
+.bookmark-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bookmark-item {
+  position: relative;
+  min-width: 0;
+}
+
+.bookmark-item .tool-tile {
+  padding-right: 38px;
+}
+
+.bookmark-delete {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  margin: 0;
+  transform: translateY(-50%);
+}
+
+.bookmark-delete button {
+  display: inline-grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  color: var(--color-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.bookmark-delete button:hover {
+  color: var(--color-danger);
+  background: var(--surface-control-hover);
+}
+
+.bookmark-add {
+  margin-top: 12px;
+}
+
+.bookmark-add summary {
+  width: fit-content;
+  color: var(--widget-tone-strong);
+  font-size: var(--text-sm);
+  font-weight: 650;
+  list-style: none;
+  cursor: pointer;
+}
+
+.bookmark-add summary::-webkit-details-marker {
+  display: none;
+}
+
+.bookmark-add-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.bookmark-add-form input {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 12px;
+  color: var(--color-text);
+  background: var(--surface-control);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-sm);
+}
+
+@container (max-width: 440px) {
+  .bookmark-add-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* Weather */
 .weather-days {
   display: grid;
@@ -1015,14 +1119,6 @@
 @media (min-width: 1500px) {
   .dashboard-grid {
     gap: 26px;
-  }
-
-  .dashboard-grid.is-masonry {
-    row-gap: 0;
-  }
-
-  .dashboard-grid.is-masonry > * {
-    margin-bottom: 26px;
   }
 
   .welcome-panel {

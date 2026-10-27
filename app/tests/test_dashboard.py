@@ -8,6 +8,7 @@ from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 
 from app.models import (
+    Bookmark,
     CalendarEvent,
     CalendarReminder,
     Note,
@@ -85,6 +86,8 @@ class DashboardCustomizationTests(TestCase):
             "tasks",
             "notifications",
             "stats",
+            "habits",
+            "bookmarks",
         ]
         self.profile.dashboard_layout = self._layout(order=order)
         self.profile.save(update_fields=["dashboard_layout"])
@@ -110,7 +113,7 @@ class DashboardCustomizationTests(TestCase):
         self.assertEqual(widgets_by_id["weather"]["size"], "full")
         self.assertEqual(widgets_by_id["weather"]["tone"], "blue")
         self.assertEqual(widgets_by_id["clock"]["size"], "medium")
-        self.assertEqual(widgets_by_id["welcome"]["size"], "large")
+        self.assertEqual(widgets_by_id["welcome"]["size"], "medium")
         self.assertContains(response, "dashboard-widget--full has-tone tone-blue")
         self.assertContains(response, "clock-panel dashboard-widget--medium")
         self.assertNotContains(response, 'class="sr-only"')
@@ -163,7 +166,7 @@ class DashboardCustomizationTests(TestCase):
 
         normalized = normalize_dashboard_layout(broken_layout)
 
-        self.assertEqual(normalized["version"], 3)
+        self.assertEqual(normalized["version"], 4)
         self.assertEqual(normalized["order"][:2], ["clock", "welcome"])
         self.assertEqual(set(normalized["order"]), set(DASHBOARD_WIDGET_IDS))
         self.assertEqual(normalized["hidden"], ["weather"])
@@ -181,8 +184,22 @@ class DashboardCustomizationTests(TestCase):
 
         self.assertNotIn("wide", normalized)
         self.assertEqual(normalized["widgets"]["clock"]["size"], "full")
-        self.assertEqual(normalized["widgets"]["welcome"]["size"], "large")
+        self.assertEqual(normalized["widgets"]["welcome"]["size"], "medium")
         self.assertEqual(normalized["hidden"], ["weather"])
+
+    def test_normalization_keeps_v3_large_widgets_wide(self):
+        v3_layout = default_dashboard_layout()
+        v3_layout["version"] = 3
+        v3_layout["widgets"]["welcome"]["size"] = "large"
+        v3_layout["widgets"]["tasks"]["size"] = "medium"
+
+        normalized = normalize_dashboard_layout(v3_layout)
+
+        self.assertEqual(normalized["version"], 4)
+        # v3 "large" meant two thirds of the width; v4's large is a 4x4 square.
+        self.assertEqual(normalized["widgets"]["welcome"]["size"], "full")
+        self.assertEqual(normalized["widgets"]["tasks"]["size"], "medium")
+        self.assertEqual(normalize_dashboard_layout(normalized), normalized)
 
     def test_normalization_replaces_invalid_widget_settings_with_defaults(self):
         layout = self._layout()
@@ -267,6 +284,8 @@ class DashboardCustomizationTests(TestCase):
                 "tasks",
                 "notifications",
                 "stats",
+                "habits",
+                "bookmarks",
             ],
             hidden=["clock", "weather"],
             widgets={
@@ -294,6 +313,7 @@ class DashboardCustomizationTests(TestCase):
         original_layout = self.profile.dashboard_layout
         invalid_layouts = [
             {"version": 2, "order": list(DASHBOARD_WIDGET_IDS), "hidden": [], "wide": []},
+            {**self._layout(), "version": 3},
             {**self._layout(), "order": ["welcome"]},
             self._layout(
                 order=["welcome", "welcome", "clock", "weather", "upcoming_events", "quick_actions"]
@@ -537,3 +557,42 @@ class DashboardStatsWidgetTests(TestCase):
         self.assertEqual(response.status_code, 200)
         dashboard_stats.assert_not_called()
         self.assertEqual(response.context["dashboard_stats"], {})
+
+
+class DashboardBookmarkWidgetTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="mira", email="mira@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=self.user, display_name="Mira")
+        self.client.force_login(self.user)
+
+    def test_bookmarks_are_added_listed_and_removed_per_user(self):
+        response = self.client.post(
+            "/home/bookmarks/", {"form_name": "bookmark_add", "title": "Bank", "url": "bank.example.com"}
+        )
+        self.assertRedirects(response, "/home/", fetch_redirect_response=False)
+        bookmark = Bookmark.objects.get(owner=self.user)
+        self.assertEqual(bookmark.url, "https://bank.example.com")
+
+        other = User.objects.create_user(username="lukas", password="secret-12345")
+        foreign = Bookmark.objects.create(owner=other, title="Fremd", url="https://fremd.example.com")
+
+        response = self.client.get("/home/")
+        self.assertContains(
+            response, 'href="https://bank.example.com" target="_blank" rel="noopener noreferrer"'
+        )
+        self.assertContains(response, "bank.example.com")
+        self.assertNotContains(response, "Fremd")
+
+        self.client.post("/home/bookmarks/", {"form_name": "bookmark_delete", "bookmark_id": foreign.id})
+        self.client.post("/home/bookmarks/", {"form_name": "bookmark_delete", "bookmark_id": bookmark.id})
+        self.assertFalse(Bookmark.objects.filter(owner=self.user).exists())
+        self.assertTrue(Bookmark.objects.filter(pk=foreign.pk).exists())
+
+    def test_only_web_links_are_accepted(self):
+        for url in ("javascript:alert(1)", "ftp://example.com/datei", "data:text/html,hi"):
+            with self.subTest(url=url):
+                self.client.post("/home/bookmarks/", {"form_name": "bookmark_add", "title": "X", "url": url})
+        self.assertFalse(Bookmark.objects.exists())
+        self.assertEqual(self.client.get("/home/bookmarks/").status_code, 405)

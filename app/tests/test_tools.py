@@ -1,5 +1,5 @@
 import json
-from datetime import timedelta
+from datetime import date, timedelta
 
 from django.contrib.auth.models import User
 from django.core import mail
@@ -7,6 +7,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from app.models import (
+    Habit,
     NotificationPreference,
     Profile,
     SystemSettings,
@@ -16,8 +17,10 @@ from app.models import (
     VocabularyList,
     VocabularyListShare,
 )
+from app.services.habits import current_streak, is_done_now
 from app.services.notifications import send_pending_user_notification_emails
 from app.services.uml_content import validate_uml_document
+from app.services.user_preferences import localtime_for_user
 from app.services.vocabulary import parse_bulk_cards, review_card
 
 
@@ -481,3 +484,95 @@ class VocabularySharingTests(TestCase):
         self.assertEqual(send_pending_user_notification_emails(include_vocabulary_shares=False)["sent"], 0)
         self.assertEqual(send_pending_user_notification_emails()["sent"], 1)
         self.assertIn("Vokabelliste", mail.outbox[0].subject)
+
+
+class HabitTrackerTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="lea", email="lea@example.com", password="pw-12345!")
+        Profile.objects.create(user=self.user, display_name="Lea", timezone_name="Europe/Berlin")
+        self.other = User.objects.create_user(username="tom", email="tom@example.com", password="pw-12345!")
+        self.client.force_login(self.user)
+        self.today = localtime_for_user(profile_or_user=self.user).date()
+
+    def test_streaks_count_back_from_today_without_breaking_on_an_open_today(self):
+        today = date(2026, 10, 28)  # a Wednesday
+        daily = Habit(cadence=Habit.CADENCE_DAILY)
+        weekly = Habit(cadence=Habit.CADENCE_WEEKLY)
+        checked = {today - timedelta(days=offset) for offset in (1, 2, 3, 5)}
+
+        self.assertEqual(current_streak(daily, checked, today), 3)
+        self.assertEqual(current_streak(daily, checked | {today}, today), 4)
+        self.assertFalse(is_done_now(daily, checked, today))
+        # Monday of this week, plus one day in each of the two previous weeks.
+        weekly_checks = {date(2026, 10, 26), date(2026, 10, 22), date(2026, 10, 12)}
+        self.assertEqual(current_streak(weekly, weekly_checks, today), 3)
+        self.assertTrue(is_done_now(weekly, weekly_checks, today))
+        self.assertEqual(current_streak(weekly, {date(2026, 10, 12)}, today), 0)
+
+    def test_page_creates_toggles_and_deletes_only_own_habits(self):
+        response = self.client.post(
+            "/tools/habits/",
+            {"form_name": "habit_add", "title": "Lesen", "cadence": "daily", "color": "blue"},
+        )
+        self.assertRedirects(response, "/tools/habits/")
+        habit = Habit.objects.get(owner=self.user)
+        foreign = Habit.objects.create(owner=self.other, title="Fremd")
+
+        for day in (self.today, self.today - timedelta(days=6), self.today - timedelta(days=7)):
+            self.client.post(
+                "/tools/habits/", {"form_name": "habit_toggle", "habit_id": habit.id, "date": day.isoformat()}
+            )
+        self.client.post(
+            "/tools/habits/",
+            {"form_name": "habit_toggle", "habit_id": foreign.id, "date": self.today.isoformat()},
+        )
+
+        self.assertEqual(
+            set(habit.checks.values_list("date", flat=True)), {self.today, self.today - timedelta(days=6)}
+        )
+        self.assertFalse(foreign.checks.exists())
+        response = self.client.get("/tools/habits/")
+        self.assertContains(response, "1 Tag in Folge")
+        self.assertNotContains(response, "Fremd")
+
+        self.client.post(
+            "/tools/habits/", {"form_name": "habit_toggle", "habit_id": habit.id, "date": "kaputt"}
+        )
+        self.client.post("/tools/habits/", {"form_name": "habit_delete", "habit_id": foreign.id})
+        self.client.post("/tools/habits/", {"form_name": "habit_delete", "habit_id": habit.id})
+        self.assertFalse(Habit.objects.filter(owner=self.user).exists())
+        self.assertTrue(Habit.objects.filter(pk=foreign.pk).exists())
+
+    def test_dashboard_widget_ticks_today_off_and_returns_home(self):
+        habit = Habit.objects.create(owner=self.user, title="Wasser trinken")
+
+        response = self.client.get("/home/")
+        self.assertContains(response, "Wasser trinken")
+        self.assertContains(response, 'aria-label="„Wasser trinken“ heute erledigt"')
+
+        response = self.client.post(
+            "/tools/habits/",
+            {
+                "form_name": "habit_toggle",
+                "habit_id": habit.id,
+                "date": self.today.isoformat(),
+                "return_to": "/home/",
+            },
+        )
+
+        self.assertRedirects(response, "/home/", fetch_redirect_response=False)
+        self.assertTrue(habit.checks.filter(date=self.today).exists())
+
+    def test_tools_hub_lists_habits_and_focus_timer_and_flag_blocks_both(self):
+        response = self.client.get("/tools/")
+        self.assertContains(response, "Gewohnheiten")
+        self.assertContains(response, "Fokus-Timer")
+        self.assertNotContains(response, "Schule")
+        response = self.client.get("/tools/focus/")
+        self.assertContains(response, "data-focus-timer")
+
+        SystemSettings.objects.update_or_create(pk=1, defaults={"tools_enabled": False})
+
+        self.assertEqual(self.client.get("/tools/habits/").status_code, 503)
+        self.assertEqual(self.client.get("/tools/focus/").status_code, 503)
+        self.assertNotContains(self.client.get("/home/"), "Gewohnheiten")

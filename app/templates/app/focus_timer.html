@@ -1,0 +1,84 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}Fokus-Timer | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell tools-shell">
+    <header class="page-hero">
+        <div>
+            <a class="tools-back-link" href="{% url 'tools' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Werkzeuge</a>
+            <h1>Fokus-Timer</h1>
+            <p>Konzentriert arbeiten in festen Intervallen, mit kurzen und langen Pausen dazwischen.</p>
+        </div>
+        <i class="fa-solid fa-hourglass-half hero-branch" aria-hidden="true"></i>
+    </header>
+
+    <div class="focus-layout" data-focus-timer>
+        <section class="glass-panel focus-panel" aria-labelledby="focus-phase-label">
+            <div class="focus-phases" aria-hidden="true">
+                <span class="focus-phase" data-focus-phase-chip="focus">Fokus</span>
+                <span class="focus-phase" data-focus-phase-chip="short">Kurze Pause</span>
+                <span class="focus-phase" data-focus-phase-chip="long">Lange Pause</span>
+            </div>
+            <div class="focus-ring">
+                <svg viewBox="0 0 120 120" aria-hidden="true">
+                    <circle class="focus-ring-track" cx="60" cy="60" r="54"></circle>
+                    <circle class="focus-ring-progress" cx="60" cy="60" r="54" data-focus-progress></circle>
+                </svg>
+                <div class="focus-time">
+                    <strong data-focus-clock>25:00</strong>
+                    <span id="focus-phase-label" data-focus-phase-label>Fokus</span>
+                </div>
+            </div>
+            <p class="visually-hidden" aria-live="polite" data-focus-live></p>
+            <div class="focus-controls">
+                <button class="primary-button" type="button" data-focus-toggle>
+                    <i class="fa-solid fa-play" aria-hidden="true"></i>
+                    <span>Starten</span>
+                </button>
+                <button class="ghost-button" type="button" data-focus-reset>
+                    <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
+                    Zurücksetzen
+                </button>
+                <button class="ghost-button" type="button" data-focus-skip>
+                    <i class="fa-solid fa-forward-step" aria-hidden="true"></i>
+                    Überspringen
+                </button>
+            </div>
+            <small class="focus-count" data-focus-count>Heute 0 Fokus-Einheiten</small>
+        </section>
+
+        <form class="glass-panel focus-settings" data-focus-settings>
+            <h2>Einstellungen</h2>
+            <div class="focus-settings-grid">
+                <label class="vocab-field">
+                    <span>Fokus (Min.)</span>
+                    <input type="number" name="focus" min="1" max="180" value="25" required>
+                </label>
+                <label class="vocab-field">
+                    <span>Kurze Pause (Min.)</span>
+                    <input type="number" name="short" min="1" max="60" value="5" required>
+                </label>
+                <label class="vocab-field">
+                    <span>Lange Pause (Min.)</span>
+                    <input type="number" name="long" min="1" max="60" value="15" required>
+                </label>
+                <label class="vocab-field">
+                    <span>Lange Pause nach … Einheiten</span>
+                    <input type="number" name="longEvery" min="2" max="12" value="4" required>
+                </label>
+            </div>
+            <p>Die Einstellungen bleiben in diesem Browser gespeichert. Am Ende jeder Phase ertönt ein kurzer Ton; erlaubst du Benachrichtigungen, meldet sich der Timer auch, wenn der Tab im Hintergrund ist.</p>
+        </form>
+    </div>
+</section>
+{% endblock %}
+
+{% block page_js %}
+<script src="{% versioned_static 'js/focus_timer.js' %}"></script>
+{% endblock %}

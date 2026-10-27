@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from app.models import (
+    Bookmark,
     CalendarEvent,
     CalendarReminder,
     ChatMessage,
@@ -8,6 +9,7 @@ from app.models import (
     Conversation,
     ConversationMember,
     CustomHoliday,
+    Habit,
     HolidayOverride,
     Note,
     NoteAttachment,
@@ -152,6 +154,8 @@ class VocabularyListAdmin(admin.ModelAdmin):
 
 
 admin.site.register(VocabularyCard)
+admin.site.register(Habit)
+admin.site.register(Bookmark)
 
 
 @admin.register(UserNotification)

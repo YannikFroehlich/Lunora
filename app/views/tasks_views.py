@@ -2,7 +2,6 @@ from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.shortcuts import redirect, render
-from django.utils.http import url_has_allowed_host_and_scheme
 
 from app.forms import TaskForm, TaskLabelForm, TaskListForm
 from app.models import Task, TaskLabel, TaskList
@@ -19,6 +18,7 @@ from app.services.tasks import (
     rename_task_list,
     toggle_task,
 )
+from app.views.navigation import local_return_to
 
 
 @login_required
@@ -47,18 +47,7 @@ def tasks(request):
             return redirect(request.get_full_path())
     elif form_name == "task_toggle":
         toggle_task(request.user, request.POST.get("task_id"), request.POST.get("is_done") == "on")
-        return_to = request.POST.get("return_to")
-        if (
-            return_to
-            and return_to.startswith("/")
-            and url_has_allowed_host_and_scheme(
-                return_to,
-                allowed_hosts={request.get_host()},
-                require_https=request.is_secure(),
-            )
-        ):
-            return redirect(return_to)
-        return redirect(request.get_full_path())
+        return redirect(local_return_to(request) or request.get_full_path())
     elif form_name == "task_delete":
         if delete_task(request.user, request.POST.get("task_id")):
             django_messages.success(request, "Aufgabe gelöscht.")
