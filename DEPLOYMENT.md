@@ -1,42 +1,33 @@
 # Lunora auf Ubuntu bereitstellen
 
-> **Stand 26. Oktober 2026:** Lunora läuft vorerst **nur im LAN** auf dem Heimserver `yfsrv1`
-> unter `http://192.168.178.175:8090`, ohne Cloudflare Tunnel; `lunora.yfserver.de` antwortet
-> weiterhin mit einem Tunnel-Fehler. Jeder Merge auf `main` wird automatisch deployt. Die
-> Abweichungen vom Zielbild stehen unter „LAN-Betrieb“.
+> **Stand 27. Oktober 2026:** Lunora ist öffentlich unter `https://lunora.yfserver.de` erreichbar,
+> gehostet auf dem Heimserver `yfsrv1` hinter dem Cloudflare Tunnel `lunora-yfsrv1`. Jeder Merge
+> auf `main` wird automatisch deployt. Die Abweichungen vom Zielbild stehen unter
+> „Besonderheiten auf yfsrv1“.
 
 Ziel: `lunora.yfserver.de` läuft über einen ausgehenden Cloudflare Tunnel. Nginx
 lauscht nur auf `127.0.0.1:8090`, Gunicorn nur auf einem Unix-Socket. Lokal bleibt
 SQLite in Verwendung; Produktion verwendet die frische PostgreSQL-Datenbank.
 
-## LAN-Betrieb
+## Besonderheiten auf yfsrv1
 
-`yfsrv1` betreibt außerdem Docker-Dienste (RoundRush mit Caddy auf `80`/`443`, `nexora` auf
-`8001`, `shdashboard` auf `8080`, Home Assistant auf `8123`). Sie dürfen nicht angefasst
-werden. Abweichend von der Anleitung unten gilt:
+`yfsrv1` betreibt außerdem Docker-Dienste (RoundRush mit Caddy auf `80`/`443` und eigenem
+cloudflared, `nexora` auf `8001`, `shdashboard` auf `8080`, Home Assistant auf `8123`). Sie
+dürfen nicht angefasst werden. Abweichend von der Anleitung unten gilt:
 
 - **Bootstrap:** `scripts/bootstrap-ubuntu.sh` wurde nicht unverändert ausgeführt. Die Pakete
-  ohne `cloudflared` wurden mit einer temporären `/usr/sbin/policy-rc.d` (`exit 101`)
-  installiert, damit apt Nginx nicht startet, solange dessen Standardseite Port `80` von
-  Caddy belegen will. Danach wurde `/etc/nginx/sites-enabled/default` entfernt.
-- **Nginx:** Die Konfiguration wird mit einer lokalen Änderung installiert, damit sie im LAN
-  erreichbar ist:
-
-  ```bash
-  sed 's/listen 127\.0\.0\.1:8090;/listen 8090;/' deploy/nginx-lunora.conf | sudo tee /etc/nginx/sites-available/lunora >/dev/null
-  ```
-
-  Die UFW-Regel `Lunora LAN` erlaubt `8090/tcp` nur aus `192.168.178.0/24`.
-- **`/etc/lunora/lunora.env`:** `DJANGO_SECURE_SSL_REDIRECT`, `DJANGO_SESSION_COOKIE_SECURE`,
-  `DJANGO_CSRF_COOKIE_SECURE` und `DJANGO_USE_X_FORWARDED_PROTO` sind `false`,
-  `DJANGO_SECURE_HSTS_SECONDS=0`. Ohne SMTP-Passwort läuft das Console-Backend; weil
-  Django 6.1 das bei `check --deploy` als Fehler meldet, steht dort
-  `DJANGO_SILENCED_SYSTEM_CHECKS=mail.E001`. `CLOUDFLARE_TURNSTILE_REQUIRED=false`, alle
-  drei VAPID-Werte sind leer (Web Push braucht HTTPS). `DJANGO_ALLOWED_HOSTS` enthält neben
-  der IP und `yfsrv1` auch `lunora.yfserver.de` für den Health-Check des Auto-Deployments.
-- **Öffentlich machen:** Tunnel und Turnstile einrichten, die HTTPS-Schalter, SMTP und VAPID
-  wie in `deploy/lunora.env.example` setzen, `DJANGO_SILENCED_SYSTEM_CHECKS` entfernen, Nginx
-  ohne die `sed`-Änderung neu installieren und die UFW-Regel `Lunora LAN` löschen.
+  wurden mit einer temporären `/usr/sbin/policy-rc.d` (`exit 101`) installiert, damit apt
+  Nginx nicht startet, solange dessen Standardseite Port `80` von Caddy belegen will. Danach
+  wurde `/etc/nginx/sites-enabled/default` entfernt.
+- **cloudflared:** Der Dienst kommt aus `deploy/cloudflared.service` statt aus
+  `cloudflared service install` (siehe „Cloudflare“). Der Tunnel-Token liegt nur in
+  `/etc/cloudflared/token`.
+- **E-Mail:** Noch ohne SMTP-Passwort, deshalb läuft das Console-Backend (Mails landen im
+  Journal von `lunora-web`/`lunora-automations`, Passwort-Reset per Mail geht nicht). Weil
+  Django 6.1 das bei `check --deploy` als Fehler meldet, steht in `/etc/lunora/lunora.env`
+  `DJANGO_SILENCED_SYSTEM_CHECKS=mail.E001`. Beim Einrichten von SMTP diese Zeile entfernen.
+- **Vorheriger LAN-Betrieb (26.–27. Oktober 2026):** Die damalige Env liegt als
+  `/etc/lunora/lunora.env.lan-backup` auf dem Server.
 
 ## Noch benötigte Geheimnisse
 
@@ -177,13 +168,27 @@ set +a
 
 Im Dashboard einen Turnstile-Widget für ausschließlich `lunora.yfserver.de` erstellen
 und beide Keys in `/etc/lunora/lunora.env` setzen. Danach einen remotely-managed Tunnel
-erstellen, den vom Dashboard angezeigten Linux-Installationsbefehl einmal ausführen und
-den öffentlichen Hostnamen so routen:
+(Typ „Cloudflared“) erstellen. Den angezeigten Befehl `cloudflared service install …` **nicht**
+ausführen, er schreibt den Token offen in eine eigene Unit. Stattdessen nur den Token
+(die Zeichenkette `eyJ…`) in die Datei schreiben und die versionierte Unit installieren:
+
+```bash
+sudo sh -c 'umask 077; cat > /etc/cloudflared/token'   # Token einfügen, Enter, Strg+D
+sudo install -o root -g root -m 0644 deploy/cloudflared.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now cloudflared.service
+```
+
+Anschließend im Tunnel eine Route („Published application“) anlegen:
 
 ```text
 Hostname: lunora.yfserver.de
 Service:  http://localhost:8090
 ```
+
+Liefert die Domain danach Cloudflare-Fehler 1033, zeigt der DNS-Eintrag noch auf einen
+alten Tunnel: Unter DNS den CNAME `lunora` auf `<Tunnel-ID>.cfargotunnel.com` (Proxied)
+setzen.
 
 Cloudflare Access darf nicht vor die gesamte Website geschaltet werden, weil die
 Registrierung öffentlich bleiben soll. WAF, Bot-Schutz und Rate Limits können dagegen
