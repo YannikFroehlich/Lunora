@@ -784,44 +784,61 @@
   background: var(--surface-control-hover);
 }
 
-.bookmark-add {
-  margin-top: 12px;
+.widget-head-action:hover {
+  transform: none;
 }
 
-.bookmark-add summary {
-  width: fit-content;
-  color: var(--widget-tone-strong);
-  font-size: var(--text-sm);
-  font-weight: 650;
-  list-style: none;
-  cursor: pointer;
-}
-
-.bookmark-add summary::-webkit-details-marker {
-  display: none;
+/* "Lesezeichen hinzufügen" opens from the widget head's plus button (home.js), not inline. */
+.bookmark-dialog {
+  width: min(440px, calc(100vw - 32px));
+  padding: 0;
+  color: var(--color-text);
+  background: transparent;
+  border: 0;
 }
 
 .bookmark-add-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto;
-  gap: 8px;
-  margin-top: 10px;
+  gap: 14px;
+  padding: 22px;
+}
+
+.bookmark-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bookmark-dialog-head h2 {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.bookmark-add-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  font-weight: 700;
 }
 
 .bookmark-add-form input {
   width: 100%;
   min-width: 0;
+  min-height: 42px;
   padding: 9px 12px;
   color: var(--color-text);
+  font: inherit;
   background: var(--surface-control);
   border: 1px solid var(--glass-border-soft);
   border-radius: var(--radius-sm);
 }
 
-@container (max-width: 440px) {
-  .bookmark-add-form {
-    grid-template-columns: minmax(0, 1fr);
-  }
+.bookmark-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 /* Weather */

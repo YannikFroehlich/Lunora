@@ -339,6 +339,25 @@
   const RECENT_SECTIONS_STORAGE_KEY = "lunora-recent-sections";
   const VISIBLE_RECENT_TILES = 4;
 
+  // Widget head actions (e.g. the bookmarks widget's plus) open a <dialog> by id.
+  function initWidgetDialogs() {
+    document.addEventListener("click", (event) => {
+      const opener = event.target.closest("[data-dialog-open]");
+      if (opener) {
+        const dialog = document.getElementById(opener.dataset.dialogOpen);
+        dialog?.showModal();
+        dialog?.querySelector("input:not([type='hidden'])")?.focus();
+        return;
+      }
+      if (event.target.closest("[data-dialog-close]")) {
+        event.target.closest("dialog")?.close();
+      } else if (event.target.matches("dialog[open]")) {
+        // A click on the backdrop lands on the dialog element itself.
+        event.target.close();
+      }
+    });
+  }
+
   function initRecentTools() {
     const container = document.querySelector("[data-recent-tools]");
     if (!container) {
@@ -767,5 +786,6 @@
   initDashboardWeather();
   initDashboardStatsPeriodToggle();
   initRecentTools();
+  initWidgetDialogs();
   initDashboardCustomizer();
 })();

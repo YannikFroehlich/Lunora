@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- The bookmarks widget adds new links through a plus in its header that opens a small dialog, so
+  the widget no longer carries the name and address fields itself.
 - Vacations and public holidays from the vacation planner now appear in the calendar, in "Nächste
   Termine" on the calendar page and the dashboard, and in the calendar subscription (ICS feed).
 - Create calendar events directly in the month grid: right-click a day (tap it on a phone), or drag
