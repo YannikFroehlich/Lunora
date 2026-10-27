@@ -330,9 +330,11 @@
     box-shadow: var(--focus-ring);
 }
 
-.calendar-day.is-selected {
-    background: color-mix(in srgb, var(--color-accent) 22%, transparent);
-    border-color: color-mix(in srgb, var(--color-accent-strong) 55%, transparent);
+/* Days picked by dragging (vacation_planner.js). The extra class beats the dark-theme, weekend and
+   today backgrounds, which share .calendar-day's specificity and come later in this file. */
+.vacation-calendar .calendar-day.is-selected {
+    background: color-mix(in srgb, var(--color-accent) 48%, transparent);
+    border-color: var(--color-accent-strong);
 }
 
 .calendar-hint {
