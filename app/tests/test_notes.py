@@ -5,7 +5,7 @@ from tempfile import TemporaryDirectory
 
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import Client, TestCase, override_settings
+from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
 from app.models import (
@@ -29,6 +29,7 @@ from app.services.notes import prune_note_versions, purge_expired_notes
 from app.tests.helpers import (
     PNG_1X1_BYTES,
     note_document,
+    postgres_connection,
 )
 
 
@@ -1798,6 +1799,20 @@ class NotesTests(TestCase):
         )
         self.assertEqual(response.status_code, 200, response.content)
         self.assertFalse(NoteLink.objects.filter(source_note=source, target_note=target).exists())
+
+
+class NoteLockSqlTests(SimpleTestCase):
+    """Locked note lookups must compile to SQL PostgreSQL accepts (SQLite ignores FOR UPDATE)."""
+
+    def test_locked_lookup_has_no_distinct_and_locks_only_the_note_row(self):
+        from app.services.notes import _accessible_note_queryset
+
+        queryset = _accessible_note_queryset(User(pk=1, username="mira@example.com"), 7, for_update=True)
+        sql, _params = queryset.query.get_compiler(connection=postgres_connection()).as_sql()
+
+        # PostgreSQL rejects FOR UPDATE with DISTINCT and on the nullable side of an outer join.
+        self.assertNotIn("DISTINCT", sql)
+        self.assertIn('FOR UPDATE OF "app_note"', sql)
 
 
 class NotePresenceTests(TestCase):
