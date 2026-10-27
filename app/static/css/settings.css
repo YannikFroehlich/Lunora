@@ -50,7 +50,7 @@
   display: inline-flex;
   min-width: 0;
   min-height: 46px;
-  flex: 1 1 0;
+  flex: 1 1 auto;
   align-items: center;
   justify-content: center;
   gap: 8px;
@@ -72,9 +72,11 @@
   font-size: var(--text-base);
 }
 
-.settings-section-tab:hover {
-  color: var(--color-heading);
-  background: var(--surface-control);
+@media (hover: hover) {
+  .settings-section-tab:not(.is-active):hover {
+    color: var(--color-heading);
+    background: var(--surface-control-hover);
+  }
 }
 
 .settings-section-tab.is-active,
@@ -129,8 +131,10 @@
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 14px 34px rgba(0, 0, 0, 0.14);
 }
 
-[data-theme="dark"] .settings-section-tab:hover {
-  background: rgba(255, 248, 237, 0.08);
+@media (hover: hover) {
+  [data-theme="dark"] .settings-section-tab:not(.is-active):hover {
+    background: rgba(255, 248, 237, 0.08);
+  }
 }
 
 .settings-grid {
@@ -355,14 +359,31 @@
   gap: 12px;
   padding: 0 18px;
   background: var(--surface-control);
+  color: var(--color-text);
+  font-weight: 700;
   border: 1px solid var(--glass-border-soft);
   border-radius: var(--radius-sm);
   cursor: pointer;
+  transition: color 160ms ease, background 160ms ease, border-color 160ms ease;
 }
 
-.choice-card.is-active,
-.choice-card:hover {
-  border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
+@media (hover: hover) {
+  .choice-card:not(.is-active):hover {
+    color: var(--color-heading);
+    background: var(--surface-control-hover);
+    border-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
+  }
+}
+
+.choice-card.is-active {
+  color: var(--color-heading);
+  background: var(--surface-selected);
+  border-color: color-mix(in srgb, var(--color-accent-strong) 55%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent-strong) 30%, transparent);
+}
+
+.choice-card:has(input:focus-visible) {
+  box-shadow: var(--focus-ring);
 }
 
 .choice-card i {
@@ -416,52 +437,48 @@
 .segmented-control {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  overflow: hidden;
+  gap: 4px;
+  padding: 4px;
+  background: var(--surface-control);
   border: 1px solid var(--glass-border-soft);
   border-radius: var(--radius-sm);
 }
 
 .segmented-control label {
   position: relative;
-  min-height: 48px;
+  min-width: 0;
+  min-height: 42px;
   display: grid;
   place-items: center;
-  background: var(--surface-control);
-  border: 0;
-  border-right: 1px solid var(--glass-border-soft);
+  padding: 4px 8px;
+  color: var(--color-muted);
+  font-weight: 700;
+  text-align: center;
+  border-radius: var(--radius-xs);
   cursor: pointer;
-}
-
-.segmented-control label:last-child {
-  border-right: 0;
+  transition: color 160ms ease, background 160ms ease;
 }
 
 .segmented-control label span {
-  position: relative;
-  z-index: 1;
+  min-width: 0;
+  hyphens: auto;
+}
+
+@media (hover: hover) {
+  .segmented-control label:not(.is-active):hover {
+    color: var(--color-heading);
+    background: var(--surface-control-hover);
+  }
 }
 
 .segmented-control .is-active {
-  background: var(--surface-control-hover);
+  color: var(--color-heading);
+  background: var(--surface-selected);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent-strong) 38%, transparent);
 }
 
-.segmented-control .is-active::after {
-  position: absolute;
-  inset: 3px;
-  content: "";
-  pointer-events: none;
-  border: 1px solid color-mix(in srgb, var(--color-accent) 58%, transparent);
-  border-radius: calc(var(--radius-sm) - 4px);
-}
-
-.segmented-control label:first-child.is-active::after {
-  border-top-left-radius: calc(var(--radius-sm) - 4px);
-  border-bottom-left-radius: calc(var(--radius-sm) - 4px);
-}
-
-.segmented-control label:last-child.is-active::after {
-  border-top-right-radius: calc(var(--radius-sm) - 4px);
-  border-bottom-right-radius: calc(var(--radius-sm) - 4px);
+.segmented-control label:has(input:focus-visible) {
+  box-shadow: var(--focus-ring);
 }
 
 .profile-row {
@@ -948,11 +965,8 @@
   margin-top: 18px;
 }
 
-@media (max-width: 720px) {
-  .settings-section-switcher {
-    margin-top: 16px;
-  }
-
+/* Seven labelled tabs need about 900 px; below that they scroll sideways instead of overflowing. */
+@media (max-width: 920px) {
   .settings-section-tabs {
     overflow-x: auto;
     justify-content: flex-start;
@@ -967,6 +981,12 @@
     flex: 0 0 auto;
     padding-inline: 14px;
     scroll-snap-align: start;
+  }
+}
+
+@media (max-width: 720px) {
+  .settings-section-switcher {
+    margin-top: 16px;
   }
 
   .settings-grid,
@@ -991,12 +1011,30 @@
 
   .notification-matrix-header,
   .notification-matrix-row {
-    grid-template-columns: minmax(130px, 1fr) repeat(3, 48px);
+    grid-template-columns: minmax(0, 1fr) repeat(3, 44px);
+    column-gap: 4px;
   }
 
   .notification-matrix-header {
     padding-inline: 10px;
     font-size: var(--text-2xs);
+    letter-spacing: 0.02em;
+    line-height: 1.2;
+  }
+
+  .notification-category strong {
+    overflow-wrap: anywhere;
+  }
+
+  .segmented-control label {
+    font-size: var(--text-sm);
+  }
+}
+
+/* Three German labels ("Ausgeglichen") do not fit side by side on a phone: stack them. */
+@media (max-width: 420px) {
+  .segmented-control {
+    grid-template-columns: 1fr;
   }
 
   .notification-matrix-row {
@@ -1105,10 +1143,12 @@
   transition: transform 160ms ease, filter 160ms ease, box-shadow 160ms ease;
 }
 
-.upload-button:hover {
-  filter: brightness(1.04);
-  transform: translateY(-1px);
-  box-shadow: 0 12px 22px rgba(75, 56, 31, 0.14);
+@media (hover: hover) {
+  .upload-button:hover {
+    filter: brightness(1.04);
+    transform: translateY(-1px);
+    box-shadow: 0 12px 22px rgba(75, 56, 31, 0.14);
+  }
 }
 
 .upload-button i {
@@ -1152,9 +1192,11 @@
   font-size: var(--text-md);
 }
 
-.clear-image-toggle:hover {
-  color: var(--color-heading);
-  background: var(--surface-control);
+@media (hover: hover) {
+  .clear-image-toggle:hover {
+    color: var(--color-heading);
+    background: var(--surface-control-hover);
+  }
 }
 
 .clear-image-toggle input {

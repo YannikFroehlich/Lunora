@@ -6,6 +6,11 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Settings page polish: the section tabs size to their labels ("Benachrichtigungen" no longer
+  overflows) and scroll sideways below 920 px, the selected theme and density options are clearly
+  filled instead of only outlined, hovering an option no longer looks like selecting it, hover
+  effects no longer stick after tapping on phones, the density options stack on narrow phones
+  instead of breaking words, and the notification matrix fits a 375 px screen.
 - Redesigned, more customizable dashboard: every widget can be small, medium, large or full width
   and get its own color, list widgets show 3, 5 or 8 entries, the weather widget can hide
   tomorrow, the statistics widget opens on week or month, and the quick-access widget shows only
