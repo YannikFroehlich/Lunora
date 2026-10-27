@@ -12,6 +12,7 @@
     {% if dashboard_customization_enabled %}
     {{ dashboard_layout|json_script:"dashboard-layout-data" }}
     {{ dashboard_default_layout|json_script:"dashboard-default-layout-data" }}
+    {{ dashboard_presets|json_script:"dashboard-presets-data" }}
     <div class="dashboard-customizer"
          data-dashboard-customizer
          data-dashboard-layout-url="{% url 'dashboard_layout_update' %}">
@@ -32,39 +33,113 @@
                 </button>
             </div>
         </div>
-        <div class="dashboard-visibility-panel" data-dashboard-visibility-panel hidden>
-            {% for widget in dashboard_available_widgets %}
-            <label class="dashboard-visibility-toggle" data-dashboard-visibility-toggle="{{ widget.id }}">
-                <input type="checkbox" value="{{ widget.id }}" {% if widget.id not in dashboard_layout.hidden %}checked{% endif %}>
-                <span>{{ widget.label }}</span>
-            </label>
-            {% endfor %}
+        <div class="dashboard-edit-panel" data-dashboard-visibility-panel hidden>
+            <div class="dashboard-edit-group">
+                <span class="dashboard-edit-label">Vorlagen</span>
+                <div class="dashboard-presets">
+                    {% for preset in dashboard_presets %}
+                    <button class="dashboard-chip" type="button" data-dashboard-preset="{{ preset.id }}">
+                        <i class="fa-solid {{ preset.icon }}" aria-hidden="true"></i>
+                        {{ preset.label }}
+                    </button>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="dashboard-edit-group">
+                <span class="dashboard-edit-label">Sichtbare Widgets</span>
+                <div class="dashboard-visibility-list">
+                    {% for widget in dashboard_available_widgets %}
+                    <label class="dashboard-chip dashboard-visibility-toggle" data-dashboard-visibility-toggle="{{ widget.id }}">
+                        <input type="checkbox" value="{{ widget.id }}" {% if widget.id not in dashboard_layout.hidden %}checked{% endif %}>
+                        <span>{{ widget.label }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+            <p class="dashboard-edit-hint">Ziehe Widgets an ihren Platz oder nutze die Pfeile. Über <i class="fa-solid fa-gear" aria-hidden="true"></i> stellst du Größe, Farbe und Inhalt jedes Widgets ein.</p>
         </div>
-        <p class="sr-only" aria-live="polite" aria-atomic="true" data-dashboard-live></p>
+        <p class="visually-hidden" aria-live="polite" aria-atomic="true" data-dashboard-live></p>
     </div>
     {% endif %}
 
     <div class="dashboard-grid" data-dashboard-grid>
         {% for widget in dashboard_widgets %}
-        <section class="glass-panel dashboard-widget {{ widget.class_name }} {% if widget.wide %}dashboard-widget--wide{% endif %} {% if widget.hidden %}is-hidden-by-user{% endif %}"
+        <section class="glass-panel dashboard-widget {{ widget.class_name }} dashboard-widget--{{ widget.size }}{% if widget.tone %} has-tone tone-{{ widget.tone }}{% endif %}{% if widget.hidden %} is-hidden-by-user{% endif %}"
                  data-dashboard-widget
                  data-widget-id="{{ widget.id }}"
                  data-widget-label="{{ widget.label }}"
                  {% if widget.id == "weather" %}data-dashboard-weather-url="{% url 'dashboard_weather' %}"{% endif %}
-                 {% if widget.id == "quick_actions" %}aria-label="Schnellzugriff"{% endif %}
                  {% if widget.id == "quick_actions" and dashboard_messages_enabled %}data-home-messages-live-url="{% url 'messages_live_updates' %}"{% endif %}
                  {% if widget.hidden %}hidden{% endif %}>
             {% if dashboard_customization_enabled %}
-            <div class="dashboard-widget-edit-controls" data-dashboard-widget-controls hidden>
-                <button type="button" data-dashboard-move="-1" aria-label="{{ widget.label }} nach vorne schieben">
+            <div class="dashboard-widget-toolbar" data-dashboard-widget-controls hidden>
+                <span class="dashboard-widget-name"><i class="fa-solid fa-grip-vertical" aria-hidden="true"></i> {{ widget.label }}</span>
+                <button type="button" data-dashboard-move="-1" aria-label="{{ widget.label }} nach vorne schieben" title="Nach vorne">
                     <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
                 </button>
-                <button type="button" data-dashboard-move="1" aria-label="{{ widget.label }} nach hinten schieben">
+                <button type="button" data-dashboard-move="1" aria-label="{{ widget.label }} nach hinten schieben" title="Nach hinten">
                     <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
                 </button>
-                <button type="button" data-dashboard-resize aria-pressed="{% if widget.wide %}true{% else %}false{% endif %}" aria-label="{{ widget.label }} Breite umschalten">
-                    <i class="fa-solid fa-arrows-left-right" aria-hidden="true"></i>
+                <button type="button" data-dashboard-settings-toggle aria-expanded="false" aria-controls="dashboard-settings-{{ widget.id }}" aria-label="{{ widget.label }} einstellen" title="Einstellen">
+                    <i class="fa-solid fa-gear" aria-hidden="true"></i>
                 </button>
+            </div>
+            <div class="dashboard-widget-settings" id="dashboard-settings-{{ widget.id }}" data-dashboard-widget-settings hidden>
+                <fieldset>
+                    <legend>Größe</legend>
+                    <div class="dashboard-segmented">
+                        {% for size, label in dashboard_size_choices %}
+                        <label><input type="radio" name="size-{{ widget.id }}" value="{{ size }}" data-dashboard-setting="size" {% if widget.size == size %}checked{% endif %}><span>{{ label }}</span></label>
+                        {% endfor %}
+                    </div>
+                </fieldset>
+                <fieldset>
+                    <legend>Farbe</legend>
+                    <div class="dashboard-swatches">
+                        {% for tone, label in dashboard_tone_choices %}
+                        <label class="dashboard-swatch{% if tone %} tone-{{ tone }}{% endif %}" title="{{ label }}">
+                            <input type="radio" name="tone-{{ widget.id }}" value="{{ tone }}" data-dashboard-setting="tone" {% if widget.tone == tone %}checked{% endif %}>
+                            <span aria-hidden="true"></span>
+                            <span class="visually-hidden">{{ label }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </fieldset>
+                {% if "limit" in widget.options %}
+                <label class="dashboard-setting-row">
+                    <span>Einträge</span>
+                    <select data-dashboard-setting="limit">
+                        {% for limit in dashboard_limit_choices %}
+                        <option value="{{ limit }}" {% if widget.options.limit == limit %}selected{% endif %}>{{ limit }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                {% endif %}
+                {% if "show_tomorrow" in widget.options %}
+                <label class="dashboard-setting-row">
+                    <span>Morgen anzeigen</span>
+                    <input type="checkbox" data-dashboard-setting="show_tomorrow" {% if widget.options.show_tomorrow %}checked{% endif %}>
+                </label>
+                {% endif %}
+                {% if "period" in widget.options %}
+                <label class="dashboard-setting-row">
+                    <span>Zeitraum beim Öffnen</span>
+                    <select data-dashboard-setting="period">
+                        <option value="week" {% if widget.options.period == "week" %}selected{% endif %}>Woche</option>
+                        <option value="month" {% if widget.options.period == "month" %}selected{% endif %}>Monat</option>
+                    </select>
+                </label>
+                {% endif %}
+                {% if "hidden_tiles" in widget.options %}
+                <fieldset>
+                    <legend>Kacheln</legend>
+                    <div class="dashboard-tile-choices">
+                        {% for tile in nav_tiles %}
+                        <label class="dashboard-chip"><input type="checkbox" value="{{ tile.url_name }}" data-dashboard-setting="tile" {% if tile.url_name not in widget.options.hidden_tiles %}checked{% endif %}><span>{{ tile.label }}</span></label>
+                        {% endfor %}
+                    </div>
+                </fieldset>
+                {% endif %}
             </div>
             {% endif %}
             {% include widget.template %}

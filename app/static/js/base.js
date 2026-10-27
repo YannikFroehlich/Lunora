@@ -521,3 +521,22 @@ document.addEventListener("submit", (event) => {
   const message = event.target.dataset?.confirm;
   if (message && !window.confirm(message)) event.preventDefault();
 });
+
+// Remember the last visited app sections in this browser, newest first, so the dashboard's
+// "Zuletzt genutzt" widget (home.js) can order its tiles without any server-side tracking.
+const RECENT_SECTIONS_STORAGE_KEY = "lunora-recent-sections";
+
+function rememberRecentSection() {
+  const section = window.location.pathname.split("/")[1];
+  if (!isAuthenticated || !section || section === "home") return;
+  try {
+    const path = `/${section}/`;
+    const stored = JSON.parse(localStorage.getItem(RECENT_SECTIONS_STORAGE_KEY) || "[]");
+    const recent = Array.isArray(stored) ? stored.filter((entry) => typeof entry === "string" && entry !== path) : [];
+    localStorage.setItem(RECENT_SECTIONS_STORAGE_KEY, JSON.stringify([path, ...recent].slice(0, 12)));
+  } catch {
+    // Storage can be unavailable (private mode, blocked site data); the widget then keeps its default order.
+  }
+}
+
+rememberRecentSection();

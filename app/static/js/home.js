@@ -315,35 +315,101 @@
     });
   }
 
+  function activateStatsPeriod(widget, period) {
+    widget.querySelectorAll("[data-stats-period-toggle]").forEach((button) => {
+      const isActive = button.dataset.statsPeriodToggle === period;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-selected", String(isActive));
+    });
+    widget.querySelectorAll("[data-stats-panel]").forEach((panel) => {
+      panel.hidden = panel.dataset.statsPanel !== period;
+    });
+  }
+
   function initDashboardStatsPeriodToggle() {
     const widget = document.querySelector('[data-dashboard-widget][data-widget-id="stats"]');
     if (!widget) {
       return;
     }
-
-    const toggleButtons = Array.from(widget.querySelectorAll("[data-stats-period-toggle]"));
-    const panels = Array.from(widget.querySelectorAll("[data-stats-panel]"));
-    if (!toggleButtons.length || !panels.length) {
-      return;
-    }
-
-    function activatePeriod(period) {
-      toggleButtons.forEach((button) => {
-        const isActive = button.dataset.statsPeriodToggle === period;
-        button.classList.toggle("is-active", isActive);
-        button.setAttribute("aria-selected", String(isActive));
-      });
-      panels.forEach((panel) => {
-        panel.hidden = panel.dataset.statsPanel !== period;
-      });
-    }
-
-    toggleButtons.forEach((button) => {
-      button.addEventListener("click", () => activatePeriod(button.dataset.statsPeriodToggle));
+    widget.querySelectorAll("[data-stats-period-toggle]").forEach((button) => {
+      button.addEventListener("click", () => activateStatsPeriod(widget, button.dataset.statsPeriodToggle));
     });
   }
 
-  function initDashboardCustomizer() {
+  // Packs widgets like a masonry wall on multi-column widths: each widget spans as many tiny
+  // grid rows as it is tall, so short widgets no longer stretch to their row's tallest neighbour.
+  function initDashboardMasonry(grid) {
+    const ROW_HEIGHT = 2;
+    const multiColumn = window.matchMedia("(min-width: 760px)");
+    let frame = 0;
+
+    function layout() {
+      frame = 0;
+      const enabled = multiColumn.matches;
+      grid.classList.toggle("is-masonry", enabled);
+      Array.from(grid.children).forEach((child) => {
+        if (!enabled || child.hidden) {
+          child.style.gridRowEnd = "";
+          return;
+        }
+        const gap = parseFloat(window.getComputedStyle(child).marginBottom) || 0;
+        const height = child.getBoundingClientRect().height;
+        child.style.gridRowEnd = `span ${Math.max(1, Math.ceil((height + gap) / ROW_HEIGHT))}`;
+      });
+    }
+
+    function schedule() {
+      if (!frame) {
+        frame = window.setTimeout(layout, 16);
+      }
+    }
+
+    if ("ResizeObserver" in window) {
+      const observer = new ResizeObserver(schedule);
+      Array.from(grid.children).forEach((child) => observer.observe(child));
+    }
+    multiColumn.addEventListener("change", schedule);
+    window.addEventListener("load", schedule, { once: true });
+    schedule();
+    return schedule;
+  }
+
+  const RECENT_SECTIONS_STORAGE_KEY = "lunora-recent-sections";
+  const VISIBLE_RECENT_TILES = 4;
+
+  function initRecentTools() {
+    const container = document.querySelector("[data-recent-tools]");
+    if (!container) {
+      return;
+    }
+    let recent = [];
+    try {
+      recent = JSON.parse(localStorage.getItem(RECENT_SECTIONS_STORAGE_KEY) || "[]");
+    } catch (_error) {
+      recent = [];
+    }
+    if (!Array.isArray(recent) || !recent.length) {
+      return;
+    }
+    const tiles = Array.from(container.querySelectorAll("[data-recent-path]"));
+    const rank = (tile) => {
+      const index = recent.indexOf(tile.dataset.recentPath);
+      return index === -1 ? Infinity : index;
+    };
+    tiles
+      .map((tile, index) => ({ tile, index, rank: rank(tile) }))
+      .sort((a, b) => a.rank - b.rank || a.index - b.index)
+      .forEach(({ tile }, position) => {
+        tile.hidden = position >= VISIBLE_RECENT_TILES;
+        container.appendChild(tile);
+      });
+  }
+
+  const WIDGET_SIZES = ["small", "medium", "large", "full"];
+  const WIDGET_SIZE_LABELS = { small: "klein", medium: "mittel", large: "groß", full: "volle Breite" };
+  const WIDGET_TONES = ["sand", "blue", "green", "violet", "red"];
+
+  function initDashboardCustomizer(relayout) {
     const customizer = document.querySelector("[data-dashboard-customizer]");
     const grid = document.querySelector("[data-dashboard-grid]");
     if (!customizer || !grid) {
@@ -353,17 +419,18 @@
     const editButton = customizer.querySelector("[data-dashboard-edit]");
     const emptyEditButton = document.querySelector("[data-dashboard-empty-edit]");
     const actionBar = customizer.querySelector("[data-dashboard-edit-actions]");
-    const visibilityPanel = customizer.querySelector("[data-dashboard-visibility-panel]");
+    const editPanel = customizer.querySelector("[data-dashboard-visibility-panel]");
     const saveButton = customizer.querySelector("[data-dashboard-save]");
     const cancelButton = customizer.querySelector("[data-dashboard-cancel]");
     const resetButton = customizer.querySelector("[data-dashboard-reset]");
     const liveRegion = customizer.querySelector("[data-dashboard-live]");
     const initialLayout = readJsonScript("dashboard-layout-data");
     const defaultLayout = readJsonScript("dashboard-default-layout-data");
+    const presets = readJsonScript("dashboard-presets-data") || [];
     const widgets = Array.from(grid.querySelectorAll("[data-dashboard-widget]"));
     const availableIds = widgets.map((widget) => widget.dataset.widgetId);
     const availableIdSet = new Set(availableIds);
-    const toggleInputs = Array.from(visibilityPanel.querySelectorAll("input[type='checkbox']"));
+    const toggleInputs = Array.from(editPanel.querySelectorAll("input[type='checkbox']"));
     const csrfToken = document.querySelector("meta[name='csrf-token']")?.content || "";
 
     if (!initialLayout || !defaultLayout || !availableIds.length) {
@@ -376,43 +443,25 @@
     let dragId = null;
 
     function cloneLayout(layout) {
-      return {
-        version: 2,
-        order: Array.isArray(layout.order) ? layout.order.slice() : [],
-        hidden: Array.isArray(layout.hidden) ? layout.hidden.slice() : [],
-        wide: Array.isArray(layout.wide) ? layout.wide.slice() : [],
-      };
+      return JSON.parse(JSON.stringify(layout));
     }
 
     function visibleOrder(layout) {
       return layout.order.filter((id) => availableIdSet.has(id));
     }
 
-    function hiddenSet(layout) {
-      return new Set(layout.hidden.filter((id) => availableIdSet.has(id)));
-    }
-
-    function wideSet(layout) {
-      return new Set(layout.wide.filter((id) => availableIdSet.has(id)));
-    }
-
-    function toggleWide(widgetId) {
-      const wide = new Set(draftLayout.wide);
-      if (wide.has(widgetId)) {
-        wide.delete(widgetId);
-        setAnnouncement(`${labelFor(widgetId)} ist wieder schmal.`);
-      } else {
-        wide.add(widgetId);
-        setAnnouncement(`${labelFor(widgetId)} ist jetzt breit.`);
-      }
-      draftLayout.wide = availableIds.filter((id) => wide.has(id));
-      renderDraft();
-    }
-
     function setAnnouncement(message) {
       if (liveRegion) {
         liveRegion.textContent = message;
       }
+    }
+
+    function labelFor(widgetId) {
+      return widgetById(widgetId)?.dataset.widgetLabel || "Widget";
+    }
+
+    function widgetById(widgetId) {
+      return widgets.find((widget) => widget.dataset.widgetId === widgetId) || null;
     }
 
     function mergeAvailableOrder(layout, orderedAvailableIds) {
@@ -445,8 +494,7 @@
       order.splice(targetIndex, 0, widgetId);
       mergeAvailableOrder(draftLayout, order);
       renderDraft();
-      const label = labelFor(widgetId);
-      setAnnouncement(`${label} wurde ${direction < 0 ? "nach vorne" : "nach hinten"} verschoben.`);
+      setAnnouncement(`${labelFor(widgetId)} wurde ${direction < 0 ? "nach vorne" : "nach hinten"} verschoben.`);
     }
 
     function moveBefore(draggedId, targetId) {
@@ -461,33 +509,100 @@
       setAnnouncement(`${labelFor(draggedId)} wurde verschoben.`);
     }
 
-    function labelFor(widgetId) {
-      return widgetById(widgetId)?.dataset.widgetLabel || "Widget";
+    // Preview a widget's draft settings in place: size and tone classes, list limits,
+    // weather's second day, the stats period and which quick-action tiles show.
+    function applyWidgetSettings(widget) {
+      const settings = draftLayout.widgets[widget.dataset.widgetId];
+      if (!settings) {
+        return;
+      }
+      WIDGET_SIZES.forEach((size) => widget.classList.toggle(`dashboard-widget--${size}`, settings.size === size));
+      WIDGET_TONES.forEach((tone) => widget.classList.toggle(`tone-${tone}`, settings.tone === tone));
+      widget.classList.toggle("has-tone", Boolean(settings.tone));
+
+      if ("limit" in settings) {
+        widget.querySelectorAll("[data-dashboard-item]").forEach((item, index) => {
+          item.hidden = index >= settings.limit;
+        });
+      }
+      if ("show_tomorrow" in settings) {
+        const tomorrow = widget.querySelector("[data-dashboard-weather-tomorrow]");
+        if (tomorrow) {
+          tomorrow.hidden = !settings.show_tomorrow;
+        }
+      }
+      if ("period" in settings) {
+        activateStatsPeriod(widget, settings.period);
+      }
+      if ("hidden_tiles" in settings) {
+        const hiddenTiles = new Set(settings.hidden_tiles);
+        widget.querySelectorAll("[data-quick-tile]").forEach((tile) => {
+          tile.hidden = hiddenTiles.has(tile.dataset.quickTile);
+        });
+      }
+
+      widget.querySelectorAll("[data-dashboard-setting]").forEach((input) => {
+        const key = input.dataset.dashboardSetting;
+        if (key === "size" || key === "tone") {
+          input.checked = settings[key] === input.value;
+        } else if (key === "limit" || key === "period") {
+          input.value = String(settings[key]);
+        } else if (key === "show_tomorrow") {
+          input.checked = Boolean(settings.show_tomorrow);
+        } else if (key === "tile") {
+          input.checked = !settings.hidden_tiles.includes(input.value);
+        }
+      });
     }
 
-    function widgetById(widgetId) {
-      return widgets.find((widget) => widget.dataset.widgetId === widgetId) || null;
+    function updateSetting(widget, input) {
+      const widgetId = widget.dataset.widgetId;
+      const settings = draftLayout.widgets[widgetId];
+      const key = input.dataset.dashboardSetting;
+      if (!settings) {
+        return;
+      }
+      if (key === "size" || key === "tone" || key === "period") {
+        settings[key] = input.value;
+      } else if (key === "limit") {
+        settings.limit = Number(input.value);
+      } else if (key === "show_tomorrow") {
+        settings.show_tomorrow = input.checked;
+      } else if (key === "tile") {
+        settings.hidden_tiles = Array.from(widget.querySelectorAll("[data-dashboard-setting='tile']"))
+          .filter((tileInput) => !tileInput.checked)
+          .map((tileInput) => tileInput.value);
+      }
+      applyWidgetSettings(widget);
+      relayout();
+      if (key === "size") {
+        setAnnouncement(`${labelFor(widgetId)} ist jetzt ${WIDGET_SIZE_LABELS[settings.size] || settings.size}.`);
+      } else {
+        setAnnouncement(`${labelFor(widgetId)} angepasst.`);
+      }
+    }
+
+    function closeSettingsPanels() {
+      grid.querySelectorAll("[data-dashboard-widget-settings]").forEach((panel) => {
+        panel.hidden = true;
+      });
+      grid.querySelectorAll("[data-dashboard-settings-toggle]").forEach((button) => {
+        button.setAttribute("aria-expanded", "false");
+      });
     }
 
     function renderDraft({ reorder = true } = {}) {
       const fragment = document.createDocumentFragment();
-      const hiddenIds = hiddenSet(draftLayout);
-      const wideIds = wideSet(draftLayout);
+      const hiddenIds = new Set(draftLayout.hidden.filter((id) => availableIdSet.has(id)));
       visibleOrder(draftLayout).forEach((id) => {
         const widget = widgetById(id);
         if (!widget) {
           return;
         }
         const isHidden = hiddenIds.has(id);
-        const isWide = wideIds.has(id);
         widget.hidden = isHidden && !editing;
         widget.classList.toggle("is-hidden-by-user", isHidden);
-        widget.classList.toggle("dashboard-widget--wide", isWide);
-        widget.setAttribute("draggable", editing ? "true" : "false");
-        const resizeButton = widget.querySelector("[data-dashboard-resize]");
-        if (resizeButton) {
-          resizeButton.setAttribute("aria-pressed", isWide ? "true" : "false");
-        }
+        applyWidgetSettings(widget);
         if (reorder) {
           fragment.appendChild(widget);
         }
@@ -506,6 +621,10 @@
       grid.querySelectorAll("[data-dashboard-widget-controls]").forEach((controls) => {
         controls.hidden = !editing;
       });
+      if (!editing) {
+        closeSettingsPanels();
+      }
+      relayout();
     }
 
     function setEditing(nextEditing) {
@@ -513,7 +632,7 @@
       grid.classList.toggle("is-editing", editing);
       editButton.hidden = editing;
       actionBar.hidden = !editing;
-      visibilityPanel.hidden = !editing;
+      editPanel.hidden = !editing;
       renderDraft();
       setAnnouncement(editing ? "Bearbeitungsmodus aktiviert." : "Bearbeitungsmodus beendet.");
     }
@@ -566,6 +685,18 @@
       setAnnouncement("Standardanordnung als Entwurf wiederhergestellt.");
     });
 
+    editPanel.querySelectorAll("[data-dashboard-preset]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const preset = presets.find((item) => item.id === button.dataset.dashboardPreset);
+        if (!preset) {
+          return;
+        }
+        draftLayout = cloneLayout(preset.layout);
+        renderDraft();
+        setAnnouncement(`Vorlage „${preset.label}“ als Entwurf geladen. Speichern übernimmt sie.`);
+      });
+    });
+
     toggleInputs.forEach((input) => {
       input.addEventListener("change", () => {
         const hidden = new Set(draftLayout.hidden);
@@ -576,9 +707,17 @@
           hidden.add(input.value);
           setAnnouncement(`${labelFor(input.value)} ausgeblendet.`);
         }
-        draftLayout.hidden = savedLayout.order.filter((id) => hidden.has(id));
+        draftLayout.hidden = draftLayout.order.filter((id) => hidden.has(id));
         renderDraft();
       });
+    });
+
+    grid.addEventListener("change", (event) => {
+      const input = event.target.closest("[data-dashboard-setting]");
+      const widget = input?.closest("[data-dashboard-widget]");
+      if (editing && input && widget) {
+        updateSetting(widget, input);
+      }
     });
 
     grid.addEventListener(
@@ -593,26 +732,40 @@
           moveAvailableWidget(widget.dataset.widgetId, Number(moveButton.dataset.dashboardMove));
           return;
         }
-        const resizeButton = event.target.closest("[data-dashboard-resize]");
-        if (resizeButton) {
-          const widget = resizeButton.closest("[data-dashboard-widget]");
-          toggleWide(widget.dataset.widgetId);
+        const settingsButton = event.target.closest("[data-dashboard-settings-toggle]");
+        if (settingsButton) {
+          const panel = document.getElementById(settingsButton.getAttribute("aria-controls"));
+          const opening = panel?.hidden;
+          if (panel) {
+            panel.hidden = !opening;
+            settingsButton.setAttribute("aria-expanded", String(opening));
+            relayout();
+          }
           return;
         }
-        if (event.target.closest("a")) {
+        // Widget content (links, task/notification forms) stays inert while editing.
+        if (!event.target.closest("[data-dashboard-widget-settings]") && event.target.closest("a, button")) {
           event.preventDefault();
         }
       },
       true,
     );
 
-    grid.addEventListener("dragstart", (event) => {
-      if (!editing) {
-        event.preventDefault();
-        return;
-      }
+    // Dragging starts from a widget's edit toolbar only, so the settings controls stay usable.
+    grid.addEventListener("pointerdown", (event) => {
       const widget = event.target.closest("[data-dashboard-widget]");
       if (!widget) {
+        return;
+      }
+      const fromToolbar =
+        editing && event.target.closest("[data-dashboard-widget-controls]") && !event.target.closest("button");
+      widget.setAttribute("draggable", fromToolbar ? "true" : "false");
+    });
+
+    grid.addEventListener("dragstart", (event) => {
+      const widget = event.target.closest("[data-dashboard-widget]");
+      if (!editing || !widget) {
+        event.preventDefault();
         return;
       }
       dragId = widget.dataset.widgetId;
@@ -638,6 +791,7 @@
 
     grid.addEventListener("dragend", () => {
       grid.querySelectorAll(".is-dragging").forEach((widget) => widget.classList.remove("is-dragging"));
+      grid.querySelectorAll("[data-dashboard-widget]").forEach((widget) => widget.setAttribute("draggable", "false"));
       dragId = null;
     });
 
@@ -650,8 +804,12 @@
     renderDraft({ reorder: false });
   }
 
+  const dashboardGrid = document.querySelector("[data-dashboard-grid]");
+  const relayoutDashboard = dashboardGrid ? initDashboardMasonry(dashboardGrid) : () => {};
+
   initUnreadMessagesBadge();
   initDashboardWeather();
   initDashboardStatsPeriodToggle();
-  initDashboardCustomizer();
+  initRecentTools();
+  initDashboardCustomizer(relayoutDashboard);
 })();

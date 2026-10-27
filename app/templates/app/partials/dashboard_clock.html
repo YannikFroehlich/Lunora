@@ -2,10 +2,7 @@
      data-clock-timezone="{{ clock.timezone }}"
      data-clock-time-format="{{ clock.time_format }}"
      data-clock-date-format="{{ clock.date_format }}">
-    <div class="panel-title panel-title-between">
-        <span><i class="fa-regular fa-clock"></i> Jetzt</span>
-        <span class="clock-zone">{{ clock.timezone }}</span>
-    </div>
+    {% include "app/partials/dashboard_widget_head.html" with icon="fa-regular fa-clock" title="Jetzt" meta=clock.timezone %}
     <div class="clock-face">
         <strong data-clock-time>{{ clock.time }}</strong>
         <span data-clock-weekday>{{ clock.weekday }}</span>
@@ -16,9 +13,7 @@
             <strong data-clock-month>{{ clock.month }}</strong>
             <span data-clock-year>{{ clock.year }}</span>
         </div>
+        <span class="date-moment"><i data-clock-moment-icon class="{{ dashboard_moment_icon }}" aria-hidden="true"></i> <span data-clock-moment-label>{{ dashboard_moment_label }}</span></span>
     </div>
-    <div class="clock-details">
-        <span><i class="fa-regular fa-calendar"></i> <span data-clock-today>{{ today_label }}</span></span>
-        <span><i data-clock-moment-icon class="{{ dashboard_moment_icon }}" aria-hidden="true"></i> <span data-clock-moment-label>{{ dashboard_moment_label }}</span></span>
-    </div>
+    <span class="visually-hidden" data-clock-today>{{ today_label }}</span>
 </div>

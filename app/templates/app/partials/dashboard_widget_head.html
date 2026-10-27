@@ -1,0 +1,10 @@
+<header class="widget-head">
+    <span class="widget-icon" aria-hidden="true"><i class="{{ icon }}"></i></span>
+    <h2>{{ title }}</h2>
+    {% if meta %}<span class="widget-head-meta">{{ meta }}</span>{% endif %}
+    {% if link_url %}
+    <a class="widget-head-link" href="{{ link_url }}" aria-label="{{ link_label }}" title="{{ link_label }}">
+        <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
+    </a>
+    {% endif %}
+</header>

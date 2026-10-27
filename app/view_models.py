@@ -17,7 +17,14 @@ from app.models import (
     VocabularyList,
 )
 from app.services.dashboard import (
+    ITEM_LIMITS,
+    MAX_WIDGET_ITEMS,
+    WIDGET_SIZE_LABELS,
+    WIDGET_SIZES,
+    WIDGET_TONE_LABELS,
+    WIDGET_TONES,
     available_dashboard_widgets,
+    dashboard_presets,
     dashboard_widgets_for_layout,
     default_dashboard_layout,
     normalize_dashboard_layout,
@@ -62,19 +69,18 @@ def get_dashboard_context(user=None):
     dashboard_weather = _dashboard_weather_placeholder(user) if flags["weather"] else {}
     unread_messages_total = _dashboard_unread_message_count(user) if flags["messages"] else 0
     new_note_shares = _dashboard_new_note_share_count(user) if flags["notes"] else 0
+    # Lists load the largest selectable limit; the template hides rows beyond the widget's own
+    # limit so the customizer can preview a different limit without a reload.
     upcoming_dashboard_events = _dashboard_upcoming_events(user, now) if user else []
-    dashboard_tasks = dashboard_open_tasks(user, now) if flags["tasks"] and user else []
+    dashboard_tasks = (
+        dashboard_open_tasks(user, now, limit=MAX_WIDGET_ITEMS) if flags["tasks"] and user else []
+    )
     open_tasks_count = Task.objects.filter(user=user, is_done=False).count() if flags["tasks"] and user else 0
     nav_tiles = _dashboard_nav_tiles(user, unread_messages_total, new_note_shares, open_tasks_count, flags)
     if user and "notifications" in visible_widget_ids:
-        dashboard_notifications = dashboard_latest_notifications(user)
+        dashboard_notifications = dashboard_latest_notifications(user, limit=MAX_WIDGET_ITEMS)
     else:
         dashboard_notifications = []
-    dashboard_today_open_tasks = (
-        dashboard_today_tasks(user, now)
-        if flags["tasks"] and user and "notifications" in visible_widget_ids
-        else []
-    )
     dashboard_stats = _dashboard_stats(user, now, flags) if user and "stats" in visible_widget_ids else {}
 
     return {
@@ -94,11 +100,14 @@ def get_dashboard_context(user=None):
         "dashboard_widgets": dashboard_widgets,
         "dashboard_visible_widgets": dashboard_visible_widgets,
         "dashboard_available_widgets": available_dashboard_widgets(flags),
+        "dashboard_presets": dashboard_presets(),
+        "dashboard_size_choices": [(size, WIDGET_SIZE_LABELS[size]) for size in WIDGET_SIZES],
+        "dashboard_tone_choices": [(tone, WIDGET_TONE_LABELS[tone]) for tone in WIDGET_TONES],
+        "dashboard_limit_choices": ITEM_LIMITS,
         "dashboard_new_note_shares": new_note_shares,
         "dashboard_tasks": dashboard_tasks,
         "dashboard_tasks_enabled": flags["tasks"],
         "dashboard_notifications": dashboard_notifications,
-        "dashboard_today_tasks": dashboard_today_open_tasks,
         "dashboard_stats": dashboard_stats,
         "clock": {
             "time": format_user_time(now, user),
@@ -491,7 +500,9 @@ def _calendar_visible_events_query(user):
 
 
 def _dashboard_upcoming_events(user, now):
-    events = _calendar_visible_events_query(user).filter(end_at__gte=now).order_by("start_at")[:5]
+    events = (
+        _calendar_visible_events_query(user).filter(end_at__gte=now).order_by("start_at")[:MAX_WIDGET_ITEMS]
+    )
     return [
         {
             "title": event.title,

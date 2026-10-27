@@ -1,14 +1,18 @@
-<div class="panel-title">
-    <i class="fa-regular fa-clock"></i>
-    <h2>Letzte Tools</h2>
-</div>
-<div class="tool-grid">
+{% include "app/partials/dashboard_widget_head.html" with icon="fa-solid fa-clock-rotate-left" title="Zuletzt genutzt" %}
+{% comment %}
+home.js reorders these tiles by the sections this browser visited last (localStorage, written by
+base.js) and shows the first four; without history the server order below is kept.
+{% endcomment %}
+<div class="tool-grid" data-recent-tools>
     {% for tool in recent_tools %}
     {% if tool.url_name %}
-    <a class="tool-tile" href="{% url tool.url_name %}">
+    {% url tool.url_name as tool_url %}
+    <a class="tool-tile" href="{{ tool_url }}" data-recent-path="{{ tool_url }}"{% if forloop.counter > 4 %} hidden{% endif %}>
         <i class="fa-solid {{ tool.icon }}" aria-hidden="true"></i>
-        <strong>{{ tool.title }}</strong>
-        <span>{{ tool.subtitle }}</span>
+        <span class="tool-tile-text">
+            <strong>{{ tool.title }}</strong>
+            <span>{{ tool.subtitle }}</span>
+        </span>
     </a>
     {% endif %}
     {% endfor %}
