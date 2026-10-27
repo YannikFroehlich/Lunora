@@ -6,6 +6,9 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- New logo: a simple gold "orbit" mark replaces the detailed moon illustration on the dashboard,
+  login and password pages, offline page, favicon and app icons, and stays legible as a 16 px tab
+  icon. Installed apps pick up the new icon after their next update.
 - Command palette: press Ctrl+K (Cmd+K on Mac) on any page to jump to a page or settings section by
   typing, or to search everywhere for the typed text.
 - See where you are signed in: the "Sicherheit" settings tab lists your devices with browser, system
