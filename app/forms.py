@@ -351,7 +351,6 @@ class AppearanceForm(forms.ModelForm):
             "theme",
             "accent_color",
             "background_softness",
-            "density",
         ]
         widgets = {
             "theme": forms.RadioSelect(),
@@ -359,7 +358,6 @@ class AppearanceForm(forms.ModelForm):
             "background_softness": forms.NumberInput(
                 attrs={"class": "softness-slider", "type": "range", "min": "0", "max": "100"}
             ),
-            "density": forms.RadioSelect(),
         }
 
     def clean_background_softness(self):

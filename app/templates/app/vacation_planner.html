@@ -8,7 +8,7 @@
 {% endblock %}
 
 {% block content %}
-<section class="page-shell vacation-shell" data-vacation-preview-url="{% url 'vacation_preview' %}">
+<section class="page-shell vacation-shell" data-vacation-preview-url="{% url 'vacation_preview' %}" data-vacation-year="{{ selected_year }}">
     <header class="page-hero vacation-hero">
         <div>
             <span class="eyebrow"><i class="fa-solid fa-umbrella-beach" aria-hidden="true"></i> Urlaubsplaner</span>
@@ -209,13 +209,13 @@
         </section>
     </div>
 
-    <section class="glass-panel calendar-panel">
+    <section class="glass-panel calendar-panel" id="vacation-calendar" data-vacation-calendar>
         <div class="panel-title panel-title-between">
             <span><i class="fa-regular fa-calendar-days" aria-hidden="true"></i> {{ calendar_model.month_label }}</span>
             <nav class="month-actions" aria-label="Monat wechseln">
-                <a class="icon-button" href="{% url 'vacation_planner' %}?year={{ calendar_model.prev_month.year }}&month={{ calendar_model.prev_month.month }}" aria-label="Vorheriger Monat"><i class="fa-solid fa-chevron-left"></i></a>
-                <a class="ghost-button" href="{% url 'vacation_planner' %}?year={{ today_year }}&month={{ today_month }}">Heute</a>
-                <a class="icon-button" href="{% url 'vacation_planner' %}?year={{ calendar_model.next_month.year }}&month={{ calendar_model.next_month.month }}" aria-label="Nächster Monat"><i class="fa-solid fa-chevron-right"></i></a>
+                <a class="icon-button" href="{% url 'vacation_planner' %}?year={{ calendar_model.prev_month.year }}&month={{ calendar_model.prev_month.month }}#vacation-calendar" data-calendar-nav aria-label="Vorheriger Monat"><i class="fa-solid fa-chevron-left"></i></a>
+                <a class="ghost-button" href="{% url 'vacation_planner' %}?year={{ today_year }}&month={{ today_month }}#vacation-calendar" data-calendar-nav>Heute</a>
+                <a class="icon-button" href="{% url 'vacation_planner' %}?year={{ calendar_model.next_month.year }}&month={{ calendar_model.next_month.month }}#vacation-calendar" data-calendar-nav aria-label="Nächster Monat"><i class="fa-solid fa-chevron-right"></i></a>
             </nav>
         </div>
         <div class="calendar-body">
@@ -246,10 +246,10 @@
                 <article class="calendar-day {% if day.muted %}is-muted{% endif %} {% if day.weekend %}is-weekend{% endif %} {% if day.today %}is-today{% endif %}">
                     <strong>{{ day.number }}</strong>
                     {% if day.holiday %}
-                    <span class="day-chip holiday-chip">{{ day.holiday.names|join:', ' }}</span>
+                    <span class="day-chip holiday-chip" title="{{ day.holiday.names|join:', ' }}">{{ day.holiday.names|join:', ' }}</span>
                     {% endif %}
                     {% for vacation in day.vacations %}
-                    <span class="day-chip vacation-chip">{{ vacation.get_name_display }}</span>
+                    <span class="day-chip vacation-chip" title="{{ vacation.get_name_display }}">{{ vacation.get_name_display }}</span>
                     {% endfor %}
                     {% if day.overflow %}<span class="day-chip muted-chip">+{{ day.overflow }}</span>{% endif %}
                 </article>

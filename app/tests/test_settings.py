@@ -387,7 +387,6 @@ class SettingsProfileTests(TestCase):
                 "theme": "dark",
                 "accent_color": "#7f916b",
                 "background_softness": "82",
-                "density": "compact",
             },
         )
 
@@ -396,7 +395,6 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(user.profile.theme, "dark")
         self.assertEqual(user.profile.accent_color, "#7f916b")
         self.assertEqual(user.profile.background_softness, 82)
-        self.assertEqual(user.profile.density, "compact")
         self.assertEqual(user.profile.date_format, "iso")
         self.assertEqual(user.profile.time_format, "12h")
         self.assertEqual(user.profile.timezone_name, "UTC")
@@ -411,7 +409,6 @@ class SettingsProfileTests(TestCase):
             theme="dark",
             accent_color="#7f916b",
             background_softness=82,
-            density="compact",
         )
         self.client.login(username="mira@example.com", password="secret-12345")
 
@@ -433,7 +430,6 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(user.profile.theme, "dark")
         self.assertEqual(user.profile.accent_color, "#7f916b")
         self.assertEqual(user.profile.background_softness, 82)
-        self.assertEqual(user.profile.density, "compact")
 
     def test_logged_in_user_can_save_notification_preferences_without_changing_weather(self):
         user = User.objects.create_user(
@@ -517,7 +513,6 @@ class SettingsProfileTests(TestCase):
                 "theme": "dark",
                 "accent_color": "#7f916b",
                 "background_softness": "101",
-                "density": "compact",
             },
         )
 

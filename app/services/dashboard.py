@@ -1,9 +1,9 @@
 from dataclasses import dataclass, field
 
-DASHBOARD_LAYOUT_VERSION = 3
+DASHBOARD_LAYOUT_VERSION = 4
 
-# Grid spans on the 12-column desktop grid (see home.css): small 4, medium 6, large 8, full 12.
-# Defaults stick to small/large/full so widths line up on the 4-column rhythm without holes.
+# Phone-style footprints on the 8-cell desktop grid (see home.css): small 2x2, medium 4x2,
+# large 4x4, full = a whole-width strip. Defaults add up to full rows so the overview has no holes.
 WIDGET_SIZES = ("small", "medium", "large", "full")
 WIDGET_SIZE_LABELS = {"small": "Klein", "medium": "Mittel", "large": "Groß", "full": "Volle Breite"}
 # "" follows the profile accent; the rest are the shared .tone-* classes from base.css.
@@ -51,7 +51,7 @@ DASHBOARD_WIDGETS = (
         label="Willkommen",
         template="app/partials/dashboard_welcome.html",
         class_name="welcome-panel",
-        default_size="large",
+        default_size="medium",
     ),
     DashboardWidget(
         id="clock",
@@ -102,6 +102,7 @@ DASHBOARD_WIDGETS = (
         label="Statistik",
         template="app/partials/dashboard_stats.html",
         class_name="stats-panel",
+        default_size="medium",
         options={"period": "week"},
     ),
     DashboardWidget(
@@ -109,7 +110,7 @@ DASHBOARD_WIDGETS = (
         label="Schnellzugriff",
         template="app/partials/dashboard_quick_actions.html",
         class_name="quick-actions",
-        default_size="large",
+        default_size="full",
         options={"hidden_tiles": []},
     ),
     DashboardWidget(
@@ -189,7 +190,7 @@ def _clean_known_ids(values):
 
 
 def normalize_dashboard_layout(layout):
-    """Upgrade any stored layout (v1/v2/v3) to a complete v3 layout, dropping invalid parts."""
+    """Upgrade any stored layout (v1-v4) to a complete v4 layout, dropping invalid parts."""
     if not isinstance(layout, dict):
         return default_dashboard_layout()
 
@@ -208,6 +209,8 @@ def normalize_dashboard_layout(layout):
         _clean_known_ids(layout.get("wide", []) if isinstance(layout.get("wide"), list) else [])
     )
     stored_widgets = layout.get("widgets") if isinstance(layout.get("widgets"), dict) else {}
+    # v3's "large" was two thirds of the width; v4's is a 4x4 square, so keep the width instead.
+    legacy_large = layout.get("version") == 3
     widgets = {}
     for widget in DASHBOARD_WIDGETS:
         settings = _default_widget_settings(widget)
@@ -218,6 +221,8 @@ def normalize_dashboard_layout(layout):
             for key, value in stored.items():
                 if key in settings and not _setting_error(widget, key, value):
                     settings[key] = _copy(value)
+        if legacy_large and settings["size"] == "large":
+            settings["size"] = "full"
         widgets[widget.id] = settings
 
     return {
@@ -300,7 +305,7 @@ def dashboard_presets():
                     "clock": {"size": "small"},
                     "upcoming_events": {"size": "medium", "limit": 5},
                     "notifications": {"size": "medium", "limit": 5},
-                    "weather": {"size": "full", "show_tomorrow": True},
+                    "weather": {"size": "medium", "show_tomorrow": True},
                 },
             ),
         },
@@ -316,8 +321,8 @@ def dashboard_presets():
                     "tasks": {"size": "small", "limit": 3},
                     "upcoming_events": {"size": "small", "limit": 3},
                     "notifications": {"size": "small", "limit": 3},
-                    "weather": {"size": "small", "show_tomorrow": False},
-                    "quick_actions": {"size": "full"},
+                    "weather": {"size": "medium", "show_tomorrow": True},
+                    "quick_actions": {"size": "medium"},
                 },
             ),
         },

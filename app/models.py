@@ -68,11 +68,6 @@ class Profile(models.Model):
         ("light", "Heller Modus"),
         ("dark", "Dunkler Modus"),
     ]
-    DENSITY_CHOICES = [
-        ("comfortable", "Komfortabel"),
-        ("balanced", "Ausgeglichen"),
-        ("compact", "Kompakt"),
-    ]
     ACCENT_COLOR_CHOICES = [
         ("#c2a276", "Sand"),
         ("#7f916b", "Salbei"),
@@ -99,7 +94,6 @@ class Profile(models.Model):
     theme = models.CharField(max_length=12, choices=THEME_CHOICES, default="light")
     accent_color = models.CharField(max_length=7, choices=ACCENT_COLOR_CHOICES, default="#c2a276")
     background_softness = models.PositiveSmallIntegerField(default=55)
-    density = models.CharField(max_length=12, choices=DENSITY_CHOICES, default="comfortable")
     date_format = models.CharField(max_length=24, choices=DATE_FORMAT_CHOICES, default="de_numeric")
     time_format = models.CharField(max_length=12, choices=TIME_FORMAT_CHOICES, default="24h")
     timezone_name = models.CharField(max_length=64, choices=timezone_choices, default="Europe/Berlin")

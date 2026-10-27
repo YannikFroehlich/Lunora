@@ -113,7 +113,7 @@ class DashboardCustomizationTests(TestCase):
         self.assertEqual(widgets_by_id["weather"]["size"], "full")
         self.assertEqual(widgets_by_id["weather"]["tone"], "blue")
         self.assertEqual(widgets_by_id["clock"]["size"], "medium")
-        self.assertEqual(widgets_by_id["welcome"]["size"], "large")
+        self.assertEqual(widgets_by_id["welcome"]["size"], "medium")
         self.assertContains(response, "dashboard-widget--full has-tone tone-blue")
         self.assertContains(response, "clock-panel dashboard-widget--medium")
         self.assertNotContains(response, 'class="sr-only"')
@@ -166,7 +166,7 @@ class DashboardCustomizationTests(TestCase):
 
         normalized = normalize_dashboard_layout(broken_layout)
 
-        self.assertEqual(normalized["version"], 3)
+        self.assertEqual(normalized["version"], 4)
         self.assertEqual(normalized["order"][:2], ["clock", "welcome"])
         self.assertEqual(set(normalized["order"]), set(DASHBOARD_WIDGET_IDS))
         self.assertEqual(normalized["hidden"], ["weather"])
@@ -184,8 +184,22 @@ class DashboardCustomizationTests(TestCase):
 
         self.assertNotIn("wide", normalized)
         self.assertEqual(normalized["widgets"]["clock"]["size"], "full")
-        self.assertEqual(normalized["widgets"]["welcome"]["size"], "large")
+        self.assertEqual(normalized["widgets"]["welcome"]["size"], "medium")
         self.assertEqual(normalized["hidden"], ["weather"])
+
+    def test_normalization_keeps_v3_large_widgets_wide(self):
+        v3_layout = default_dashboard_layout()
+        v3_layout["version"] = 3
+        v3_layout["widgets"]["welcome"]["size"] = "large"
+        v3_layout["widgets"]["tasks"]["size"] = "medium"
+
+        normalized = normalize_dashboard_layout(v3_layout)
+
+        self.assertEqual(normalized["version"], 4)
+        # v3 "large" meant two thirds of the width; v4's large is a 4x4 square.
+        self.assertEqual(normalized["widgets"]["welcome"]["size"], "full")
+        self.assertEqual(normalized["widgets"]["tasks"]["size"], "medium")
+        self.assertEqual(normalize_dashboard_layout(normalized), normalized)
 
     def test_normalization_replaces_invalid_widget_settings_with_defaults(self):
         layout = self._layout()
@@ -299,6 +313,7 @@ class DashboardCustomizationTests(TestCase):
         original_layout = self.profile.dashboard_layout
         invalid_layouts = [
             {"version": 2, "order": list(DASHBOARD_WIDGET_IDS), "hidden": [], "wide": []},
+            {**self._layout(), "version": 3},
             {**self._layout(), "order": ["welcome"]},
             self._layout(
                 order=["welcome", "welcome", "clock", "weather", "upcoming_events", "quick_actions"]

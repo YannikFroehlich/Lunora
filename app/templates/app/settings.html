@@ -95,16 +95,6 @@
                 <div class="slider-labels"><span>Subtil</span><span>Ausgeglichen</span><span>Reich</span></div>
                 {{ appearance_form.background_softness.errors }}
 
-                <label class="field-label">Kompaktheit</label>
-                <div class="segmented-control">
-                    {% for value, label in appearance_form.density.field.choices %}
-                    <label class="{% if appearance_form.density.value == value %}is-active{% endif %}">
-                        <input type="radio" name="{{ appearance_form.density.html_name }}" value="{{ value }}" {% if appearance_form.density.value == value %}checked{% endif %}>
-                        <span>{{ label }}</span>
-                    </label>
-                    {% endfor %}
-                </div>
-                {{ appearance_form.density.errors }}
                 <button class="primary-button settings-panel-submit" type="submit">
                     <i class="fa-solid fa-floppy-disk"></i>
                     Darstellung speichern

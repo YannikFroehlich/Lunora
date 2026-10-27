@@ -205,22 +205,6 @@ document.querySelectorAll(".switch").forEach((control) => {
   checkbox.addEventListener("change", syncSwitchState);
 });
 
-document.querySelectorAll(".segmented-control").forEach((control) => {
-  control.addEventListener("click", (event) => {
-    const item = event.target.closest("label, button");
-    if (!item) return;
-
-    const input = item.querySelector("input[type='radio']");
-    if (input) {
-      input.checked = true;
-      document.documentElement.dataset.density = input.value;
-    }
-
-    control.querySelectorAll("label, button").forEach((option) => option.classList.remove("is-active"));
-    item.classList.add("is-active");
-  });
-});
-
 document.querySelectorAll(".color-dot").forEach((control) => {
   control.addEventListener("click", () => {
     const input = control.querySelector("input[type='radio']");
