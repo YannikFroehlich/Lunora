@@ -82,10 +82,12 @@ if (eventDialog) {
     openEventDialog();
   }
 
-  // Right-click a day (tap on touch screens) or drag across days to open the dialog for that date or
-  // range. Chips, links and the task checkbox keep their own clicks.
+  // Right-click a day (tap on touch screens) or drag across days with either button to open the dialog
+  // for that date or range. Chips, links and the task checkbox keep their own clicks.
   let dragStart = null;
   let dragEnd = null;
+  // Windows fires contextmenu after the mouseup of a right-button drag; that range already opened the dialog.
+  let swallowContextMenu = false;
   const interactive = "button, a, input, label, .task-chip";
 
   const markRange = () => {
@@ -96,6 +98,11 @@ if (eventDialog) {
   };
 
   document.addEventListener("contextmenu", (event) => {
+    if (swallowContextMenu) {
+      swallowContextMenu = false;
+      event.preventDefault();
+      return;
+    }
     const day = event.target.closest(".calendar-day[data-date]");
     if (!day || event.target.closest(interactive)) {
       return;
@@ -105,7 +112,8 @@ if (eventDialog) {
   });
 
   document.addEventListener("mousedown", (event) => {
-    const day = event.button === 0 && event.target.closest(".calendar-day[data-date]");
+    swallowContextMenu = false;
+    const day = (event.button === 0 || event.button === 2) && event.target.closest(".calendar-day[data-date]");
     if (day && !event.target.closest(interactive)) {
       dragStart = day.dataset.date;
       dragEnd = dragStart;
@@ -121,7 +129,7 @@ if (eventDialog) {
     }
   });
 
-  document.addEventListener("mouseup", () => {
+  document.addEventListener("mouseup", (event) => {
     if (!dragStart) {
       return;
     }
@@ -130,7 +138,8 @@ if (eventDialog) {
     markRange();
     if (first !== last) {
       openEventDialog(first, last);
-    } else if (window.matchMedia("(pointer: coarse)").matches) {
+      swallowContextMenu = event.button === 2;
+    } else if (event.button === 0 && window.matchMedia("(pointer: coarse)").matches) {
       openEventDialog(first);
     }
   });

@@ -148,8 +148,10 @@
   let moved = null;
 
   function formatDay(iso, withMonth = true) {
-    const options = withMonth ? { day: "numeric", month: "long" } : { day: "numeric" };
-    return new Date(`${iso}T00:00`).toLocaleDateString("de-DE", options);
+    if (!withMonth) {
+      return `${Number(iso.slice(8))}.`;
+    }
+    return new Date(`${iso}T00:00`).toLocaleDateString("de-DE", { day: "numeric", month: "long" });
   }
 
   function selectionLabel() {
@@ -321,7 +323,8 @@
         hideMenu();
         clearSelection();
       }
-      const day = event.button === 0 && event.target.closest(".calendar-day[data-date]");
+      // Left or right button: both can drag a range, the right one ends in the context menu.
+      const day = (event.button === 0 || event.button === 2) && event.target.closest(".calendar-day[data-date]");
       if (day) {
         dragStart = day.dataset.date;
         setSelection(dragStart, dragStart);
@@ -340,6 +343,14 @@
         return;
       }
       dragStart = null;
+      if (event.button === 2) {
+        // Windows fires contextmenu after this mouseup and opens the menu for the dragged range; where it
+        // already fired on mousedown (macOS, Linux), refresh the open menu for the final range.
+        if (!menu.hidden) {
+          openMenu(event.clientX, event.clientY);
+        }
+        return;
+      }
       // Touch screens have no right-click (iOS not even a long-press menu), so a tap opens the menu.
       if (selection && (selection.start !== selection.end || window.matchMedia("(pointer: coarse)").matches)) {
         openMenu(event.clientX, event.clientY);
