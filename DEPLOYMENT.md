@@ -131,8 +131,9 @@ Bei einem neuen Fast-Forward-Commit führt der root-eigene Treiber diese Schritt
 1. einen unveränderten Produktions-Checkout und Fast-Forward-Verlauf prüfen;
 2. einmalig ein lokales Backup für den Ziel-Commit erstellen;
 3. `scripts/deploy.sh` als Benutzer `yunnik` ohne privilegierten Dienstneustart starten. Das
-   Skript prüft den neuen Commit zuerst außerhalb des Produktions-Checkouts: `git archive` in ein
-   temporäres Verzeichnis, eigene venv, `pip install -r requirements.txt -c constraints.txt`,
+   Skript prüft den neuen Commit zuerst außerhalb des Produktions-Checkouts: Export per
+   Wegwerf-Index und `git checkout-index` in ein temporäres Verzeichnis (nicht `git archive | tar`,
+   das unter `RestrictSUIDSGID=true` der Unit scheitert), eigene venv, `pip install -r requirements.txt -c constraints.txt`,
    `check --deploy` und `makemigrations --check --dry-run`. Erst wenn das gelingt, werden Checkout
    und produktive venv angefasst, sodass ein Paket- oder Konfigurationsfehler oder eine
    Modelländerung ohne Migration die laufende Version unverändert lässt. Ob sich die Migrationen
