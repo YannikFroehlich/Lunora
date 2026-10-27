@@ -72,33 +72,27 @@ Do not commit real secrets, API keys, VAPID private keys, uploaded media, privat
 ## Production Operations Runbook
 
 The public production baseline below was verified on 24 August 2026 on the former host
-`yfserv1`, which no longer exists. Since 26 October 2026 Lunora runs **LAN-only** on the
-home server `yfsrv1` at `http://192.168.178.175:8090`, without a Cloudflare tunnel; the
-deviations from the baseline are listed under "Current LAN Mode". Read the rest as the
-public setup to reach later. Treat it as operational context, not as a substitute
-for checking current state before a deployment. When
+`yfserv1`, which no longer exists. Since 27 October 2026 Lunora is public again at
+`https://lunora.yfserver.de`, hosted on the home server `yfsrv1` behind the Cloudflare
+Tunnel `lunora-yfsrv1` (it ran LAN-only on 26–27 October). The deviations from the
+baseline are listed under "Host Specifics on yfsrv1". Treat it as operational context,
+not as a substitute for checking current state before a deployment. When
 guiding the operator interactively, label every instruction with its execution
 location: `Windows PC (PowerShell)`, `Ubuntu server`, or `Cloudflare dashboard`.
 
-### Current LAN Mode
+### Host Specifics on yfsrv1
 
 - `yfsrv1` is shared: Docker runs the RoundRush stack (Caddy on `80`/`443`, its own
   cloudflared, PostgreSQL and Redis containers), `nexora` on `8001`, `shdashboard` on
   `8080` and Home Assistant on `8123`. Never stop, reconfigure or rebind them. Lunora's
-  PostgreSQL, Redis and Nginx run on the host, bound to loopback except Nginx.
-- Nginx is installed from `deploy/nginx-lunora.conf` with one server-local change,
-  `listen 127.0.0.1:8090;` -> `listen 8090;`. Reapply that `sed` whenever the config is
-  reinstalled. UFW rule `Lunora LAN` allows `8090/tcp` only from `192.168.178.0/24`.
-  The packaged default site is removed because Caddy already holds port `80`.
-- `/etc/lunora/lunora.env` is in LAN mode: HTTPS redirect, secure cookies and HSTS are
-  off, `DJANGO_USE_X_FORWARDED_PROTO=false`, the console mail backend is active with
-  `DJANGO_SILENCED_SYSTEM_CHECKS=mail.E001` (Django 6.1 `check --deploy` rejects it
-  otherwise), Turnstile is not required, and all three VAPID values are empty because Web
-  Push needs HTTPS. `DJANGO_ALLOWED_HOSTS` keeps `lunora.yfserver.de` for the
-  auto-deploy health check.
-- Going public means: create the tunnel and Turnstile widget, switch the HTTPS settings,
-  SMTP and VAPID values to the baseline below, drop the silenced check, reinstall Nginx
-  on loopback, and delete the `Lunora LAN` UFW rule.
+  PostgreSQL, Redis, Nginx and cloudflared run on the host; Nginx listens only on
+  `127.0.0.1:8090`. The packaged Nginx default site is removed because Caddy already
+  holds port `80`.
+- SMTP is not configured yet: the console mail backend is active and
+  `DJANGO_SILENCED_SYSTEM_CHECKS=mail.E001` lets Django 6.1's `check --deploy` pass.
+  Password-reset and reminder e-mails are not delivered until SMTP is set up and that
+  line is removed.
+- The LAN-only env from 26–27 October is kept as `/etc/lunora/lunora.env.lan-backup`.
 
 ### Production Topology and Access
 
@@ -139,15 +133,18 @@ location: `Windows PC (PowerShell)`, `Ubuntu server`, or `Cloudflare dashboard`.
   Django admin address `webmaster@yfserver.de`. The SMTP password is environment-only.
 - The initial Django superuser is username `yannik`, e-mail
   `webmaster@yfserver.de`; its password remains only in the password manager.
-- A Cloudflare Tunnel (formerly `lunora-yfserv1`; none exists on `yfsrv1` yet) publishes
-  `lunora.yfserver.de` to `http://localhost:8090`. Public registration is intentional, so do not place
+- Cloudflare Tunnel `lunora-yfsrv1` (ID `73772e6e-49b6-4ce5-ad03-726c0f0cdf61`, remotely
+  managed) publishes `lunora.yfserver.de` to `http://localhost:8090`; the DNS CNAME
+  `lunora` must point to `<tunnel-id>.cfargotunnel.com`, otherwise Cloudflare answers with
+  error 1033. Public registration is intentional, so do not place
   Cloudflare Access in front of the whole site. Turnstile must remain required for the
   registration hostname. Scoped WAF or rate-limit rules for login, registration, and
   password reset are optional hardening and must not affect other `yfserver.de` apps.
 - The remotely managed Cloudflare tunnel token is stored in
-  `/etc/cloudflared/token`, owned by root with mode `0600`. The systemd drop-in
-  `/etc/systemd/system/cloudflared.service.d/override.conf` starts cloudflared with
-  `--token-file`; never output the token or replace this with an inline `--token`.
+  `/etc/cloudflared/token`, owned by root with mode `0600`. The versioned unit
+  `deploy/cloudflared.service` (installed to `/etc/systemd/system/`) starts cloudflared with
+  `--token-file`; never output the token, run `cloudflared service install <token>`, or
+  replace this with an inline `--token`.
 
 ### Services, Storage, and Network Baseline
 
