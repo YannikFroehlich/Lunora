@@ -7,8 +7,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 ## Unreleased
 
 - Fix deleting, restoring, moving and saving notes failing with "Der Server hat keine gültige
-  Antwort gesendet" on the PostgreSQL production database. Desktop notifications for note
-  mentions and calendar invitations from a deleted user no longer fail the same way.
+  Antwort gesendet" on the PostgreSQL production database. Browser notifications for note
+  mentions/comments and calendar invitations could fail the same way and are fixed too.
 - The Lunora logo on the dashboard and the sign-in pages follows your accent color (and a
   dashboard widget's own color) instead of always staying sand-colored.
 - The calendar is no longer school-specific: event categories are now Termin, Meeting, Deadline,
