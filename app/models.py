@@ -117,6 +117,13 @@ class Profile(models.Model):
     weather_default_city = models.CharField(max_length=120, blank=True, default="Bünde,de")
     # Secret for the public iCal subscription URL; null until the user creates a link.
     calendar_feed_token = models.CharField(max_length=64, blank=True, null=True, unique=True)
+    # TOTP two-factor login (app/services/two_factor.py); active while totp_enabled_at is set.
+    totp_secret = models.CharField(max_length=64, blank=True)
+    totp_enabled_at = models.DateTimeField(blank=True, null=True)
+    # Last accepted time step, so a code cannot be replayed within its validity window.
+    totp_last_step = models.BigIntegerField(blank=True, null=True)
+    # SHA-256 hashes of the unused one-time recovery codes.
+    totp_recovery_codes = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -126,6 +133,28 @@ class Profile(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class UserSession(models.Model):
+    """Device metadata for a signed-in session, so users can review and revoke their logins.
+
+    Rows are written by app.middleware.UserSessionMiddleware; the session itself stays in
+    Django's session store, and rows whose session is gone are pruned when listed.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="device_sessions"
+    )
+    session_key = models.CharField(max_length=40, unique=True)
+    user_agent = models.CharField(max_length=300, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ["-last_seen_at", "-id"]
+
+    def __str__(self):
+        return f"{self.user} – {self.session_key[:8]}"
 
 
 class WeatherLocation(models.Model):
@@ -653,6 +682,24 @@ class VocabularyCard(models.Model):
         return f"{self.term} – {self.translation}"
 
 
+class VocabularyListShare(models.Model):
+    # Read-only: recipients copy a shared list to practice it, because Leitner progress lives on the cards.
+    vocabulary_list = models.ForeignKey(VocabularyList, on_delete=models.CASCADE, related_name="shares")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="shared_vocabulary_lists"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(fields=["vocabulary_list", "user"], name="unique_vocabulary_share"),
+        ]
+
+    def __str__(self):
+        return f"{self.user} – {self.vocabulary_list}"
+
+
 class UserNotification(models.Model):
     KIND_CALENDAR_REMINDER = "calendar_reminder"
     KIND_TASK_DUE = "task_due"
@@ -660,6 +707,7 @@ class UserNotification(models.Model):
     KIND_NOTE_MENTION = "note_mention"
     KIND_NOTE_COMMENT = "note_comment"
     KIND_NOTE_SHARE = "note_share"
+    KIND_VOCABULARY_SHARE = "vocabulary_share"
     KIND_WEATHER_ALERT = "weather_alert"
     KIND_CHOICES = [
         (KIND_CALENDAR_REMINDER, "Kalendererinnerung"),
@@ -668,6 +716,7 @@ class UserNotification(models.Model):
         (KIND_NOTE_MENTION, "Notizerwähnung"),
         (KIND_NOTE_COMMENT, "Notizkommentar"),
         (KIND_NOTE_SHARE, "Notizfreigabe"),
+        (KIND_VOCABULARY_SHARE, "Vokabelfreigabe"),
         (KIND_WEATHER_ALERT, "Wetterwarnung"),
     ]
 
@@ -720,11 +769,13 @@ class NotificationPreference(models.Model):
     CATEGORY_TASKS = "tasks"
     CATEGORY_NOTES = "notes"
     CATEGORY_WEATHER = "weather"
+    CATEGORY_TOOLS = "tools"
     CATEGORY_CHOICES = [
         (CATEGORY_CALENDAR, "Kalender"),
         (CATEGORY_TASKS, "Aufgaben"),
         (CATEGORY_NOTES, "Notizen"),
         (CATEGORY_WEATHER, "Wetter"),
+        (CATEGORY_TOOLS, "Werkzeuge"),
     ]
 
     user = models.ForeignKey(

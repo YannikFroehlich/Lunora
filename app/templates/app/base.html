@@ -59,7 +59,7 @@
     <a class="nav-orb {% if active_page == 'home' %}is-active{% endif %}" href="{% url 'home' %}" aria-label="Dashboard">
         <i class="fa-solid fa-house" aria-hidden="true"></i>
     </a>
-    <a class="nav-orb {% if active_page == 'search' %}is-active{% endif %}" href="{% url 'global_search' %}" aria-label="Suche">
+    <a class="nav-orb {% if active_page == 'search' %}is-active{% endif %}" href="{% url 'global_search' %}" aria-label="Suche" aria-keyshortcuts="Control+K Meta+K" title="Suche (Strg+K)">
         <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
     </a>
     <a class="nav-orb nav-notification-orb {% if active_page == 'notifications' %}is-active{% endif %}" href="{% url 'notification_center' %}" aria-label="Benachrichtigungen{% if unread_notification_count %}, {{ unread_notification_count }} ungelesen{% endif %}">
@@ -84,6 +84,7 @@
         </button>
     </form>
 </nav>
+{% include 'app/partials/command_palette.html' %}
 {% endif %}
 
 <main class="site-main" id="main-content">

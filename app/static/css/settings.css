@@ -180,6 +180,119 @@
   grid-area: auto;
 }
 
+.security-panel {
+  grid-area: auto;
+}
+
+.device-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.device-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--surface-control);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-sm);
+}
+
+.device-row > i {
+  color: var(--color-accent-strong);
+}
+
+.device-row strong,
+.device-row small {
+  display: block;
+}
+
+.device-row small {
+  color: var(--color-muted);
+}
+
+.device-row form {
+  margin: 0;
+}
+
+.device-current {
+  margin-left: 6px;
+  padding: 2px 8px;
+  color: var(--color-on-accent);
+  font-size: var(--text-2xs);
+  background: var(--color-accent);
+  border-radius: var(--radius-pill);
+}
+
+.two-factor-form {
+  display: grid;
+  gap: 4px;
+  margin-top: 16px;
+}
+
+.two-factor-steps {
+  margin: 0 0 16px;
+  padding-left: 20px;
+  color: var(--color-text);
+  line-height: 1.6;
+}
+
+.two-factor-setup {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr);
+  align-items: center;
+  gap: 18px;
+}
+
+.two-factor-qr svg {
+  display: block;
+  width: 168px;
+  height: 168px;
+  border-radius: var(--radius-xs);
+}
+
+.two-factor-secret {
+  display: block;
+  margin: 8px 0;
+  overflow-wrap: anywhere;
+  font-size: var(--text-md);
+  letter-spacing: 0.08em;
+}
+
+.two-factor-codes {
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
+  border-radius: var(--radius-sm);
+}
+
+.two-factor-codes p {
+  margin: 6px 0 10px;
+  color: var(--color-muted);
+}
+
+.two-factor-codes ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (max-width: 560px) {
+  .two-factor-setup {
+    grid-template-columns: 1fr;
+    justify-items: start;
+  }
+}
+
 .app-install-content {
   display: grid;
   grid-template-columns: 58px minmax(0, 1fr);
@@ -572,17 +685,6 @@
 .notification-channel-check input:focus-visible + span {
   outline: 3px solid color-mix(in srgb, var(--color-accent) 28%, transparent);
   outline-offset: 2px;
-}
-
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
 }
 
 .notification-quiet-hours {

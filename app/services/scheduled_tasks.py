@@ -41,6 +41,7 @@ def run_scheduled_tasks(*, now=None):
     notification_email_result = send_pending_user_notification_emails(
         now=current_time,
         include_note_shares=feature_enabled("notes"),
+        include_vocabulary_shares=feature_enabled("tools"),
         include_weather=feature_enabled("weather"),
     )
     web_push_result = send_pending_web_push_notifications(now=current_time)

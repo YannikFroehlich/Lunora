@@ -6,6 +6,26 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Command palette: press Ctrl+K (Cmd+K on Mac) on any page to jump to a page or settings section by
+  typing, or to search everywhere for the typed text.
+- See where you are signed in: the "Sicherheit" settings tab lists your devices with browser, system
+  and last activity, and signs out single devices or all others at once.
+- Delete your account yourself in the "Sicherheit" settings tab after confirming your password. All
+  your data is removed, including attachments and your profile picture.
+- Get notified when someone shares a vocabulary list with you: the share shows up in the
+  notification inbox and, if enabled, by e-mail or Web Push. A new "Werkzeuge" row in the
+  notification settings controls these channels separately from notes.
+- Optional two-factor login: in the new "Sicherheit" settings tab, users can connect an authenticator
+  app via QR code and get ten one-time recovery codes. After the password, the login then asks for a
+  6-digit code; wrong codes are throttled per account, and the admin sign-in goes through the same
+  check.
+- Personal data export: the "Sicherheit" settings tab downloads everything you created in Lunora as a
+  ZIP archive (notes as Markdown with attachments, tasks, events, sent messages, vocabulary lists, UML
+  diagrams, vacation data and settings).
+- Share vocabulary lists with other users by e-mail or username. Recipients find them under „Mit dir
+  geteilt" and take over a copy that they practice with their own learning progress.
+- The global search also finds vocabulary lists (by title or by the words they contain) and UML
+  diagrams.
 - Turn the calendar into a standalone school calendar: importing external iCal/Google calendars
   is removed (previously imported events are deleted), and events now carry a category
   (Klassenarbeit, Test, Referat, Abgabe, Sonstiges) that sets their color. Instead, each user can

@@ -9,7 +9,8 @@ from django.utils.text import slugify
 from django.views.decorators.http import require_POST
 
 from app.forms import VocabularyCardForm, VocabularyListForm
-from app.models import VocabularyCard, VocabularyList
+from app.models import VocabularyCard, VocabularyList, VocabularyListShare
+from app.services.notes import display_name
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.user_preferences import format_user_datetime
 from app.services.vocabulary import (
@@ -17,11 +18,13 @@ from app.services.vocabulary import (
     MAX_BOX,
     MAX_CARDS_PER_LIST,
     box_distribution,
+    copy_list,
     export_csv,
     is_due,
     parse_bulk_cards,
     reset_progress,
     review_card,
+    share_list,
     with_card_counts,
 )
 
@@ -56,8 +59,23 @@ def vocabulary_lists(request):
         if deleted:
             django_messages.success(request, "Vokabelliste gelöscht.")
         return redirect("vocabulary_lists")
+    elif form_name == "vocab_list_copy":
+        shared_list = get_object_or_404(
+            VocabularyList, shares__user=request.user, pk=_posted_id(request, "list_id")
+        )
+        copy = copy_list(shared_list, request.user)
+        django_messages.success(request, "Liste in deine Vokabellisten übernommen.")
+        return redirect("vocabulary_list_detail", list_id=copy.pk)
+    elif form_name == "vocab_share_leave":
+        VocabularyListShare.objects.filter(
+            user=request.user, vocabulary_list_id=_posted_id(request, "list_id")
+        ).delete()
+        return redirect("vocabulary_lists")
 
     lists = with_card_counts(VocabularyList.objects.filter(owner=request.user))
+    shared_lists = with_card_counts(
+        VocabularyList.objects.filter(shares__user=request.user).select_related("owner__profile")
+    )
     return render(
         request,
         "app/vocabulary_lists.html",
@@ -75,6 +93,16 @@ def vocabulary_lists(request):
                     "updated_label": format_user_datetime(item.updated_at, request.user),
                 }
                 for item in lists
+            ],
+            "shared_lists": [
+                {
+                    "id": item.pk,
+                    "title": item.title,
+                    "languages": f"{item.get_source_language_display()} → {item.get_target_language_display()}",
+                    "card_count": item.card_count,
+                    "owner_name": display_name(item.owner),
+                }
+                for item in shared_lists
             ],
         },
     )
@@ -148,6 +176,16 @@ def vocabulary_list_detail(request, list_id):
             reset_progress(vocabulary_list)
             django_messages.success(request, "Lernfortschritt zurückgesetzt.")
             return redirect("vocabulary_list_detail", list_id=list_id)
+        elif form_name == "vocab_share_add":
+            share, error = share_list(vocabulary_list, request.POST.get("recipient", ""))
+            if error:
+                django_messages.error(request, error)
+            else:
+                django_messages.success(request, f"Liste mit {display_name(share.user)} geteilt.")
+            return redirect(f"{request.path}#teilen")
+        elif form_name == "vocab_share_remove":
+            vocabulary_list.shares.filter(user_id=_posted_id(request, "user_id")).delete()
+            return redirect(f"{request.path}#teilen")
 
     now = timezone.now()
     cards = list(vocabulary_list.cards.all())
@@ -165,6 +203,10 @@ def vocabulary_list_detail(request, list_id):
             "due_count": sum(1 for card in cards if is_due(card, now)),
             "boxes": box_distribution(vocabulary_list),
             "max_box": MAX_BOX,
+            "shares": [
+                {"user_id": share.user_id, "name": display_name(share.user)}
+                for share in vocabulary_list.shares.select_related("user__profile")
+            ],
         },
     )
 

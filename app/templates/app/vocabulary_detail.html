@@ -95,6 +95,35 @@
                     </form>
                 </div>
             </details>
+
+            <details class="vocab-details" id="teilen" {% if shares %}open{% endif %}>
+                <summary><i class="fa-solid fa-share-nodes" aria-hidden="true"></i> Liste teilen</summary>
+                <form class="vocab-card-form" method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="vocab_share_add">
+                    <label class="vocab-field">
+                        <span>E-Mail oder Benutzername</span>
+                        <input type="text" name="recipient" maxlength="254" autocomplete="off" required>
+                    </label>
+                    <button class="ghost-button" type="submit"><i class="fa-solid fa-user-plus" aria-hidden="true"></i> Teilen</button>
+                </form>
+                <p class="uml-muted vocab-hint">Geteilte Listen sind für andere nur lesbar. Sie übernehmen eine Kopie in ihre eigenen Listen und üben dort mit eigenem Lernfortschritt.</p>
+                {% if shares %}
+                <ul class="vocab-share-list">
+                    {% for share in shares %}
+                    <li>
+                        <span><i class="fa-regular fa-user" aria-hidden="true"></i> {{ share.name }}</span>
+                        <form method="post">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_name" value="vocab_share_remove">
+                            <input type="hidden" name="user_id" value="{{ share.user_id }}">
+                            <button class="icon-button" type="submit" aria-label="Freigabe für {{ share.name }} entfernen" title="Freigabe entfernen"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                        </form>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+            </details>
         </section>
 
         <section class="glass-panel vocab-panel">

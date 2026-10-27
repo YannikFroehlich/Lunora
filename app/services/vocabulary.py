@@ -2,10 +2,13 @@ import csv
 import io
 from datetime import timedelta
 
+from django.contrib.auth import get_user_model
+from django.db import transaction
 from django.db.models import Count, Q
 from django.utils import timezone
 
-from app.models import VocabularyCard
+from app.models import VocabularyCard, VocabularyList, VocabularyListShare
+from app.services.notifications import materialize_vocabulary_share_notifications
 
 # Leitner system: a correct answer moves a card one box up, a wrong one back to box 1.
 # The interval says how long a card rests in a box before it is due again.
@@ -112,3 +115,48 @@ def export_csv(vocabulary_list):
         writer.writerow([card.term, card.translation, card.note])
     # The BOM makes Excel open the semicolon file as UTF-8 instead of mangling umlauts.
     return "﻿" + buffer.getvalue()
+
+
+def resolve_share_recipient(owner, identifier):
+    """Find the active user named by an exact e-mail or username; returns (user, error)."""
+    identifier = (identifier or "").strip()
+    if not identifier:
+        return None, "Bitte E-Mail oder Benutzername angeben."
+    users = list(
+        get_user_model()
+        .objects.filter(is_active=True)
+        .filter(Q(username__iexact=identifier) | Q(email__iexact=identifier))[:2]
+    )
+    if len(users) != 1:
+        return None, "Kein eindeutiges Konto mit dieser E-Mail oder diesem Benutzernamen gefunden."
+    if users[0].pk == owner.pk:
+        return None, "Du kannst eine Liste nicht mit dir selbst teilen."
+    return users[0], None
+
+
+def share_list(vocabulary_list, identifier):
+    """Share the list read-only with another user; returns (share, error)."""
+    user, error = resolve_share_recipient(vocabulary_list.owner, identifier)
+    if error:
+        return None, error
+    share, created = VocabularyListShare.objects.get_or_create(vocabulary_list=vocabulary_list, user=user)
+    if not created:
+        return None, "Die Liste ist mit diesem Konto bereits geteilt."
+    materialize_vocabulary_share_notifications([share])
+    return share, None
+
+
+@transaction.atomic
+def copy_list(vocabulary_list, user):
+    """Copy a list with all cards into the user's own lists, starting with fresh Leitner progress."""
+    copy = VocabularyList.objects.create(
+        owner=user,
+        title=vocabulary_list.title,
+        source_language=vocabulary_list.source_language,
+        target_language=vocabulary_list.target_language,
+    )
+    VocabularyCard.objects.bulk_create(
+        VocabularyCard(vocabulary_list=copy, term=card.term, translation=card.translation, note=card.note)
+        for card in vocabulary_list.cards.all()
+    )
+    return copy

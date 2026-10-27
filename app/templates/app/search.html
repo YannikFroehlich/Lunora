@@ -12,7 +12,7 @@
     <header class="page-hero">
         <div>
             <h1>Suche</h1>
-            <p>Finde Notizen, Nachrichten, Termine, Aufgaben und Urlaub an einem Ort.</p>
+            <p>Finde Notizen, Nachrichten, Termine, Aufgaben, Urlaub, Vokabeln und Diagramme an einem Ort.</p>
         </div>
         <i class="hero-branch fa-solid fa-seedling" aria-hidden="true"></i>
     </header>
@@ -159,6 +159,34 @@
             <div class="empty-state-card is-compact">
                 <i class="fa-solid fa-umbrella-beach" aria-hidden="true"></i>
                 <div><strong>Keine Treffer</strong><p>Kein Urlaub passt zu &bdquo;{{ query }}&ldquo;.</p></div>
+            </div>
+            {% endif %}
+        </section>
+
+        <section class="glass-panel search-result-panel">
+            <div class="panel-title panel-title-between">
+                <span><i class="fa-solid fa-toolbox"></i> Werkzeuge</span>
+                {% if tool_results %}<small>{{ tool_results|length }} Treffer</small>{% endif %}
+            </div>
+            {% if not tools_enabled %}
+            <div class="empty-state-card is-compact">
+                <i class="fa-regular fa-circle-pause" aria-hidden="true"></i>
+                <div><strong>Werkzeuge deaktiviert</strong><p>Diese Funktion ist aktuell nicht verfügbar.</p></div>
+            </div>
+            {% elif tool_results %}
+            {% for item in tool_results %}
+            <a class="search-result-row" href="{{ item.url }}">
+                <i class="fa-solid {{ item.icon }}" aria-hidden="true"></i>
+                <span>
+                    <strong>{{ item.title }}</strong>
+                    <small>{{ item.subtitle }}</small>
+                </span>
+            </a>
+            {% endfor %}
+            {% else %}
+            <div class="empty-state-card is-compact">
+                <i class="fa-solid fa-toolbox" aria-hidden="true"></i>
+                <div><strong>Keine Treffer</strong><p>Keine Vokabelliste und kein Diagramm passt zu &bdquo;{{ query }}&ldquo;.</p></div>
             </div>
             {% endif %}
         </section>

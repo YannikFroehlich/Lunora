@@ -37,6 +37,12 @@ CATEGORY_DEFINITIONS = (
         "hint": "Warnungen für gespeicherte Orte",
         "icon": "fa-cloud-bolt",
     },
+    {
+        "key": NotificationPreference.CATEGORY_TOOLS,
+        "label": "Werkzeuge",
+        "hint": "Mit dir geteilte Vokabellisten",
+        "icon": "fa-toolbox",
+    },
 )
 
 KIND_TO_CATEGORY = {
@@ -47,6 +53,7 @@ KIND_TO_CATEGORY = {
     UserNotification.KIND_NOTE_COMMENT: NotificationPreference.CATEGORY_NOTES,
     UserNotification.KIND_NOTE_SHARE: NotificationPreference.CATEGORY_NOTES,
     UserNotification.KIND_WEATHER_ALERT: NotificationPreference.CATEGORY_WEATHER,
+    UserNotification.KIND_VOCABULARY_SHARE: NotificationPreference.CATEGORY_TOOLS,
 }
 
 
