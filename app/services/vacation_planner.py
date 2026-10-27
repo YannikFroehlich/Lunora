@@ -483,6 +483,32 @@ def holiday_items(vacation_year):
     }
 
 
+def calendar_day_markers(user, first_day, last_day):
+    """Holidays and vacations per day from first_day to last_day, for the main calendar.
+
+    Holidays need a set-up VacationYear (it carries the federal state); vacations show regardless.
+    """
+    markers = {}
+    for vacation_year in VacationYear.objects.filter(user=user, year__range=(first_day.year, last_day.year)):
+        for day, holiday in effective_holidays_for_year(vacation_year).items():
+            if first_day <= day <= last_day:
+                markers.setdefault(day, []).append({"kind": "holiday", "label": ", ".join(holiday.names)})
+    periods = VacationPeriod.objects.filter(user=user, start_date__lte=last_day, end_date__gte=first_day)
+    for period in periods.order_by("start_date", "id"):
+        day = max(period.start_date, first_day)
+        while day <= min(period.end_date, last_day):
+            markers.setdefault(day, []).append({"kind": "vacation", "label": period.get_name_display()})
+            day += timedelta(days=1)
+    return markers
+
+
+def upcoming_vacations(user, today, limit):
+    """Vacations that are running or still ahead, soonest first."""
+    return list(
+        VacationPeriod.objects.filter(user=user, end_date__gte=today).order_by("start_date", "id")[:limit]
+    )
+
+
 def month_calendar(user, year, month):
     now = localtime_for_user(profile_or_user=user).date()
     vacation_year = VacationYear.objects.filter(user=user, year=year).first()

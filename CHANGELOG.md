@@ -6,6 +6,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Vacations and public holidays from the vacation planner now appear in the calendar, in "Nächste
+  Termine" on the calendar page and the dashboard, and in the calendar subscription (ICS feed).
+- Create calendar events directly in the month grid: right-click a day (tap it on a phone), or drag
+  across several days for an all-day event spanning them. Events can now have an end date ("Bis").
 - The vacation calendar is larger and works directly: right-click a day (tap it on a phone) or drag
   across several days to add a vacation or a custom holiday, or to edit the vacations and holidays
   on those days, in a dialog without leaving the calendar.

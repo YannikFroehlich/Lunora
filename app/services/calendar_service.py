@@ -5,7 +5,8 @@ from datetime import UTC, timedelta
 from django.db.models import Q
 from django.utils import timezone
 
-from app.models import CalendarEvent, CalendarEventAttendee
+from app.models import CalendarEvent, CalendarEventAttendee, VacationPeriod
+from app.services.system_settings import feature_enabled
 from app.services.user_preferences import localtime_for_user
 
 # Subscribers only need recent history; everything ahead is always included.
@@ -89,6 +90,12 @@ def build_calendar_feed(user, *, calendar_name, now=None):
     ]
     for event in calendar_feed_events(user, now=now):
         lines.extend(_ics_event_lines(event))
+    if feature_enabled("vacation_planner"):
+        current_date = localtime_for_user(now or timezone.now(), user).date()
+        for period in VacationPeriod.objects.filter(
+            user=user, end_date__gte=current_date - timedelta(days=FEED_LOOKBACK_DAYS)
+        ).order_by("start_date", "id"):
+            lines.extend(_ics_vacation_lines(period))
     lines.append("END:VCALENDAR")
     return "".join(f"{_ics_fold(line)}\r\n" for line in lines)
 
@@ -122,6 +129,24 @@ def _ics_event_lines(event):
         lines.append(f"LOCATION:{_ics_escape(event.location)}")
     if event.description:
         lines.append(f"DESCRIPTION:{_ics_escape(event.description)}")
+    lines.append("END:VEVENT")
+    return lines
+
+
+def _ics_vacation_lines(period):
+    """A vacation-planner period as an all-day event; DTEND is exclusive, so it is the day after."""
+    lines = [
+        "BEGIN:VEVENT",
+        f"UID:lunora-vacation-{period.pk}",
+        f"DTSTAMP:{_ics_utc(period.updated_at)}",
+        f"LAST-MODIFIED:{_ics_utc(period.updated_at)}",
+        f"DTSTART;VALUE=DATE:{period.start_date:%Y%m%d}",
+        f"DTEND;VALUE=DATE:{period.end_date + timedelta(days=1):%Y%m%d}",
+        f"SUMMARY:{_ics_escape(period.get_name_display())}",
+        "CATEGORIES:Urlaub",
+    ]
+    if period.notes:
+        lines.append(f"DESCRIPTION:{_ics_escape(period.notes)}")
     lines.append("END:VEVENT")
     return lines
 

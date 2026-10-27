@@ -3,9 +3,10 @@ from datetime import datetime, time, timedelta
 from urllib.parse import urlparse
 
 from django.db.models import F, Q
+from django.urls import reverse
 from django.utils import timezone
 
-from app.forms import BookmarkForm
+from app.forms import BookmarkForm, event_last_date
 from app.models import (
     Bookmark,
     CalendarEvent,
@@ -50,7 +51,7 @@ from app.services.user_preferences import (
     get_user_zoneinfo,
     localtime_for_user,
 )
-from app.services.vacation_planner import annual_summary
+from app.services.vacation_planner import annual_summary, calendar_day_markers, upcoming_vacations
 from app.services.vocabulary import due_filter
 
 
@@ -537,15 +538,53 @@ def _dashboard_upcoming_events(user, now):
     events = (
         _calendar_visible_events_query(user).filter(end_at__gte=now).order_by("start_at")[:MAX_WIDGET_ITEMS]
     )
-    return [
+    items = [
         {
             "title": event.title,
             "date": format_user_date(event.start_at, user),
             "time": "Ganztägig" if event.is_all_day else format_user_time(event.start_at, user),
             "tone": _calendar_event_tone(event),
+            "sort_key": _event_sort_key(event, user),
         }
         for event in events
     ]
+    for item in _upcoming_vacation_items(user, now, MAX_WIDGET_ITEMS):
+        items.append({**item, "time": f"Urlaub bis {item['end_date']}"})
+    return _soonest(items, MAX_WIDGET_ITEMS)
+
+
+def _event_sort_key(event, user):
+    return localtime_for_user(event.start_at, user).replace(tzinfo=None)
+
+
+def _soonest(items, limit):
+    items.sort(key=lambda item: item["sort_key"])
+    return items[:limit]
+
+
+def _vacation_calendar_url(day):
+    return f"{reverse('vacation_planner')}?year={day.year}&month={day.month}#vacation-calendar"
+
+
+def _upcoming_vacation_items(user, now, limit):
+    """Running and upcoming vacations as list rows next to events (empty when the planner is off)."""
+    if not feature_enabled("vacation_planner"):
+        return []
+    today = now.date()
+    items = []
+    for period in upcoming_vacations(user, today, limit):
+        items.append(
+            {
+                "title": period.get_name_display(),
+                "date": format_user_date(period.start_date, user),
+                "end_date": format_user_date(period.end_date, user),
+                "tone": "green",
+                "url": _vacation_calendar_url(period.start_date),
+                # A running vacation sorts as today, ahead of later events.
+                "sort_key": datetime.combine(max(period.start_date, today), time.min),
+            }
+        )
+    return items
 
 
 def get_calendar_context(user, *, year=None, month=None):
@@ -580,6 +619,10 @@ def get_calendar_context(user, *, year=None, month=None):
         ).order_by("due_at", "id"):
             tasks_by_date.setdefault(localtime_for_user(task.due_at, user).date(), []).append(task)
 
+    markers = {}
+    if feature_enabled("vacation_planner"):
+        markers = calendar_day_markers(user, visible_start, visible_end - timedelta(days=1))
+
     rows = []
     for week in weeks:
         row = []
@@ -595,6 +638,15 @@ def get_calendar_context(user, *, year=None, month=None):
                     "date_label": format_user_date(day, user),
                     "muted": day.month != month,
                     "today": day == now.date(),
+                    # Holidays and vacations from the vacation planner; a thin line that takes no slot.
+                    "markers": [
+                        {
+                            "label": marker["label"],
+                            "tone": "red" if marker["kind"] == "holiday" else "green",
+                            "url": _vacation_calendar_url(day),
+                        }
+                        for marker in markers.get(day, [])
+                    ],
                     "events": [
                         {
                             "label": event.title,
@@ -711,10 +763,12 @@ def _calendar_event_manage_fields(event, user):
     if can_manage:
         event_start = localtime_for_user(event.start_at, user)
         event_end = localtime_for_user(event.end_at, user)
+        last_date = event_last_date(event, event_start, event_end)
         fields.update(
             {
                 "edit_title": event.title,
                 "edit_date": event_start.date().isoformat(),
+                "edit_end_date": last_date.isoformat() if last_date else "",
                 "edit_start_time": event_start.strftime("%H:%M"),
                 "edit_end_time": event_end.strftime("%H:%M"),
                 "edit_is_all_day": event.is_all_day,
@@ -730,7 +784,7 @@ def _calendar_event_manage_fields(event, user):
 
 def _upcoming_calendar_events(user, now):
     events = _calendar_visible_events_query(user).filter(end_at__gte=now).order_by("start_at")[:6]
-    return [
+    items = [
         {
             "date": format_user_date(event.start_at, user),
             "title": event.title,
@@ -738,10 +792,14 @@ def _upcoming_calendar_events(user, now):
             "icon": "fa-calendar-day",
             "tone": _calendar_event_tone(event),
             "is_invited": event.user_id != user.id,
+            "sort_key": _event_sort_key(event, user),
             **_calendar_event_manage_fields(event, user),
         }
         for event in events
     ]
+    for item in _upcoming_vacation_items(user, now, 6):
+        items.append({**item, "category": f"Urlaub bis {item['end_date']}", "icon": "fa-umbrella-beach"})
+    return _soonest(items, 6)
 
 
 def _pending_invitation_items(user):

@@ -827,6 +827,13 @@ class _CalendarEventDateTimeForm(forms.Form):
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
         input_formats=["%Y-%m-%d"],
     )
+    # Optional last day for events spanning several days (e.g. dragged across the month grid).
+    end_date = forms.DateField(
+        label="Bis",
+        required=False,
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        input_formats=["%Y-%m-%d"],
+    )
     start_time = forms.TimeField(
         label="Beginn",
         required=False,
@@ -887,10 +894,16 @@ class _CalendarEventDateTimeForm(forms.Form):
         if not event_date:
             return cleaned_data
 
+        end_date = cleaned_data.get("end_date")
+        if end_date and end_date < event_date:
+            self.add_error("end_date", "Das Enddatum darf nicht vor dem Datum liegen.")
+            return cleaned_data
+        last_date = end_date or event_date
+
         user_timezone = get_user_zoneinfo(self.user)
         if is_all_day:
             start_at = datetime.combine(event_date, time.min, tzinfo=user_timezone)
-            end_at = start_at + timedelta(days=1)
+            end_at = datetime.combine(last_date + timedelta(days=1), time.min, tzinfo=user_timezone)
         else:
             if not start_time:
                 self.add_error("start_time", "Bitte gib eine Startzeit an.")
@@ -898,12 +911,12 @@ class _CalendarEventDateTimeForm(forms.Form):
 
             start_at = datetime.combine(event_date, start_time, tzinfo=user_timezone)
             if end_time:
-                end_at = datetime.combine(event_date, end_time, tzinfo=user_timezone)
+                end_at = datetime.combine(last_date, end_time, tzinfo=user_timezone)
                 if end_at <= start_at:
                     self.add_error("end_time", "Die Endzeit muss nach der Startzeit liegen.")
                     return cleaned_data
             else:
-                end_at = start_at + timedelta(hours=1)
+                end_at = datetime.combine(last_date, start_time, tzinfo=user_timezone) + timedelta(hours=1)
 
         cleaned_data["start_at"] = start_at
         cleaned_data["end_at"] = end_at
@@ -1017,6 +1030,12 @@ class CalendarEventForm(_CalendarEventDateTimeForm):
         return events[0] if events else None
 
 
+def event_last_date(event, local_start, local_end):
+    """The event's last day for the "Bis" field, or None for single-day events (end_at is exclusive)."""
+    last_date = (local_end - timedelta(seconds=1)).date() if event.is_all_day else local_end.date()
+    return last_date if last_date > local_start.date() else None
+
+
 class CalendarEventEditForm(_CalendarEventDateTimeForm):
     def __init__(self, *args, user=None, instance=None, **kwargs):
         self.instance = instance
@@ -1028,6 +1047,7 @@ class CalendarEventEditForm(_CalendarEventDateTimeForm):
                 {
                     "title": instance.title,
                     "event_date": instance_start.date(),
+                    "end_date": event_last_date(instance, instance_start, instance_end),
                     "start_time": instance_start.time(),
                     "end_time": instance_end.time(),
                     "is_all_day": instance.is_all_day,

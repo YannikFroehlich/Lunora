@@ -33,13 +33,16 @@
                 <a class="ghost-button" href="{% url 'calendar' %}"><i class="fa-regular fa-calendar"></i> Heute</a>
             </div>
 
+            {% if calendar_event_creation_enabled %}
+            <p class="calendar-hint">Rechtsklick auf einen Tag (am Handy antippen) oder mit gedrückter Maustaste über mehrere Tage ziehen, um direkt einen Termin anzulegen.</p>
+            {% endif %}
             <div class="weekday-row">
                 <span>Mo</span><span>Di</span><span>Mi</span><span>Do</span><span>Fr</span><span>Sa</span><span>So</span>
             </div>
             <div class="calendar-matrix">
                 {% for week in calendar_rows %}
                     {% for day in week %}
-                    <article class="calendar-day {% if day.muted %}is-muted{% endif %} {% if day.today %}is-today{% endif %}">
+                    <article class="calendar-day {% if day.muted %}is-muted{% endif %} {% if day.today %}is-today{% endif %}" data-date="{{ day.date_input }}">
                         {% if calendar_event_creation_enabled %}
                         <button class="calendar-day-number" type="button" data-event-date="{{ day.date_input }}" aria-label="Termin am {{ day.date_label }} anlegen">
                             <strong>{{ day.number }}</strong>
@@ -49,12 +52,20 @@
                             <strong>{{ day.number }}</strong>
                         </span>
                         {% endif %}
+                        {% if day.markers %}
+                        <div class="day-markers">
+                            {% for marker in day.markers %}
+                            <a class="day-marker tone-{{ marker.tone }}" href="{{ marker.url }}" title="{{ marker.label }} – im Urlaubsplaner öffnen">{{ marker.label }}</a>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
                         {% for event in day.events %}
                         {% if event.can_delete %}
                         <button type="button" class="event-chip tone-{{ event.tone }}" title="{{ event.time }} · {{ event.label }} (bearbeiten)" data-event-edit-open
                             data-event-id="{{ event.event_id }}"
                             data-edit-title="{{ event.edit_title }}"
                             data-edit-date="{{ event.edit_date }}"
+                            data-edit-end-date="{{ event.edit_end_date }}"
                             data-edit-start="{{ event.edit_start_time }}"
                             data-edit-end="{{ event.edit_end_time }}"
                             data-edit-all-day="{{ event.edit_is_all_day|yesno:'true,false' }}"
@@ -124,6 +135,7 @@
                             data-event-id="{{ event.event_id }}"
                             data-edit-title="{{ event.edit_title }}"
                             data-edit-date="{{ event.edit_date }}"
+                            data-edit-end-date="{{ event.edit_end_date }}"
                             data-edit-start="{{ event.edit_start_time }}"
                             data-edit-end="{{ event.edit_end_time }}"
                             data-edit-all-day="{{ event.edit_is_all_day|yesno:'true,false' }}"
@@ -172,7 +184,7 @@
                 <div class="upcoming-row tone-{{ event.tone }}">
                     <span class="upcoming-dot" aria-hidden="true"></span>
                     <span>{{ event.date }}</span>
-                    <strong>{{ event.title }}</strong>
+                    <strong>{% if event.url %}<a href="{{ event.url }}">{{ event.title }}</a>{% else %}{{ event.title }}{% endif %}</strong>
                     <small>{{ event.category }}</small>
                     {% if event.recurrence_id %}<i class="fa-solid fa-repeat" title="Wiederkehrender Termin"></i>{% endif %}
                     {% if event.is_invited %}<i class="fa-solid fa-user-group" title="Einladung"></i>{% endif %}
@@ -183,6 +195,7 @@
                             data-event-id="{{ event.event_id }}"
                             data-edit-title="{{ event.edit_title }}"
                             data-edit-date="{{ event.edit_date }}"
+                            data-edit-end-date="{{ event.edit_end_date }}"
                             data-edit-start="{{ event.edit_start_time }}"
                             data-edit-end="{{ event.edit_end_time }}"
                             data-edit-all-day="{{ event.edit_is_all_day|yesno:'true,false' }}"
@@ -362,10 +375,16 @@
                 {{ event_form.title.errors }}
             </label>
 
-            <label class="event-form-field is-wide" for="{{ event_form.event_date.id_for_label }}">
+            <label class="event-form-field" for="{{ event_form.event_date.id_for_label }}">
                 <span>{{ event_form.event_date.label }}</span>
                 {{ event_form.event_date }}
                 {{ event_form.event_date.errors }}
+            </label>
+
+            <label class="event-form-field" for="{{ event_form.end_date.id_for_label }}">
+                <span>{{ event_form.end_date.label }} <small>optional</small></span>
+                {{ event_form.end_date }}
+                {{ event_form.end_date.errors }}
             </label>
 
             <label class="event-form-field" data-event-time-field for="{{ event_form.start_time.id_for_label }}">
@@ -452,10 +471,16 @@
                 {{ edit_form.title.errors }}
             </label>
 
-            <label class="event-form-field is-wide" for="{{ edit_form.event_date.id_for_label }}">
+            <label class="event-form-field" for="{{ edit_form.event_date.id_for_label }}">
                 <span>{{ edit_form.event_date.label }}</span>
                 {{ edit_form.event_date }}
                 {{ edit_form.event_date.errors }}
+            </label>
+
+            <label class="event-form-field" for="{{ edit_form.end_date.id_for_label }}">
+                <span>{{ edit_form.end_date.label }} <small>optional</small></span>
+                {{ edit_form.end_date }}
+                {{ edit_form.end_date.errors }}
             </label>
 
             <label class="event-form-field" data-event-edit-time-field for="{{ edit_form.start_time.id_for_label }}">
