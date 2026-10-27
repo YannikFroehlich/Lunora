@@ -157,13 +157,22 @@ def accessible_notes(user, *, include_deleted=False):
     )
 
 
-def get_accessible_note(user, note_id, *, allow_deleted=False, for_update=False):
-    queryset = Note.objects.select_related(
-        "owner", "owner__profile", "last_edited_by", "last_edited_by__profile"
-    ).prefetch_related("shares__user", "shares__user__profile")
+def _accessible_note_queryset(user, note_id, *, for_update=False):
+    # Exists instead of joining shares: the join needed DISTINCT, which PostgreSQL rejects together
+    # with FOR UPDATE. of=("self",) keeps the lock off the nullable last_edited_by outer join.
+    queryset = (
+        Note.objects.select_related("owner", "owner__profile", "last_edited_by", "last_edited_by__profile")
+        .prefetch_related("shares__user", "shares__user__profile")
+        .filter(pk=note_id)
+        .filter(Q(owner=user) | Exists(NoteShare.objects.filter(note_id=OuterRef("pk"), user=user)))
+    )
     if for_update:
-        queryset = queryset.select_for_update()
-    note = queryset.filter(pk=note_id).filter(Q(owner=user) | Q(shares__user=user)).distinct().first()
+        queryset = queryset.select_for_update(of=("self",))
+    return queryset
+
+
+def get_accessible_note(user, note_id, *, allow_deleted=False, for_update=False):
+    note = _accessible_note_queryset(user, note_id, for_update=for_update).first()
     if not note or (note.deleted_at and (not allow_deleted or note.owner_id != user.id)):
         raise Note.DoesNotExist
     return note

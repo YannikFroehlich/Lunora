@@ -63,3 +63,34 @@ class FakeWeatherTileResponse:
 
     def read(self, _size=-1):
         return b"png-bytes"
+
+
+def postgres_connection():
+    """A PostgreSQL backend that never connects, for compiling production-only SQL.
+
+    The suite runs on SQLite, so PostgreSQL-specific query shapes are only checked
+    by compiling them against this backend.
+    """
+    from django.db.backends.postgresql.base import DatabaseWrapper
+
+    connection = DatabaseWrapper(
+        {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": "lunora",
+            "USER": "lunora",
+            "PASSWORD": "",
+            "HOST": "127.0.0.1",
+            "PORT": "5432",
+            "OPTIONS": {},
+            "CONN_MAX_AGE": 0,
+            "CONN_HEALTH_CHECKS": False,
+            "AUTOCOMMIT": True,
+            "ATOMIC_REQUESTS": False,
+            "TIME_ZONE": None,
+            "TEST": {"CHARSET": None, "COLLATION": None, "NAME": None, "MIRROR": None},
+        },
+        "postgres-sql-check",
+    )
+    # select_for_update() refuses to compile in autocommit; asking would open a connection.
+    connection.get_autocommit = lambda: False
+    return connection

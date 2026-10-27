@@ -22,6 +22,7 @@ from app.models import (
 )
 from app.services.note_search import build_snippet, highlight_text, parse_search_query, search_notes
 from app.services.notes import accessible_notes
+from app.tests.helpers import postgres_connection
 
 
 class GlobalSearchTests(TestCase):
@@ -355,26 +356,7 @@ class NotePostgresSearchSqlTests(SimpleTestCase):
     """
 
     def compile_search(self, query):
-        from django.db.backends.postgresql.base import DatabaseWrapper
-
-        connection = DatabaseWrapper(
-            {
-                "ENGINE": "django.db.backends.postgresql",
-                "NAME": "lunora",
-                "USER": "lunora",
-                "PASSWORD": "",
-                "HOST": "127.0.0.1",
-                "PORT": "5432",
-                "OPTIONS": {},
-                "CONN_MAX_AGE": 0,
-                "CONN_HEALTH_CHECKS": False,
-                "AUTOCOMMIT": True,
-                "ATOMIC_REQUESTS": False,
-                "TIME_ZONE": None,
-                "TEST": {"CHARSET": None, "COLLATION": None, "NAME": None, "MIRROR": None},
-            },
-            "postgres-sql-check",
-        )
+        connection = postgres_connection()
         self.assertEqual(connection.vendor, "postgresql")
         with patch("app.services.note_search.connection", connection):
             queryset = search_notes(accessible_notes(User(pk=1, username="mira@example.com")), query)

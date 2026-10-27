@@ -557,7 +557,7 @@ def claim_due_note_activity(user, *, now=None, limit=5):
 
     with transaction.atomic():
         notifications = list(
-            NoteActivityNotification.objects.select_for_update()
+            NoteActivityNotification.objects.select_for_update(of=("self",))
             .filter(recipient=user, desktop_notified_at__isnull=True)
             .select_related("note", "actor")
             .order_by("created_at", "id")[:limit]
@@ -656,7 +656,7 @@ def claim_due_event_invitations(user, *, now=None, limit=5):
 
     with transaction.atomic():
         invitations = list(
-            CalendarEventAttendee.objects.select_for_update()
+            CalendarEventAttendee.objects.select_for_update(of=("self",))
             .filter(user=user, desktop_notified_at__isnull=True)
             .select_related("event", "invited_by")
             .order_by("created_at", "id")[:limit]
