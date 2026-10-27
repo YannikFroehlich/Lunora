@@ -1013,8 +1013,8 @@ button.event-chip {
 }
 
 /* Days picked by dragging across the month grid (calendar.js) before the event dialog opens. */
-.calendar-day.is-selected {
-  background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+.calendar-matrix .calendar-day.is-selected {
+  background: color-mix(in srgb, var(--color-accent) 48%, transparent);
 }
 
 .calendar-hint {
