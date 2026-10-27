@@ -37,7 +37,10 @@
 .holiday-form input,
 .holiday-panel input,
 .holiday-panel select,
-.holiday-panel textarea {
+.holiday-panel textarea,
+.vacation-dialog input,
+.vacation-dialog select,
+.vacation-dialog textarea {
     background: rgba(255, 255, 255, 0.64);
     border: 1px solid rgba(75, 63, 48, 0.14);
     border-radius: var(--radius-xs);
@@ -57,7 +60,10 @@
 [data-theme="dark"] .holiday-form input,
 [data-theme="dark"] .holiday-panel input,
 [data-theme="dark"] .holiday-panel select,
-[data-theme="dark"] .holiday-panel textarea {
+[data-theme="dark"] .holiday-panel textarea,
+[data-theme="dark"] .vacation-dialog input,
+[data-theme="dark"] .vacation-dialog select,
+[data-theme="dark"] .vacation-dialog textarea {
     background: rgba(25, 25, 25, 0.6);
     border-color: rgba(255, 255, 255, 0.14);
 }
@@ -422,12 +428,6 @@
 .vacation-dialog .holiday-form {
     display: grid;
     gap: 12px;
-}
-
-.vacation-dialog input,
-.vacation-dialog select,
-.vacation-dialog textarea {
-    width: 100%;
 }
 
 /* Long names ("Erster Weihnachtstag") are cut instead of spilling over the pill; the full name is in title. */
