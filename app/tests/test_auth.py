@@ -46,7 +46,27 @@ class TurnstileValidationTests(SimpleTestCase):
             }
         )
 
-        self.assertFalse(verify_registration_token("valid-token"))
+        with self.assertLogs("app.services.turnstile", "WARNING") as logs:
+            self.assertFalse(verify_registration_token("valid-token"))
+        self.assertIn("attacker.example", logs.output[0])
+
+    @patch("app.services.turnstile.urlopen")
+    def test_logs_cloudflare_error_codes_on_rejection(self, mocked_urlopen):
+        from app.services.turnstile import verify_registration_token
+
+        mocked_urlopen.return_value = FakeJsonResponse(
+            {"success": False, "error-codes": ["timeout-or-duplicate"]}
+        )
+
+        with self.assertLogs("app.services.turnstile", "WARNING") as logs:
+            self.assertFalse(verify_registration_token("valid-token"))
+        self.assertIn("timeout-or-duplicate", logs.output[0])
+
+    def test_logs_missing_token(self):
+        from app.services.turnstile import verify_registration_token
+
+        with self.assertLogs("app.services.turnstile", "WARNING"):
+            self.assertFalse(verify_registration_token(""))
 
     @patch("app.services.turnstile.urlopen", side_effect=URLError("offline"))
     def test_fails_closed_when_siteverify_is_unavailable(self, _mocked_urlopen):

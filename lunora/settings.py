@@ -357,6 +357,12 @@ LOGGING = {
             "level": "INFO",
             "propagate": False,
         },
+        # Warnings from Lunora's own services (Turnstile, Web Push, notifications) reach the journal.
+        "app": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
     },
 }
 
