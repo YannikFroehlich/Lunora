@@ -2,6 +2,11 @@
     <span class="widget-icon" aria-hidden="true"><i class="{{ icon }}"></i></span>
     <h2>{{ title }}</h2>
     {% if meta %}<span class="widget-head-meta">{{ meta }}</span>{% endif %}
+    {% if action_dialog %}
+    <button class="widget-head-link widget-head-action" type="button" data-dialog-open="{{ action_dialog }}" aria-label="{{ action_label }}" title="{{ action_label }}">
+        <i class="fa-solid fa-plus" aria-hidden="true"></i>
+    </button>
+    {% endif %}
     {% if link_url %}
     <a class="widget-head-link" href="{{ link_url }}" aria-label="{{ link_label }}" title="{{ link_label }}">
         <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>

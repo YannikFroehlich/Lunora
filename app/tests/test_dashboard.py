@@ -567,6 +567,20 @@ class DashboardBookmarkWidgetTests(TestCase):
         Profile.objects.create(user=self.user, display_name="Mira")
         self.client.force_login(self.user)
 
+    def test_add_form_lives_in_a_dialog_opened_from_the_widget_head(self):
+        response = self.client.get("/home/")
+
+        self.assertContains(
+            response, 'data-dialog-open="bookmark-dialog" aria-label="Lesezeichen hinzufügen"'
+        )
+        html = response.content.decode()
+        dialog = html.split('<dialog class="bookmark-dialog" id="bookmark-dialog"', 1)[1].split(
+            "</dialog>", 1
+        )[0]
+        self.assertIn('value="bookmark_add"', dialog)
+        self.assertIn('name="title"', dialog)
+        self.assertIn('name="url"', dialog)
+
     def test_bookmarks_are_added_listed_and_removed_per_user(self):
         response = self.client.post(
             "/home/bookmarks/", {"form_name": "bookmark_add", "title": "Bank", "url": "bank.example.com"}
