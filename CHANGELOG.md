@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- The weather map's popups, tooltips and zoom buttons, the dropdown lists in forms, and the paper of
+  the notes editor now follow the color theme instead of staying sand-colored.
 - Darstellung offers "System" next to the light and dark mode: the page then follows the device's
   setting and switches along when it changes. The browser toolbar on phones now takes the page's
   color instead of a fixed sand tone.

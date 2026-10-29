@@ -316,12 +316,6 @@ a.tool-card:hover {
   font-size: var(--text-md);
 }
 
-.uml-relation-select select option,
-.uml-field select option {
-  color: #2e261e;
-  background: #fffaf2;
-}
-
 .uml-export-menu {
   position: relative;
 }
@@ -693,11 +687,6 @@ a.tool-card:hover {
   background: var(--surface-control);
   border: 1px solid var(--glass-border-soft);
   border-radius: var(--radius-sm);
-}
-
-.vocab-field select option {
-  color: #2e261e;
-  background: #fffaf2;
 }
 
 .vocab-field textarea {

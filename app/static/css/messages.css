@@ -144,16 +144,6 @@
   color-scheme: light;
 }
 
-.new-chat-card select option {
-  color: #3f372e;
-  background: #fffaf2;
-}
-
-.new-chat-card select option:checked {
-  color: var(--color-on-accent);
-  background: var(--color-accent);
-}
-
 .new-chat-card textarea {
   min-height: 86px;
   padding: 12px;
@@ -588,16 +578,6 @@
 
 [data-theme="dark"] .new-chat-card select {
   color-scheme: dark;
-}
-
-[data-theme="dark"] .new-chat-card select option {
-  color: #eee7dc;
-  background: #2a241d;
-}
-
-[data-theme="dark"] .new-chat-card select option:checked {
-  color: #15120f;
-  background: var(--color-accent);
 }
 
 @media (max-width: 1220px) {

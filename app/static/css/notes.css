@@ -166,12 +166,6 @@
   font-size: var(--text-xs);
 }
 
-.notes-filter-row option,
-.note-toolbar option,
-.notes-dialog option {
-  color: #332d27;
-}
-
 .note-card-tags small,
 .shared-role {
   white-space: nowrap;
@@ -1177,16 +1171,17 @@
   flex-direction: column;
   margin: 0 auto;
   padding: 68px 72px 72px;
-  color: #332d27;
-  background: #fffdf9;
-  border: 1px solid rgba(128, 103, 74, 0.1);
+  color: var(--color-text);
+  /* Near-white paper with a hint of the color theme; the unmixed --theme-bg keeps it calm
+     regardless of the theme strength. */
+  background: color-mix(in srgb, var(--theme-bg) 18%, #ffffff);
+  border: 1px solid var(--color-line);
   border-radius: var(--radius-sm);
-  box-shadow: 0 18px 48px rgba(73, 56, 38, 0.12);
+  box-shadow: var(--shadow-soft);
 }
 
 [data-theme="dark"] .note-editor-page {
-  color: #e9e1d8;
-  background: #2d2925;
+  background: color-mix(in srgb, var(--theme-panel-solid), #ffffff 6%);
   border-color: rgba(255, 255, 255, 0.06);
 }
 
