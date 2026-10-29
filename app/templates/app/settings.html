@@ -80,6 +80,18 @@
                 </div>
                 {{ appearance_form.theme.errors }}
 
+                <label class="field-label">Farbthema</label>
+                <div class="theme-options">
+                    {% for value, label in appearance_form.color_theme.field.choices %}
+                    <label class="choice-card {% if appearance_form.color_theme.value == value %}is-active{% endif %}" data-color-theme-choice="{{ value }}">
+                        <input type="radio" name="{{ appearance_form.color_theme.html_name }}" value="{{ value }}" {% if appearance_form.color_theme.value == value %}checked{% endif %}>
+                        <span class="palette-swatch" data-color-theme="{{ value }}" aria-hidden="true"></span>
+                        {{ label }}
+                    </label>
+                    {% endfor %}
+                </div>
+                {{ appearance_form.color_theme.errors }}
+
                 <label class="field-label">Akzentfarbe</label>
                 <div class="color-row">
                     {% for color, label in appearance_form.accent_color.field.choices %}

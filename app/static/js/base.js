@@ -218,6 +218,19 @@ document.querySelectorAll(".color-dot").forEach((control) => {
   });
 });
 
+document.querySelectorAll("[data-color-theme-choice]").forEach((control) => {
+  control.addEventListener("click", () => {
+    const input = control.querySelector("input[type='radio']");
+    if (input) {
+      input.checked = true;
+    }
+    document
+      .querySelectorAll("[data-color-theme-choice]")
+      .forEach((choice) => choice.classList.toggle("is-active", choice === control));
+    document.documentElement.dataset.colorTheme = control.dataset.colorThemeChoice;
+  });
+});
+
 document.querySelectorAll(".softness-slider").forEach((slider) => {
   slider.addEventListener("input", () => applySoftnessPreview(slider.value));
 });

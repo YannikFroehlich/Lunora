@@ -349,16 +349,26 @@ class AppearanceForm(forms.ModelForm):
         model = Profile
         fields = [
             "theme",
+            "color_theme",
             "accent_color",
             "background_softness",
         ]
         widgets = {
             "theme": forms.RadioSelect(),
+            "color_theme": forms.RadioSelect(),
             "accent_color": forms.RadioSelect(),
             "background_softness": forms.NumberInput(
                 attrs={"class": "softness-slider", "type": "range", "min": "0", "max": "100"}
             ),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # A settings page cached from before color themes existed posts without the field.
+        self.fields["color_theme"].required = False
+
+    def clean_color_theme(self):
+        return self.cleaned_data.get("color_theme") or self.instance.color_theme
 
     def clean_background_softness(self):
         value = self.cleaned_data["background_softness"]

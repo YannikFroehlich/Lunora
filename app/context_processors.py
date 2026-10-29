@@ -12,6 +12,7 @@ def _appearance_from_profile(profile):
     return {
         "theme": profile.theme,
         "accent_color": profile.accent_color,
+        "color_theme": profile.color_theme,
         "background_softness": softness,
         "background_overlay_alpha": f"{0.14 + normalized * 0.34:.2f}",
         "background_highlight_alpha": f"{0.20 + normalized * 0.28:.2f}",
