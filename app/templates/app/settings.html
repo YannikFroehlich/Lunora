@@ -81,7 +81,7 @@
                 {{ appearance_form.theme.errors }}
 
                 <label class="field-label">Farbthema</label>
-                <div class="theme-options">
+                <div class="theme-options palette-options">
                     {% for value, label in appearance_form.color_theme.field.choices %}
                     <label class="choice-card {% if appearance_form.color_theme.value == value %}is-active{% endif %}" data-color-theme-choice="{{ value }}">
                         <input type="radio" name="{{ appearance_form.color_theme.html_name }}" value="{{ value }}" {% if appearance_form.color_theme.value == value %}checked{% endif %}>
