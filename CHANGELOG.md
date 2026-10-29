@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- New "Weiß" color theme: a plain white page (neutral dark in dark mode) without tinted
+  background waves.
 - The weather map's popups, tooltips and zoom buttons, the dropdown lists in forms, and the paper of
   the notes editor now follow the color theme instead of staying sand-colored.
 - Darstellung offers "System" next to the light and dark mode: the page then follows the device's

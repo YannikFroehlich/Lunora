@@ -80,6 +80,7 @@ class Profile(models.Model):
     # Base palette for background, surfaces and text; the token blocks live in base.css.
     COLOR_THEME_CHOICES = [
         ("sand", "Sand"),
+        ("white", "Weiß"),
         ("clay", "Terrakotta"),
         ("rose", "Rosé"),
         ("lavender", "Lavendel"),
