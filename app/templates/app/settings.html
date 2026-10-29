@@ -66,7 +66,7 @@
                 {% endif %}
 
                 <label class="field-label">Theme</label>
-                <div class="theme-options">
+                <div class="theme-options theme-mode-options">
                     <label class="choice-card {% if appearance_form.theme.value == 'light' %}is-active{% endif %}" data-theme-choice="light">
                         <input type="radio" name="{{ appearance_form.theme.html_name }}" value="light" {% if appearance_form.theme.value == 'light' %}checked{% endif %}>
                         <i class="fa-regular fa-sun"></i>
@@ -76,6 +76,11 @@
                         <input type="radio" name="{{ appearance_form.theme.html_name }}" value="dark" {% if appearance_form.theme.value == 'dark' %}checked{% endif %}>
                         <i class="fa-regular fa-moon"></i>
                         Dunkler Modus
+                    </label>
+                    <label class="choice-card {% if appearance_form.theme.value == 'system' %}is-active{% endif %}" data-theme-choice="system">
+                        <input type="radio" name="{{ appearance_form.theme.html_name }}" value="system" {% if appearance_form.theme.value == 'system' %}checked{% endif %}>
+                        <i class="fa-solid fa-circle-half-stroke"></i>
+                        System
                     </label>
                 </div>
                 {{ appearance_form.theme.errors }}

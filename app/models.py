@@ -67,6 +67,7 @@ class Profile(models.Model):
     THEME_CHOICES = [
         ("light", "Heller Modus"),
         ("dark", "Dunkler Modus"),
+        ("system", "System"),
     ]
     ACCENT_COLOR_CHOICES = [
         ("#c2a276", "Sand"),
