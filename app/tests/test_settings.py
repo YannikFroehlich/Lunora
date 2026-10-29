@@ -487,7 +487,7 @@ class SettingsProfileTests(TestCase):
             {
                 "form_name": "appearance",
                 "theme": "dark",
-                "color_theme": "ocean",
+                "color_theme": "white",
                 "theme_strength": "70",
                 "accent_color": "#7f916b",
                 "background_softness": "82",
@@ -497,7 +497,7 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-appearance")
         user.profile.refresh_from_db()
         self.assertEqual(user.profile.theme, "dark")
-        self.assertEqual(user.profile.color_theme, "ocean")
+        self.assertEqual(user.profile.color_theme, "white")
         self.assertEqual(user.profile.theme_strength, 70)
         self.assertEqual(user.profile.accent_color, "#7f916b")
         self.assertEqual(user.profile.background_softness, 82)
