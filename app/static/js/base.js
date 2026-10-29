@@ -86,12 +86,18 @@ window.addEventListener("scroll", scheduleScrollSave, { passive: true });
 document.addEventListener("submit", saveScrollPosition, { capture: true });
 window.addEventListener("pagehide", saveScrollPosition);
 
-function getInitialTheme() {
-  const serverTheme = document.documentElement.dataset.theme;
-  if (isAuthenticated && ["light", "dark"].includes(serverTheme)) {
-    return serverTheme;
+// Signed-in users choose light, dark or "system" in their profile; anonymous visitors keep a
+// per-browser choice in localStorage and otherwise follow the system.
+function getThemePreference() {
+  if (isAuthenticated) {
+    return document.documentElement.dataset.themePreference || "light";
   }
-  return readStoredTheme() || serverTheme || getSystemTheme();
+  return readStoredTheme() || "system";
+}
+
+function getInitialTheme() {
+  const preference = getThemePreference();
+  return preference === "system" ? getSystemTheme() : preference;
 }
 
 function readStoredTheme() {
@@ -128,15 +134,42 @@ function updateThemeButton(theme) {
   themeToggleButton.setAttribute("aria-label", isDarkMode ? "Switch to light mode" : "Switch to dark mode");
 }
 
-function updateThemeChoices(theme) {
+function updateThemeChoices() {
+  const preference = getThemePreference();
   themeChoiceButtons.forEach((button) => {
-    button.classList.toggle("is-active", button.dataset.themeChoice === theme);
-    button.setAttribute("aria-pressed", String(button.dataset.themeChoice === theme));
+    const isActive = button.dataset.themeChoice === preference;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
     const input = button.querySelector("input[type='radio']");
     if (input) {
-      input.checked = button.dataset.themeChoice === theme;
+      input.checked = isActive;
     }
   });
+}
+
+// Mobile browsers tint their toolbar with theme-color; follow the page background token.
+// A fresh probe element reads it, since <body> may still be mid-transition right after a switch,
+// and a canvas normalizes the color-mix()/color(srgb …) result to plain rgb.
+function syncThemeColorMeta() {
+  const meta = document.querySelector("meta[name='theme-color']");
+  const context = document.createElement("canvas").getContext("2d");
+  if (!meta || !context) return;
+
+  const probe = document.createElement("span");
+  probe.hidden = true;
+  probe.style.backgroundColor = "var(--bg-base)";
+  document.body.append(probe);
+  const background = getComputedStyle(probe).backgroundColor;
+  probe.remove();
+
+  const sentinel = "#010203";
+  context.fillStyle = sentinel;
+  context.fillStyle = background;
+  if (context.fillStyle === sentinel) return;
+
+  context.fillRect(0, 0, 1, 1);
+  const [red, green, blue] = context.getImageData(0, 0, 1, 1).data;
+  meta.setAttribute("content", `rgb(${red}, ${green}, ${blue})`);
 }
 
 function applyTheme(theme, { persist = false } = {}) {
@@ -148,7 +181,8 @@ function applyTheme(theme, { persist = false } = {}) {
   }
 
   updateThemeButton(theme);
-  updateThemeChoices(theme);
+  updateThemeChoices();
+  syncThemeColorMeta();
 }
 
 function setAccentPreview(color) {
@@ -176,8 +210,19 @@ themeChoiceButtons.forEach((button) => {
     if (input) {
       input.checked = true;
     }
-    applyTheme(button.dataset.themeChoice, { persist: true });
+    if (isAuthenticated) {
+      document.documentElement.dataset.themePreference = button.dataset.themeChoice;
+      applyTheme(getInitialTheme());
+    } else {
+      applyTheme(button.dataset.themeChoice, { persist: true });
+    }
   });
+});
+
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  if (getThemePreference() === "system") {
+    applyTheme(getInitialTheme());
+  }
 });
 
 window.addEventListener("pageshow", () => {
@@ -215,6 +260,7 @@ document.querySelectorAll(".color-dot").forEach((control) => {
     control.classList.add("is-active");
     const nextColor = getComputedStyle(control).getPropertyValue("--dot-color").trim();
     setAccentPreview(nextColor);
+    syncThemeColorMeta();
   });
 });
 
@@ -228,6 +274,7 @@ document.querySelectorAll("[data-color-theme-choice]").forEach((control) => {
       .querySelectorAll("[data-color-theme-choice]")
       .forEach((choice) => choice.classList.toggle("is-active", choice === control));
     document.documentElement.dataset.colorTheme = control.dataset.colorThemeChoice;
+    syncThemeColorMeta();
   });
 });
 
@@ -235,6 +282,7 @@ document.querySelectorAll(".theme-strength-slider").forEach((slider) => {
   slider.addEventListener("input", () => {
     const ratio = Math.max(0, Math.min(100, Number(slider.value))) / 100;
     document.documentElement.style.setProperty("--theme-strength", ratio.toFixed(2));
+    syncThemeColorMeta();
   });
 });
 

@@ -6,6 +6,9 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Darstellung offers "System" next to the light and dark mode: the page then follows the device's
+  setting and switches along when it changes. The browser toolbar on phones now takes the page's
+  color instead of a fixed sand tone.
 - New "Farbthema" setting under Darstellung (Sand, Terrakotta, Rosé, Lavendel, Ozean, Lagune, Wald,
   Schiefer) recolors the whole page (background, panels and text) in light and dark mode. The
   background waves are now drawn by the page itself and pick up the accent color too. A "Farbstärke"

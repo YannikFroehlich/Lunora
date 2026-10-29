@@ -391,6 +391,10 @@
   font-size: var(--text-xl);
 }
 
+.theme-mode-options {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .palette-options {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }

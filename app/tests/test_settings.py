@@ -433,6 +433,29 @@ class SettingsProfileTests(TestCase):
         user.profile.refresh_from_db()
         self.assertEqual(user.profile.theme_strength, 0)
 
+    def test_system_theme_is_saved_and_resolved_in_the_browser(self):
+        user = User.objects.create_user(
+            username="sami@example.com", email="sami@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=user, display_name="Sami", theme="dark")
+        self.client.login(username="sami@example.com", password="secret-12345")
+
+        self.client.post(
+            "/settings/",
+            {
+                "form_name": "appearance",
+                "theme": "system",
+                "accent_color": "#c2a276",
+                "background_softness": "50",
+            },
+        )
+        user.profile.refresh_from_db()
+        response = self.client.get("/settings/")
+
+        self.assertEqual(user.profile.theme, "system")
+        # The server can't know the OS setting: it renders a light fallback that the head script resolves.
+        self.assertContains(response, 'data-theme="light" data-theme-preference="system"')
+
     def test_color_theme_is_rendered_on_the_html_element(self):
         user = User.objects.create_user(
             username="rana@example.com", email="rana@example.com", password="secret-12345"
