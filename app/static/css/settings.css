@@ -1252,11 +1252,6 @@
   border-color: rgba(255, 248, 237, 0.12);
 }
 
-[data-theme="dark"] .region-select option {
-  color: #2f2a24;
-  background: #fff8ed;
-}
-
 @media (max-width: 520px) {
   .region-field {
     grid-template-columns: 1fr;

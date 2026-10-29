@@ -499,6 +499,17 @@ button {
   cursor: pointer;
 }
 
+/* Native dropdown lists follow the theme instead of inheriting translucent control backgrounds. */
+option {
+  color: var(--color-text);
+  background: var(--surface-panel-solid);
+}
+
+option:checked {
+  color: var(--color-on-accent);
+  background: var(--color-accent);
+}
+
 a {
   color: inherit;
 }
