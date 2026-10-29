@@ -10,7 +10,6 @@ const APP_SHELL_URLS = [
   OFFLINE_URL,
   "{% versioned_static 'css/base.css' %}",
   "{% versioned_static 'css/offline.css' %}",
-  "{% static 'img/lunora_background.webp' %}?v=brand-3",
   "{% static 'img/lunora_logo.svg' %}?v=brand-4",
   "{% static 'img/icon-192.png' %}?v=brand-4",
   "{% static 'img/icon-512.png' %}?v=brand-4",

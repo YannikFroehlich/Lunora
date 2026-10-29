@@ -391,6 +391,17 @@
   font-size: var(--text-xl);
 }
 
+/* Each swatch carries its own data-color-theme, so it shows that theme's light palette. */
+.palette-swatch {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  background: linear-gradient(135deg, var(--color-bg) 50%, var(--color-text) 50%);
+  border: 2px solid var(--glass-border);
+  border-radius: 50%;
+  box-shadow: var(--shadow-soft);
+}
+
 .color-row {
   display: flex;
   flex-wrap: wrap;

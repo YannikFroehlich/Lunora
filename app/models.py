@@ -76,6 +76,13 @@ class Profile(models.Model):
         ("#aaa2be", "Lavendel"),
         ("#c1a09a", "Rose"),
     ]
+    # Base palette for background, surfaces and text; the token blocks live in base.css.
+    COLOR_THEME_CHOICES = [
+        ("sand", "Sand"),
+        ("ocean", "Ozean"),
+        ("forest", "Wald"),
+        ("slate", "Schiefer"),
+    ]
     DATE_FORMAT_CHOICES = [
         ("de_numeric", "31.12.2026"),
         ("de_long", "31. Dezember 2026"),
@@ -93,6 +100,7 @@ class Profile(models.Model):
     )
     theme = models.CharField(max_length=12, choices=THEME_CHOICES, default="light")
     accent_color = models.CharField(max_length=7, choices=ACCENT_COLOR_CHOICES, default="#c2a276")
+    color_theme = models.CharField(max_length=12, choices=COLOR_THEME_CHOICES, default="sand")
     background_softness = models.PositiveSmallIntegerField(default=55)
     date_format = models.CharField(max_length=24, choices=DATE_FORMAT_CHOICES, default="de_numeric")
     time_format = models.CharField(max_length=12, choices=TIME_FORMAT_CHOICES, default="24h")

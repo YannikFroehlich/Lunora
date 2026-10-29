@@ -145,8 +145,7 @@
   max-height: 310px;
   overflow-y: auto;
   padding: 6px;
-  background:
-    linear-gradient(180deg, rgba(255, 252, 246, 0.98), rgba(246, 238, 224, 0.96));
+  background: var(--surface-panel-solid);
   border: 1px solid color-mix(in srgb, var(--color-accent-strong) 22%, transparent);
   border-radius: var(--radius-md);
   box-shadow: 0 22px 56px rgba(75, 56, 31, 0.18);
@@ -208,8 +207,6 @@
 }
 
 [data-theme="dark"] .suggestion-list {
-  background:
-    linear-gradient(180deg, rgba(43, 36, 29, 0.98), rgba(31, 26, 21, 0.98));
   border-color: rgba(255, 255, 255, 0.13);
   box-shadow: 0 22px 56px rgba(0, 0, 0, 0.38);
 }

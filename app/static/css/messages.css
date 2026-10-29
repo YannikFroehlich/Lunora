@@ -844,7 +844,7 @@
   display: grid;
   min-width: 220px;
   padding: 8px;
-  background: rgba(255, 250, 242, 0.96);
+  background: var(--surface-panel-solid);
   border: 1px solid color-mix(in srgb, var(--color-accent-strong) 28%, transparent);
   border-radius: var(--radius-md);
   box-shadow: 0 24px 60px rgba(58, 45, 29, 0.18);
@@ -904,7 +904,6 @@
 [data-theme="dark"] .pinned-messages,
 [data-theme="dark"] .pinned-messages a,
 [data-theme="dark"] .reaction-pill,
-[data-theme="dark"] .message-context-menu,
 [data-theme="dark"] .context-reactions button {
   background: rgba(255, 255, 255, 0.06);
 }

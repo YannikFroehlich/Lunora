@@ -127,7 +127,6 @@ class StaticVersioningTests(SimpleTestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn("inter-latin-variable.woff2?v=inter-1", base_css)
-        self.assertIn("lunora_background.webp?v=brand-3", base_css)
         self.assertIn("fa-solid-900.woff2?v=fontawesome-7.2.0", fontawesome_css)
         self.assertIn("fa-regular-400.woff2?v=fontawesome-7.2.0", fontawesome_css)
         self.assertIn("fa-brands-400.woff2?v=fontawesome-7.2.0", fontawesome_css)

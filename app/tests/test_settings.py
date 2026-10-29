@@ -367,6 +367,61 @@ class SettingsProfileTests(TestCase):
             self.assertFalse(profile.profile_image)
             self.assertFalse(default_storage.exists(old_image_name))
 
+    def test_appearance_post_without_color_theme_keeps_the_current_theme(self):
+        user = User.objects.create_user(
+            username="tilo@example.com", email="tilo@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=user, display_name="Tilo", color_theme="forest")
+        self.client.login(username="tilo@example.com", password="secret-12345")
+
+        response = self.client.post(
+            "/settings/",
+            {
+                "form_name": "appearance",
+                "theme": "light",
+                "accent_color": "#c2a276",
+                "background_softness": "50",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        user.profile.refresh_from_db()
+        self.assertEqual(user.profile.color_theme, "forest")
+
+    def test_unknown_color_theme_is_rejected(self):
+        user = User.objects.create_user(
+            username="ute@example.com", email="ute@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=user, display_name="Ute")
+        self.client.login(username="ute@example.com", password="secret-12345")
+
+        response = self.client.post(
+            "/settings/",
+            {
+                "form_name": "appearance",
+                "theme": "light",
+                "color_theme": "neon",
+                "accent_color": "#c2a276",
+                "background_softness": "50",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        user.profile.refresh_from_db()
+        self.assertEqual(user.profile.color_theme, "sand")
+
+    def test_color_theme_is_rendered_on_the_html_element(self):
+        user = User.objects.create_user(
+            username="rana@example.com", email="rana@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=user, display_name="Rana", color_theme="slate")
+        self.client.login(username="rana@example.com", password="secret-12345")
+
+        response = self.client.get("/settings/")
+
+        self.assertContains(response, 'data-color-theme="slate"')
+        self.assertContains(response, 'class="page-background"')
+
     def test_logged_in_user_can_save_appearance_settings(self):
         user = User.objects.create_user(
             username="mira@example.com", email="mira@example.com", password="secret-12345"
@@ -385,6 +440,7 @@ class SettingsProfileTests(TestCase):
             {
                 "form_name": "appearance",
                 "theme": "dark",
+                "color_theme": "ocean",
                 "accent_color": "#7f916b",
                 "background_softness": "82",
             },
@@ -393,6 +449,7 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(response["Location"], "/settings/?next=%2Fhome%2F#settings-appearance")
         user.profile.refresh_from_db()
         self.assertEqual(user.profile.theme, "dark")
+        self.assertEqual(user.profile.color_theme, "ocean")
         self.assertEqual(user.profile.accent_color, "#7f916b")
         self.assertEqual(user.profile.background_softness, 82)
         self.assertEqual(user.profile.date_format, "iso")
