@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- The focus timer no longer sits directly against the page header; it gets the same spacing as the
+  other tool pages.
 - The bookmarks widget adds new links through a plus in its header that opens a small dialog, so
   the widget no longer carries the name and address fields itself.
 - Vacations and public holidays from the vacation planner now appear in the calendar, in "Nächste
