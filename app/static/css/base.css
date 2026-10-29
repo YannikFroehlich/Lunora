@@ -29,6 +29,27 @@
   --background-highlight-alpha: 0.35;
   --glass-blur: 28px;
 
+  /* Profile.theme_strength (0-1, set inline on <html>) mixes the theme's signature tone into the
+     page and panel surfaces; 0 is the theme as defined. Dark mode mixes less via --theme-mix. */
+  --theme-strength: 0;
+  --theme-mix: 40%;
+  --color-bg: color-mix(in srgb, var(--theme-swatch) calc(var(--theme-strength) * var(--theme-mix)), var(--theme-bg));
+  --glass-bg: color-mix(
+    in srgb,
+    var(--theme-swatch) calc(var(--theme-strength) * var(--theme-mix) * 0.5),
+    var(--theme-glass-bg)
+  );
+  --glass-bg-soft: color-mix(
+    in srgb,
+    var(--theme-swatch) calc(var(--theme-strength) * var(--theme-mix) * 0.5),
+    var(--theme-glass-bg-soft)
+  );
+  --surface-panel-solid: color-mix(
+    in srgb,
+    var(--theme-swatch) calc(var(--theme-strength) * var(--theme-mix) * 0.4),
+    var(--theme-panel-solid)
+  );
+
   --glass-border: rgba(255, 255, 255, 0.78);
 
   --radius-lg: 22px;
@@ -82,26 +103,27 @@
 :root,
 [data-color-theme="sand"] {
   --theme-swatch: #c9ad85;
-  --color-bg: #f4efe3;
+  --theme-bg: #f4efe3;
   --color-text: #3f372e;
   --color-heading: #4b4035;
   --color-muted: #6f6252;
   --color-soft: #efe7d9;
   --color-line: rgba(153, 130, 101, 0.18);
   --color-on-accent: #2b241c;
-  --glass-bg: rgba(255, 252, 246, 0.68);
-  --glass-bg-soft: rgba(255, 252, 246, 0.46);
+  --theme-glass-bg: rgba(255, 252, 246, 0.68);
+  --theme-glass-bg-soft: rgba(255, 252, 246, 0.46);
   --glass-border-soft: rgba(151, 126, 93, 0.15);
   --shadow-panel: 0 24px 70px rgba(89, 68, 41, 0.12);
   --shadow-soft: 0 12px 32px rgba(89, 68, 41, 0.10);
-  --surface-panel-solid: #fbf7ef;
+  --theme-panel-solid: #fbf7ef;
   --bg-base: color-mix(in srgb, var(--color-bg) 55%, #ffffff);
   --bg-wave-soft: color-mix(in srgb, var(--color-accent) 9%, var(--bg-base));
   --bg-wave-deep: color-mix(in srgb, var(--color-accent) 24%, var(--color-bg));
 }
 
 [data-theme="dark"] {
-  --color-bg: #15120f;
+  --theme-mix: 22%;
+  --theme-bg: #15120f;
   --color-text: #eee7dc;
   --color-heading: #fff8ed;
   --color-muted: #c9bba7;
@@ -113,9 +135,9 @@
   --color-success: #a3d4a9;
   --color-warning: #ebc88f;
 
-  --glass-bg: rgba(32, 27, 22, 0.72);
-  --surface-panel-solid: #221d18;
-  --glass-bg-soft: rgba(32, 27, 22, 0.48);
+  --theme-glass-bg: rgba(32, 27, 22, 0.72);
+  --theme-panel-solid: #221d18;
+  --theme-glass-bg-soft: rgba(32, 27, 22, 0.48);
   --glass-border: rgba(255, 255, 255, 0.12);
   --glass-border-soft: rgba(255, 255, 255, 0.09);
   --shadow-panel: 0 24px 70px rgba(0, 0, 0, 0.30);
@@ -138,233 +160,233 @@
 
 [data-color-theme="ocean"] {
   --theme-swatch: #6f9cc4;
-  --color-bg: #dce8f4;
+  --theme-bg: #dce8f4;
   --color-text: #2c3640;
   --color-heading: #33404c;
   --color-muted: #56687a;
   --color-soft: #d3e1ee;
   --color-line: rgba(92, 118, 145, 0.18);
   --color-on-accent: #1d2731;
-  --glass-bg: rgba(248, 251, 253, 0.68);
-  --glass-bg-soft: rgba(248, 251, 253, 0.46);
+  --theme-glass-bg: rgba(248, 251, 253, 0.68);
+  --theme-glass-bg-soft: rgba(248, 251, 253, 0.46);
   --glass-border-soft: rgba(92, 118, 145, 0.15);
   --shadow-panel: 0 24px 70px rgba(35, 58, 84, 0.12);
   --shadow-soft: 0 12px 32px rgba(35, 58, 84, 0.10);
-  --surface-panel-solid: #f5f8fb;
+  --theme-panel-solid: #f5f8fb;
 }
 
 [data-theme="dark"][data-color-theme="ocean"] {
-  --color-bg: #0f141a;
+  --theme-bg: #0f141a;
   --color-text: #e2e9ef;
   --color-heading: #f3f8fc;
   --color-muted: #a9b8c6;
   --color-soft: #1d2630;
   --color-line: rgba(255, 255, 255, 0.10);
   --color-on-accent: #1d2731;
-  --glass-bg: rgba(22, 30, 39, 0.72);
-  --glass-bg-soft: rgba(22, 30, 39, 0.48);
+  --theme-glass-bg: rgba(22, 30, 39, 0.72);
+  --theme-glass-bg-soft: rgba(22, 30, 39, 0.48);
   --glass-border-soft: rgba(255, 255, 255, 0.09);
   --shadow-panel: 0 24px 70px rgba(0, 0, 0, 0.30);
   --shadow-soft: 0 12px 32px rgba(0, 0, 0, 0.24);
-  --surface-panel-solid: #18212b;
+  --theme-panel-solid: #18212b;
 }
 
 [data-color-theme="forest"] {
   --theme-swatch: #7fa274;
-  --color-bg: #e9efe6;
+  --theme-bg: #e9efe6;
   --color-text: #2f3a2f;
   --color-heading: #364336;
   --color-muted: #5b6b59;
   --color-soft: #e1e9dd;
   --color-line: rgba(105, 128, 98, 0.18);
   --color-on-accent: #1f2a1e;
-  --glass-bg: rgba(250, 252, 248, 0.68);
-  --glass-bg-soft: rgba(250, 252, 248, 0.46);
+  --theme-glass-bg: rgba(250, 252, 248, 0.68);
+  --theme-glass-bg-soft: rgba(250, 252, 248, 0.46);
   --glass-border-soft: rgba(105, 128, 98, 0.15);
   --shadow-panel: 0 24px 70px rgba(46, 66, 40, 0.12);
   --shadow-soft: 0 12px 32px rgba(46, 66, 40, 0.10);
-  --surface-panel-solid: #f6f9f4;
+  --theme-panel-solid: #f6f9f4;
 }
 
 [data-theme="dark"][data-color-theme="forest"] {
-  --color-bg: #10150f;
+  --theme-bg: #10150f;
   --color-text: #e3eadf;
   --color-heading: #f4f9f0;
   --color-muted: #b0bfa9;
   --color-soft: #1f281d;
   --color-line: rgba(255, 255, 255, 0.10);
   --color-on-accent: #1f2a1e;
-  --glass-bg: rgba(24, 32, 23, 0.72);
-  --glass-bg-soft: rgba(24, 32, 23, 0.48);
+  --theme-glass-bg: rgba(24, 32, 23, 0.72);
+  --theme-glass-bg-soft: rgba(24, 32, 23, 0.48);
   --glass-border-soft: rgba(255, 255, 255, 0.09);
   --shadow-panel: 0 24px 70px rgba(0, 0, 0, 0.30);
   --shadow-soft: 0 12px 32px rgba(0, 0, 0, 0.24);
-  --surface-panel-solid: #1a2319;
+  --theme-panel-solid: #1a2319;
 }
 
 [data-color-theme="slate"] {
   --theme-swatch: #8c96a3;
-  --color-bg: #eceef1;
+  --theme-bg: #eceef1;
   --color-text: #30343a;
   --color-heading: #383d44;
   --color-muted: #5e646d;
   --color-soft: #e3e6ea;
   --color-line: rgba(110, 118, 130, 0.18);
   --color-on-accent: #20242a;
-  --glass-bg: rgba(251, 252, 253, 0.68);
-  --glass-bg-soft: rgba(251, 252, 253, 0.46);
+  --theme-glass-bg: rgba(251, 252, 253, 0.68);
+  --theme-glass-bg-soft: rgba(251, 252, 253, 0.46);
   --glass-border-soft: rgba(110, 118, 130, 0.15);
   --shadow-panel: 0 24px 70px rgba(40, 46, 56, 0.12);
   --shadow-soft: 0 12px 32px rgba(40, 46, 56, 0.10);
-  --surface-panel-solid: #f7f8fa;
+  --theme-panel-solid: #f7f8fa;
 }
 
 [data-theme="dark"][data-color-theme="slate"] {
-  --color-bg: #121417;
+  --theme-bg: #121417;
   --color-text: #e6e8eb;
   --color-heading: #f6f7f9;
   --color-muted: #b4bac2;
   --color-soft: #22262b;
   --color-line: rgba(255, 255, 255, 0.10);
   --color-on-accent: #20242a;
-  --glass-bg: rgba(28, 31, 36, 0.72);
-  --glass-bg-soft: rgba(28, 31, 36, 0.48);
+  --theme-glass-bg: rgba(28, 31, 36, 0.72);
+  --theme-glass-bg-soft: rgba(28, 31, 36, 0.48);
   --glass-border-soft: rgba(255, 255, 255, 0.09);
   --shadow-panel: 0 24px 70px rgba(0, 0, 0, 0.30);
   --shadow-soft: 0 12px 32px rgba(0, 0, 0, 0.24);
-  --surface-panel-solid: #1c1f24;
+  --theme-panel-solid: #1c1f24;
 }
 
 [data-color-theme="clay"] {
   --theme-swatch: #c98463;
-  --color-bg: #f4e6dc;
+  --theme-bg: #f4e6dc;
   --color-text: #3f3029;
   --color-heading: #49372f;
   --color-muted: #735647;
   --color-soft: #eedcd0;
   --color-line: rgba(160, 108, 80, 0.18);
   --color-on-accent: #2e2018;
-  --glass-bg: rgba(255, 250, 246, 0.68);
-  --glass-bg-soft: rgba(255, 250, 246, 0.46);
+  --theme-glass-bg: rgba(255, 250, 246, 0.68);
+  --theme-glass-bg-soft: rgba(255, 250, 246, 0.46);
   --glass-border-soft: rgba(160, 108, 80, 0.15);
   --shadow-panel: 0 24px 70px rgba(92, 50, 28, 0.12);
   --shadow-soft: 0 12px 32px rgba(92, 50, 28, 0.10);
-  --surface-panel-solid: #fcf5f0;
+  --theme-panel-solid: #fcf5f0;
 }
 
 [data-theme="dark"][data-color-theme="clay"] {
-  --color-bg: #18110d;
+  --theme-bg: #18110d;
   --color-text: #f0e4dc;
   --color-heading: #fdf4ee;
   --color-muted: #cbb0a1;
   --color-soft: #2c1f18;
   --color-line: rgba(255, 255, 255, 0.10);
   --color-on-accent: #2e2018;
-  --glass-bg: rgba(37, 26, 20, 0.72);
-  --glass-bg-soft: rgba(37, 26, 20, 0.48);
+  --theme-glass-bg: rgba(37, 26, 20, 0.72);
+  --theme-glass-bg-soft: rgba(37, 26, 20, 0.48);
   --glass-border-soft: rgba(255, 255, 255, 0.09);
   --shadow-panel: 0 24px 70px rgba(0, 0, 0, 0.30);
   --shadow-soft: 0 12px 32px rgba(0, 0, 0, 0.24);
-  --surface-panel-solid: #251b15;
+  --theme-panel-solid: #251b15;
 }
 
 [data-color-theme="rose"] {
   --theme-swatch: #d48a98;
-  --color-bg: #f5e6e8;
+  --theme-bg: #f5e6e8;
   --color-text: #3d2e31;
   --color-heading: #46353a;
   --color-muted: #6e5359;
   --color-soft: #efdde0;
   --color-line: rgba(150, 104, 113, 0.18);
   --color-on-accent: #2c1f22;
-  --glass-bg: rgba(255, 250, 251, 0.68);
-  --glass-bg-soft: rgba(255, 250, 251, 0.46);
+  --theme-glass-bg: rgba(255, 250, 251, 0.68);
+  --theme-glass-bg-soft: rgba(255, 250, 251, 0.46);
   --glass-border-soft: rgba(150, 104, 113, 0.15);
   --shadow-panel: 0 24px 70px rgba(84, 44, 54, 0.12);
   --shadow-soft: 0 12px 32px rgba(84, 44, 54, 0.10);
-  --surface-panel-solid: #fcf6f7;
+  --theme-panel-solid: #fcf6f7;
 }
 
 [data-theme="dark"][data-color-theme="rose"] {
-  --color-bg: #181012;
+  --theme-bg: #181012;
   --color-text: #f0e3e5;
   --color-heading: #fdf3f5;
   --color-muted: #c9adb2;
   --color-soft: #2a1d20;
   --color-line: rgba(255, 255, 255, 0.10);
   --color-on-accent: #2c1f22;
-  --glass-bg: rgba(36, 25, 28, 0.72);
-  --glass-bg-soft: rgba(36, 25, 28, 0.48);
+  --theme-glass-bg: rgba(36, 25, 28, 0.72);
+  --theme-glass-bg-soft: rgba(36, 25, 28, 0.48);
   --glass-border-soft: rgba(255, 255, 255, 0.09);
   --shadow-panel: 0 24px 70px rgba(0, 0, 0, 0.30);
   --shadow-soft: 0 12px 32px rgba(0, 0, 0, 0.24);
-  --surface-panel-solid: #241a1d;
+  --theme-panel-solid: #241a1d;
 }
 
 [data-color-theme="lavender"] {
   --theme-swatch: #9a8cc9;
-  --color-bg: #ebe7f4;
+  --theme-bg: #ebe7f4;
   --color-text: #34303f;
   --color-heading: #3c3748;
   --color-muted: #625b75;
   --color-soft: #e3def0;
   --color-line: rgba(118, 106, 150, 0.18);
   --color-on-accent: #241f2f;
-  --glass-bg: rgba(252, 251, 255, 0.68);
-  --glass-bg-soft: rgba(252, 251, 255, 0.46);
+  --theme-glass-bg: rgba(252, 251, 255, 0.68);
+  --theme-glass-bg-soft: rgba(252, 251, 255, 0.46);
   --glass-border-soft: rgba(118, 106, 150, 0.15);
   --shadow-panel: 0 24px 70px rgba(52, 44, 84, 0.12);
   --shadow-soft: 0 12px 32px rgba(52, 44, 84, 0.10);
-  --surface-panel-solid: #f8f6fc;
+  --theme-panel-solid: #f8f6fc;
 }
 
 [data-theme="dark"][data-color-theme="lavender"] {
-  --color-bg: #13111a;
+  --theme-bg: #13111a;
   --color-text: #e7e3f0;
   --color-heading: #f6f3fc;
   --color-muted: #b7afc9;
   --color-soft: #241f2f;
   --color-line: rgba(255, 255, 255, 0.10);
   --color-on-accent: #241f2f;
-  --glass-bg: rgba(29, 26, 39, 0.72);
-  --glass-bg-soft: rgba(29, 26, 39, 0.48);
+  --theme-glass-bg: rgba(29, 26, 39, 0.72);
+  --theme-glass-bg-soft: rgba(29, 26, 39, 0.48);
   --glass-border-soft: rgba(255, 255, 255, 0.09);
   --shadow-panel: 0 24px 70px rgba(0, 0, 0, 0.30);
   --shadow-soft: 0 12px 32px rgba(0, 0, 0, 0.24);
-  --surface-panel-solid: #1e1b28;
+  --theme-panel-solid: #1e1b28;
 }
 
 [data-color-theme="lagoon"] {
   --theme-swatch: #5fa8a0;
-  --color-bg: #e0f0ee;
+  --theme-bg: #e0f0ee;
   --color-text: #283a38;
   --color-heading: #2f4441;
   --color-muted: #4f6b67;
   --color-soft: #d6e9e6;
   --color-line: rgba(86, 135, 128, 0.18);
   --color-on-accent: #1a2b29;
-  --glass-bg: rgba(249, 253, 252, 0.68);
-  --glass-bg-soft: rgba(249, 253, 252, 0.46);
+  --theme-glass-bg: rgba(249, 253, 252, 0.68);
+  --theme-glass-bg-soft: rgba(249, 253, 252, 0.46);
   --glass-border-soft: rgba(86, 135, 128, 0.15);
   --shadow-panel: 0 24px 70px rgba(30, 72, 66, 0.12);
   --shadow-soft: 0 12px 32px rgba(30, 72, 66, 0.10);
-  --surface-panel-solid: #f4faf9;
+  --theme-panel-solid: #f4faf9;
 }
 
 [data-theme="dark"][data-color-theme="lagoon"] {
-  --color-bg: #0d1615;
+  --theme-bg: #0d1615;
   --color-text: #e0efec;
   --color-heading: #f1fbf9;
   --color-muted: #a3c2bd;
   --color-soft: #1a2b29;
   --color-line: rgba(255, 255, 255, 0.10);
   --color-on-accent: #1a2b29;
-  --glass-bg: rgba(20, 34, 32, 0.72);
-  --glass-bg-soft: rgba(20, 34, 32, 0.48);
+  --theme-glass-bg: rgba(20, 34, 32, 0.72);
+  --theme-glass-bg-soft: rgba(20, 34, 32, 0.48);
   --glass-border-soft: rgba(255, 255, 255, 0.09);
   --shadow-panel: 0 24px 70px rgba(0, 0, 0, 0.30);
   --shadow-soft: 0 12px 32px rgba(0, 0, 0, 0.24);
-  --surface-panel-solid: #172422;
+  --theme-panel-solid: #172422;
 }
 
 /* Shared color tones for user-picked colors (calendars, task lists, labels, notes). */

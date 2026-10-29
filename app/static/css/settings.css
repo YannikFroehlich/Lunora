@@ -406,7 +406,7 @@
   width: 26px;
   height: 26px;
   flex: none;
-  background: linear-gradient(145deg, var(--color-bg) 20%, var(--theme-swatch) 85%);
+  background: linear-gradient(145deg, var(--theme-bg) 20%, var(--theme-swatch) 85%);
   border: 1px solid color-mix(in srgb, var(--theme-swatch) 60%, transparent);
   border-radius: 50%;
 }
@@ -442,7 +442,8 @@
   outline-offset: 3px;
 }
 
-.softness-slider {
+.softness-slider,
+.theme-strength-slider {
   width: 100%;
 }
 

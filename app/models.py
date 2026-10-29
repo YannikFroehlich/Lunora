@@ -105,6 +105,8 @@ class Profile(models.Model):
     theme = models.CharField(max_length=12, choices=THEME_CHOICES, default="light")
     accent_color = models.CharField(max_length=7, choices=ACCENT_COLOR_CHOICES, default="#c2a276")
     color_theme = models.CharField(max_length=12, choices=COLOR_THEME_CHOICES, default="sand")
+    # 0-100: how strongly the theme tone tints page and panels (0 = the theme as defined).
+    theme_strength = models.PositiveSmallIntegerField(default=0)
     background_softness = models.PositiveSmallIntegerField(default=55)
     date_format = models.CharField(max_length=24, choices=DATE_FORMAT_CHOICES, default="de_numeric")
     time_format = models.CharField(max_length=12, choices=TIME_FORMAT_CHOICES, default="24h")

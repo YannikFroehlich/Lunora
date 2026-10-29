@@ -53,6 +53,7 @@ PROFILE_FIELDS = [
     "theme",
     "accent_color",
     "color_theme",
+    "theme_strength",
     "background_softness",
     "date_format",
     "time_format",

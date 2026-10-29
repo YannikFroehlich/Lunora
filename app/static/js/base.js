@@ -231,6 +231,13 @@ document.querySelectorAll("[data-color-theme-choice]").forEach((control) => {
   });
 });
 
+document.querySelectorAll(".theme-strength-slider").forEach((slider) => {
+  slider.addEventListener("input", () => {
+    const ratio = Math.max(0, Math.min(100, Number(slider.value))) / 100;
+    document.documentElement.style.setProperty("--theme-strength", ratio.toFixed(2));
+  });
+});
+
 document.querySelectorAll(".softness-slider").forEach((slider) => {
   slider.addEventListener("input", () => applySoftnessPreview(slider.value));
 });

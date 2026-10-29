@@ -92,6 +92,11 @@
                 </div>
                 {{ appearance_form.color_theme.errors }}
 
+                <label class="field-label" for="{{ appearance_form.theme_strength.id_for_label }}">Farbstärke</label>
+                {{ appearance_form.theme_strength }}
+                <div class="slider-labels"><span>Dezent</span><span>Ausgeglichen</span><span>Kräftig</span></div>
+                {{ appearance_form.theme_strength.errors }}
+
                 <label class="field-label">Akzentfarbe</label>
                 <div class="color-row">
                     {% for color, label in appearance_form.accent_color.field.choices %}

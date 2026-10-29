@@ -371,7 +371,7 @@ class SettingsProfileTests(TestCase):
         user = User.objects.create_user(
             username="tilo@example.com", email="tilo@example.com", password="secret-12345"
         )
-        Profile.objects.create(user=user, display_name="Tilo", color_theme="forest")
+        Profile.objects.create(user=user, display_name="Tilo", color_theme="forest", theme_strength=40)
         self.client.login(username="tilo@example.com", password="secret-12345")
 
         response = self.client.post(
@@ -387,6 +387,7 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(response.status_code, 302)
         user.profile.refresh_from_db()
         self.assertEqual(user.profile.color_theme, "forest")
+        self.assertEqual(user.profile.theme_strength, 40)
 
     def test_unknown_color_theme_is_rejected(self):
         user = User.objects.create_user(
@@ -410,16 +411,39 @@ class SettingsProfileTests(TestCase):
         user.profile.refresh_from_db()
         self.assertEqual(user.profile.color_theme, "sand")
 
+    def test_theme_strength_above_100_is_rejected(self):
+        user = User.objects.create_user(
+            username="ole@example.com", email="ole@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=user, display_name="Ole")
+        self.client.login(username="ole@example.com", password="secret-12345")
+
+        response = self.client.post(
+            "/settings/",
+            {
+                "form_name": "appearance",
+                "theme": "light",
+                "theme_strength": "150",
+                "accent_color": "#c2a276",
+                "background_softness": "50",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        user.profile.refresh_from_db()
+        self.assertEqual(user.profile.theme_strength, 0)
+
     def test_color_theme_is_rendered_on_the_html_element(self):
         user = User.objects.create_user(
             username="rana@example.com", email="rana@example.com", password="secret-12345"
         )
-        Profile.objects.create(user=user, display_name="Rana", color_theme="slate")
+        Profile.objects.create(user=user, display_name="Rana", color_theme="slate", theme_strength=25)
         self.client.login(username="rana@example.com", password="secret-12345")
 
         response = self.client.get("/settings/")
 
         self.assertContains(response, 'data-color-theme="slate"')
+        self.assertContains(response, "--theme-strength: 0.25;")
         self.assertContains(response, 'class="page-background"')
 
     def test_logged_in_user_can_save_appearance_settings(self):
@@ -441,6 +465,7 @@ class SettingsProfileTests(TestCase):
                 "form_name": "appearance",
                 "theme": "dark",
                 "color_theme": "ocean",
+                "theme_strength": "70",
                 "accent_color": "#7f916b",
                 "background_softness": "82",
             },
@@ -450,6 +475,7 @@ class SettingsProfileTests(TestCase):
         user.profile.refresh_from_db()
         self.assertEqual(user.profile.theme, "dark")
         self.assertEqual(user.profile.color_theme, "ocean")
+        self.assertEqual(user.profile.theme_strength, 70)
         self.assertEqual(user.profile.accent_color, "#7f916b")
         self.assertEqual(user.profile.background_softness, 82)
         self.assertEqual(user.profile.date_format, "iso")

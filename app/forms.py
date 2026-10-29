@@ -350,6 +350,7 @@ class AppearanceForm(forms.ModelForm):
         fields = [
             "theme",
             "color_theme",
+            "theme_strength",
             "accent_color",
             "background_softness",
         ]
@@ -357,6 +358,9 @@ class AppearanceForm(forms.ModelForm):
             "theme": forms.RadioSelect(),
             "color_theme": forms.RadioSelect(),
             "accent_color": forms.RadioSelect(),
+            "theme_strength": forms.NumberInput(
+                attrs={"class": "theme-strength-slider", "type": "range", "min": "0", "max": "100"}
+            ),
             "background_softness": forms.NumberInput(
                 attrs={"class": "softness-slider", "type": "range", "min": "0", "max": "100"}
             ),
@@ -366,9 +370,18 @@ class AppearanceForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         # A settings page cached from before color themes existed posts without the field.
         self.fields["color_theme"].required = False
+        self.fields["theme_strength"].required = False
 
     def clean_color_theme(self):
         return self.cleaned_data.get("color_theme") or self.instance.color_theme
+
+    def clean_theme_strength(self):
+        value = self.cleaned_data.get("theme_strength")
+        if value is None:
+            return self.instance.theme_strength
+        if value > 100:
+            raise forms.ValidationError("Bitte wähle einen Wert zwischen 0 und 100.")
+        return value
 
     def clean_background_softness(self):
         value = self.cleaned_data["background_softness"]

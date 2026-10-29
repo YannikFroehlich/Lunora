@@ -8,7 +8,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 - New "Farbthema" setting under Darstellung (Sand, Terrakotta, Rosé, Lavendel, Ozean, Lagune, Wald,
   Schiefer) recolors the whole page (background, panels and text) in light and dark mode. The
-  background waves are now drawn by the page itself and pick up the accent color too.
+  background waves are now drawn by the page itself and pick up the accent color too. A "Farbstärke"
+  slider sets how strongly the theme tints the background and panels.
 - The focus timer no longer sits directly against the page header; it gets the same spacing as the
   other tool pages.
 - The bookmarks widget adds new links through a plus in its header that opens a small dialog, so
