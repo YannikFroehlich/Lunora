@@ -127,7 +127,7 @@
   font-weight: 700;
 }
 
-.new-chat-card select,
+.new-chat-card input[type="text"],
 .new-chat-card textarea,
 .compose-bar textarea {
   width: 100%;
@@ -138,10 +138,9 @@
   outline: 0;
 }
 
-.new-chat-card select {
+.new-chat-card input[type="text"] {
   min-height: 42px;
   padding: 0 12px;
-  color-scheme: light;
 }
 
 .new-chat-card textarea {
@@ -151,6 +150,7 @@
   overflow-y: auto;
 }
 
+.new-chat-card input[type="text"],
 .new-chat-card textarea,
 .compose-bar textarea {
   font-family: inherit;
@@ -570,14 +570,10 @@
 [data-theme="dark"] .contact-card:hover,
 [data-theme="dark"] .new-chat-card,
 [data-theme="dark"] .compose-bar,
-[data-theme="dark"] .new-chat-card select,
+[data-theme="dark"] .new-chat-card input[type="text"],
 [data-theme="dark"] .new-chat-card textarea,
 [data-theme="dark"] .compose-bar textarea {
   background: rgba(255, 255, 255, 0.06);
-}
-
-[data-theme="dark"] .new-chat-card select {
-  color-scheme: dark;
 }
 
 @media (max-width: 1220px) {
@@ -1240,15 +1236,13 @@
   border-radius: var(--radius-sm);
 }
 
-.recipient-checkbox-list ul {
+/* Django renders CheckboxSelectMultiple as <div id=…><div><label><input> Name</label></div>…</div>. */
+.recipient-checkbox-list > div {
   display: grid;
   gap: 2px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
 }
 
-.recipient-checkbox-list li label {
+.recipient-checkbox-list label {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1259,13 +1253,18 @@
   cursor: pointer;
 }
 
-.recipient-checkbox-list li label:hover {
+.recipient-checkbox-list label:hover {
   background: var(--surface-selected);
 }
 
+/* Reset the dialogs' text-input styling (full width, 46px height, padding) for the checkboxes. */
 .recipient-checkbox-list input[type="checkbox"] {
+  flex-shrink: 0;
   width: 16px;
   height: 16px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
 }
 
 .add-member-form {
