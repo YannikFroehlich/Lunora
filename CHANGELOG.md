@@ -6,6 +6,9 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Pages keep their scroll position when you page through them: switching calendar months or weeks,
+  sorting or filtering no longer jumps back to the top. A link to a specific section still scrolls
+  there.
 - Recurring calendar events can be edited and deleted as "Nur dieser Termin", "Dieser und alle
   folgenden" or "Alle Termine der Serie". Following occurrences move along with the edited one and
   keep their time of day across daylight-saving changes; "Dieser und alle folgenden" splits them off
