@@ -6,6 +6,12 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Hiding a dashboard widget while customizing removes it from the grid right away instead of leaving
+  it dimmed in place; "Sichtbare Widgets" brings it back. The arrows now skip hidden widgets, so
+  every click visibly moves a widget.
+- Fix the "Teilnehmer einladen" list in the calendar dialogs and the contact list for a new chat:
+  each checkbox sits next to its name again instead of on a line of its own. The "Gruppenname" field
+  of a new chat is styled like the other fields.
 - Pages keep their scroll position when you page through them: switching calendar months or weeks,
   sorting or filtering no longer jumps back to the top. A link to a specific section still scrolls
   there.
