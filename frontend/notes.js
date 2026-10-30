@@ -2721,6 +2721,7 @@ function initNotesApp() {
   async function openShareDialog() {
     if (!shareDialog || !note?.can_manage) return;
     renderShares(note.shares || []);
+    renderPublicLink();
     shareDialog.showModal();
     document.querySelector("[data-share-search]")?.focus();
   }
@@ -2781,6 +2782,49 @@ function initNotesApp() {
     renderShares(note.shares);
     document.querySelector("[data-share-candidates]").innerHTML = "";
   }
+
+  // Read-only public link: a switch turns it on/off, "Neuer Link" replaces the secret address.
+  const publicLinkToggle = document.querySelector("[data-public-link-toggle]");
+  const publicLinkUrl = document.querySelector("[data-public-link-url]");
+  const publicLinkCopy = document.querySelector("[data-public-link-copy]");
+
+  function renderPublicLink() {
+    if (!publicLinkToggle) return;
+    const path = note?.public_path || "";
+    publicLinkToggle.checked = Boolean(path);
+    publicLinkToggle.closest(".switch")?.classList.toggle("is-on", Boolean(path));
+    document.querySelector("[data-public-link-row]").hidden = !path;
+    publicLinkUrl.value = path ? new URL(path, window.location.origin).href : "";
+  }
+
+  async function updatePublicLink(options) {
+    const { response, data } = await requestJson(`/notes/api/${note.id}/public-link/`, options);
+    if (!response.ok) window.alert(data.error || "Der öffentliche Link konnte nicht geändert werden.");
+    else note.public_path = data.public_path;
+    renderPublicLink();
+  }
+
+  publicLinkToggle?.addEventListener("change", () =>
+    updatePublicLink(publicLinkToggle.checked ? { method: "POST", body: "{}" } : { method: "DELETE" }),
+  );
+
+  document.querySelector("[data-public-link-rotate]")?.addEventListener("click", () => {
+    if (window.confirm("Neuen Link erzeugen? Der bisherige Link funktioniert danach nicht mehr.")) {
+      updatePublicLink({ method: "POST", body: JSON.stringify({ rotate: true }) });
+    }
+  });
+
+  publicLinkCopy?.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(publicLinkUrl.value);
+      publicLinkCopy.innerHTML = '<i class="fa-solid fa-check" aria-hidden="true"></i> Kopiert';
+      window.setTimeout(() => {
+        publicLinkCopy.innerHTML = '<i class="fa-regular fa-copy" aria-hidden="true"></i> Kopieren';
+      }, 2000);
+    } catch {
+      publicLinkUrl.select();
+    }
+  });
 
   async function deleteShare(userId) {
     const { response, data } = await requestJson(`/notes/api/${note.id}/shares/${userId}/`, { method: "DELETE" });

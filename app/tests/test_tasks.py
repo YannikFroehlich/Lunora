@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from django.contrib.auth.models import User
 from django.core import mail
@@ -12,6 +13,7 @@ from app.models import (
     Task,
     TaskLabel,
     TaskList,
+    UserNotification,
 )
 from app.services.notifications import (
     send_due_task_reminder_emails,
@@ -579,3 +581,109 @@ class TaskTests(TestCase):
         )
 
         self.assertRedirects(response, "/tasks/")
+
+
+class TaskRescheduleTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="mira@example.com", password="secret-12345")
+        Profile.objects.create(user=self.user, display_name="Mira", timezone_name="Europe/Berlin")
+        self.client.login(username="mira@example.com", password="secret-12345")
+        self.berlin = ZoneInfo("Europe/Berlin")
+
+    def reschedule(self, task, **fields):
+        return self.client.post(
+            "/tasks/",
+            {
+                "form_name": "task_reschedule",
+                "task_id": task.id,
+                "return_to": "/calendar/?view=week&date=2099-08-12",
+                **fields,
+            },
+        )
+
+    def test_drop_on_a_day_keeps_the_time_and_returns_to_the_calendar(self):
+        task = Task.objects.create(
+            user=self.user, title="Bericht", due_at=datetime(2099, 8, 10, 14, 30, tzinfo=self.berlin)
+        )
+
+        response = self.reschedule(task, due_date="2099-08-13")
+
+        self.assertRedirects(response, "/calendar/?view=week&date=2099-08-12", fetch_redirect_response=False)
+        task.refresh_from_db()
+        self.assertEqual(task.due_at, datetime(2099, 8, 13, 14, 30, tzinfo=self.berlin))
+
+    def test_drop_on_the_time_grid_sets_the_time_and_undated_tasks_get_a_default_time(self):
+        timed = Task.objects.create(
+            user=self.user, title="Anruf", due_at=datetime(2099, 8, 10, 8, tzinfo=self.berlin)
+        )
+        undated = Task.objects.create(user=self.user, title="Irgendwann")
+
+        self.reschedule(timed, due_date="2099-08-11", due_time="16:30")
+        self.reschedule(undated, due_date="2099-08-12")
+
+        timed.refresh_from_db()
+        undated.refresh_from_db()
+        self.assertEqual(timed.due_at, datetime(2099, 8, 11, 16, 30, tzinfo=self.berlin))
+        self.assertEqual(undated.due_at, datetime(2099, 8, 12, 9, tzinfo=self.berlin))
+
+    def test_moving_a_notified_task_later_rearms_its_reminders(self):
+        now = timezone.now()
+        task = Task.objects.create(
+            user=self.user,
+            title="Überfällig",
+            due_at=now - timedelta(hours=1),
+            email_notified_at=now,
+            desktop_notified_at=now,
+        )
+        UserNotification.objects.create(
+            recipient=self.user,
+            kind=UserNotification.KIND_TASK_DUE,
+            title="Aufgabe fällig",
+            source_key=f"task:{task.pk}",
+        )
+
+        self.reschedule(task, due_date="2099-01-05")
+
+        task.refresh_from_db()
+        self.assertIsNone(task.email_notified_at)
+        self.assertIsNone(task.desktop_notified_at)
+        self.assertFalse(UserNotification.objects.filter(source_key=f"task:{task.pk}").exists())
+
+    def test_editing_a_task_to_a_later_due_date_rearms_its_reminders(self):
+        now = timezone.now()
+        task = Task.objects.create(
+            user=self.user, title="Steuer", due_at=now - timedelta(hours=1), email_notified_at=now
+        )
+
+        self.client.post(
+            "/tasks/",
+            {"form_name": "task_edit", "task_id": task.id, "title": "Steuer", "due_at": "2099-03-01T10:00"},
+        )
+
+        task.refresh_from_db()
+        self.assertIsNone(task.email_notified_at)
+
+    def test_done_foreign_and_invalid_tasks_are_not_moved(self):
+        other = User.objects.create_user(username="eve@example.com", password="secret-12345")
+        due = datetime(2099, 8, 10, 9, tzinfo=self.berlin)
+        foreign = Task.objects.create(user=other, title="Fremd", due_at=due)
+        done = Task.objects.create(user=self.user, title="Fertig", due_at=due, is_done=True)
+
+        self.reschedule(foreign, due_date="2099-08-13")
+        self.reschedule(done, due_date="2099-08-13")
+        response = self.reschedule(done, due_date="kein-datum")
+
+        self.assertEqual(response.status_code, 302)
+        for task in (foreign, done):
+            task.refresh_from_db()
+            self.assertEqual(task.due_at, due)
+
+    def test_calendar_task_chips_are_draggable(self):
+        Task.objects.create(
+            user=self.user, title="Bericht", due_at=datetime(2099, 8, 10, 14, 30, tzinfo=self.berlin)
+        )
+
+        for url in ("/calendar/?year=2099&month=8", "/calendar/?view=week&date=2099-08-10"):
+            response = self.client.get(url)
+            self.assertContains(response, 'data-task-date="2099-08-10"')
+            self.assertContains(response, 'draggable="true"')

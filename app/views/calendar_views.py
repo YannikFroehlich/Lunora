@@ -5,10 +5,11 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 
-from app.forms import CalendarEventEditForm, CalendarEventForm, CalendarReminderForm
+from app.forms import CalendarEventEditForm, CalendarEventForm, CalendarQuickAddForm, CalendarReminderForm
 from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, Profile
-from app.services.calendar_service import build_calendar_feed
+from app.services.calendar_service import SERIES_SCOPE_THIS, build_calendar_feed, series_scope_events
 from app.services.system_settings import disabled_feature_response, feature_enabled
+from app.services.user_preferences import format_user_date, format_user_time
 from app.view_models import get_calendar_context
 
 
@@ -29,6 +30,19 @@ def calendar(request):
             django_messages.success(request, "Termin erstellt.")
             return redirect(request.get_full_path())
 
+    quick_add_form = CalendarQuickAddForm(user=request.user) if calendar_event_creation_enabled else None
+    if request.method == "POST" and request.POST.get("form_name") == "calendar_quick_add":
+        if not calendar_event_creation_enabled:
+            return disabled_feature_response(request, "calendar_event_creation")
+        quick_add_form = CalendarQuickAddForm(request.POST, user=request.user)
+        if quick_add_form.is_valid():
+            event = quick_add_form.save()
+            when = format_user_date(event.start_at, request.user)
+            if not event.is_all_day:
+                when = f"{when}, {format_user_time(event.start_at, request.user)}"
+            django_messages.success(request, f"Termin „{event.title}“ am {when} eingetragen.")
+            return redirect(request.get_full_path())
+
     if request.method == "POST" and request.POST.get("form_name") == "calendar_event_edit":
         if not calendar_event_creation_enabled:
             return disabled_feature_response(request, "calendar_event_creation")
@@ -43,18 +57,21 @@ def calendar(request):
         edit_form = CalendarEventEditForm(request.POST, user=request.user, instance=event)
         if edit_form.is_valid():
             edit_form.save()
-            django_messages.success(request, "Termin aktualisiert.")
+            if event.recurrence_id and edit_form.cleaned_data["scope"] != SERIES_SCOPE_THIS:
+                django_messages.success(request, "Terminserie aktualisiert.")
+            else:
+                django_messages.success(request, "Termin aktualisiert.")
             return redirect(request.get_full_path())
 
     if request.method == "POST" and request.POST.get("form_name") == "calendar_event_delete":
         if not calendar_event_creation_enabled:
             return disabled_feature_response(request, "calendar_event_creation")
-        deleted_count, _details = CalendarEvent.objects.filter(
-            pk=request.POST.get("event_id"),
-            user=request.user,
-        ).delete()
-        if deleted_count:
-            django_messages.success(request, "Termin gelöscht.")
+        event = CalendarEvent.objects.filter(pk=request.POST.get("event_id"), user=request.user).first()
+        if event is not None:
+            # The edit dialog's delete button sends the chosen series scope along.
+            _total, deleted = series_scope_events(event, request.POST.get("scope")).delete()
+            event_count = deleted.get(CalendarEvent._meta.label, 0)
+            django_messages.success(request, "Termine gelöscht." if event_count > 1 else "Termin gelöscht.")
         return redirect(request.get_full_path())
 
     if request.method == "POST" and request.POST.get("form_name") == "calendar_event_delete_series":
@@ -121,9 +138,14 @@ def calendar(request):
     context.update(
         {
             "event_form": event_form,
+            "quick_add_form": quick_add_form,
             "edit_form": edit_form
             or (CalendarEventEditForm(user=request.user) if calendar_event_creation_enabled else None),
             "editing_event_id": editing_event_id,
+            # Keeps the series choice visible when an invalid edit reopens the dialog.
+            "editing_event_series": bool(
+                edit_form and edit_form.instance and edit_form.instance.recurrence_id
+            ),
             "reminder_form": reminder_form,
             "calendar_event_creation_enabled": calendar_event_creation_enabled,
             "calendar_reminders_enabled": calendar_reminders_enabled,

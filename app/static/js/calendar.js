@@ -1,3 +1,20 @@
+// Week grid: a day column is split into half-hour slots.
+const SLOT_MINUTES = 30;
+const DAY_MINUTES = 24 * 60;
+
+const slotAt = (column, clientY) => {
+  const rect = column.getBoundingClientRect();
+  const minute = ((clientY - rect.top) / rect.height) * DAY_MINUTES;
+  const slot = Math.floor(minute / SLOT_MINUTES) * SLOT_MINUTES;
+  return Math.min(Math.max(slot, 0), DAY_MINUTES - SLOT_MINUTES);
+};
+
+const clock = (minute) => {
+  // The time input has no 24:00, so a range up to midnight ends one minute before it.
+  const value = Math.min(minute, DAY_MINUTES - 1);
+  return `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
+};
+
 const eventDialog = document.querySelector("[data-event-dialog]");
 
 if (eventDialog) {
@@ -111,23 +128,8 @@ if (eventDialog) {
   };
 
   // Week grid: half-hour slots in a day column, dragged vertically for a time range.
-  const SLOT_MINUTES = 30;
-  const DAY_MINUTES = 24 * 60;
   let slotDrag = null;
   let slotSelection = null;
-
-  const slotAt = (column, clientY) => {
-    const rect = column.getBoundingClientRect();
-    const minute = ((clientY - rect.top) / rect.height) * DAY_MINUTES;
-    const slot = Math.floor(minute / SLOT_MINUTES) * SLOT_MINUTES;
-    return Math.min(Math.max(slot, 0), DAY_MINUTES - SLOT_MINUTES);
-  };
-
-  const clock = (minute) => {
-    // The time input has no 24:00, so a range up to midnight ends one minute before it.
-    const value = Math.min(minute, DAY_MINUTES - 1);
-    return `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
-  };
 
   const slotTimes = (start, end) => ({ start: clock(start), end: clock(Math.min(end, DAY_MINUTES)) });
 
@@ -255,6 +257,31 @@ if (editDialog) {
   const categorySelect = editForm?.querySelector("select[name='category']");
   const attendeeInputs = editForm?.querySelectorAll("input[name='attendees']") || [];
   const timeFields = editForm?.querySelectorAll("[data-event-edit-time-field]") || [];
+  const scopeFieldset = editForm?.querySelector("[data-event-edit-scope]");
+  const scopeInputs = editForm?.querySelectorAll("input[name='scope']") || [];
+  const seriesInput = editForm?.querySelector("[data-event-edit-series-input]");
+  const deleteButton = editForm?.querySelector(".event-delete-button");
+  const singleDeleteConfirm = deleteButton?.dataset.confirm || "";
+
+  // Series occurrences ask which events an edit or delete covers; the delete prompt follows that choice.
+  const syncDeleteConfirm = () => {
+    if (!deleteButton) return;
+    const scope = [...scopeInputs].find((input) => input.checked)?.value || "this";
+    const coversSeries = !scopeFieldset?.hidden && scope !== "this";
+    deleteButton.dataset.confirm = coversSeries ? deleteButton.dataset.seriesConfirm : singleDeleteConfirm;
+  };
+
+  const setSeries = (isSeries, keepScope = false) => {
+    if (scopeFieldset) scopeFieldset.hidden = !isSeries;
+    if (!keepScope) {
+      scopeInputs.forEach((input) => {
+        input.checked = input.value === "this";
+      });
+    }
+    syncDeleteConfirm();
+  };
+
+  scopeInputs.forEach((input) => input.addEventListener("change", syncDeleteConfirm));
 
   const syncEditTimeFields = () => {
     const isAllDay = Boolean(allDayInput?.checked);
@@ -285,6 +312,7 @@ if (editDialog) {
     });
 
     syncEditTimeFields();
+    setSeries(data.series === "true");
 
     if (!editDialog.open) {
       editDialog.showModal();
@@ -306,6 +334,7 @@ if (editDialog) {
         category: button.dataset.editCategory,
         location: button.dataset.editLocation,
         attendees: button.dataset.editAttendees,
+        series: button.dataset.editSeries,
       }),
     );
   });
@@ -324,6 +353,7 @@ if (editDialog) {
   syncEditTimeFields();
 
   if (editDialog.dataset.hasErrors === "true") {
+    setSeries(seriesInput?.value === "true", true);
     if (!editDialog.open) {
       editDialog.showModal();
     }
@@ -350,4 +380,97 @@ if (weekView && weekBody) {
       nowLine.style.setProperty("--start", minute);
     }, 60000);
   }
+}
+
+// Drag a task chip onto another day to move its due date (keeping the time), or onto the week's time
+// grid to give it that time too. The drop posts a normal task_reschedule form that returns here.
+const draggableTasks = document.querySelectorAll("[data-task-drag]");
+
+if (draggableTasks.length) {
+  const dropTarget = "[data-week-column], .calendar-day[data-date], .week-all-day-cell[data-date]";
+  let draggedTask = null;
+  let dropMark = null;
+
+  const clearDropMark = () => {
+    dropMark?.classList.remove("is-selected");
+    dropMark = null;
+    document.querySelector(".week-selection.is-task-drop")?.remove();
+  };
+
+  const markDrop = (target, clientY) => {
+    if (target.matches("[data-week-column]")) {
+      let preview = target.querySelector(".week-selection.is-task-drop");
+      if (dropMark !== target) {
+        clearDropMark();
+        preview = document.createElement("span");
+        preview.className = "week-selection is-task-drop";
+        preview.style.setProperty("--duration", SLOT_MINUTES);
+        target.append(preview);
+      }
+      preview.style.setProperty("--start", slotAt(target, clientY));
+    } else if (dropMark !== target) {
+      clearDropMark();
+      target.classList.add("is-selected");
+    }
+    dropMark = target;
+  };
+
+  draggableTasks.forEach((chip) => {
+    chip.addEventListener("dragstart", (event) => {
+      draggedTask = chip;
+      chip.classList.add("is-dragging");
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", chip.dataset.taskDrag);
+    });
+    chip.addEventListener("dragend", () => {
+      chip.classList.remove("is-dragging");
+      draggedTask = null;
+      clearDropMark();
+    });
+  });
+
+  document.addEventListener("dragover", (event) => {
+    const target = draggedTask && event.target.closest(dropTarget);
+    if (!target) {
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    markDrop(target, event.clientY);
+  });
+
+  document.addEventListener("drop", (event) => {
+    const target = draggedTask && event.target.closest(dropTarget);
+    if (!target) {
+      return;
+    }
+    event.preventDefault();
+    const fields = {
+      csrfmiddlewaretoken: document.querySelector("meta[name='csrf-token']")?.content || "",
+      form_name: "task_reschedule",
+      task_id: draggedTask.dataset.taskDrag,
+      due_date: target.dataset.date,
+      return_to: `${window.location.pathname}${window.location.search}`,
+    };
+    if (target.matches("[data-week-column]")) {
+      fields.due_time = clock(slotAt(target, event.clientY));
+    }
+    const unchanged = target.dataset.date === draggedTask.dataset.taskDate && !fields.due_time;
+    clearDropMark();
+    if (unchanged) {
+      return;
+    }
+    const form = document.createElement("form");
+    form.method = "post";
+    form.action = draggedTask.action;
+    Object.entries(fields).forEach(([name, value]) => {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = name;
+      input.value = value;
+      form.append(input);
+    });
+    document.body.append(form);
+    form.submit();
+  });
 }

@@ -1,0 +1,33 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}{{ note.title }} | Lunora{% endblock %}
+
+{% block page_css %}
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="same-origin">
+<link rel="stylesheet" href="{% versioned_static 'css/note_public.css' %}">
+{% if has_math %}<link rel="stylesheet" href="{% versioned_static 'vendor/katex/katex.min.css' %}">{% endif %}
+{% endblock %}
+
+{% block content %}
+<section class="page-shell note-public-shell">
+    <article class="glass-panel note-public">
+        <header class="note-public-header">
+            <span class="note-public-kicker"><i class="fa-solid fa-globe" aria-hidden="true"></i> Öffentlich geteilte Notiz · nur lesen</span>
+            <h1>{{ note.title }}</h1>
+            <p>Zuletzt bearbeitet am {{ updated_label }} von {{ editor_name }}</p>
+        </header>
+        <div class="note-public-body">
+            {{ note_body }}
+        </div>
+    </article>
+    {% if not request.user.is_authenticated %}
+    <p class="note-public-footer">Geteilt mit <a href="{% url 'login' %}">Lunora</a></p>
+    {% endif %}
+</section>
+{% endblock %}
+
+{% block page_js %}
+{% if has_math %}<script src="{% versioned_static 'js/bundles/note_public.js' %}" type="module"></script>{% endif %}
+{% endblock %}

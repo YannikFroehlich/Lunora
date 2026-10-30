@@ -164,10 +164,15 @@ class StaticVersioningTests(SimpleTestCase):
         self.assertTrue(any(name.startswith("syntax-highlighting-") for name in chunk_names))
         self.assertTrue(any(name.startswith("math-renderer-") for name in chunk_names))
         self.assertLess(max(path.stat().st_size for path in chunk_paths), 500_000)
+        # KaTeX stays lazy: reached only through a dynamic import, either of the math-renderer chunk
+        # itself or of the small facade Vite adds because the public note page imports it too.
         self.assertRegex(
             entry_source,
-            r'import\(["`]\./chunks/math-renderer-[A-Za-z0-9_-]+\.js["`]\)',
+            r'import\(["`]\./chunks/(?:math-renderer|katex)-[A-Za-z0-9_-]+\.js["`]\)',
         )
+        self.assertNotRegex(entry_source, r'from\s*["`]\./chunks/math-renderer-')
+        public_entry = (bundle_dir / "note_public.js").read_text(encoding="utf-8")
+        self.assertNotRegex(public_entry, r'from\s*["`]\./chunks/(?:math-renderer|editor-core)-')
 
         notes_template = (BASE_DIR / "app" / "templates" / "app" / "notes.html").read_text(encoding="utf-8")
         self.assertIn(

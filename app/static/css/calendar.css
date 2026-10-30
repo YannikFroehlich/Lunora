@@ -376,6 +376,44 @@ button.event-chip {
   padding-top: 4px;
 }
 
+/* Pushes delete to the opposite end from cancel/save. */
+.event-delete-button {
+  margin-right: auto;
+  color: var(--color-danger);
+}
+
+.event-series-scope {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-control);
+}
+
+.event-series-scope[hidden] {
+  display: none;
+}
+
+.event-series-scope legend {
+  padding: 0 6px;
+  color: var(--color-heading);
+  font-weight: 650;
+}
+
+.event-series-scope label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.event-series-scope small {
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+}
+
 [data-theme="dark"] .event-form-field input,
 [data-theme="dark"] .event-form-field select {
   background: var(--surface-control);
@@ -852,6 +890,15 @@ button.event-chip {
 .task-chip span {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Task chips can be dragged onto another day or time (calendar.js). */
+.task-chip[draggable="true"] {
+  cursor: grab;
+}
+
+.task-chip.is-dragging {
+  opacity: 0.5;
 }
 
 @media (max-width: 760px) {
@@ -1349,4 +1396,51 @@ button.week-event:hover {
   .week-all-day-cell .task-chip span {
     display: inline;
   }
+}
+
+/* One-line "Zahnarzt morgen 14 Uhr" event entry under the toolbar. The rounded wrapper carries the
+   focus ring, the borderless input inside it does not (see "Focus rings on wrapped inputs"). */
+.calendar-quick-add {
+  margin: 0 0 12px;
+}
+
+.calendar-quick-add-field {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 4px 0 12px;
+  background: var(--surface-control);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-sm);
+}
+
+.calendar-quick-add-field > i {
+  color: var(--color-accent-strong);
+}
+
+.calendar-quick-add-field input {
+  width: 100%;
+  min-width: 0;
+  height: 42px;
+  padding: 0;
+  color: var(--color-text);
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font: inherit;
+}
+
+.calendar-quick-add-field:focus-within {
+  border-color: var(--focus-border);
+  box-shadow: var(--focus-ring);
+}
+
+.calendar-quick-add-field input:focus-visible {
+  box-shadow: none;
+}
+
+.calendar-quick-add .form-errors {
+  margin-top: 6px;
 }

@@ -25,6 +25,7 @@ from app.models import (
     UserNotification,
 )
 from app.services.note_content import NOTE_TEMPLATES, empty_note_document, validate_note_document
+from app.services.note_html import render_note_html
 from app.services.notes import prune_note_versions, purge_expired_notes
 from app.tests.helpers import (
     PNG_1X1_BYTES,
@@ -1999,3 +2000,255 @@ class NotePresenceTests(TestCase):
         response = self.client.post(self.presence_url())
 
         self.assertEqual(response.status_code, 503)
+
+
+class NotePublicLinkTests(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(username="owner@example.com", password="secret-12345")
+        self.reader = User.objects.create_user(username="reader@example.com", password="secret-12345")
+        Profile.objects.create(user=self.owner, display_name="Owner", timezone_name="Europe/Berlin")
+        Profile.objects.create(user=self.reader, display_name="Reader")
+        self.note = Note.objects.create(
+            owner=self.owner, title="Reiseplan", document=note_document("Koffer packen")
+        )
+        NoteShare.objects.create(note=self.note, user=self.reader, role=NoteShare.ROLE_EDITOR)
+        self.client.login(username="owner@example.com", password="secret-12345")
+
+    def link_api(self, method="post", payload=None, client=None):
+        response = getattr(client or self.client, method)(
+            f"/notes/api/{self.note.id}/public-link/",
+            data=json.dumps(payload or {}),
+            content_type="application/json",
+        )
+        self.note.refresh_from_db()
+        return response
+
+    def test_owner_turns_the_link_on_rotates_and_off(self):
+        response = self.link_api()
+
+        self.assertEqual(response.status_code, 200)
+        token = self.note.public_token
+        self.assertEqual(response.json()["public_path"], f"/s/notes/{token}/")
+        self.assertGreaterEqual(len(token), 40)
+        # Turning it on again keeps the address; rotating replaces it.
+        self.link_api()
+        self.assertEqual(self.note.public_token, token)
+        self.link_api(payload={"rotate": True})
+        self.assertNotEqual(self.note.public_token, token)
+        self.assertEqual(Client().get(f"/s/notes/{token}/").status_code, 404)
+
+        response = self.link_api("delete")
+
+        self.assertEqual(response.json()["public_path"], None)
+        self.assertIsNone(self.note.public_token)
+
+    def test_only_the_owner_manages_the_link_and_sees_it(self):
+        reader_client = Client()
+        reader_client.login(username="reader@example.com", password="secret-12345")
+
+        self.assertEqual(self.link_api(client=reader_client).status_code, 403)
+        self.assertIsNone(self.note.public_token)
+
+        self.link_api()
+        owner_payload = self.client.get(f"/notes/api/{self.note.id}/").json()["note"]
+        reader_payload = reader_client.get(f"/notes/api/{self.note.id}/").json()["note"]
+        self.assertEqual(owner_payload["public_path"], f"/s/notes/{self.note.public_token}/")
+        self.assertNotIn("public_path", reader_payload)
+
+    def test_public_page_renders_read_only_without_login(self):
+        self.link_api()
+
+        response = Client().get(f"/s/notes/{self.note.public_token}/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "app/note_public.html")
+        self.assertContains(response, "Reiseplan")
+        self.assertContains(response, "<p><strong>Koffer packen</strong></p>", html=True)
+        self.assertNotContains(response, "/notes/api/")
+        self.assertEqual(response["Referrer-Policy"], "same-origin")
+        self.assertIn("noindex", response["X-Robots-Tag"])
+        self.assertNotContains(response, "note_public.js")
+
+    def test_trashed_unknown_disabled_and_inactive_links_are_gone(self):
+        self.link_api()
+        url = f"/s/notes/{self.note.public_token}/"
+        anonymous = Client()
+
+        self.assertEqual(anonymous.get("/s/notes/unbekannt/").status_code, 404)
+        Note.objects.filter(pk=self.note.pk).update(deleted_at=timezone.now())
+        self.assertEqual(anonymous.get(url).status_code, 404)
+        Note.objects.filter(pk=self.note.pk).update(deleted_at=None)
+        User.objects.filter(pk=self.owner.pk).update(is_active=False)
+        self.assertEqual(anonymous.get(url).status_code, 404)
+        User.objects.filter(pk=self.owner.pk).update(is_active=True)
+        SystemSettings.objects.update_or_create(pk=1, defaults={"note_public_links_enabled": False})
+        self.assertEqual(anonymous.get(url).status_code, 503)
+        self.assertEqual(self.link_api("delete").status_code, 503)
+
+    def test_trashed_note_cannot_be_made_public_but_its_link_can_be_turned_off(self):
+        self.link_api()
+        Note.objects.filter(pk=self.note.pk).update(deleted_at=timezone.now())
+
+        self.assertEqual(self.link_api(payload={"rotate": True}).status_code, 400)
+        self.assertEqual(self.link_api("delete").status_code, 200)
+        self.assertIsNone(self.note.public_token)
+
+    def test_attachments_are_served_only_for_their_own_public_note(self):
+        other = Note.objects.create(owner=self.owner, title="Privat")
+        with TemporaryDirectory() as private_root, override_settings(PRIVATE_MEDIA_ROOT=private_root):
+            for note in (self.note, other):
+                upload = SimpleUploadedFile("moon.png", PNG_1X1_BYTES, content_type="image/png")
+                response = self.client.post(
+                    f"/notes/api/{note.id}/attachments/", {"kind": "image", "file": upload}
+                )
+                self.assertEqual(response.status_code, 201, response.content)
+            own = NoteAttachment.objects.get(note=self.note)
+            foreign = NoteAttachment.objects.get(note=other)
+            self.note.document = {
+                "type": "doc",
+                "content": [
+                    {"type": "noteImage", "attrs": {"attachmentId": str(own.file_id), "alt": "Mond"}}
+                ],
+            }
+            self.note.save()
+            self.link_api()
+            token = self.note.public_token
+            anonymous = Client()
+
+            page = anonymous.get(f"/s/notes/{token}/")
+            self.assertContains(page, f'src="/s/notes/{token}/files/{own.file_id}/inline/"')
+            image = anonymous.get(f"/s/notes/{token}/files/{own.file_id}/inline/")
+            self.assertEqual(image.status_code, 200)
+            self.assertEqual(image["Referrer-Policy"], "same-origin")
+            image.close()
+            self.assertEqual(
+                anonymous.get(f"/s/notes/{token}/files/{foreign.file_id}/inline/").status_code, 404
+            )
+            self.assertEqual(anonymous.get(f"/s/notes/{token}/files/{own.file_id}/execute/").status_code, 404)
+
+    def test_duplicates_do_not_carry_the_token(self):
+        self.link_api()
+
+        response = self.client.post(
+            f"/notes/api/{self.note.id}/actions/",
+            data=json.dumps({"action": "duplicate"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertIsNone(Note.objects.get(pk=response.json()["note"]["id"]).public_token)
+
+
+class NoteHtmlRendererTests(TestCase):
+    def render(self, content):
+        owner = User.objects.create_user(username=f"{uuid.uuid4()}@example.com")
+        note = Note.objects.create(owner=owner, title="T", document={"type": "doc", "content": content})
+        return str(render_note_html(note, attachment_url=lambda attachment, disposition: "/file/"))
+
+    def test_formatting_lists_tables_code_and_math(self):
+        html = self.render(
+            [
+                {
+                    "type": "heading",
+                    "attrs": {"level": 1, "textAlign": "center"},
+                    "content": [{"type": "text", "text": "Plan"}],
+                },
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {"type": "text", "text": "fett", "marks": [{"type": "bold"}, {"type": "italic"}]},
+                        {"type": "hardBreak"},
+                        {
+                            "type": "text",
+                            "text": "Link",
+                            "marks": [
+                                {"type": "link", "attrs": {"href": "https://example.com"}},
+                                {"type": "bold"},
+                            ],
+                        },
+                        {"type": "mention", "attrs": {"userId": 3, "label": "Mira"}},
+                        {"type": "mathInline", "attrs": {"latex": "a<b"}},
+                    ],
+                },
+                {
+                    "type": "taskList",
+                    "content": [
+                        {"type": "taskItem", "attrs": {"checked": True}, "content": [{"type": "paragraph"}]}
+                    ],
+                },
+                {
+                    "type": "codeBlock",
+                    "attrs": {"language": "python"},
+                    "content": [{"type": "text", "text": "x = '<b>'"}],
+                },
+                {
+                    "type": "table",
+                    "content": [
+                        {
+                            "type": "tableRow",
+                            "content": [
+                                {
+                                    "type": "tableHeader",
+                                    "attrs": {"colspan": 2, "backgroundColor": "#ffeeaa"},
+                                    "content": [],
+                                }
+                            ],
+                        }
+                    ],
+                },
+            ]
+        )
+
+        self.assertInHTML('<h2 style="text-align: center">Plan</h2>', html)
+        self.assertInHTML("<em><strong>fett</strong></em>", html)
+        self.assertInHTML(
+            '<a href="https://example.com" target="_blank" rel="noopener noreferrer nofollow">'
+            "<strong>Link</strong></a>",
+            html,
+        )
+        self.assertInHTML('<span class="mention">@Mira</span>', html)
+        self.assertIn('data-latex="a&lt;b"', html)
+        self.assertIn('<li class="task-item is-checked"><input type="checkbox" disabled checked', html)
+        self.assertInHTML('<pre><code class="language-python">x = &#x27;&lt;b&gt;&#x27;</code></pre>', html)
+        self.assertIn('<th colspan="2" style="background-color: #ffeeaa">', html)
+
+    def test_unvalidated_markup_and_unsafe_values_are_neutralised(self):
+        html = self.render(
+            [
+                {
+                    "type": "paragraph",
+                    "attrs": {"textAlign": "left;color:red"},
+                    "content": [
+                        {"type": "text", "text": "<script>alert(1)</script>"},
+                        {
+                            "type": "text",
+                            "text": "x",
+                            "marks": [{"type": "link", "attrs": {"href": "javascript:alert(1)"}}],
+                        },
+                        {
+                            "type": "text",
+                            "text": "y",
+                            "marks": [{"type": "textStyle", "attrs": {"color": "red;background:url(x)"}}],
+                        },
+                        {"type": "noteLink", "attrs": {"noteId": 9, "label": '"><img src=x>'}},
+                    ],
+                },
+                {
+                    "type": "codeBlock",
+                    "attrs": {"language": '"><script>'},
+                    "content": [{"type": "text", "text": "z"}],
+                },
+                {"type": "unknownNode", "content": [{"type": "text", "text": "versteckt"}]},
+                {"type": "noteImage", "attrs": {"attachmentId": str(uuid.uuid4()), "alt": "<b>"}},
+            ]
+        )
+
+        self.assertNotIn("<script>", html)
+        self.assertNotIn("javascript:", html)
+        self.assertNotIn("<img", html)
+        self.assertNotIn("color:red", html)
+        self.assertNotIn("url(x)", html)
+        self.assertNotIn("versteckt", html)
+        self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", html)
+        self.assertIn("<pre><code>z</code></pre>", html)
+        self.assertIn("Bild nicht verfügbar: &lt;b&gt;", html)

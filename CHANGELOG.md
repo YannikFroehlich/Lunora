@@ -6,6 +6,22 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Recurring calendar events can be edited and deleted as "Nur dieser Termin", "Dieser und alle
+  folgenden" or "Alle Termine der Serie". Following occurrences move along with the edited one and
+  keep their time of day across daylight-saving changes; "Dieser und alle folgenden" splits them off
+  into a series of their own. The edit dialog now has a delete button too.
+- Drag a task in the calendar onto another day to move its due date (its time stays), or in the week
+  view onto a time to set that time as well. A task moved or edited to a later due date reminds
+  again at the new time.
+- Quick add understands natural German: a new task like "Bericht abgeben Freitag 14 Uhr !hoch
+  #arbeit" gets its due date, time, priority and an existing label from the title, and the calendar
+  has a "Schnell eintragen" field that turns "Zahnarzt morgen 14 Uhr" into an event (all day when
+  only a date is given). Dates like "morgen", "nächsten Montag", "in 2 Wochen", "15.3." and
+  "5. Dezember" work.
+- Notes can be shared through a public link: in the share dialog, the owner turns on a read-only
+  address that anyone can open without signing in, can replace it with a new one, or turn it off.
+  Formulas, images and attachments show up on the public page; administrators can disable public
+  links in the administration.
 - The calendar has a week view next to the month: a switch in the toolbar shows Monday to Sunday
   with a time grid, where overlapping events sit side by side and a line marks the current time.
   All-day and multi-day events, holidays, vacations and due tasks sit in a row above the grid.

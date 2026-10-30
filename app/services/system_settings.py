@@ -19,6 +19,7 @@ FEATURE_FIELDS = {
     "dashboard_customization": "dashboard_customization_enabled",
     "tasks": "tasks_enabled",
     "tools": "tools_enabled",
+    "note_public_links": "note_public_links_enabled",
 }
 
 
@@ -33,6 +34,7 @@ FEATURE_LABELS = {
     "dashboard_customization": "Dashboard-Personalisierung",
     "tasks": "Aufgaben",
     "tools": "Werkzeuge",
+    "note_public_links": "Öffentliche Notiz-Links",
 }
 
 
@@ -49,6 +51,7 @@ class DefaultSystemSettings:
     dashboard_customization_enabled: bool = True
     tasks_enabled: bool = True
     tools_enabled: bool = True
+    note_public_links_enabled: bool = True
     updated_by: object = None
     updated_at: object = None
 

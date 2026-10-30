@@ -1,16 +1,23 @@
 import calendar
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import F, Max
 from django.utils import timezone
 
-from app.models import Task, TaskLabel, TaskList
-from app.services.user_preferences import format_user_datetime, format_user_time, localtime_for_user
+from app.models import Task, TaskLabel, TaskList, UserNotification
+from app.services.user_preferences import (
+    format_user_datetime,
+    format_user_time,
+    get_user_zoneinfo,
+    localtime_for_user,
+)
 
 UPCOMING_WINDOW_DAYS = 7
 TASK_POSITION_STEP = 1000
+# Time of day for a task that only gets a date: dropped onto a calendar day, or typed as "morgen".
+DEFAULT_DUE_TIME = time(9)
 
 
 def _add_months(value, months):
@@ -54,6 +61,37 @@ def toggle_task(user, task_id, is_done, *, now=None):
             recurrence_rule=task.recurrence_rule,
         )
         next_task.labels.set(task.labels.all())
+    return task
+
+
+def rearm_task_reminders(task, previous_due_at, *, now=None):
+    """Let a task that was moved to a later due date remind again, at the new time.
+
+    Clears the delivered-at columns and drops the inbox row of the old due date, so e-mail,
+    desktop, Web Push and the inbox all notify once more when the new date arrives. Call it before
+    saving the task with its new due_at.
+    """
+    current_time = now or timezone.now()
+    if task.due_at == previous_due_at or task.due_at is None or task.due_at <= current_time:
+        return
+    task.email_notified_at = None
+    task.desktop_notified_at = None
+    if task.pk:
+        UserNotification.objects.filter(recipient_id=task.user_id, source_key=f"task:{task.pk}").delete()
+
+
+def reschedule_task(user, task_id, *, due_date, due_time=None, now=None):
+    """Move an open task to another day (e.g. dropped onto a calendar day), keeping its time of day
+    unless a new time is given; a task without a due date gets DEFAULT_DUE_TIME."""
+    task = Task.objects.filter(user=user, pk=task_id, is_done=False).first()
+    if task is None:
+        return None
+    if due_time is None:
+        due_time = localtime_for_user(task.due_at, user).time() if task.due_at else DEFAULT_DUE_TIME
+    previous_due_at = task.due_at
+    task.due_at = datetime.combine(due_date, due_time.replace(tzinfo=None), tzinfo=get_user_zoneinfo(user))
+    rearm_task_reminders(task, previous_due_at, now=now)
+    task.save(update_fields=["due_at", "email_notified_at", "desktop_notified_at", "updated_at"])
     return task
 
 

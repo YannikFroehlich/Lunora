@@ -35,7 +35,7 @@ minutes and placed side by side by --lane/--lanes (see _calendar_week in view_mo
                 {% endif %}
                 {% endfor %}
                 {% for task in day.tasks %}
-                <form class="event-chip task-chip" method="post" action="{% url 'tasks' %}" title="Aufgabe fällig {{ task.time }} · {{ task.label }}">
+                <form class="event-chip task-chip" method="post" action="{% url 'tasks' %}" title="Aufgabe fällig {{ task.time }} · {{ task.label }} (auf einen anderen Tag oder eine Uhrzeit ziehen)" draggable="true" data-task-drag="{{ task.id }}" data-task-date="{{ day.date_input }}">
                     {% csrf_token %}
                     <input type="hidden" name="form_name" value="task_toggle">
                     <input type="hidden" name="task_id" value="{{ task.id }}">

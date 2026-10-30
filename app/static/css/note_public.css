@@ -1,0 +1,218 @@
+/* Read-only page of a note shared by public link (note_public.html). Body markup comes from
+   app/services/note_html.py; its look follows the notes editor (.note-editor-page .tiptap in notes.css). */
+
+.note-public-shell {
+  width: min(100%, 860px);
+  padding-block: 24px 40px;
+}
+
+.note-public {
+  padding: clamp(22px, 4vw, 44px);
+}
+
+.note-public-header {
+  margin-bottom: 22px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--glass-border-soft);
+}
+
+.note-public-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-accent-strong);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.note-public-header h1 {
+  margin: 8px 0 6px;
+  color: var(--color-heading);
+  font-size: clamp(1.7rem, 4vw, 2.4rem);
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.note-public-header p {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.note-public-body {
+  color: var(--color-text);
+  font-size: var(--text-base);
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.note-public-body > :first-child {
+  margin-top: 0;
+}
+
+.note-public-body p {
+  margin: 0.5em 0;
+}
+
+.note-public-body h2,
+.note-public-body h3,
+.note-public-body h4 {
+  color: var(--color-heading);
+  line-height: 1.25;
+}
+
+.note-public-body h2 {
+  margin: 0.75em 0 0.35em;
+  font-size: 1.75em;
+}
+
+.note-public-body h3 {
+  margin: 0.72em 0 0.32em;
+  font-size: 1.4em;
+}
+
+.note-public-body h4 {
+  margin: 0.68em 0 0.3em;
+  font-size: 1.2em;
+}
+
+.note-public-body ul,
+.note-public-body ol {
+  padding-left: 1.65em;
+}
+
+.note-public-body .task-list {
+  padding: 0;
+  list-style: none;
+}
+
+.note-public-body .task-item {
+  display: flex;
+  gap: 9px;
+}
+
+.note-public-body .task-item > input {
+  flex-shrink: 0;
+  margin-top: 0.45em;
+}
+
+.note-public-body .task-item.is-checked > div {
+  color: var(--color-muted);
+  text-decoration: line-through;
+}
+
+.note-public-body blockquote {
+  margin: 1em 0;
+  padding-left: 16px;
+  border-left: 3px solid var(--color-accent);
+}
+
+.note-public-body a {
+  color: var(--color-accent-strong);
+}
+
+.note-public-body pre {
+  margin: 1em 0;
+  padding: 14px 16px;
+  overflow-x: auto;
+  color: #e9e1d8;
+  background: #2d2925;
+  border-radius: var(--radius-sm);
+  font-size: 0.88em;
+  line-height: 1.5;
+}
+
+.note-public-body code {
+  font-family: "Courier New", monospace;
+}
+
+.note-public-body :not(pre) > code {
+  padding: 0.1em 0.35em;
+  background: var(--surface-control);
+  border-radius: var(--radius-xs);
+}
+
+.note-public-body hr {
+  margin: 1.5em 0;
+  border: 0;
+  border-top: 1px solid var(--glass-border-soft);
+}
+
+.note-public-body .table-scroll {
+  margin: 18px 0;
+  overflow-x: auto;
+}
+
+.note-public-body table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.note-public-body th,
+.note-public-body td {
+  min-width: 70px;
+  padding: 8px;
+  border: 1px solid var(--glass-border-soft);
+  vertical-align: top;
+}
+
+.note-public-body th {
+  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+}
+
+.note-public-body th > p:first-child,
+.note-public-body td > p:first-child {
+  margin-top: 0;
+}
+
+.note-public-body figure {
+  margin: 1em 0;
+}
+
+.note-public-body img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+}
+
+.note-public-body .mention,
+.note-public-body .note-link {
+  padding: 0.05em 0.35em;
+  color: var(--color-accent-strong);
+  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  border-radius: var(--radius-xs);
+  font-weight: 600;
+}
+
+.note-public-body .math-block {
+  margin: 1em 0;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.note-public-body .note-file,
+.note-public-body .missing-file {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.note-public-body .note-file small,
+.note-public-body .missing-file {
+  color: var(--color-muted);
+}
+
+.note-public-footer {
+  margin: 14px 0 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.note-public-footer a {
+  color: var(--color-accent-strong);
+}

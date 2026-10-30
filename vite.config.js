@@ -1,14 +1,18 @@
 import { defineConfig } from "vite";
 
 export default defineConfig({
+  // Relative, so the module preloads of lazy chunks resolve next to the bundle under /static/
+  // instead of at the site root.
+  base: "./",
   build: {
     emptyOutDir: true,
     outDir: "app/static/js/bundles",
     sourcemap: false,
     rollupOptions: {
-      input: "frontend/notes.js",
+      // notes: the editor; note_public: formula rendering on a publicly shared note.
+      input: { notes: "frontend/notes.js", note_public: "frontend/note_public.js" },
       output: {
-        entryFileNames: "notes.js",
+        entryFileNames: "[name].js",
         chunkFileNames: "chunks/[name]-[hash].js",
         format: "es",
         manualChunks(id) {
