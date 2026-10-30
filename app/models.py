@@ -100,6 +100,12 @@ class Profile(models.Model):
         ("24h", "24-Stunden"),
         ("12h", "12-Stunden"),
     ]
+    CALENDAR_VIEW_CHOICES = [
+        ("month", "Monat"),
+        ("week", "Woche"),
+        ("three_days", "3 Tage"),
+        ("day", "Tag"),
+    ]
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile")
     display_name = models.CharField(max_length=120)
     profile_image = models.FileField(
@@ -114,6 +120,8 @@ class Profile(models.Model):
     date_format = models.CharField(max_length=24, choices=DATE_FORMAT_CHOICES, default="de_numeric")
     time_format = models.CharField(max_length=12, choices=TIME_FORMAT_CHOICES, default="24h")
     timezone_name = models.CharField(max_length=64, choices=timezone_choices, default="Europe/Berlin")
+    # The calendar view last picked with the view switch; /calendar/ without a period opens it.
+    calendar_view = models.CharField(max_length=12, choices=CALENDAR_VIEW_CHOICES, default="month")
     notify_email = models.BooleanField(default=False)
     notify_reminders = models.BooleanField(default=True)
     notify_desktop = models.BooleanField(default=False)

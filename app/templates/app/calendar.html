@@ -20,13 +20,14 @@
     <div class="calendar-layout">
         <section class="glass-panel month-panel" aria-labelledby="calendar-month-title">
             <div class="month-toolbar">
-                <a class="icon-button" href="{{ prev_url }}" aria-label="{% if calendar_view == 'week' %}Vorherige Woche{% else %}Vorheriger Monat{% endif %}"><i class="fa-solid fa-chevron-left"></i></a>
-                <h2 id="calendar-month-title">{{ period_label }}{% if calendar_week %} <small>{{ calendar_week.range_label }}</small>{% endif %}</h2>
-                <a class="icon-button" href="{{ next_url }}" aria-label="{% if calendar_view == 'week' %}Nächste Woche{% else %}Nächster Monat{% endif %}"><i class="fa-solid fa-chevron-right"></i></a>
+                <a class="icon-button" href="{{ prev_url }}" aria-label="{% if calendar_view == 'week' %}Vorherige Woche{% elif calendar_view == 'three_days' %}Vorherige drei Tage{% elif calendar_view == 'day' %}Vorheriger Tag{% else %}Vorheriger Monat{% endif %}"><i class="fa-solid fa-chevron-left"></i></a>
+                <h2 id="calendar-month-title">{{ period_label }}{% if calendar_grid %} <small>{{ calendar_grid.range_label }}</small>{% endif %}</h2>
+                <a class="icon-button" href="{{ next_url }}" aria-label="{% if calendar_view == 'week' %}Nächste Woche{% elif calendar_view == 'three_days' %}Nächste drei Tage{% elif calendar_view == 'day' %}Nächster Tag{% else %}Nächster Monat{% endif %}"><i class="fa-solid fa-chevron-right"></i></a>
                 <span class="toolbar-spacer"></span>
                 <nav class="calendar-view-switch" aria-label="Ansicht">
-                    <a href="{{ month_view_url }}" {% if calendar_view == 'month' %}class="is-active" aria-current="page"{% endif %}>Monat</a>
-                    <a href="{{ week_view_url }}" {% if calendar_view == 'week' %}class="is-active" aria-current="page"{% endif %}>Woche</a>
+                    {% for option in calendar_view_options %}
+                    <a href="{{ option.url }}" {% if option.active %}class="is-active" aria-current="page"{% endif %}>{{ option.label }}</a>
+                    {% endfor %}
                 </nav>
                 {% if calendar_event_creation_enabled %}
                 <button class="ghost-button" type="button" data-event-dialog-open>
@@ -51,14 +52,14 @@
             </form>
             {% endif %}
 
-            {% if calendar_view == 'week' %}
+            {% if calendar_grid %}
             {% if calendar_event_creation_enabled %}
-            <p class="calendar-hint">Rechtsklick auf eine Uhrzeit (am Handy antippen) oder mit gedrückter Maustaste über eine Zeitspanne ziehen, um direkt einen Termin anzulegen. In der Zeile „Ganztägig“ über mehrere Tage ziehen für einen ganztägigen Termin.</p>
+            <p class="calendar-hint">Rechtsklick auf eine Uhrzeit (am Handy antippen) oder mit gedrückter Maustaste über eine Zeitspanne ziehen, um direkt einen Termin anzulegen. Eigene Termine lassen sich mit der Maus verschieben und am unteren Rand verlängern.</p>
             {% endif %}
-            {% include 'app/partials/calendar_week.html' %}
+            {% include 'app/partials/calendar_time_grid.html' %}
             {% else %}
             {% if calendar_event_creation_enabled %}
-            <p class="calendar-hint">Rechtsklick auf einen Tag (am Handy antippen) oder mit gedrückter Maustaste über mehrere Tage ziehen, um direkt einen Termin anzulegen.</p>
+            <p class="calendar-hint">Rechtsklick auf einen Tag (am Handy antippen) oder mit gedrückter Maustaste über mehrere Tage ziehen, um direkt einen Termin anzulegen. Eigene Termine lassen sich mit der Maus auf einen anderen Tag ziehen.</p>
             {% endif %}
             <div class="weekday-row">
                 <span>Mo</span><span>Di</span><span>Mi</span><span>Do</span><span>Fr</span><span>Sa</span><span>So</span>
@@ -85,7 +86,7 @@
                         {% endif %}
                         {% for event in day.events %}
                         {% if event.can_delete %}
-                        <button type="button" class="event-chip tone-{{ event.tone }}" title="{{ event.time }} · {{ event.label }} (bearbeiten)" {% include 'app/partials/calendar_event_edit_data.html' %}>{{ event.label }}</button>
+                        <button type="button" class="event-chip tone-{{ event.tone }}" title="{{ event.time }} · {{ event.label }} (bearbeiten oder verschieben)" {% include 'app/partials/calendar_event_edit_data.html' %} {% include 'app/partials/calendar_event_move_data.html' %}>{{ event.label }}</button>
                         {% else %}
                         <span class="event-chip tone-{{ event.tone }} {% if event.is_invited %}is-invited{% endif %}" title="{{ event.time }} · {{ event.label }}">{% if event.is_invited %}<i class="fa-solid fa-user-group" aria-hidden="true"></i>{% endif %}{{ event.label }}</span>
                         {% endif %}

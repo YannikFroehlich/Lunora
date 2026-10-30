@@ -15,6 +15,7 @@ from app.models import (
     Habit,
     Note,
     NoteShare,
+    Profile,
     Task,
     UmlDiagram,
     VacationYear,
@@ -54,8 +55,10 @@ from app.services.user_preferences import (
 from app.services.vacation_planner import annual_summary, calendar_day_markers, upcoming_vacations
 from app.services.vocabulary import due_filter
 
-# Week view: the shortest height an event gets on the time grid, and where the grid starts
-# scrolled for weeks that don't contain today.
+# Calendar views: the month grid plus time-grid views showing this many days side by side.
+CALENDAR_TIME_GRID_DAYS = {"week": 7, "three_days": 3, "day": 1}
+# Time grid: the shortest height an event gets, and where the grid starts scrolled for ranges
+# that don't contain today.
 WEEK_MIN_EVENT_MINUTES = 20
 WEEK_DEFAULT_SCROLL_MINUTE = 7 * 60
 
@@ -595,16 +598,18 @@ def _upcoming_vacation_items(user, now, limit):
 def get_calendar_context(user, *, year=None, month=None, view=None, day=None):
     user_timezone = get_user_zoneinfo(user)
     now = localtime_for_user(profile_or_user=user)
-    view = "week" if view == "week" else "month"
+    view = view if view in CALENDAR_TIME_GRID_DAYS else "month"
     anchor = None
-    if view == "week":
-        # The week view is anchored on any day of the shown week; the stats and month grid data
-        # below then belong to that day's month, whose grid always contains the whole week.
+    grid_start = None
+    if view != "month":
+        # Time-grid views are anchored on a day (the week view on any day of its week); the stats
+        # below then belong to that day's month, and the queried range covers both.
         try:
             anchor = date.fromisoformat(day) if day else now.date()
         except (TypeError, ValueError):
             anchor = now.date()
         year, month = anchor.year, anchor.month
+        grid_start = anchor - timedelta(days=anchor.weekday()) if view == "week" else anchor
     try:
         year = int(year or now.year)
         month = int(month or now.month)
@@ -618,6 +623,9 @@ def get_calendar_context(user, *, year=None, month=None, view=None, day=None):
     weeks = calendar.Calendar(firstweekday=0).monthdatescalendar(year, month)
     visible_start = weeks[0][0]
     visible_end = weeks[-1][-1] + timedelta(days=1)
+    if grid_start is not None:
+        visible_start = min(visible_start, grid_start)
+        visible_end = max(visible_end, grid_start + timedelta(days=CALENDAR_TIME_GRID_DAYS[view]))
     range_start = timezone.make_aware(datetime.combine(visible_start, time.min), user_timezone)
     range_end = timezone.make_aware(datetime.combine(visible_end, time.min), user_timezone)
     events = list(
@@ -713,33 +721,47 @@ def get_calendar_context(user, *, year=None, month=None, view=None, day=None):
     next_month = _shift_month(year, month, 1)
     month_label = f"{get_user_month_name(month_date, user)} {year}"
     calendar_url = reverse("calendar")
-    week = None
-    if view == "week":
-        week = _calendar_week(user, anchor, now, events_by_date, tasks_by_date, markers)
-        period_label = week["label"]
-        prev_url = f"{calendar_url}?view=week&date={(anchor - timedelta(days=7)).isoformat()}"
-        next_url = f"{calendar_url}?view=week&date={(anchor + timedelta(days=7)).isoformat()}"
-        today_url = f"{calendar_url}?view=week"
+    time_grid = None
+    if view != "month":
+        day_count = CALENDAR_TIME_GRID_DAYS[view]
+        time_grid = _calendar_time_grid(
+            user, view, grid_start, day_count, now, events_by_date, tasks_by_date, markers
+        )
+        period_label = time_grid["label"]
+        step = timedelta(days=day_count)
+        prev_url = f"{calendar_url}?view={view}&date={(anchor - step).isoformat()}"
+        next_url = f"{calendar_url}?view={view}&date={(anchor + step).isoformat()}"
     else:
         period_label = month_label
         prev_url = f"{calendar_url}?year={prev_month[0]}&month={prev_month[1]}"
         next_url = f"{calendar_url}?year={next_month[0]}&month={next_month[1]}"
-        today_url = calendar_url
-    # Switching views keeps the period: the week of the anchor day, or today's week in the
-    # current month and the first week of any other month.
-    week_anchor = anchor or (now.date() if (year, month) == (now.year, now.month) else month_date)
+    # Switching views keeps the period: the anchor day, or today in the current month and the
+    # first of any other month. Every switch link names its view, so the view gets remembered.
+    switch_anchor = anchor or (now.date() if (year, month) == (now.year, now.month) else month_date)
+    view_options = [
+        {
+            "key": key,
+            "label": label,
+            "active": key == view,
+            "url": (
+                f"{calendar_url}?view=month&year={year}&month={month}"
+                if key == "month"
+                else f"{calendar_url}?view={key}&date={switch_anchor.isoformat()}"
+            ),
+        }
+        for key, label in Profile.CALENDAR_VIEW_CHOICES
+    ]
 
     return {
         "active_page": "calendar",
         "calendar_view": view,
+        "calendar_view_options": view_options,
         "calendar_rows": rows,
-        "calendar_week": week,
+        "calendar_grid": time_grid,
         "period_label": period_label,
         "prev_url": prev_url,
         "next_url": next_url,
-        "today_url": today_url,
-        "month_view_url": f"{calendar_url}?year={year}&month={month}",
-        "week_view_url": f"{calendar_url}?view=week&date={week_anchor.isoformat()}",
+        "today_url": f"{calendar_url}?view={view}",
         "month_label": month_label,
         "today_label": f"{get_user_weekday_name(now, user)}, {format_user_date(now, user)}",
         "today_events": today_events,
@@ -766,11 +788,10 @@ def get_calendar_context(user, *, year=None, month=None, view=None, day=None):
     }
 
 
-def _calendar_week(user, anchor, now, events_by_date, tasks_by_date, markers):
-    """Seven day columns for the week view: all-day items on top, timed events placed on a 24 h grid."""
-    week_start = anchor - timedelta(days=anchor.weekday())
-    week_end = week_start + timedelta(days=6)
-    iso_week = week_start.isocalendar().week
+def _calendar_time_grid(user, view, grid_start, day_count, now, events_by_date, tasks_by_date, markers):
+    """Day columns for the week, three-day and day views: all-day items on top, timed events placed
+    on a 24 h grid."""
+    grid_end = grid_start + timedelta(days=day_count - 1)
     manage_fields = {}
 
     def event_item(event):
@@ -785,8 +806,8 @@ def _calendar_week(user, anchor, now, events_by_date, tasks_by_date, markers):
         }
 
     days = []
-    for offset in range(7):
-        day = week_start + timedelta(days=offset)
+    for offset in range(day_count):
+        day = grid_start + timedelta(days=offset)
         all_day = []
         timed = []
         for event in events_by_date.get(day, []):
@@ -815,6 +836,8 @@ def _calendar_week(user, anchor, now, events_by_date, tasks_by_date, markers):
                 {
                     **event_item(event),
                     "time": time_label,
+                    # Only the part where the event ends can be stretched to change its end.
+                    "can_resize": end.date() == day and start != end,
                     "start_minute": start_minute,
                     "duration": max(end_minute - start_minute, WEEK_MIN_EVENT_MINUTES),
                     # Too short for stacked lines: title and time share one line.
@@ -847,16 +870,25 @@ def _calendar_week(user, anchor, now, events_by_date, tasks_by_date, markers):
             }
         )
 
+    range_label = (
+        f"{format_user_date(grid_start, user, include_year=grid_start.year != grid_end.year)}"
+        f" – {format_user_date(grid_end, user)}"
+    )
+    if view == "week":
+        label = f"KW {grid_start.isocalendar().week}"
+    elif view == "day":
+        label = get_user_weekday_name(grid_start, user)
+        range_label = format_user_date(grid_start, user)
+    else:
+        label = "3 Tage"
     return {
-        "label": f"KW {iso_week}",
-        "range_label": (
-            f"{format_user_date(week_start, user, include_year=week_start.year != week_end.year)}"
-            f" – {format_user_date(week_end, user)}"
-        ),
+        "label": label,
+        "range_label": range_label,
+        "day_count": day_count,
         "days": days,
         "hours": [format_user_time(time(hour), user) for hour in range(24)],
         "scroll_minute": (
-            max(now.hour - 1, 0) * 60 if week_start <= now.date() <= week_end else WEEK_DEFAULT_SCROLL_MINUTE
+            max(now.hour - 1, 0) * 60 if grid_start <= now.date() <= grid_end else WEEK_DEFAULT_SCROLL_MINUTE
         ),
     }
 

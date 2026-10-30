@@ -1,13 +1,13 @@
 import calendar
 import secrets
-from datetime import UTC, timedelta
+from datetime import UTC, datetime, time, timedelta
 
 from django.db.models import Q
 from django.utils import timezone
 
 from app.models import CalendarEvent, CalendarEventAttendee, VacationPeriod
 from app.services.system_settings import feature_enabled
-from app.services.user_preferences import localtime_for_user
+from app.services.user_preferences import get_user_zoneinfo, localtime_for_user
 
 # Subscribers only need recent history; everything ahead is always included.
 FEED_LOOKBACK_DAYS = 180
@@ -69,6 +69,44 @@ def series_scope_events(event, scope):
     if scope == SERIES_SCOPE_FOLLOWING:
         events = events.filter(start_at__gte=event.start_at)
     return events
+
+
+# An event stretched on the time grid keeps at least this length.
+EVENT_MIN_DURATION = timedelta(minutes=15)
+
+
+def move_calendar_event(user, event_id, *, target_date, start_minute=None, end_minute=None):
+    """Move the user's own event by drag and drop, or stretch it.
+
+    Dropped onto a day it moves there keeping its time of day and length; dropped onto the time grid
+    (`start_minute` after midnight) it gets that start time too, except an all-day event, which only
+    changes its day. With `end_minute` its end is set to that minute of `target_date` instead (its
+    bottom edge dragged on the time grid). A series occurrence moves alone, like "Nur dieser Termin".
+    Returns the event, or None when it isn't the user's or a stretched end wouldn't follow the start.
+    """
+    event = CalendarEvent.objects.filter(user=user, pk=event_id).first()
+    if event is None:
+        return None
+    user_timezone = get_user_zoneinfo(user)
+    # Local wall-clock arithmetic keeps the time of day and length across daylight-saving changes.
+    start = event.start_at.astimezone(user_timezone).replace(tzinfo=None)
+    end = event.end_at.astimezone(user_timezone).replace(tzinfo=None)
+    day_start = datetime.combine(target_date, time.min)
+
+    if end_minute is not None:
+        new_end = day_start + timedelta(minutes=end_minute)
+        if event.is_all_day or new_end - start < EVENT_MIN_DURATION:
+            return None
+        event.end_at = new_end.replace(tzinfo=user_timezone)
+    else:
+        if start_minute is None or event.is_all_day:
+            new_start = datetime.combine(target_date, start.time())
+        else:
+            new_start = day_start + timedelta(minutes=start_minute)
+        event.start_at = new_start.replace(tzinfo=user_timezone)
+        event.end_at = (new_start + (end - start)).replace(tzinfo=user_timezone)
+    event.save(update_fields=["start_at", "end_at", "updated_at"])
+    return event
 
 
 def reset_calendar_feed_token(profile):

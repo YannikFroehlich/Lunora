@@ -801,6 +801,16 @@ class TaskRescheduleForm(forms.Form):
     due_time = forms.TimeField(required=False, input_formats=["%H:%M"])
 
 
+class CalendarEventMoveForm(forms.Form):
+    """An event dragged in the calendar: dropped onto a day, onto the time grid (start_minute), or its
+    bottom edge stretched on the time grid (end_minute), each counted in minutes after midnight."""
+
+    event_id = forms.IntegerField(min_value=1)
+    date = forms.DateField(input_formats=["%Y-%m-%d"])
+    start_minute = forms.IntegerField(required=False, min_value=0, max_value=24 * 60 - 1)
+    end_minute = forms.IntegerField(required=False, min_value=1, max_value=24 * 60)
+
+
 class TaskListForm(forms.ModelForm):
     class Meta:
         model = TaskList
