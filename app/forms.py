@@ -7,7 +7,9 @@ from django.contrib.auth.forms import AuthenticationForm, UserCreationForm, User
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.core.files.storage import default_storage
+from django.db import transaction
 from django.db.models import Q
+from django.utils import timezone
 
 from app.models import (
     Bookmark,
@@ -29,10 +31,18 @@ from app.models import (
     VocabularyCard,
     VocabularyList,
 )
-from app.services.calendar_service import expand_manual_recurrence
+from app.services.calendar_service import (
+    SERIES_SCOPE_CHOICES,
+    SERIES_SCOPE_FOLLOWING,
+    SERIES_SCOPE_THIS,
+    expand_manual_recurrence,
+    series_scope_events,
+)
 from app.services.chat_files import infer_attachment_kind, validate_note_upload
 from app.services.image_uploads import PROFILE_IMAGE_ACCEPT, validate_profile_image_file
 from app.services.notification_preferences import CATEGORY_DEFINITIONS
+from app.services.quick_add import parse_quick_add
+from app.services.tasks import DEFAULT_DUE_TIME
 from app.services.user_preferences import get_user_zoneinfo, localtime_for_user
 
 LOGIN_ATTEMPT_LIMIT = 5
@@ -124,6 +134,7 @@ class SystemSettingsForm(forms.ModelForm):
             "dashboard_customization_enabled",
             "tasks_enabled",
             "tools_enabled",
+            "note_public_links_enabled",
         ]
         labels = {
             "normal_login_enabled": "Login und Registrierung für Nutzer",
@@ -137,6 +148,7 @@ class SystemSettingsForm(forms.ModelForm):
             "dashboard_customization_enabled": "Dashboard anpassen",
             "tasks_enabled": "Aufgaben",
             "tools_enabled": "Werkzeuge (Gewohnheiten, Fokus-Timer, UML, Vokabeln)",
+            "note_public_links_enabled": "Notizen: öffentliche Links zum Lesen ohne Anmeldung",
         }
         widgets = {
             "normal_login_enabled": forms.CheckboxInput(),
@@ -150,6 +162,7 @@ class SystemSettingsForm(forms.ModelForm):
             "dashboard_customization_enabled": forms.CheckboxInput(),
             "tasks_enabled": forms.CheckboxInput(),
             "tools_enabled": forms.CheckboxInput(),
+            "note_public_links_enabled": forms.CheckboxInput(),
         }
 
 
@@ -732,7 +745,7 @@ class TaskForm(forms.ModelForm):
         widgets = {
             "title": forms.TextInput(
                 attrs={
-                    "placeholder": "Neue Aufgabe hinzufügen …",
+                    "placeholder": "Neue Aufgabe, z. B. „Bericht abgeben Freitag 14 Uhr !hoch“",
                     "autocomplete": "off",
                 }
             )
@@ -740,11 +753,52 @@ class TaskForm(forms.ModelForm):
 
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.user = user
+        self.quick_add_result = None
         if user is not None:
             self.fields["task_list"].queryset = TaskList.objects.filter(owner=user)
             # A parent must itself be a top-level task, which caps subtasks at one level deep.
             self.fields["parent"].queryset = Task.objects.filter(user=user, parent__isnull=True)
             self.fields["labels"].queryset = TaskLabel.objects.filter(owner=user)
+
+    def clean(self):
+        cleaned_data = super().clean()
+        # Only new tasks read their title as quick-add text; editing keeps the title as typed.
+        if self.instance.pk is None and self.user is not None and cleaned_data.get("title"):
+            self._apply_quick_add(cleaned_data)
+        return cleaned_data
+
+    def _apply_quick_add(self, cleaned_data):
+        """Take a due date/time, priority and labels from the title ("Bericht Freitag 14 Uhr !hoch #arbeit").
+        Fields filled in explicitly win over what the title says."""
+        now = localtime_for_user(profile_or_user=self.user)
+        result = parse_quick_add(
+            cleaned_data["title"],
+            today=now.date(),
+            now_time=now.time().replace(tzinfo=None),
+            labels={label.name.lower(): label for label in self.fields["labels"].queryset},
+        )
+        if not result.found_anything:
+            return
+        cleaned_data["title"] = result.title
+        if result.due_date and not cleaned_data.get("due_at"):
+            cleaned_data["due_at"] = datetime.combine(
+                result.due_date, result.due_time or DEFAULT_DUE_TIME, tzinfo=get_user_zoneinfo(self.user)
+            )
+        if result.priority and cleaned_data.get("priority") in {None, "", Task.PRIORITY_NONE}:
+            cleaned_data["priority"] = result.priority
+        if result.labels:
+            chosen = list(cleaned_data.get("labels") or [])
+            cleaned_data["labels"] = chosen + [label for label in result.labels if label not in chosen]
+        self.quick_add_result = result
+
+
+class TaskRescheduleForm(forms.Form):
+    """A task dropped onto a calendar day; due_time only comes with a drop onto the week's time grid."""
+
+    task_id = forms.IntegerField(min_value=1)
+    due_date = forms.DateField(input_formats=["%Y-%m-%d"])
+    due_time = forms.TimeField(required=False, input_formats=["%H:%M"])
 
 
 class TaskListForm(forms.ModelForm):
@@ -1053,6 +1107,56 @@ class CalendarEventForm(_CalendarEventDateTimeForm):
         return events[0] if events else None
 
 
+class CalendarQuickAddForm(forms.Form):
+    """One line like "Zahnarzt morgen 14 Uhr" becomes an event: an hour long at the named time, or all
+    day when only a date is given. Anything more detailed goes through the full event dialog."""
+
+    text = forms.CharField(
+        label="Schnell eintragen",
+        max_length=255,
+        widget=forms.TextInput(
+            attrs={"placeholder": "Schnell eintragen, z. B. „Zahnarzt morgen 14 Uhr“", "autocomplete": "off"}
+        ),
+    )
+
+    def __init__(self, *args, user=None, **kwargs):
+        self.user = user
+        super().__init__(*args, **kwargs)
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if not cleaned_data.get("text"):
+            return cleaned_data
+        now = localtime_for_user(profile_or_user=self.user)
+        result = parse_quick_add(
+            cleaned_data["text"].strip(), today=now.date(), now_time=now.time().replace(tzinfo=None)
+        )
+        if not result.due_date:
+            raise forms.ValidationError(
+                "Kein Datum erkannt. Schreib z. B. „morgen“, „Freitag“ oder „15.3.“ dazu – "
+                "oder lege den Termin über „Termin“ an."
+            )
+        cleaned_data["result"] = result
+        return cleaned_data
+
+    def save(self):
+        result = self.cleaned_data["result"]
+        user_timezone = get_user_zoneinfo(self.user)
+        if result.due_time:
+            start_at = datetime.combine(result.due_date, result.due_time, tzinfo=user_timezone)
+            end_at = start_at + timedelta(hours=1)
+        else:
+            start_at = datetime.combine(result.due_date, time.min, tzinfo=user_timezone)
+            end_at = datetime.combine(result.due_date + timedelta(days=1), time.min, tzinfo=user_timezone)
+        return CalendarEvent.objects.create(
+            user=self.user,
+            title=result.title,
+            start_at=start_at,
+            end_at=end_at,
+            is_all_day=result.due_time is None,
+        )
+
+
 def event_last_date(event, local_start, local_end):
     """The event's last day for the "Bis" field, or None for single-day events (end_at is exclusive)."""
     last_date = (local_end - timedelta(seconds=1)).date() if event.is_all_day else local_end.date()
@@ -1060,6 +1164,15 @@ def event_last_date(event, local_start, local_end):
 
 
 class CalendarEventEditForm(_CalendarEventDateTimeForm):
+    # Only offered for events of a series; anything else always edits just the event itself.
+    scope = forms.ChoiceField(
+        label="Änderungen übernehmen für",
+        choices=SERIES_SCOPE_CHOICES,
+        initial=SERIES_SCOPE_THIS,
+        required=False,
+        widget=forms.RadioSelect,
+    )
+
     def __init__(self, *args, user=None, instance=None, **kwargs):
         self.instance = instance
         super().__init__(*args, user=user, **kwargs)
@@ -1080,33 +1193,82 @@ class CalendarEventEditForm(_CalendarEventDateTimeForm):
                 }
             )
 
+    def clean_scope(self):
+        return self.cleaned_data.get("scope") or SERIES_SCOPE_THIS
+
+    @transaction.atomic
     def save(self):
+        """Apply the edit to the event, or with a series scope to the chosen occurrences of its series.
+
+        Series occurrences take the new title, category, place, times and attendees, and move by as
+        many days as the edited occurrence moved, so a weekly series stays on its weekday rhythm.
+        "Dieser und alle folgenden" splits those occurrences off into a series of their own.
+        """
         event = self.instance
-        event.title = self.cleaned_data["title"]
-        event.category = self.cleaned_data["category"]
-        event.location = self.cleaned_data["location"]
-        event.start_at = self.cleaned_data["start_at"]
-        event.end_at = self.cleaned_data["end_at"]
-        event.is_all_day = self.cleaned_data["is_all_day"]
-        event.save(
-            update_fields=["title", "category", "location", "start_at", "end_at", "is_all_day", "updated_at"]
+        scope = self.cleaned_data["scope"]
+        targets = list(series_scope_events(event, scope).order_by("start_at", "id"))
+        user_timezone = get_user_zoneinfo(self.user)
+        new_start = self.cleaned_data["start_at"]
+        new_end = self.cleaned_data["end_at"]
+        day_shift = new_start.date() - event.start_at.astimezone(user_timezone).date()
+        end_day_offset = new_end.date() - new_start.date()
+        split_series = (
+            scope == SERIES_SCOPE_FOLLOWING
+            and CalendarEvent.objects.filter(
+                user_id=event.user_id, recurrence_id=event.recurrence_id, start_at__lt=event.start_at
+            ).exists()
+        )
+        recurrence_id = uuid.uuid4() if split_series else event.recurrence_id
+        now = timezone.now()
+
+        for target in targets:
+            if target.pk == event.pk:
+                target.start_at, target.end_at = new_start, new_end
+            else:
+                # Local wall-clock arithmetic keeps the time of day across daylight-saving changes.
+                target_date = target.start_at.astimezone(user_timezone).date() + day_shift
+                target.start_at = datetime.combine(target_date, new_start.time(), tzinfo=user_timezone)
+                target.end_at = datetime.combine(
+                    target_date + end_day_offset, new_end.time(), tzinfo=user_timezone
+                )
+            target.title = self.cleaned_data["title"]
+            target.category = self.cleaned_data["category"]
+            target.location = self.cleaned_data["location"]
+            target.is_all_day = self.cleaned_data["is_all_day"]
+            target.recurrence_id = recurrence_id
+            target.updated_at = now
+        CalendarEvent.objects.bulk_update(
+            targets,
+            [
+                "title",
+                "category",
+                "location",
+                "start_at",
+                "end_at",
+                "is_all_day",
+                "recurrence_id",
+                "updated_at",
+            ],
         )
 
         new_attendee_ids = {attendee.id for attendee in self.cleaned_data.get("attendees") or []}
-        existing_attendee_ids = set(event.attendees.values_list("user_id", flat=True))
-
-        to_remove = existing_attendee_ids - new_attendee_ids
-        if to_remove:
-            event.attendees.filter(user_id__in=to_remove).delete()
-
-        to_add = new_attendee_ids - existing_attendee_ids
-        if to_add:
-            invitation_rows = CalendarEventAttendee.objects.bulk_create(
-                [
-                    CalendarEventAttendee(event=event, user_id=user_id, invited_by=self.user)
-                    for user_id in to_add
-                ]
-            )
+        target_ids = [target.pk for target in targets]
+        existing = set(
+            CalendarEventAttendee.objects.filter(event_id__in=target_ids).values_list("event_id", "user_id")
+        )
+        # Existing attendees keep their invitation and answer; only removed ones lose it.
+        CalendarEventAttendee.objects.filter(event_id__in=target_ids).exclude(
+            user_id__in=new_attendee_ids
+        ).delete()
+        invitation_rows = CalendarEventAttendee.objects.bulk_create(
+            [
+                CalendarEventAttendee(event=target, user_id=user_id, invited_by=self.user)
+                for target in targets
+                for user_id in new_attendee_ids
+                if (target.pk, user_id) not in existing
+            ]
+        )
+        if invitation_rows:
             from app.services.notifications import materialize_event_invitation_notifications
 
             materialize_event_invitation_notifications(invitation_rows)

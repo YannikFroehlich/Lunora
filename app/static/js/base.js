@@ -568,9 +568,10 @@ function registerLunoraServiceWorker() {
 
 registerLunoraServiceWorker();
 
-// Forms carrying data-confirm ask before submitting (e.g. destructive delete buttons).
+// Forms carrying data-confirm ask before submitting (e.g. destructive delete buttons). A submit
+// button can carry its own data-confirm, so one form can have a plain save and a guarded delete.
 document.addEventListener("submit", (event) => {
-  const message = event.target.dataset?.confirm;
+  const message = event.submitter?.dataset?.confirm || event.target.dataset?.confirm;
   if (message && !window.confirm(message)) event.preventDefault();
 });
 

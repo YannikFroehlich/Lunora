@@ -183,4 +183,11 @@ urlpatterns = [
         view.note_attachment_download,
         name="note_attachment_download",
     ),
+    path("notes/api/<int:note_id>/public-link/", view.note_public_link_api, name="note_public_link_api"),
+    path("s/notes/<str:token>/", view.note_public, name="note_public"),
+    path(
+        "s/notes/<str:token>/files/<uuid:file_id>/<str:disposition>/",
+        view.note_public_attachment,
+        name="note_public_attachment",
+    ),
 ]

@@ -1,6 +1,7 @@
 import copy
 import difflib
 import re
+import secrets
 import uuid
 from datetime import timedelta
 
@@ -22,6 +23,7 @@ from django.db.models import (
     Value,
     When,
 )
+from django.urls import reverse
 from django.utils import timezone
 
 from app.models import (
@@ -504,6 +506,8 @@ def serialize_note(note, user, *, include_document=True):
             for share in note.shares.all()
         ]
         payload["backlinks"] = get_note_backlinks(note, user)
+        if permission == "owner":
+            payload["public_path"] = note_public_path(note)
     return payload
 
 
@@ -995,6 +999,39 @@ def remove_note_share(owner, note_id, target_user_id):
         raise PermissionDenied("Nur der Eigentümer darf Freigaben verwalten.")
     NoteShare.objects.filter(note=note, user_id=target_user_id).delete()
     NoteUserState.objects.filter(note=note, user_id=target_user_id).delete()
+
+
+def set_note_public_link(owner, note_id, *, enabled, rotate=False):
+    """Turn the note's read-only public link on (keeping an existing link unless `rotate` asks for a
+    new one, which makes the old address stop working) or off. Only the owner manages it."""
+    # A note in the trash can still have its link turned off, just not on.
+    note = get_accessible_note(owner, note_id, allow_deleted=True)
+    if note.owner_id != owner.id:
+        raise PermissionDenied("Nur der Eigentümer darf den öffentlichen Link verwalten.")
+    if enabled and note.deleted_at:
+        raise ValidationError("Notizen im Papierkorb können nicht öffentlich geteilt werden.")
+    if not enabled:
+        note.public_token = None
+    elif rotate or not note.public_token:
+        note.public_token = secrets.token_urlsafe(32)
+    # .update() keeps updated_at, so sharing doesn't count as an edit of the note.
+    Note.objects.filter(pk=note.pk).update(public_token=note.public_token)
+    return note
+
+
+def get_public_note(token):
+    """The note behind a public link, or None: unknown token, note in the trash or owner deactivated."""
+    if not token:
+        return None
+    return (
+        Note.objects.select_related("owner", "owner__profile", "last_edited_by", "last_edited_by__profile")
+        .filter(public_token=token, deleted_at__isnull=True, owner__is_active=True)
+        .first()
+    )
+
+
+def note_public_path(note):
+    return reverse("note_public", args=[note.public_token]) if note.public_token else None
 
 
 def purge_expired_notes(*, now=None):

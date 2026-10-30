@@ -360,6 +360,22 @@
         <label class="dialog-search"><span>Person suchen</span><input type="search" placeholder="Name oder E-Mail" data-share-search></label>
         <div class="share-candidates" data-share-candidates></div>
         <div class="share-list" data-share-list></div>
+        {% if feature_flags.note_public_links %}
+        <section class="public-link-panel" data-public-link>
+            <div class="public-link-head">
+                <span>
+                    <strong><i class="fa-solid fa-globe" aria-hidden="true"></i> Öffentlicher Link</strong>
+                    <small>Jeder mit dem Link kann die Notiz ohne Anmeldung lesen, aber nicht bearbeiten.</small>
+                </span>
+                <label class="switch" aria-label="Öffentlichen Link aktivieren"><input type="checkbox" data-public-link-toggle></label>
+            </div>
+            <div class="public-link-row" data-public-link-row hidden>
+                <input type="text" readonly aria-label="Öffentlicher Link" data-public-link-url>
+                <button class="ghost-button" type="button" data-public-link-copy><i class="fa-regular fa-copy" aria-hidden="true"></i> Kopieren</button>
+                <button class="ghost-button" type="button" data-public-link-rotate title="Neuen Link erzeugen; der bisherige funktioniert dann nicht mehr"><i class="fa-solid fa-rotate" aria-hidden="true"></i> Neuer Link</button>
+            </div>
+        </section>
+        {% endif %}
     </form>
 </dialog>
 

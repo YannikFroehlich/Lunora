@@ -1,0 +1,2 @@
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./chunks/katex-DdOlg-Vz.js","./chunks/math-renderer-B-LInNAB.js"])))=>i.map(i=>d[i]);
+import{t as e}from"./chunks/preload-helper-CRzLMJPS.js";var t=document.querySelectorAll(`[data-latex]`);if(t.length){let{default:n}=await e(async()=>{let{default:e}=await import(`./chunks/katex-DdOlg-Vz.js`);return{default:e}},__vite__mapDeps([0,1]),import.meta.url);t.forEach(e=>{n.render(e.dataset.latex,e,{displayMode:e.dataset.display===`block`,throwOnError:!1})})}

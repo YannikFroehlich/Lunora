@@ -8,6 +8,7 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db.models import Q
 from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils.http import content_disposition_header
 from django.views.decorators.http import require_http_methods
 
@@ -23,6 +24,7 @@ from app.models import (
 )
 from app.services.note_content import NOTE_TEMPLATE_LABELS, NOTE_TEMPLATES
 from app.services.note_files import NOTE_FILE_ACCEPT, NOTE_IMAGE_ACCEPT
+from app.services.note_html import render_note_html
 from app.services.note_markdown import note_markdown_filename, render_note_markdown
 from app.services.note_pdf import note_pdf_filename, render_note_pdf
 from app.services.note_search import search_notes
@@ -45,11 +47,13 @@ from app.services.notes import (
     display_name,
     duplicate_note,
     get_accessible_note,
+    get_public_note,
     list_comment_threads,
     list_note_templates,
     mark_shared_note_opened,
     move_note_tree_item,
     note_accessible_user_ids,
+    note_public_path,
     ping_note_presence,
     remove_note_share,
     rename_note_folder,
@@ -61,12 +65,14 @@ from app.services.notes import (
     serialize_version,
     set_comment_thread_resolved,
     set_note_folder,
+    set_note_public_link,
     set_note_style,
     set_personal_state,
     set_trash_state,
     share_note,
 )
 from app.services.system_settings import disabled_feature_response, feature_enabled
+from app.services.user_preferences import format_user_datetime
 
 SHORTCUT_ACTIONS = {
     "save",
@@ -865,6 +871,10 @@ def note_attachment_download(request, file_id, disposition):
         get_accessible_note(request.user, attachment.note_id)
     except Note.DoesNotExist:
         return _error_response("Datei nicht gefunden.", status=404)
+    return _attachment_response(attachment, disposition)
+
+
+def _attachment_response(attachment, disposition):
     response = FileResponse(
         attachment.file.open("rb"),
         content_type=attachment.content_type or "application/octet-stream",
@@ -875,6 +885,84 @@ def note_attachment_download(request, file_id, disposition):
     )
     response["X-Content-Type-Options"] = "nosniff"
     return response
+
+
+@login_required
+@require_http_methods(["POST", "DELETE"])
+def note_public_link_api(request, note_id):
+    """POST turns the read-only public link on (`{"rotate": true}` replaces it), DELETE turns it off."""
+    disabled = _feature_guard(request, json_response=True) or _public_links_guard(request, json_response=True)
+    if disabled:
+        return disabled
+    try:
+        payload = _json_body(request) if request.method == "POST" else {}
+        note = set_note_public_link(
+            request.user,
+            note_id,
+            enabled=request.method == "POST",
+            rotate=payload.get("rotate") is True,
+        )
+        return JsonResponse({"ok": True, "public_path": note_public_path(note)})
+    except Note.DoesNotExist:
+        return _error_response("Notiz nicht gefunden.", status=404)
+    except PermissionDenied as error:
+        return _error_response(error, status=403)
+    except ValidationError as error:
+        return _error_response(error)
+
+
+def _public_links_guard(request, *, json_response=False):
+    if feature_enabled("note_public_links"):
+        return None
+    return disabled_feature_response(request, "note_public_links", json_response=json_response)
+
+
+def _public_response(response):
+    # The token in the address is the only credential: keep it out of other sites' referrers, search
+    # engines and shared caches. "same-origin" rather than "no-referrer", which would send `Origin: null`
+    # and fail the CSRF check of same-origin forms on the page (e.g. logging out).
+    response["Referrer-Policy"] = "same-origin"
+    response["X-Robots-Tag"] = "noindex, nofollow"
+    response["Cache-Control"] = "private, no-cache"
+    return response
+
+
+@require_http_methods(["GET"])
+def note_public(request, token):
+    """Read-only page of a note shared by public link; no login, the secret token is the credential."""
+    disabled = _feature_guard(request) or _public_links_guard(request)
+    if disabled:
+        return disabled
+    note = get_public_note(token)
+    if note is None:
+        raise Http404
+
+    def attachment_url(attachment, disposition):
+        return reverse("note_public_attachment", args=[token, attachment.file_id, disposition])
+
+    note_body = render_note_html(note, attachment_url=attachment_url)
+    context = {
+        "active_page": "note_public",
+        "note": note,
+        "note_body": note_body,
+        "updated_label": format_user_datetime(note.updated_at, note.owner),
+        "editor_name": display_name(note.last_edited_by or note.owner),
+        # KaTeX and its stylesheet only load for notes that contain formulas.
+        "has_math": "data-latex" in note_body,
+    }
+    return _public_response(render(request, "app/note_public.html", context))
+
+
+@require_http_methods(["GET"])
+def note_public_attachment(request, token, file_id, disposition):
+    disabled = _feature_guard(request) or _public_links_guard(request)
+    if disabled:
+        return disabled
+    note = get_public_note(token)
+    attachment = note.attachments.filter(file_id=file_id).first() if note else None
+    if attachment is None or disposition not in {"inline", "download"}:
+        raise Http404
+    return _public_response(_attachment_response(attachment, disposition))
 
 
 @login_required

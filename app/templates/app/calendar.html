@@ -20,19 +20,43 @@
     <div class="calendar-layout">
         <section class="glass-panel month-panel" aria-labelledby="calendar-month-title">
             <div class="month-toolbar">
-                <a class="icon-button" href="{% url 'calendar' %}?year={{ prev_month.year }}&month={{ prev_month.month }}" aria-label="Vorheriger Monat"><i class="fa-solid fa-chevron-left"></i></a>
-                <h2 id="calendar-month-title">{{ month_label }}</h2>
-                <a class="icon-button" href="{% url 'calendar' %}?year={{ next_month.year }}&month={{ next_month.month }}" aria-label="Nächster Monat"><i class="fa-solid fa-chevron-right"></i></a>
+                <a class="icon-button" href="{{ prev_url }}" aria-label="{% if calendar_view == 'week' %}Vorherige Woche{% else %}Vorheriger Monat{% endif %}"><i class="fa-solid fa-chevron-left"></i></a>
+                <h2 id="calendar-month-title">{{ period_label }}{% if calendar_week %} <small>{{ calendar_week.range_label }}</small>{% endif %}</h2>
+                <a class="icon-button" href="{{ next_url }}" aria-label="{% if calendar_view == 'week' %}Nächste Woche{% else %}Nächster Monat{% endif %}"><i class="fa-solid fa-chevron-right"></i></a>
                 <span class="toolbar-spacer"></span>
+                <nav class="calendar-view-switch" aria-label="Ansicht">
+                    <a href="{{ month_view_url }}" {% if calendar_view == 'month' %}class="is-active" aria-current="page"{% endif %}>Monat</a>
+                    <a href="{{ week_view_url }}" {% if calendar_view == 'week' %}class="is-active" aria-current="page"{% endif %}>Woche</a>
+                </nav>
                 {% if calendar_event_creation_enabled %}
                 <button class="ghost-button" type="button" data-event-dialog-open>
                     <i class="fa-solid fa-plus" aria-hidden="true"></i>
                     Termin
                 </button>
                 {% endif %}
-                <a class="ghost-button" href="{% url 'calendar' %}"><i class="fa-regular fa-calendar"></i> Heute</a>
+                <a class="ghost-button" href="{{ today_url }}"><i class="fa-regular fa-calendar"></i> Heute</a>
             </div>
 
+            {% if quick_add_form %}
+            <form class="calendar-quick-add" method="post">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="calendar_quick_add">
+                <label class="calendar-quick-add-field" for="{{ quick_add_form.text.id_for_label }}">
+                    <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
+                    <span class="visually-hidden">{{ quick_add_form.text.label }}</span>
+                    {{ quick_add_form.text }}
+                    <button class="icon-button" type="submit" aria-label="Termin eintragen"><i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>
+                </label>
+                {% if quick_add_form.errors %}<div class="form-errors">{{ quick_add_form.non_field_errors }}{{ quick_add_form.text.errors }}</div>{% endif %}
+            </form>
+            {% endif %}
+
+            {% if calendar_view == 'week' %}
+            {% if calendar_event_creation_enabled %}
+            <p class="calendar-hint">Rechtsklick auf eine Uhrzeit (am Handy antippen) oder mit gedrückter Maustaste über eine Zeitspanne ziehen, um direkt einen Termin anzulegen. In der Zeile „Ganztägig“ über mehrere Tage ziehen für einen ganztägigen Termin.</p>
+            {% endif %}
+            {% include 'app/partials/calendar_week.html' %}
+            {% else %}
             {% if calendar_event_creation_enabled %}
             <p class="calendar-hint">Rechtsklick auf einen Tag (am Handy antippen) oder mit gedrückter Maustaste über mehrere Tage ziehen, um direkt einen Termin anzulegen.</p>
             {% endif %}
@@ -61,23 +85,13 @@
                         {% endif %}
                         {% for event in day.events %}
                         {% if event.can_delete %}
-                        <button type="button" class="event-chip tone-{{ event.tone }}" title="{{ event.time }} · {{ event.label }} (bearbeiten)" data-event-edit-open
-                            data-event-id="{{ event.event_id }}"
-                            data-edit-title="{{ event.edit_title }}"
-                            data-edit-date="{{ event.edit_date }}"
-                            data-edit-end-date="{{ event.edit_end_date }}"
-                            data-edit-start="{{ event.edit_start_time }}"
-                            data-edit-end="{{ event.edit_end_time }}"
-                            data-edit-all-day="{{ event.edit_is_all_day|yesno:'true,false' }}"
-                            data-edit-category="{{ event.edit_category }}"
-                            data-edit-location="{{ event.edit_location }}"
-                            data-edit-attendees="{{ event.edit_attendee_ids }}">{{ event.label }}</button>
+                        <button type="button" class="event-chip tone-{{ event.tone }}" title="{{ event.time }} · {{ event.label }} (bearbeiten)" {% include 'app/partials/calendar_event_edit_data.html' %}>{{ event.label }}</button>
                         {% else %}
                         <span class="event-chip tone-{{ event.tone }} {% if event.is_invited %}is-invited{% endif %}" title="{{ event.time }} · {{ event.label }}">{% if event.is_invited %}<i class="fa-solid fa-user-group" aria-hidden="true"></i>{% endif %}{{ event.label }}</span>
                         {% endif %}
                         {% endfor %}
                         {% for task in day.tasks %}
-                        <form class="event-chip task-chip" method="post" action="{% url 'tasks' %}" title="Aufgabe fällig {{ task.time }} · {{ task.label }}">
+                        <form class="event-chip task-chip" method="post" action="{% url 'tasks' %}" title="Aufgabe fällig {{ task.time }} · {{ task.label }} (zum Verschieben auf einen anderen Tag ziehen)" draggable="true" data-task-drag="{{ task.id }}" data-task-date="{{ day.date_input }}">
                             {% csrf_token %}
                             <input type="hidden" name="form_name" value="task_toggle">
                             <input type="hidden" name="task_id" value="{{ task.id }}">
@@ -93,6 +107,7 @@
                     {% endfor %}
                 {% endfor %}
             </div>
+            {% endif %}
         </section>
 
         <aside class="side-stack">
@@ -131,17 +146,7 @@
                     <i class="fa-solid {{ event.icon }}"></i>
                     {% if event.can_delete %}
                     <span class="event-row-actions">
-                        <button class="icon-button" type="button" aria-label="Termin bearbeiten" data-event-edit-open
-                            data-event-id="{{ event.event_id }}"
-                            data-edit-title="{{ event.edit_title }}"
-                            data-edit-date="{{ event.edit_date }}"
-                            data-edit-end-date="{{ event.edit_end_date }}"
-                            data-edit-start="{{ event.edit_start_time }}"
-                            data-edit-end="{{ event.edit_end_time }}"
-                            data-edit-all-day="{{ event.edit_is_all_day|yesno:'true,false' }}"
-                            data-edit-category="{{ event.edit_category }}"
-                            data-edit-location="{{ event.edit_location }}"
-                            data-edit-attendees="{{ event.edit_attendee_ids }}"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>
+                        <button class="icon-button" type="button" aria-label="Termin bearbeiten" {% include 'app/partials/calendar_event_edit_data.html' %}><i class="fa-solid fa-pen" aria-hidden="true"></i></button>
                         <form method="post">
                             {% csrf_token %}
                             <input type="hidden" name="form_name" value="calendar_event_delete">
@@ -191,17 +196,7 @@
                     <i class="fa-solid {{ event.icon }}"></i>
                     {% if event.can_delete %}
                     <span class="event-row-actions">
-                        <button class="icon-button" type="button" aria-label="Termin bearbeiten" data-event-edit-open
-                            data-event-id="{{ event.event_id }}"
-                            data-edit-title="{{ event.edit_title }}"
-                            data-edit-date="{{ event.edit_date }}"
-                            data-edit-end-date="{{ event.edit_end_date }}"
-                            data-edit-start="{{ event.edit_start_time }}"
-                            data-edit-end="{{ event.edit_end_time }}"
-                            data-edit-all-day="{{ event.edit_is_all_day|yesno:'true,false' }}"
-                            data-edit-category="{{ event.edit_category }}"
-                            data-edit-location="{{ event.edit_location }}"
-                            data-edit-attendees="{{ event.edit_attendee_ids }}"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>
+                        <button class="icon-button" type="button" aria-label="Termin bearbeiten" {% include 'app/partials/calendar_event_edit_data.html' %}><i class="fa-solid fa-pen" aria-hidden="true"></i></button>
                         <form method="post">
                             {% csrf_token %}
                             <input type="hidden" name="form_name" value="calendar_event_delete">
@@ -461,6 +456,7 @@
             {% csrf_token %}
             <input type="hidden" name="form_name" value="calendar_event_edit">
             <input type="hidden" name="event_id" value="{{ editing_event_id|default:'' }}" data-event-edit-id-input>
+            <input type="hidden" value="{{ editing_event_series|yesno:'true,false' }}" data-event-edit-series-input>
             {% if edit_form.non_field_errors %}
             <div class="form-errors is-wide">{{ edit_form.non_field_errors }}</div>
             {% endif %}
@@ -518,7 +514,19 @@
                 {{ edit_form.attendees.errors }}
             </label>
 
+            <fieldset class="event-series-scope is-wide" data-event-edit-scope hidden>
+                <legend><i class="fa-solid fa-repeat" aria-hidden="true"></i> {{ edit_form.scope.label }}</legend>
+                {% for choice in edit_form.scope %}
+                <label>{{ choice.tag }} <span>{{ choice.choice_label }}</span></label>
+                {% endfor %}
+                <small>Gilt für Speichern und Löschen.</small>
+            </fieldset>
+
             <div class="event-form-actions is-wide">
+                <button class="ghost-button event-delete-button" type="submit" name="form_name" value="calendar_event_delete" formnovalidate data-confirm="Termin wirklich löschen?" data-series-confirm="Ausgewählte Termine der Serie wirklich löschen?">
+                    <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                    Löschen
+                </button>
                 <button class="ghost-button" type="button" data-event-edit-dialog-close>Abbrechen</button>
                 <button class="primary-button" type="submit">
                     <i class="fa-solid fa-check" aria-hidden="true"></i>

@@ -1,5 +1,5 @@
 import calendar
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from urllib.parse import urlparse
 
 from django.db.models import F, Q
@@ -53,6 +53,11 @@ from app.services.user_preferences import (
 )
 from app.services.vacation_planner import annual_summary, calendar_day_markers, upcoming_vacations
 from app.services.vocabulary import due_filter
+
+# Week view: the shortest height an event gets on the time grid, and where the grid starts
+# scrolled for weeks that don't contain today.
+WEEK_MIN_EVENT_MINUTES = 20
+WEEK_DEFAULT_SCROLL_MINUTE = 7 * 60
 
 
 def get_dashboard_context(user=None):
@@ -587,9 +592,19 @@ def _upcoming_vacation_items(user, now, limit):
     return items
 
 
-def get_calendar_context(user, *, year=None, month=None):
+def get_calendar_context(user, *, year=None, month=None, view=None, day=None):
     user_timezone = get_user_zoneinfo(user)
     now = localtime_for_user(profile_or_user=user)
+    view = "week" if view == "week" else "month"
+    anchor = None
+    if view == "week":
+        # The week view is anchored on any day of the shown week; the stats and month grid data
+        # below then belong to that day's month, whose grid always contains the whole week.
+        try:
+            anchor = date.fromisoformat(day) if day else now.date()
+        except (TypeError, ValueError):
+            anchor = now.date()
+        year, month = anchor.year, anchor.month
     try:
         year = int(year or now.year)
         month = int(month or now.month)
@@ -624,7 +639,7 @@ def get_calendar_context(user, *, year=None, month=None):
         markers = calendar_day_markers(user, visible_start, visible_end - timedelta(days=1))
 
     rows = []
-    for week in weeks:
+    for week in weeks if view == "month" else []:
         row = []
         for day in week:
             day_events = events_by_date.get(day, [])
@@ -696,11 +711,36 @@ def get_calendar_context(user, *, year=None, month=None):
     chart_bars = _calendar_chart_bars(month_events, year, month, user)
     prev_month = _shift_month(year, month, -1)
     next_month = _shift_month(year, month, 1)
+    month_label = f"{get_user_month_name(month_date, user)} {year}"
+    calendar_url = reverse("calendar")
+    week = None
+    if view == "week":
+        week = _calendar_week(user, anchor, now, events_by_date, tasks_by_date, markers)
+        period_label = week["label"]
+        prev_url = f"{calendar_url}?view=week&date={(anchor - timedelta(days=7)).isoformat()}"
+        next_url = f"{calendar_url}?view=week&date={(anchor + timedelta(days=7)).isoformat()}"
+        today_url = f"{calendar_url}?view=week"
+    else:
+        period_label = month_label
+        prev_url = f"{calendar_url}?year={prev_month[0]}&month={prev_month[1]}"
+        next_url = f"{calendar_url}?year={next_month[0]}&month={next_month[1]}"
+        today_url = calendar_url
+    # Switching views keeps the period: the week of the anchor day, or today's week in the
+    # current month and the first week of any other month.
+    week_anchor = anchor or (now.date() if (year, month) == (now.year, now.month) else month_date)
 
     return {
         "active_page": "calendar",
+        "calendar_view": view,
         "calendar_rows": rows,
-        "month_label": f"{get_user_month_name(month_date, user)} {year}",
+        "calendar_week": week,
+        "period_label": period_label,
+        "prev_url": prev_url,
+        "next_url": next_url,
+        "today_url": today_url,
+        "month_view_url": f"{calendar_url}?year={year}&month={month}",
+        "week_view_url": f"{calendar_url}?view=week&date={week_anchor.isoformat()}",
+        "month_label": month_label,
         "today_label": f"{get_user_weekday_name(now, user)}, {format_user_date(now, user)}",
         "today_events": today_events,
         "upcoming_events": upcoming_events,
@@ -724,6 +764,130 @@ def get_calendar_context(user, *, year=None, month=None):
         "tasks_enabled": tasks_enabled,
         "due_tasks": due_tasks,
     }
+
+
+def _calendar_week(user, anchor, now, events_by_date, tasks_by_date, markers):
+    """Seven day columns for the week view: all-day items on top, timed events placed on a 24 h grid."""
+    week_start = anchor - timedelta(days=anchor.weekday())
+    week_end = week_start + timedelta(days=6)
+    iso_week = week_start.isocalendar().week
+    manage_fields = {}
+
+    def event_item(event):
+        if event.id not in manage_fields:
+            manage_fields[event.id] = _calendar_event_manage_fields(event, user)
+        return {
+            "label": event.title,
+            "tone": _calendar_event_tone(event),
+            "location": event.location,
+            "is_invited": event.user_id != user.id,
+            **manage_fields[event.id],
+        }
+
+    days = []
+    for offset in range(7):
+        day = week_start + timedelta(days=offset)
+        all_day = []
+        timed = []
+        for event in events_by_date.get(day, []):
+            start = localtime_for_user(event.start_at, user)
+            end = localtime_for_user(event.end_at, user)
+            # Like other calendars, events of a day or longer sit in the all-day row instead of the grid.
+            if event.is_all_day or end - start >= timedelta(days=1):
+                all_day.append({**event_item(event), "time": _calendar_event_time_label(event, user)})
+                continue
+            if start.date() < day:
+                start_minute = 0
+            else:
+                start_minute = start.hour * 60 + start.minute
+            if end.date() > day:
+                end_minute = 24 * 60
+            else:
+                end_minute = end.hour * 60 + end.minute
+            if end_minute <= start_minute and start != end:
+                # A timed event that ends exactly at midnight leaves nothing on the following day.
+                continue
+            start_minute = min(start_minute, 24 * 60 - WEEK_MIN_EVENT_MINUTES)
+            time_label = format_user_time(start, user)
+            if end != start:
+                time_label = f"{time_label} – {format_user_time(end, user)}"
+            timed.append(
+                {
+                    **event_item(event),
+                    "time": time_label,
+                    "start_minute": start_minute,
+                    "duration": max(end_minute - start_minute, WEEK_MIN_EVENT_MINUTES),
+                    # Too short for stacked lines: title and time share one line.
+                    "is_short": end_minute - start_minute < 45,
+                }
+            )
+        _assign_week_lanes(timed)
+        days.append(
+            {
+                "date_input": day.isoformat(),
+                "date_label": format_user_date(day, user),
+                "weekday": get_user_weekday_name(day, user)[:2],
+                "number": str(day.day),
+                "today": day == now.date(),
+                "markers": [
+                    {
+                        "label": marker["label"],
+                        "tone": "red" if marker["kind"] == "holiday" else "green",
+                        "url": _vacation_calendar_url(day),
+                    }
+                    for marker in markers.get(day, [])
+                ],
+                "all_day": all_day,
+                "tasks": [
+                    {"id": task.id, "label": task.title, "time": format_user_time(task.due_at, user)}
+                    for task in tasks_by_date.get(day, [])
+                ],
+                "timed": timed,
+                "now_minute": now.hour * 60 + now.minute if day == now.date() else None,
+            }
+        )
+
+    return {
+        "label": f"KW {iso_week}",
+        "range_label": (
+            f"{format_user_date(week_start, user, include_year=week_start.year != week_end.year)}"
+            f" – {format_user_date(week_end, user)}"
+        ),
+        "days": days,
+        "hours": [format_user_time(time(hour), user) for hour in range(24)],
+        "scroll_minute": (
+            max(now.hour - 1, 0) * 60 if week_start <= now.date() <= week_end else WEEK_DEFAULT_SCROLL_MINUTE
+        ),
+    }
+
+
+def _assign_week_lanes(items):
+    """Place overlapping timed events side by side: each gets a lane and the lane count of its cluster."""
+    items.sort(key=lambda item: (item["start_minute"], -item["duration"]))
+    cluster = []
+    lane_ends = []
+    cluster_end = -1
+
+    def close_cluster():
+        for item in cluster:
+            item["lanes"] = len(lane_ends)
+
+    for item in items:
+        start = item["start_minute"]
+        end = start + item["duration"]
+        if cluster and start >= cluster_end:
+            close_cluster()
+            cluster, lane_ends = [], []
+        lane = next((index for index, lane_end in enumerate(lane_ends) if lane_end <= start), None)
+        if lane is None:
+            lane = len(lane_ends)
+            lane_ends.append(end)
+        else:
+            lane_ends[lane] = end
+        item["lane"] = lane
+        cluster.append(item)
+        cluster_end = max(cluster_end, end) if len(cluster) > 1 else end
+    close_cluster()
 
 
 def _group_calendar_events_by_date(events, visible_start, visible_end, user):

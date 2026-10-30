@@ -27,6 +27,7 @@ class SystemSettings(models.Model):
     dashboard_customization_enabled = models.BooleanField(default=True)
     tasks_enabled = models.BooleanField(default=True)
     tools_enabled = models.BooleanField(default=True)
+    note_public_links_enabled = models.BooleanField(default=True)
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -1092,6 +1093,9 @@ class Note(models.Model):
         related_name="last_edited_notes",
     )
     deleted_at = models.DateTimeField(blank=True, null=True)
+    # Secret of the read-only public link (/s/notes/<token>/); null while the note isn't public.
+    # The token is the only credential, so it stays out of logs, exports and copies.
+    public_token = models.CharField(max_length=64, blank=True, null=True, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

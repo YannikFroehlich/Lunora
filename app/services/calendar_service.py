@@ -50,6 +50,27 @@ def expand_manual_recurrence(start_at, frequency, until):
     return occurrences
 
 
+SERIES_SCOPE_THIS = "this"
+SERIES_SCOPE_FOLLOWING = "following"
+SERIES_SCOPE_ALL = "all"
+SERIES_SCOPE_CHOICES = [
+    (SERIES_SCOPE_THIS, "Nur dieser Termin"),
+    (SERIES_SCOPE_FOLLOWING, "Dieser und alle folgenden"),
+    (SERIES_SCOPE_ALL, "Alle Termine der Serie"),
+]
+
+
+def series_scope_events(event, scope):
+    """The events an edit or delete of `event` applies to: the event alone, it and the later
+    occurrences of its series, or the whole series. Events outside a series only ever cover themselves."""
+    if not event.recurrence_id or scope not in {SERIES_SCOPE_FOLLOWING, SERIES_SCOPE_ALL}:
+        return CalendarEvent.objects.filter(pk=event.pk)
+    events = CalendarEvent.objects.filter(user_id=event.user_id, recurrence_id=event.recurrence_id)
+    if scope == SERIES_SCOPE_FOLLOWING:
+        events = events.filter(start_at__gte=event.start_at)
+    return events
+
+
 def reset_calendar_feed_token(profile):
     """Create or rotate the secret subscription token; any previously shared link stops working."""
     profile.calendar_feed_token = secrets.token_urlsafe(32)

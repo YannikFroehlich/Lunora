@@ -13,6 +13,7 @@ from app.models import (
     CalendarEventAttendee,
     Profile,
     SystemSettings,
+    Task,
     VacationPeriod,
     VacationYear,
 )
@@ -270,3 +271,305 @@ class CalendarCategoryMigrationTests(TestCase):
                 "other": "other",
             },
         )
+
+
+class CalendarWeekViewTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=self.user, display_name="Mira", timezone_name="Europe/Berlin")
+        self.client.login(username="mira@example.com", password="secret-12345")
+        self.berlin = ZoneInfo("Europe/Berlin")
+
+    def create_event(self, title, start, end, **extra):
+        return CalendarEvent.objects.create(
+            user=self.user,
+            title=title,
+            start_at=start.replace(tzinfo=self.berlin),
+            end_at=end.replace(tzinfo=self.berlin),
+            **extra,
+        )
+
+    def week(self, day="2099-08-12"):
+        response = self.client.get(f"/calendar/?view=week&date={day}")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["calendar_view"], "week")
+        return response, {item["date_input"]: item for item in response.context["calendar_week"]["days"]}
+
+    def test_week_shows_monday_to_sunday_of_the_anchor_day_with_navigation(self):
+        response, days = self.week("2099-08-12")
+
+        self.assertEqual(list(days), [f"2099-08-{day:02d}" for day in range(10, 17)])
+        self.assertEqual(
+            [day["weekday"] for day in days.values()], ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+        )
+        week = response.context["calendar_week"]
+        self.assertEqual(week["label"], "KW 33")
+        self.assertEqual(response.context["period_label"], "KW 33")
+        self.assertEqual(response.context["calendar_rows"], [])
+        self.assertEqual(week["scroll_minute"], 7 * 60)
+        self.assertEqual(response.context["prev_url"], "/calendar/?view=week&date=2099-08-05")
+        self.assertEqual(response.context["next_url"], "/calendar/?view=week&date=2099-08-19")
+        self.assertEqual(response.context["month_view_url"], "/calendar/?year=2099&month=8")
+        self.assertTemplateUsed(response, "app/partials/calendar_week.html")
+        self.assertContains(response, 'aria-label="Nächste Woche"')
+
+    def test_timed_events_are_placed_on_the_grid_and_overlaps_share_the_column(self):
+        self.create_event("Standup", datetime(2099, 8, 12, 9, 0), datetime(2099, 8, 12, 10, 30))
+        self.create_event("Review", datetime(2099, 8, 12, 10, 0), datetime(2099, 8, 12, 11, 0))
+        self.create_event("Mittag", datetime(2099, 8, 12, 12, 0), datetime(2099, 8, 12, 12, 0))
+
+        _response, days = self.week()
+
+        timed = {event["label"]: event for event in days["2099-08-12"]["timed"]}
+        self.assertEqual(
+            {
+                label: (item["start_minute"], item["duration"], item["lane"], item["lanes"])
+                for label, item in timed.items()
+            },
+            {"Standup": (540, 90, 0, 2), "Review": (600, 60, 1, 2), "Mittag": (720, 20, 0, 1)},
+        )
+        self.assertEqual(timed["Standup"]["time"], "09:00 – 10:30")
+        self.assertEqual(timed["Mittag"]["time"], "12:00")
+        self.assertTrue(timed["Standup"]["can_delete"])
+        self.assertEqual(timed["Standup"]["edit_start_time"], "09:00")
+        self.assertEqual(days["2099-08-12"]["all_day"], [])
+
+    def test_all_day_and_long_events_go_to_the_all_day_row_and_night_events_are_split(self):
+        self.create_event("Messe", datetime(2099, 8, 11), datetime(2099, 8, 13), is_all_day=True)
+        self.create_event("Konferenz", datetime(2099, 8, 14, 9, 0), datetime(2099, 8, 15, 18, 0))
+        self.create_event("Nachtschicht", datetime(2099, 8, 12, 22, 0), datetime(2099, 8, 13, 6, 0))
+        self.create_event("Bis Mitternacht", datetime(2099, 8, 10, 23, 0), datetime(2099, 8, 11, 0, 0))
+
+        _response, days = self.week()
+
+        self.assertEqual([event["label"] for event in days["2099-08-11"]["all_day"]], ["Messe"])
+        self.assertEqual([event["label"] for event in days["2099-08-12"]["all_day"]], ["Messe"])
+        self.assertEqual(days["2099-08-13"]["all_day"], [])
+        self.assertEqual([event["label"] for event in days["2099-08-15"]["all_day"]], ["Konferenz"])
+        night = [(event["start_minute"], event["duration"]) for event in days["2099-08-12"]["timed"]]
+        self.assertEqual(night, [(22 * 60, 2 * 60)])
+        night = [(event["start_minute"], event["duration"]) for event in days["2099-08-13"]["timed"]]
+        self.assertEqual(night, [(0, 6 * 60)])
+        self.assertEqual([event["label"] for event in days["2099-08-10"]["timed"]], ["Bis Mitternacht"])
+        self.assertEqual(days["2099-08-11"]["timed"], [])
+
+    def test_week_shows_tasks_and_today_and_falls_back_for_invalid_dates(self):
+        today = timezone.localdate(timezone=self.berlin)
+        due_at = timezone.make_aware(datetime.combine(today, datetime.min.time()), self.berlin) + timedelta(
+            hours=15
+        )
+        Task.objects.create(user=self.user, title="Steuer", due_at=due_at)
+
+        response, days = self.week("kein-datum")
+
+        today_item = days[today.isoformat()]
+        self.assertTrue(today_item["today"])
+        self.assertIsNotNone(today_item["now_minute"])
+        self.assertEqual([task["label"] for task in today_item["tasks"]], ["Steuer"])
+        self.assertEqual(response.context["today_url"], "/calendar/?view=week")
+        self.assertEqual(response.context["week_view_url"], f"/calendar/?view=week&date={today.isoformat()}")
+
+    def test_month_view_stays_the_default_and_links_to_the_week(self):
+        response = self.client.get("/calendar/?year=2099&month=8")
+
+        self.assertEqual(response.context["calendar_view"], "month")
+        self.assertIsNone(response.context["calendar_week"])
+        self.assertEqual(response.context["period_label"], "August 2099")
+        self.assertEqual(response.context["week_view_url"], "/calendar/?view=week&date=2099-08-01")
+        self.assertEqual(response.context["next_url"], "/calendar/?year=2099&month=9")
+        self.assertTemplateNotUsed(response, "app/partials/calendar_week.html")
+
+    def test_posts_from_the_week_view_redirect_back_to_it(self):
+        response = self.client.post(
+            "/calendar/?view=week&date=2099-08-12",
+            {
+                "form_name": "calendar_event_add",
+                "title": "Workshop",
+                "event_date": "2099-08-13",
+                "start_time": "14:00",
+                "end_time": "16:00",
+                "category": CalendarEvent.CATEGORY_MEETING,
+                "repeat": "none",
+            },
+        )
+
+        self.assertRedirects(response, "/calendar/?view=week&date=2099-08-12")
+        _response, days = self.week()
+        self.assertEqual(
+            [
+                (event["label"], event["start_minute"], event["duration"])
+                for event in days["2099-08-13"]["timed"]
+            ],
+            [("Workshop", 14 * 60, 120)],
+        )
+
+
+class CalendarSeriesEditTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=self.user, display_name="Mira", timezone_name="Europe/Berlin")
+        self.guest = User.objects.create_user(username="jonas@example.com", email="jonas@example.com")
+        self.other_guest = User.objects.create_user(username="lea@example.com", email="lea@example.com")
+        self.client.login(username="mira@example.com", password="secret-12345")
+        self.berlin = ZoneInfo("Europe/Berlin")
+        # Five Wednesdays across the end of daylight saving time (25 October 2099).
+        response = self.client.post(
+            "/calendar/",
+            {
+                "form_name": "calendar_event_add",
+                "title": "Teamrunde",
+                "event_date": "2099-10-07",
+                "start_time": "10:00",
+                "end_time": "11:00",
+                "category": CalendarEvent.CATEGORY_MEETING,
+                "repeat": "WEEKLY",
+                "repeat_until": "2099-11-04",
+                "attendees": [self.guest.id],
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.series = list(CalendarEvent.objects.order_by("start_at"))
+        self.assertEqual(len(self.series), 5)
+
+    def edit(self, event, scope, **changes):
+        data = {
+            "form_name": "calendar_event_edit",
+            "event_id": event.id,
+            "title": "Teamrunde",
+            "event_date": event.start_at.astimezone(self.berlin).date().isoformat(),
+            "start_time": "10:00",
+            "end_time": "11:00",
+            "category": CalendarEvent.CATEGORY_MEETING,
+            "attendees": [self.guest.id],
+            "scope": scope,
+            **changes,
+        }
+        return self.client.post("/calendar/", data)
+
+    def local(self, event):
+        event.refresh_from_db()
+        start = event.start_at.astimezone(self.berlin)
+        end = event.end_at.astimezone(self.berlin)
+        return (event.title, start.date().isoformat(), start.strftime("%H:%M"), end.strftime("%H:%M"))
+
+    def test_only_this_occurrence_changes_and_stays_in_the_series(self):
+        response = self.edit(
+            self.series[1], "this", title="Sonderrunde", start_time="09:00", end_time="09:30"
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.local(self.series[1]), ("Sonderrunde", "2099-10-14", "09:00", "09:30"))
+        self.assertEqual(self.local(self.series[2]), ("Teamrunde", "2099-10-21", "10:00", "11:00"))
+        self.assertEqual(self.series[1].recurrence_id, self.series[0].recurrence_id)
+
+    def test_following_occurrences_move_along_and_split_into_their_own_series(self):
+        response = self.edit(
+            self.series[2],
+            "following",
+            title="Neue Runde",
+            event_date="2099-10-22",
+            start_time="11:30",
+            end_time="12:15",
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            [self.local(event) for event in self.series],
+            [
+                ("Teamrunde", "2099-10-07", "10:00", "11:00"),
+                ("Teamrunde", "2099-10-14", "10:00", "11:00"),
+                ("Neue Runde", "2099-10-22", "11:30", "12:15"),
+                # Past the switch to winter time the local time of day stays the same.
+                ("Neue Runde", "2099-10-29", "11:30", "12:15"),
+                ("Neue Runde", "2099-11-05", "11:30", "12:15"),
+            ],
+        )
+        old_series = {event.recurrence_id for event in self.series[:2]}
+        new_series = {event.recurrence_id for event in self.series[2:]}
+        self.assertEqual(len(old_series), 1)
+        self.assertEqual(len(new_series), 1)
+        self.assertNotEqual(old_series, new_series)
+
+    def test_following_from_the_first_occurrence_keeps_the_series(self):
+        recurrence_id = self.series[0].recurrence_id
+
+        self.edit(self.series[0], "following", title="Umbenannt")
+
+        self.assertEqual(
+            set(CalendarEvent.objects.values_list("title", "recurrence_id")), {("Umbenannt", recurrence_id)}
+        )
+
+    def test_whole_series_takes_new_attendees_and_keeps_existing_answers(self):
+        CalendarEventAttendee.objects.filter(event=self.series[0], user=self.guest).update(
+            status=CalendarEventAttendee.STATUS_ACCEPTED
+        )
+
+        self.edit(self.series[3], "all", attendees=[self.guest.id, self.other_guest.id], location="Raum 2")
+
+        self.assertEqual(set(CalendarEvent.objects.values_list("location", flat=True)), {"Raum 2"})
+        self.assertEqual(CalendarEventAttendee.objects.filter(user=self.other_guest).count(), 5)
+        self.assertEqual(
+            CalendarEventAttendee.objects.get(event=self.series[0], user=self.guest).status,
+            CalendarEventAttendee.STATUS_ACCEPTED,
+        )
+
+        self.edit(self.series[3], "all", attendees=[self.other_guest.id])
+
+        self.assertFalse(CalendarEventAttendee.objects.filter(user=self.guest).exists())
+
+    def test_delete_honours_the_series_scope(self):
+        response = self.client.post(
+            "/calendar/",
+            {
+                "form_name": ["calendar_event_edit", "calendar_event_delete"],
+                "event_id": self.series[3].id,
+                "scope": "following",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            list(CalendarEvent.objects.order_by("start_at").values_list("id", flat=True)),
+            [event.id for event in self.series[:3]],
+        )
+
+        self.client.post(
+            "/calendar/",
+            {"form_name": "calendar_event_delete", "event_id": self.series[1].id, "scope": "this"},
+        )
+        self.assertEqual(CalendarEvent.objects.count(), 2)
+
+    def test_other_users_cannot_edit_or_delete_the_series(self):
+        intruder = User.objects.create_user(username="eve@example.com", password="secret-12345")
+        self.client.force_login(intruder)
+
+        self.edit(self.series[0], "all", title="Gekapert")
+        self.client.post(
+            "/calendar/",
+            {"form_name": "calendar_event_delete", "event_id": self.series[0].id, "scope": "all"},
+        )
+
+        self.assertEqual(CalendarEvent.objects.filter(title="Teamrunde").count(), 5)
+
+    def test_edit_dialog_offers_the_scope_only_for_series(self):
+        single = CalendarEvent.objects.create(
+            user=self.user,
+            title="Einzeltermin",
+            start_at=datetime(2099, 10, 8, 9, tzinfo=self.berlin),
+            end_at=datetime(2099, 10, 8, 10, tzinfo=self.berlin),
+        )
+
+        response = self.client.get("/calendar/?year=2099&month=10")
+
+        events = {
+            item["event_id"]: item for item in response.context["upcoming_events"] if "event_id" in item
+        }
+        self.assertTrue(events[self.series[0].id]["recurrence_id"])
+        self.assertIsNone(events[single.id]["recurrence_id"])
+        self.assertContains(response, 'data-edit-series="true"')
+        self.assertContains(response, 'data-edit-series="false"')
+        self.assertContains(response, 'name="scope" value="following"')

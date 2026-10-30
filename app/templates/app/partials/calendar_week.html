@@ -1,0 +1,75 @@
+{% comment %}
+Week view of calendar.html: day heads, an all-day row (all-day and multi-day events, vacation-planner
+markers, due tasks) and a 24-hour grid whose timed events are positioned by --start/--duration in
+minutes and placed side by side by --lane/--lanes (see _calendar_week in view_models.py).
+{% endcomment %}
+<div class="week-view" data-week-view data-scroll-minute="{{ calendar_week.scroll_minute }}">
+    <div class="week-frame">
+        <div class="week-row week-head">
+            <span class="week-gutter" aria-hidden="true"></span>
+            {% for day in calendar_week.days %}
+            <div class="week-day-head {% if day.today %}is-today{% endif %}">
+                {% if calendar_event_creation_enabled %}
+                <button class="week-day-number" type="button" data-event-date="{{ day.date_input }}" aria-label="Termin am {{ day.date_label }} anlegen">
+                    <span>{{ day.weekday }}</span><strong>{{ day.number }}</strong>
+                </button>
+                {% else %}
+                <span class="week-day-number"><span>{{ day.weekday }}</span><strong>{{ day.number }}</strong></span>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="week-row week-all-day">
+            <span class="week-gutter week-gutter-label">Ganztägig</span>
+            {% for day in calendar_week.days %}
+            <div class="week-all-day-cell {% if day.today %}is-today{% endif %}" data-date="{{ day.date_input }}">
+                {% for marker in day.markers %}
+                <a class="day-marker tone-{{ marker.tone }}" href="{{ marker.url }}" title="{{ marker.label }} – im Urlaubsplaner öffnen">{{ marker.label }}</a>
+                {% endfor %}
+                {% for event in day.all_day %}
+                {% if event.can_delete %}
+                <button type="button" class="event-chip tone-{{ event.tone }}" title="{{ event.time }} · {{ event.label }} (bearbeiten)" {% include 'app/partials/calendar_event_edit_data.html' %}>{{ event.label }}</button>
+                {% else %}
+                <span class="event-chip tone-{{ event.tone }} {% if event.is_invited %}is-invited{% endif %}" title="{{ event.time }} · {{ event.label }}">{% if event.is_invited %}<i class="fa-solid fa-user-group" aria-hidden="true"></i>{% endif %}{{ event.label }}</span>
+                {% endif %}
+                {% endfor %}
+                {% for task in day.tasks %}
+                <form class="event-chip task-chip" method="post" action="{% url 'tasks' %}" title="Aufgabe fällig {{ task.time }} · {{ task.label }} (auf einen anderen Tag oder eine Uhrzeit ziehen)" draggable="true" data-task-drag="{{ task.id }}" data-task-date="{{ day.date_input }}">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="task_toggle">
+                    <input type="hidden" name="task_id" value="{{ task.id }}">
+                    <input type="hidden" name="return_to" value="{{ request.get_full_path }}">
+                    <input type="checkbox" name="is_done" onchange="this.form.submit()" aria-label="Aufgabe „{{ task.label }}“ erledigen">
+                    <span>{{ task.time }} {{ task.label }}</span>
+                </form>
+                {% endfor %}
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="week-row week-body" data-week-body>
+            <div class="week-gutter week-hours" aria-hidden="true">
+                {% for hour in calendar_week.hours %}<span>{{ hour }}</span>{% endfor %}
+            </div>
+            {% for day in calendar_week.days %}
+            <div class="week-column {% if day.today %}is-today{% endif %}" data-week-column data-date="{{ day.date_input }}">
+                {% for event in day.timed %}
+                {% if event.can_delete %}
+                <button type="button" class="week-event tone-{{ event.tone }} {% if event.is_short %}is-short{% endif %}" style="--start: {{ event.start_minute }}; --duration: {{ event.duration }}; --lane: {{ event.lane }}; --lanes: {{ event.lanes }}" title="{{ event.time }} · {{ event.label }} (bearbeiten)" {% include 'app/partials/calendar_event_edit_data.html' %}>
+                {% else %}
+                <span class="week-event tone-{{ event.tone }} {% if event.is_invited %}is-invited{% endif %} {% if event.is_short %}is-short{% endif %}" style="--start: {{ event.start_minute }}; --duration: {{ event.duration }}; --lane: {{ event.lane }}; --lanes: {{ event.lanes }}" title="{{ event.time }} · {{ event.label }}">
+                {% endif %}
+                    <strong>{% if event.is_invited %}<i class="fa-solid fa-user-group" aria-hidden="true"></i> {% endif %}{{ event.label }}</strong>
+                    <small>{{ event.time }}</small>
+                    {% if event.location and not event.is_short %}<small>{{ event.location }}</small>{% endif %}
+                {% if event.can_delete %}</button>{% else %}</span>{% endif %}
+                {% endfor %}
+                {% if day.now_minute is not None %}
+                <span class="week-now" style="--start: {{ day.now_minute }}" data-week-now aria-hidden="true"></span>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>

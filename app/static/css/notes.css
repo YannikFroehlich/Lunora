@@ -1919,6 +1919,37 @@
 .version-row button { min-height: 34px; padding: 0 11px; border-radius: var(--radius-sm); }
 .share-row select { width: 118px; }
 
+/* Read-only public link in the share dialog (notes.js renderPublicLink). */
+.public-link-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 12px;
+  background: var(--surface-control);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-sm);
+}
+
+.public-link-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.public-link-head > span { min-width: 0; flex: 1; }
+.public-link-head strong,
+.public-link-head small { display: block; }
+.public-link-head small { margin-top: 3px; color: var(--color-muted); }
+
+.public-link-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.public-link-row[hidden] { display: none; }
+.public-link-row input { min-width: 0; flex: 1 1 220px; }
+
 .dialog-hint { color: var(--color-muted); line-height: 1.45; }
 
 .version-diff-dialog { width: min(92vw, 760px); }
