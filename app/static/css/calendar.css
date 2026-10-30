@@ -934,15 +934,13 @@ button.event-chip {
   border-radius: var(--radius-sm);
 }
 
-.recipient-checkbox-list ul {
+/* Django renders CheckboxSelectMultiple as <div id=…><div><label><input> Name</label></div>…</div>. */
+.recipient-checkbox-list > div {
   display: grid;
   gap: 2px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
 }
 
-.recipient-checkbox-list li label {
+.recipient-checkbox-list label {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -953,13 +951,18 @@ button.event-chip {
   cursor: pointer;
 }
 
-.recipient-checkbox-list li label:hover {
+.recipient-checkbox-list label:hover {
   background: var(--surface-selected);
 }
 
+/* Reset the dialogs' text-input styling (full width, 46px height, padding) for the checkboxes. */
 .recipient-checkbox-list input[type="checkbox"] {
+  flex-shrink: 0;
   width: 16px;
   height: 16px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
 }
 
 .invitation-row {

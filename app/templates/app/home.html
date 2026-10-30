@@ -64,7 +64,7 @@
 
     <div class="dashboard-grid" data-dashboard-grid>
         {% for widget in dashboard_widgets %}
-        <section class="glass-panel dashboard-widget {{ widget.class_name }} dashboard-widget--{{ widget.size }}{% if widget.tone %} has-tone tone-{{ widget.tone }}{% endif %}{% if widget.hidden %} is-hidden-by-user{% endif %}"
+        <section class="glass-panel dashboard-widget {{ widget.class_name }} dashboard-widget--{{ widget.size }}{% if widget.tone %} has-tone tone-{{ widget.tone }}{% endif %}"
                  data-dashboard-widget
                  data-widget-id="{{ widget.id }}"
                  data-widget-label="{{ widget.label }}"

@@ -248,11 +248,10 @@
     };
 
     async function loadWeather() {
-      const hiddenByUser = widget.hidden || widget.classList.contains("is-hidden-by-user");
       const loadedAt = Number(widget.dataset.dashboardWeatherLoadedAt || 0);
       const isFresh = loadedAt && Date.now() - loadedAt < 10 * 60 * 1000;
       if (
-        hiddenByUser ||
+        widget.hidden ||
         isFresh ||
         widget.dataset.dashboardWeatherState === "loading" ||
         !widget.dataset.dashboardWeatherUrl
@@ -464,15 +463,16 @@
       layout.order = merged;
     }
 
+    // The arrows step past the next shown widget; hidden ones aren't on screen, so they don't count.
     function moveAvailableWidget(widgetId, direction) {
-      const order = visibleOrder(draftLayout);
-      const index = order.indexOf(widgetId);
-      const targetIndex = index + direction;
-      if (index === -1 || targetIndex < 0 || targetIndex >= order.length) {
+      const shown = visibleOrder(draftLayout).filter((id) => !draftLayout.hidden.includes(id));
+      const index = shown.indexOf(widgetId);
+      const neighborId = shown[index + direction];
+      if (index === -1 || !neighborId) {
         return;
       }
-      order.splice(index, 1);
-      order.splice(targetIndex, 0, widgetId);
+      const order = visibleOrder(draftLayout).filter((id) => id !== widgetId);
+      order.splice(order.indexOf(neighborId) + (direction > 0 ? 1 : 0), 0, widgetId);
       mergeAvailableOrder(draftLayout, order);
       renderDraft();
       setAnnouncement(`${labelFor(widgetId)} wurde ${direction < 0 ? "nach vorne" : "nach hinten"} verschoben.`);
@@ -579,9 +579,8 @@
         if (!widget) {
           return;
         }
-        const isHidden = hiddenIds.has(id);
-        widget.hidden = isHidden && !editing;
-        widget.classList.toggle("is-hidden-by-user", isHidden);
+        // Hidden widgets leave the grid while editing too; the "Sichtbare Widgets" chips bring them back.
+        widget.hidden = hiddenIds.has(id);
         applyWidgetSettings(widget);
         if (reorder) {
           fragment.appendChild(widget);

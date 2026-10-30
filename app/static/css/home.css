@@ -173,24 +173,6 @@
   opacity: 0.55;
 }
 
-.dashboard-widget.is-hidden-by-user {
-  opacity: 0.52;
-}
-
-.dashboard-widget.is-hidden-by-user::after {
-  position: absolute;
-  right: 16px;
-  bottom: 14px;
-  padding: 5px 9px;
-  color: var(--color-muted);
-  content: "Ausgeblendet";
-  background: var(--surface-control-hover);
-  border: 1px solid var(--glass-border-soft);
-  border-radius: var(--radius-pill);
-  font-size: var(--text-xs);
-  font-weight: 700;
-}
-
 /* Edit toolbar and settings, shown inside each widget while editing. */
 .dashboard-widget-toolbar {
   position: relative;
