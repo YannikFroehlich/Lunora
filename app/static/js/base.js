@@ -6,8 +6,11 @@ const themeToggleButton = document.querySelector(".theme-toggle");
 const themeToggleIcon = themeToggleButton?.querySelector("i");
 const themeChoiceButtons = document.querySelectorAll("[data-theme-choice]");
 
+// The scroll position is kept per path, not per full URL: paging through a view (calendar months
+// and weeks via ?year=/?date=, task sorting, filters) is still the same page and shouldn't jump to
+// the top.
 function getCurrentPageKey() {
-  return `${window.location.pathname}${window.location.search}`;
+  return window.location.pathname;
 }
 
 function saveScrollPosition() {
@@ -43,7 +46,8 @@ function restoreScrollPosition() {
     Number.isFinite(savedPosition.top) &&
     Date.now() - savedPosition.savedAt <= SCROLL_RESTORE_MAX_AGE_MS;
 
-  if (!isRecent || savedPosition.page !== getCurrentPageKey()) {
+  // A #fragment asks for a specific spot (e.g. a settings section), which wins over the old position.
+  if (!isRecent || savedPosition.page !== getCurrentPageKey() || window.location.hash) {
     return;
   }
 
