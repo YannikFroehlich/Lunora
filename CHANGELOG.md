@@ -6,6 +6,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- The calendar has a week view next to the month: a switch in the toolbar shows Monday to Sunday
+  with a time grid, where overlapping events sit side by side and a line marks the current time.
+  All-day and multi-day events, holidays, vacations and due tasks sit in a row above the grid.
+  Right-click a time (tap it on a phone) or drag across a time span to create an event there.
 - New "Weiß" color theme: a plain white page (neutral dark in dark mode) without tinted
   background waves.
 - The weather map's popups, tooltips and zoom buttons, the dropdown lists in forms, and the paper of

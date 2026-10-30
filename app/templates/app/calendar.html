@@ -20,19 +20,29 @@
     <div class="calendar-layout">
         <section class="glass-panel month-panel" aria-labelledby="calendar-month-title">
             <div class="month-toolbar">
-                <a class="icon-button" href="{% url 'calendar' %}?year={{ prev_month.year }}&month={{ prev_month.month }}" aria-label="Vorheriger Monat"><i class="fa-solid fa-chevron-left"></i></a>
-                <h2 id="calendar-month-title">{{ month_label }}</h2>
-                <a class="icon-button" href="{% url 'calendar' %}?year={{ next_month.year }}&month={{ next_month.month }}" aria-label="Nächster Monat"><i class="fa-solid fa-chevron-right"></i></a>
+                <a class="icon-button" href="{{ prev_url }}" aria-label="{% if calendar_view == 'week' %}Vorherige Woche{% else %}Vorheriger Monat{% endif %}"><i class="fa-solid fa-chevron-left"></i></a>
+                <h2 id="calendar-month-title">{{ period_label }}{% if calendar_week %} <small>{{ calendar_week.range_label }}</small>{% endif %}</h2>
+                <a class="icon-button" href="{{ next_url }}" aria-label="{% if calendar_view == 'week' %}Nächste Woche{% else %}Nächster Monat{% endif %}"><i class="fa-solid fa-chevron-right"></i></a>
                 <span class="toolbar-spacer"></span>
+                <nav class="calendar-view-switch" aria-label="Ansicht">
+                    <a href="{{ month_view_url }}" {% if calendar_view == 'month' %}class="is-active" aria-current="page"{% endif %}>Monat</a>
+                    <a href="{{ week_view_url }}" {% if calendar_view == 'week' %}class="is-active" aria-current="page"{% endif %}>Woche</a>
+                </nav>
                 {% if calendar_event_creation_enabled %}
                 <button class="ghost-button" type="button" data-event-dialog-open>
                     <i class="fa-solid fa-plus" aria-hidden="true"></i>
                     Termin
                 </button>
                 {% endif %}
-                <a class="ghost-button" href="{% url 'calendar' %}"><i class="fa-regular fa-calendar"></i> Heute</a>
+                <a class="ghost-button" href="{{ today_url }}"><i class="fa-regular fa-calendar"></i> Heute</a>
             </div>
 
+            {% if calendar_view == 'week' %}
+            {% if calendar_event_creation_enabled %}
+            <p class="calendar-hint">Rechtsklick auf eine Uhrzeit (am Handy antippen) oder mit gedrückter Maustaste über eine Zeitspanne ziehen, um direkt einen Termin anzulegen. In der Zeile „Ganztägig“ über mehrere Tage ziehen für einen ganztägigen Termin.</p>
+            {% endif %}
+            {% include 'app/partials/calendar_week.html' %}
+            {% else %}
             {% if calendar_event_creation_enabled %}
             <p class="calendar-hint">Rechtsklick auf einen Tag (am Handy antippen) oder mit gedrückter Maustaste über mehrere Tage ziehen, um direkt einen Termin anzulegen.</p>
             {% endif %}
@@ -93,6 +103,7 @@
                     {% endfor %}
                 {% endfor %}
             </div>
+            {% endif %}
         </section>
 
         <aside class="side-stack">

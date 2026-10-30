@@ -13,6 +13,7 @@ from app.models import (
     CalendarEventAttendee,
     Profile,
     SystemSettings,
+    Task,
     VacationPeriod,
     VacationYear,
 )
@@ -269,4 +270,137 @@ class CalendarCategoryMigrationTests(TestCase):
                 "deadline": "deadline",
                 "other": "other",
             },
+        )
+
+
+class CalendarWeekViewTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=self.user, display_name="Mira", timezone_name="Europe/Berlin")
+        self.client.login(username="mira@example.com", password="secret-12345")
+        self.berlin = ZoneInfo("Europe/Berlin")
+
+    def create_event(self, title, start, end, **extra):
+        return CalendarEvent.objects.create(
+            user=self.user,
+            title=title,
+            start_at=start.replace(tzinfo=self.berlin),
+            end_at=end.replace(tzinfo=self.berlin),
+            **extra,
+        )
+
+    def week(self, day="2099-08-12"):
+        response = self.client.get(f"/calendar/?view=week&date={day}")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["calendar_view"], "week")
+        return response, {item["date_input"]: item for item in response.context["calendar_week"]["days"]}
+
+    def test_week_shows_monday_to_sunday_of_the_anchor_day_with_navigation(self):
+        response, days = self.week("2099-08-12")
+
+        self.assertEqual(list(days), [f"2099-08-{day:02d}" for day in range(10, 17)])
+        self.assertEqual(
+            [day["weekday"] for day in days.values()], ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+        )
+        week = response.context["calendar_week"]
+        self.assertEqual(week["label"], "KW 33")
+        self.assertEqual(response.context["period_label"], "KW 33")
+        self.assertEqual(response.context["calendar_rows"], [])
+        self.assertEqual(week["scroll_minute"], 7 * 60)
+        self.assertEqual(response.context["prev_url"], "/calendar/?view=week&date=2099-08-05")
+        self.assertEqual(response.context["next_url"], "/calendar/?view=week&date=2099-08-19")
+        self.assertEqual(response.context["month_view_url"], "/calendar/?year=2099&month=8")
+        self.assertTemplateUsed(response, "app/partials/calendar_week.html")
+        self.assertContains(response, 'aria-label="Nächste Woche"')
+
+    def test_timed_events_are_placed_on_the_grid_and_overlaps_share_the_column(self):
+        self.create_event("Standup", datetime(2099, 8, 12, 9, 0), datetime(2099, 8, 12, 10, 30))
+        self.create_event("Review", datetime(2099, 8, 12, 10, 0), datetime(2099, 8, 12, 11, 0))
+        self.create_event("Mittag", datetime(2099, 8, 12, 12, 0), datetime(2099, 8, 12, 12, 0))
+
+        _response, days = self.week()
+
+        timed = {event["label"]: event for event in days["2099-08-12"]["timed"]}
+        self.assertEqual(
+            {
+                label: (item["start_minute"], item["duration"], item["lane"], item["lanes"])
+                for label, item in timed.items()
+            },
+            {"Standup": (540, 90, 0, 2), "Review": (600, 60, 1, 2), "Mittag": (720, 20, 0, 1)},
+        )
+        self.assertEqual(timed["Standup"]["time"], "09:00 – 10:30")
+        self.assertEqual(timed["Mittag"]["time"], "12:00")
+        self.assertTrue(timed["Standup"]["can_delete"])
+        self.assertEqual(timed["Standup"]["edit_start_time"], "09:00")
+        self.assertEqual(days["2099-08-12"]["all_day"], [])
+
+    def test_all_day_and_long_events_go_to_the_all_day_row_and_night_events_are_split(self):
+        self.create_event("Messe", datetime(2099, 8, 11), datetime(2099, 8, 13), is_all_day=True)
+        self.create_event("Konferenz", datetime(2099, 8, 14, 9, 0), datetime(2099, 8, 15, 18, 0))
+        self.create_event("Nachtschicht", datetime(2099, 8, 12, 22, 0), datetime(2099, 8, 13, 6, 0))
+        self.create_event("Bis Mitternacht", datetime(2099, 8, 10, 23, 0), datetime(2099, 8, 11, 0, 0))
+
+        _response, days = self.week()
+
+        self.assertEqual([event["label"] for event in days["2099-08-11"]["all_day"]], ["Messe"])
+        self.assertEqual([event["label"] for event in days["2099-08-12"]["all_day"]], ["Messe"])
+        self.assertEqual(days["2099-08-13"]["all_day"], [])
+        self.assertEqual([event["label"] for event in days["2099-08-15"]["all_day"]], ["Konferenz"])
+        night = [(event["start_minute"], event["duration"]) for event in days["2099-08-12"]["timed"]]
+        self.assertEqual(night, [(22 * 60, 2 * 60)])
+        night = [(event["start_minute"], event["duration"]) for event in days["2099-08-13"]["timed"]]
+        self.assertEqual(night, [(0, 6 * 60)])
+        self.assertEqual([event["label"] for event in days["2099-08-10"]["timed"]], ["Bis Mitternacht"])
+        self.assertEqual(days["2099-08-11"]["timed"], [])
+
+    def test_week_shows_tasks_and_today_and_falls_back_for_invalid_dates(self):
+        today = timezone.localdate(timezone=self.berlin)
+        due_at = timezone.make_aware(datetime.combine(today, datetime.min.time()), self.berlin) + timedelta(
+            hours=15
+        )
+        Task.objects.create(user=self.user, title="Steuer", due_at=due_at)
+
+        response, days = self.week("kein-datum")
+
+        today_item = days[today.isoformat()]
+        self.assertTrue(today_item["today"])
+        self.assertIsNotNone(today_item["now_minute"])
+        self.assertEqual([task["label"] for task in today_item["tasks"]], ["Steuer"])
+        self.assertEqual(response.context["today_url"], "/calendar/?view=week")
+        self.assertEqual(response.context["week_view_url"], f"/calendar/?view=week&date={today.isoformat()}")
+
+    def test_month_view_stays_the_default_and_links_to_the_week(self):
+        response = self.client.get("/calendar/?year=2099&month=8")
+
+        self.assertEqual(response.context["calendar_view"], "month")
+        self.assertIsNone(response.context["calendar_week"])
+        self.assertEqual(response.context["period_label"], "August 2099")
+        self.assertEqual(response.context["week_view_url"], "/calendar/?view=week&date=2099-08-01")
+        self.assertEqual(response.context["next_url"], "/calendar/?year=2099&month=9")
+        self.assertTemplateNotUsed(response, "app/partials/calendar_week.html")
+
+    def test_posts_from_the_week_view_redirect_back_to_it(self):
+        response = self.client.post(
+            "/calendar/?view=week&date=2099-08-12",
+            {
+                "form_name": "calendar_event_add",
+                "title": "Workshop",
+                "event_date": "2099-08-13",
+                "start_time": "14:00",
+                "end_time": "16:00",
+                "category": CalendarEvent.CATEGORY_MEETING,
+                "repeat": "none",
+            },
+        )
+
+        self.assertRedirects(response, "/calendar/?view=week&date=2099-08-12")
+        _response, days = self.week()
+        self.assertEqual(
+            [
+                (event["label"], event["start_minute"], event["duration"])
+                for event in days["2099-08-13"]["timed"]
+            ],
+            [("Workshop", 14 * 60, 120)],
         )

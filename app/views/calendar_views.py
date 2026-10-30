@@ -115,6 +115,8 @@ def calendar(request):
         request.user,
         year=request.GET.get("year"),
         month=request.GET.get("month"),
+        view=request.GET.get("view"),
+        day=request.GET.get("date"),
     )
     context.update(
         {
