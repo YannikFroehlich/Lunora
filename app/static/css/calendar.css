@@ -1077,7 +1077,7 @@ button.event-chip {
 /* Month/week switch in the calendar toolbar. */
 .calendar-view-switch {
   display: inline-grid;
-  grid-template-columns: repeat(2, minmax(64px, 1fr));
+  grid-template-columns: repeat(4, minmax(56px, 1fr));
   gap: 4px;
   padding: 3px;
   background: var(--surface-control);
@@ -1122,12 +1122,12 @@ button.event-chip {
 }
 
 .week-frame {
-  min-width: 620px;
+  min-width: calc(var(--week-gutter) + var(--week-days, 7) * 80px);
 }
 
 .week-row {
   display: grid;
-  grid-template-columns: var(--week-gutter) repeat(7, minmax(0, 1fr));
+  grid-template-columns: var(--week-gutter) repeat(var(--week-days, 7), minmax(0, 1fr));
   overflow: hidden;
   scrollbar-gutter: stable;
 }
@@ -1212,7 +1212,8 @@ button.week-day-number:focus-visible {
   margin-top: 0;
 }
 
-.week-all-day-cell.is-selected {
+.week-all-day-cell.is-selected,
+.week-column.is-selected {
   background: color-mix(in srgb, var(--color-accent) 48%, transparent);
 }
 
@@ -1376,7 +1377,7 @@ button.week-event:hover {
   }
 
   .week-frame {
-    min-width: 560px;
+    min-width: calc(var(--week-gutter) + var(--week-days, 7) * 74px);
   }
 
   .week-day-number {
@@ -1446,4 +1447,59 @@ button.week-event:hover {
 
 .calendar-quick-add .form-errors {
   margin-top: 6px;
+}
+
+/* The day view's single column is wide enough for events side by side with their details. */
+.week-view.is-single-day .week-event:not(.is-short) {
+  padding: 5px 10px;
+}
+
+/* Own events are dragged to another day or time (calendar.js); the strip at the bottom of a timed
+   event stretches its end. */
+.week-event-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 7px;
+  cursor: ns-resize;
+}
+
+.week-event-resize::after {
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  width: 18px;
+  height: 3px;
+  background: color-mix(in srgb, var(--tone) 70%, transparent);
+  border-radius: var(--radius-pill);
+  opacity: 0;
+  transform: translateX(-50%);
+  content: "";
+}
+
+button.week-event:hover .week-event-resize::after {
+  opacity: 1;
+}
+
+.is-event-dragging,
+.is-event-dragging * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+
+.is-event-resizing,
+.is-event-resizing * {
+  cursor: ns-resize !important;
+  user-select: none;
+}
+
+.week-event.is-dragging,
+.event-chip.is-dragging {
+  opacity: 0.45;
+}
+
+.week-selection.is-event-drop {
+  border: 2px dashed var(--tone, var(--color-accent));
+  background: color-mix(in srgb, var(--tone, var(--color-accent)) 28%, transparent);
 }

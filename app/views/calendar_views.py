@@ -5,9 +5,20 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 
-from app.forms import CalendarEventEditForm, CalendarEventForm, CalendarQuickAddForm, CalendarReminderForm
+from app.forms import (
+    CalendarEventEditForm,
+    CalendarEventForm,
+    CalendarEventMoveForm,
+    CalendarQuickAddForm,
+    CalendarReminderForm,
+)
 from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, Profile
-from app.services.calendar_service import SERIES_SCOPE_THIS, build_calendar_feed, series_scope_events
+from app.services.calendar_service import (
+    SERIES_SCOPE_THIS,
+    build_calendar_feed,
+    move_calendar_event,
+    series_scope_events,
+)
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.user_preferences import format_user_date, format_user_time
 from app.view_models import get_calendar_context
@@ -62,6 +73,21 @@ def calendar(request):
             else:
                 django_messages.success(request, "Termin aktualisiert.")
             return redirect(request.get_full_path())
+
+    if request.method == "POST" and request.POST.get("form_name") == "calendar_event_move":
+        # Sent by dragging an event onto another day or time, or stretching it on the time grid.
+        if not calendar_event_creation_enabled:
+            return disabled_feature_response(request, "calendar_event_creation")
+        move_form = CalendarEventMoveForm(request.POST)
+        if not move_form.is_valid() or not move_calendar_event(
+            request.user,
+            move_form.cleaned_data["event_id"],
+            target_date=move_form.cleaned_data["date"],
+            start_minute=move_form.cleaned_data["start_minute"],
+            end_minute=move_form.cleaned_data["end_minute"],
+        ):
+            django_messages.error(request, "Termin konnte nicht verschoben werden.")
+        return redirect(request.get_full_path())
 
     if request.method == "POST" and request.POST.get("form_name") == "calendar_event_delete":
         if not calendar_event_creation_enabled:
@@ -132,7 +158,7 @@ def calendar(request):
         request.user,
         year=request.GET.get("year"),
         month=request.GET.get("month"),
-        view=request.GET.get("view"),
+        view=_calendar_view(request),
         day=request.GET.get("date"),
     )
     context.update(
@@ -152,6 +178,23 @@ def calendar(request):
         }
     )
     return render(request, "app/calendar.html", context)
+
+
+def _calendar_view(request):
+    """The view to show: one named in the URL is remembered on the profile, and /calendar/ without a
+    period opens the remembered one."""
+    view = request.GET.get("view")
+    profile = getattr(request.user, "profile", None)
+    if profile is None:
+        return view
+    if view in dict(Profile.CALENDAR_VIEW_CHOICES):
+        if profile.calendar_view != view:
+            profile.calendar_view = view
+            profile.save(update_fields=["calendar_view"])
+        return view
+    if not any(request.GET.get(key) for key in ("year", "month", "date")):
+        return profile.calendar_view
+    return view
 
 
 @require_GET

@@ -6,6 +6,11 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Drag your own calendar events with the mouse: onto another day in the month, week, three-day or day
+  view (the time stays), or within the time grid to a new time. Drag the bottom edge of an event in
+  the time grid to make it longer or shorter. A recurring event moves only that occurrence.
+- The calendar has a day view and a three-day view next to the month and week, which suit phones
+  better. The calendar remembers the view you picked last and opens it next time.
 - Hiding a dashboard widget while customizing removes it from the grid right away instead of leaving
   it dimmed in place; "Sichtbare Widgets" brings it back. The arrows now skip hidden widgets, so
   every click visibly moves a widget.
