@@ -6,6 +6,9 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Faster note search on PostgreSQL: the searchable text of every note is now kept in an indexed
+  column that is updated on save, instead of being re-analysed for every search. Results and their
+  order stay the same.
 - Tasks have a board view: "Board" next to "Liste" shows the tasks in the columns "Offen", "In Arbeit"
   and "Erledigt". Drag a card into another column, or use the three status buttons on each card. The
   new "In Arbeit" status also shows in the list and has its own filter.

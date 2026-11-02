@@ -3,6 +3,8 @@ import zoneinfo
 from datetime import time
 
 from django.conf import settings
+from django.contrib.postgres.indexes import GinIndex
+from django.contrib.postgres.search import SearchVectorField
 from django.db import models
 from django.db.models import Count, Exists, OuterRef, Prefetch, Q, Subquery
 from django.utils import timezone
@@ -12,6 +14,7 @@ from app.services.dashboard import default_dashboard_layout
 from app.services.image_uploads import validate_profile_image_file
 from app.services.note_content import document_checklist_counts, empty_note_document
 from app.services.note_files import note_upload_to, private_note_storage
+from app.services.note_search import refresh_note_search_vectors
 from app.services.uml_content import empty_uml_document
 
 
@@ -1196,6 +1199,9 @@ class Note(models.Model):
     # Checklist progress (taskItem nodes), derived from ``document`` in save() for the note list.
     checklist_done = models.PositiveIntegerField(default=0)
     checklist_total = models.PositiveIntegerField(default=0)
+    # Weighted title/plain_text tsvector for the ranked search (app/services/note_search.py).
+    # Only filled on PostgreSQL, by save(); stays NULL on SQLite, which searches by substring.
+    search_vector = SearchVectorField(blank=True, null=True, editable=False)
     revision = models.PositiveIntegerField(default=1)
     last_edited_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -1215,6 +1221,8 @@ class Note(models.Model):
         ordering = ["-updated_at", "-id"]
         indexes = [
             models.Index(fields=["owner", "deleted_at", "updated_at"], name="app_note_owner_state_idx"),
+            # Created on PostgreSQL only (see migration 0071); SQLite has no GIN.
+            GinIndex(fields=["search_vector"], name="app_note_search_vector_gin"),
         ]
 
     def __str__(self):
@@ -1229,6 +1237,8 @@ class Note(models.Model):
             if update_fields is not None:
                 kwargs["update_fields"] = {*update_fields, "checklist_done", "checklist_total"}
         super().save(*args, **kwargs)
+        if update_fields is None or {"title", "plain_text"} & set(update_fields):
+            refresh_note_search_vectors([self.pk], using=kwargs.get("using") or self._state.db or "default")
 
 
 class NoteTemplate(models.Model):

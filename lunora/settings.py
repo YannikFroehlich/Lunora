@@ -151,6 +151,8 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    # SearchVectorField/GinIndex for the stored note search vector; harmless on SQLite.
+    "django.contrib.postgres",
     "app",
 ]
 

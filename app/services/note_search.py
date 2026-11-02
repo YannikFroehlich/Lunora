@@ -15,10 +15,11 @@ Two German-specific choices are worth knowing before changing anything here:
   a substring match, so the infix case ("start" -> "Raketenstart") survives too.
   The tsvector is what adds stemming and relevance ordering; the substring branch
   only guards recall.
-* The tsvector is built per query rather than stored in a column. That keeps
-  ``Note`` free of a denormalised field to keep in sync on every save. If the
-  note count ever makes this slow, the upgrade path is a stored
-  ``SearchVectorField`` plus a GIN index, populated in ``save_note``.
+* The weighted tsvector is stored in ``Note.search_vector`` (PostgreSQL only, GIN
+  indexed) and refreshed by ``Note.save()`` whenever the title or ``plain_text``
+  is written, so a query no longer runs ``to_tsvector`` over every candidate row.
+  A row whose vector is still NULL (only possible after a raw ``update()``) is
+  still found through the substring branch and ranked by it alone.
 """
 
 from __future__ import annotations
@@ -190,22 +191,39 @@ def build_snippet(text, parsed, *, length=SNIPPET_LENGTH):
     return segments
 
 
-def _apply_postgres_search(queryset, parsed):
-    from django.contrib.postgres.search import SearchRank, SearchVector
+def note_search_vector():
+    """The weighted vector stored in ``Note.search_vector``: title (A) over body text (B)."""
+    from django.contrib.postgres.search import SearchVector
 
-    vector = SearchVector("title", weight="A", config=SEARCH_CONFIG) + SearchVector(
+    return SearchVector("title", weight="A", config=SEARCH_CONFIG) + SearchVector(
         "plain_text", weight="B", config=SEARCH_CONFIG
     )
+
+
+def refresh_note_search_vectors(note_ids, *, using="default"):
+    """Recompute the stored vector of the given notes (PostgreSQL only; a no-op elsewhere)."""
+    from django.db import connections
+
+    from app.models import Note
+
+    if connections[using].vendor != "postgresql":
+        return 0
+    return Note.objects.using(using).filter(pk__in=note_ids).update(search_vector=note_search_vector())
+
+
+def _apply_postgres_search(queryset, parsed):
+    from django.contrib.postgres.search import SearchRank
+    from django.db.models import F
+    from django.db.models.functions import Coalesce
+
     query = _tsquery(parsed)
     if query is None:
         return queryset.annotate(search_rank=_substring_rank(parsed)).filter(_substring_filter(parsed))
 
-    rank = SearchRank(vector, query) * Value(VECTOR_WEIGHT, output_field=FloatField()) + _substring_rank(
-        parsed
-    )
-    return queryset.annotate(search_vector=vector, search_rank=rank).filter(
-        Q(search_vector=query) | _substring_filter(parsed)
-    )
+    # The stored, GIN-indexed column; Coalesce keeps a not-yet-filled vector from nulling the rank.
+    vector_rank = Coalesce(SearchRank(F("search_vector"), query), Value(0.0), output_field=FloatField())
+    rank = vector_rank * Value(VECTOR_WEIGHT, output_field=FloatField()) + _substring_rank(parsed)
+    return queryset.annotate(search_rank=rank).filter(Q(search_vector=query) | _substring_filter(parsed))
 
 
 def _tsquery(parsed):
