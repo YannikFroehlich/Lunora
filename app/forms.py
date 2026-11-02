@@ -32,6 +32,8 @@ from app.models import (
     VocabularyList,
 )
 from app.services.calendar_service import (
+    AVAILABILITY_MAX_SPAN,
+    AVAILABILITY_MAX_USERS,
     SERIES_SCOPE_CHOICES,
     SERIES_SCOPE_FOLLOWING,
     SERIES_SCOPE_THIS,
@@ -696,6 +698,11 @@ class CalendarReminderForm(forms.ModelForm):
             )
         }
 
+    def __init__(self, *args, **kwargs):
+        # Shares the calendar page with the event dialogs, which also have a "title" field.
+        kwargs.setdefault("auto_id", "id_reminder_%s")
+        super().__init__(*args, **kwargs)
+
     def clean_title(self):
         return self.cleaned_data["title"].strip()
 
@@ -1220,6 +1227,27 @@ def event_last_date(event, local_start, local_end):
     return last_date if last_date > local_start.date() else None
 
 
+class CalendarAvailabilityForm(_CalendarEventDateTimeForm):
+    """The date/time part of the event dialogs, sent as a query string to look up whether the
+    selected attendees are free; uses the same field names so the dialog can send itself as is."""
+
+    exclude_event = forms.IntegerField(required=False, min_value=1)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["title"].required = False
+
+    def clean(self):
+        cleaned_data = super().clean()
+        start_at, end_at = cleaned_data.get("start_at"), cleaned_data.get("end_at")
+        if start_at and end_at and end_at - start_at > AVAILABILITY_MAX_SPAN:
+            raise forms.ValidationError("Der Zeitraum ist zu lang.")
+        attendees = cleaned_data.get("attendees")
+        if attendees is not None and len(attendees) > AVAILABILITY_MAX_USERS:
+            raise forms.ValidationError("Zu viele Personen ausgewählt.")
+        return cleaned_data
+
+
 class CalendarEventEditForm(_CalendarEventDateTimeForm):
     # Only offered for events of a series; anything else always edits just the event itself.
     scope = forms.ChoiceField(
@@ -1232,6 +1260,8 @@ class CalendarEventEditForm(_CalendarEventDateTimeForm):
 
     def __init__(self, *args, user=None, instance=None, **kwargs):
         self.instance = instance
+        # Rendered on the same page as CalendarEventForm; its own ids keep every <label for> unique.
+        kwargs.setdefault("auto_id", "id_edit_%s")
         super().__init__(*args, user=user, **kwargs)
         if instance is not None and not self.is_bound:
             instance_start = localtime_for_user(instance.start_at, user)

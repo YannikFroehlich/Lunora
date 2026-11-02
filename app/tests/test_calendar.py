@@ -785,3 +785,158 @@ class CalendarEventMoveTests(TestCase):
         self.assertContains(response, 'data-move-start="570"')
         # The night event can only be stretched where it ends, on the next day.
         self.assertContains(response, "data-event-resize", count=2)
+
+
+class CalendarLocationAvailabilityYearTests(TestCase):
+    def setUp(self):
+        self.berlin = ZoneInfo("Europe/Berlin")
+        self.mira = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
+        self.lukas = User.objects.create_user(
+            username="lukas@example.com", email="lukas@example.com", password="secret-12345"
+        )
+        self.anna = User.objects.create_user(
+            username="anna@example.com", email="anna@example.com", password="secret-12345"
+        )
+        for user, name in ((self.mira, "Mira"), (self.lukas, "Lukas"), (self.anna, "Anna")):
+            Profile.objects.create(user=user, display_name=name, timezone_name="Europe/Berlin")
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+    def event(self, user, title, start, hours=1, **extra):
+        return CalendarEvent.objects.create(
+            user=user, title=title, start_at=start, end_at=start + timedelta(hours=hours), **extra
+        )
+
+    def availability(self, **params):
+        query = {"event_date": "2099-03-10", "start_time": "10:00", "end_time": "11:00", **params}
+        return self.client.get("/calendar/availability/", query)
+
+    def test_location_link_points_to_map_or_meeting(self):
+        from app.services.calendar_service import location_link
+
+        self.assertIsNone(location_link("  "))
+        address = location_link("Hauptstraße 5, Berlin")
+        self.assertEqual(
+            address["url"], "https://www.openstreetmap.org/search?query=Hauptstra%C3%9Fe%205%2C%20Berlin"
+        )
+        self.assertFalse(address["is_online"])
+        meeting = location_link("https://meet.example.com/abc")
+        self.assertEqual(meeting["url"], "https://meet.example.com/abc")
+        self.assertTrue(meeting["is_online"])
+        # Anything that is not an http(s) address is searched on the map, never linked directly.
+        self.assertFalse(location_link("javascript:alert(1)")["is_online"])
+
+    def test_upcoming_events_show_the_location_link(self):
+        start = timezone.now() + timedelta(days=2)
+        self.event(self.mira, "Zahnarzt", start, location="Hauptstraße 5, Berlin")
+
+        response = self.client.get("/calendar/?view=month")
+
+        self.assertContains(
+            response, "https://www.openstreetmap.org/search?query=Hauptstra%C3%9Fe%205%2C%20Berlin"
+        )
+        self.assertContains(response, "Hauptstraße 5, Berlin")
+
+    def test_edit_dialog_fields_have_their_own_ids(self):
+        response = self.client.get("/calendar/?view=month")
+        self.assertContains(response, 'id="id_title"', count=1)
+        self.assertContains(response, 'id="id_edit_title"', count=1)
+
+    def test_availability_reports_free_busy_and_away_without_details(self):
+        SystemSettings.objects.update_or_create(pk=1, defaults={"vacation_planner_enabled": True})
+        self.event(self.lukas, "Geheimes Treffen", datetime(2099, 3, 10, 10, 30, tzinfo=self.berlin))
+        VacationPeriod.objects.create(
+            user=self.anna, name="tarifurlaub", start_date=date(2099, 3, 9), end_date=date(2099, 3, 12)
+        )
+
+        response = self.availability(attendees=[self.lukas.pk, self.anna.pk])
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Cache-Control"], "private, no-store")
+        statuses = {row["id"]: row["status"] for row in response.json()["users"]}
+        self.assertEqual(statuses, {self.lukas.pk: "busy", self.anna.pk: "away"})
+        self.assertNotContains(response, "Geheimes Treffen")
+
+        free = self.availability(attendees=[self.lukas.pk], start_time="11:30", end_time="12:00")
+        self.assertEqual(free.json()["users"][0]["status"], "free")
+
+    def test_availability_counts_accepted_invitations_only(self):
+        start = datetime(2099, 3, 10, 9, 0, tzinfo=self.berlin)
+        meeting = self.event(self.anna, "Planung", start, hours=3)
+        attendee = CalendarEventAttendee.objects.create(event=meeting, user=self.lukas, invited_by=self.anna)
+
+        self.assertEqual(self.availability(attendees=[self.lukas.pk]).json()["users"][0]["status"], "free")
+        attendee.status = CalendarEventAttendee.STATUS_ACCEPTED
+        attendee.save()
+        self.assertEqual(self.availability(attendees=[self.lukas.pk]).json()["users"][0]["status"], "busy")
+
+    def test_availability_ignores_the_event_being_edited(self):
+        start = datetime(2099, 3, 10, 10, 0, tzinfo=self.berlin)
+        own = self.event(self.mira, "Abstimmung", start)
+        CalendarEventAttendee.objects.create(
+            event=own, user=self.lukas, invited_by=self.mira, status=CalendarEventAttendee.STATUS_ACCEPTED
+        )
+        foreign = self.event(self.lukas, "Fremd", start + timedelta(days=1))
+
+        response = self.availability(attendees=[self.lukas.pk], exclude_event=own.pk)
+        self.assertEqual(response.json()["users"][0]["status"], "free")
+        # Someone else's event id is not honoured as an exclusion.
+        response = self.availability(
+            attendees=[self.lukas.pk], event_date="2099-03-11", exclude_event=foreign.pk
+        )
+        self.assertEqual(response.json()["users"][0]["status"], "busy")
+
+    def test_availability_rejects_invalid_requests(self):
+        self.assertEqual(self.availability(attendees=[self.mira.pk]).status_code, 400)
+        self.assertEqual(self.availability(attendees=[self.lukas.pk], start_time="").status_code, 400)
+        long_span = self.availability(attendees=[self.lukas.pk], is_all_day="on", end_date="2099-06-01")
+        self.assertEqual(long_span.status_code, 400)
+        self.client.logout()
+        self.assertEqual(self.availability(attendees=[self.lukas.pk]).status_code, 302)
+
+    def test_availability_respects_the_feature_flag(self):
+        SystemSettings.objects.update_or_create(pk=1, defaults={"calendar_event_creation_enabled": False})
+        self.assertEqual(self.availability(attendees=[self.lukas.pk]).status_code, 503)
+
+    def test_year_view_shows_twelve_months_with_busy_levels(self):
+        for hour in (8, 10, 12):
+            self.event(self.mira, "Termin", datetime(2099, 2, 3, hour, 0, tzinfo=self.berlin))
+        self.event(self.mira, "Einzeln", datetime(2099, 2, 4, 9, 0, tzinfo=self.berlin))
+        invite = self.event(self.lukas, "Einladung", datetime(2099, 7, 1, 9, 0, tzinfo=self.berlin))
+        CalendarEventAttendee.objects.create(event=invite, user=self.mira, invited_by=self.lukas)
+
+        response = self.client.get("/calendar/?view=year&year=2099")
+
+        self.assertEqual(response.status_code, 200)
+        grid = response.context["calendar_year"]
+        self.assertEqual(len(grid["months"]), 12)
+        days = {
+            (index + 1, day["number"]): day
+            for index, month in enumerate(grid["months"])
+            for week in month["weeks"]
+            for day in week
+            if day
+        }
+        self.assertEqual(len(days), 365)
+        self.assertEqual(days[(2, 3)]["level"], 3)
+        self.assertIn("3 Termine", days[(2, 3)]["label"])
+        self.assertEqual(days[(2, 4)]["level"], 1)
+        self.assertEqual(days[(7, 1)]["level"], 1)
+        self.assertEqual(days[(2, 5)]["level"], 0)
+        self.assertEqual(days[(2, 3)]["url"], "/calendar/?view=day&date=2099-02-03")
+        self.assertEqual(response.context["period_label"], "2099")
+        self.assertEqual(response.context["prev_url"], "/calendar/?view=year&year=2098")
+        self.assertEqual(response.context["next_url"], "/calendar/?view=year&year=2100")
+        self.assertContains(response, 'href="/calendar/?view=month&amp;year=2099&amp;month=2"')
+
+        self.mira.profile.refresh_from_db()
+        self.assertEqual(self.mira.profile.calendar_view, "year")
+        # /calendar/ without a period now reopens the year view.
+        self.assertIsNotNone(self.client.get("/calendar/").context["calendar_year"])
+
+    def test_year_view_falls_back_to_the_current_year_for_invalid_input(self):
+        response = self.client.get("/calendar/?view=year&year=abc")
+        self.assertEqual(response.context["calendar_year"]["year"], timezone.localdate().year)
+        response = self.client.get("/calendar/?view=year&year=99999")
+        self.assertEqual(response.context["calendar_year"]["year"], timezone.localdate().year)

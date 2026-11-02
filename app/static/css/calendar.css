@@ -320,11 +320,66 @@ button.event-chip {
   display: block;
 }
 
-.event-form-field > span {
+.event-form-field > span,
+.event-form-field > label,
+.event-form-field > legend {
   margin-bottom: 7px;
   color: var(--color-heading);
   font-size: var(--text-md);
   font-weight: 700;
+}
+
+.event-form-field > label {
+  display: block;
+}
+
+fieldset.event-form-field {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+fieldset.event-form-field > legend {
+  padding: 0;
+}
+
+.event-location-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  color: var(--color-accent-strong);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.event-availability-hint {
+  display: block;
+  margin-top: 6px;
+}
+
+.availability-badge {
+  margin-left: auto;
+  padding: 1px 8px;
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  border-radius: var(--radius-pill);
+}
+
+.availability-badge.is-free {
+  color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
+}
+
+.availability-badge.is-busy {
+  color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger) 14%, transparent);
+}
+
+.availability-badge.is-away {
+  color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 16%, transparent);
 }
 
 .event-form-field small {
@@ -838,6 +893,10 @@ button.event-chip {
     grid-template-columns: minmax(62px, auto) 10px minmax(0, 1fr);
   }
 
+  .upcoming-row .event-location-inline {
+    grid-column: 2 / -1;
+  }
+
   .timeline-row i {
     display: none;
   }
@@ -965,6 +1024,53 @@ button.event-chip {
   padding: 0;
 }
 
+/* Location under an event in the lists; placed last (order) so it gets its own grid row. */
+.event-location-inline {
+  display: inline-flex;
+  order: 1;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+  margin-bottom: 6px;
+  overflow: hidden;
+  color: var(--color-accent-strong);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.event-location-inline:hover {
+  text-decoration: underline;
+}
+
+.event-location-inline > span:not(.visually-hidden) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.timeline-row .event-location-inline,
+.upcoming-row .event-location-inline {
+  grid-column: 3 / -1;
+  justify-self: start;
+}
+
+.timeline-row .event-location-inline i,
+.upcoming-row .event-location-inline i,
+.upcoming-row .event-location-inline span:not(.visually-hidden) {
+  color: inherit;
+}
+
+.invitation-row .event-location-inline {
+  display: inline-flex;
+  margin: 4px 0 0;
+}
+
+.invitation-row .event-location-inline span:not(.visually-hidden) {
+  display: inline;
+}
+
 .invitation-row {
   display: flex;
   align-items: center;
@@ -1077,7 +1183,7 @@ button.event-chip {
 /* Month/week switch in the calendar toolbar. */
 .calendar-view-switch {
   display: inline-grid;
-  grid-template-columns: repeat(4, minmax(56px, 1fr));
+  grid-template-columns: repeat(5, minmax(52px, 1fr));
   gap: 4px;
   padding: 3px;
   background: var(--surface-control);
@@ -1087,6 +1193,7 @@ button.event-chip {
 
 .calendar-view-switch a {
   padding: 6px 10px;
+  white-space: nowrap;
   color: var(--color-muted);
   font-size: var(--text-sm);
   font-weight: 700;
@@ -1502,4 +1609,154 @@ button.week-event:hover .week-event-resize::after {
 .week-selection.is-event-drop {
   border: 2px dashed var(--tone, var(--color-accent));
   background: color-mix(in srgb, var(--tone, var(--color-accent)) 28%, transparent);
+}
+
+/* Year view: twelve small month tables (partials/calendar_year.html). */
+.calendar-year-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin: 0 0 12px;
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+}
+
+.calendar-year-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.year-legend-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+}
+
+.calendar-year-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.calendar-year-month {
+  padding: 10px 10px 8px;
+  background: var(--surface-control);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-sm);
+}
+
+.calendar-year-month.is-current {
+  border-color: color-mix(in srgb, var(--color-accent-strong) 55%, transparent);
+}
+
+.calendar-year-month h3 {
+  margin: 0 0 6px;
+  font-size: var(--text-md);
+}
+
+.calendar-year-month h3 a {
+  color: var(--color-heading);
+  text-decoration: none;
+}
+
+.calendar-year-month h3 a:hover {
+  text-decoration: underline;
+}
+
+.calendar-year-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.calendar-year-table th {
+  padding: 2px 0;
+  color: var(--color-muted);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+}
+
+.calendar-year-table td {
+  padding: 1px;
+  text-align: center;
+}
+
+.year-day {
+  display: grid;
+  aspect-ratio: 1;
+  place-items: center;
+  color: var(--color-text);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  text-decoration: none;
+  border-radius: var(--radius-xs);
+}
+
+.year-day.is-weekend {
+  color: var(--color-muted);
+}
+
+.year-day:hover {
+  background: var(--surface-selected);
+}
+
+.year-day.is-level-1,
+.year-legend-swatch.is-level-1 {
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+.year-day.is-level-2 {
+  background: color-mix(in srgb, var(--color-accent) 42%, transparent);
+}
+
+.year-day.is-level-3,
+.year-legend-swatch.is-level-3 {
+  color: var(--color-on-accent);
+  background: var(--color-accent);
+}
+
+.year-day.is-holiday,
+.year-legend-swatch.is-holiday {
+  box-shadow: inset 0 -3px 0 color-mix(in srgb, var(--color-danger) 70%, transparent);
+}
+
+.year-day.is-vacation,
+.year-legend-swatch.is-vacation {
+  box-shadow: inset 0 -3px 0 color-mix(in srgb, var(--color-success) 70%, transparent);
+}
+
+.year-day.is-holiday.is-vacation {
+  box-shadow:
+    inset 0 -3px 0 color-mix(in srgb, var(--color-danger) 70%, transparent),
+    inset 0 3px 0 color-mix(in srgb, var(--color-success) 70%, transparent);
+}
+
+.year-day.is-today {
+  font-weight: 800;
+  outline: 2px solid var(--color-accent-strong);
+  outline-offset: -2px;
+}
+
+@media (max-width: 1180px) {
+  .calendar-year-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .calendar-year-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .calendar-view-switch {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 420px) {
+  .calendar-year-grid {
+    grid-template-columns: 1fr;
+  }
 }

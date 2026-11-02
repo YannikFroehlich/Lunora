@@ -101,6 +101,7 @@ class Profile(models.Model):
         ("12h", "12-Stunden"),
     ]
     CALENDAR_VIEW_CHOICES = [
+        ("year", "Jahr"),
         ("month", "Monat"),
         ("week", "Woche"),
         ("three_days", "3 Tage"),

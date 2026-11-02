@@ -20,9 +20,9 @@
     <div class="calendar-layout">
         <section class="glass-panel month-panel" aria-labelledby="calendar-month-title">
             <div class="month-toolbar">
-                <a class="icon-button" href="{{ prev_url }}" aria-label="{% if calendar_view == 'week' %}Vorherige Woche{% elif calendar_view == 'three_days' %}Vorherige drei Tage{% elif calendar_view == 'day' %}Vorheriger Tag{% else %}Vorheriger Monat{% endif %}"><i class="fa-solid fa-chevron-left"></i></a>
+                <a class="icon-button" href="{{ prev_url }}" aria-label="{% if calendar_view == 'year' %}Vorheriges Jahr{% elif calendar_view == 'week' %}Vorherige Woche{% elif calendar_view == 'three_days' %}Vorherige drei Tage{% elif calendar_view == 'day' %}Vorheriger Tag{% else %}Vorheriger Monat{% endif %}"><i class="fa-solid fa-chevron-left"></i></a>
                 <h2 id="calendar-month-title">{{ period_label }}{% if calendar_grid %} <small>{{ calendar_grid.range_label }}</small>{% endif %}</h2>
-                <a class="icon-button" href="{{ next_url }}" aria-label="{% if calendar_view == 'week' %}Nächste Woche{% elif calendar_view == 'three_days' %}Nächste drei Tage{% elif calendar_view == 'day' %}Nächster Tag{% else %}Nächster Monat{% endif %}"><i class="fa-solid fa-chevron-right"></i></a>
+                <a class="icon-button" href="{{ next_url }}" aria-label="{% if calendar_view == 'year' %}Nächstes Jahr{% elif calendar_view == 'week' %}Nächste Woche{% elif calendar_view == 'three_days' %}Nächste drei Tage{% elif calendar_view == 'day' %}Nächster Tag{% else %}Nächster Monat{% endif %}"><i class="fa-solid fa-chevron-right"></i></a>
                 <span class="toolbar-spacer"></span>
                 <nav class="calendar-view-switch" aria-label="Ansicht">
                     {% for option in calendar_view_options %}
@@ -52,7 +52,10 @@
             </form>
             {% endif %}
 
-            {% if calendar_grid %}
+            {% if calendar_year %}
+            <p class="calendar-hint">Ein Tag öffnet die Tagesansicht, ein Monatsname die Monatsansicht. Je kräftiger ein Tag gefärbt ist, desto mehr Termine und Aufgaben liegen darauf.</p>
+            {% include 'app/partials/calendar_year.html' %}
+            {% elif calendar_grid %}
             {% if calendar_event_creation_enabled %}
             <p class="calendar-hint">Rechtsklick auf eine Uhrzeit (am Handy antippen) oder mit gedrückter Maustaste über eine Zeitspanne ziehen, um direkt einen Termin anzulegen. Eigene Termine lassen sich mit der Maus verschieben und am unteren Rand verlängern.</p>
             {% endif %}
@@ -142,6 +145,7 @@
                     <time>{{ event.time }}</time>
                     <span class="timeline-dot tone-{{ event.tone }}"></span>
                     <strong>{{ event.title }}</strong>
+                    {% include 'app/partials/calendar_location_link.html' with item=event %}
                     {% if event.recurrence_id %}<i class="fa-solid fa-repeat" title="Wiederkehrender Termin"></i>{% endif %}
                     {% if event.is_invited %}<i class="fa-solid fa-user-group" title="Einladung"></i>{% endif %}
                     <i class="fa-solid {{ event.icon }}"></i>
@@ -192,6 +196,7 @@
                     <span>{{ event.date }}</span>
                     <strong>{% if event.url %}<a href="{{ event.url }}">{{ event.title }}</a>{% else %}{{ event.title }}{% endif %}</strong>
                     <small>{{ event.category }}</small>
+                    {% include 'app/partials/calendar_location_link.html' with item=event %}
                     {% if event.recurrence_id %}<i class="fa-solid fa-repeat" title="Wiederkehrender Termin"></i>{% endif %}
                     {% if event.is_invited %}<i class="fa-solid fa-user-group" title="Einladung"></i>{% endif %}
                     <i class="fa-solid {{ event.icon }}"></i>
@@ -246,6 +251,7 @@
                     <span>
                         <strong>{{ invitation.event_title }}</strong>
                         <small>{{ invitation.organizer_name }} · {{ invitation.when }}</small>
+                        {% include 'app/partials/calendar_location_link.html' with item=invitation %}
                     </span>
                     <form method="post">
                         {% csrf_token %}
@@ -418,17 +424,19 @@
                 {{ event_form.repeat_until.errors }}
             </label>
 
-            <label class="event-form-field is-wide" for="{{ event_form.location.id_for_label }}">
-                <span>{{ event_form.location.label }}</span>
+            <div class="event-form-field is-wide">
+                <label for="{{ event_form.location.id_for_label }}">{{ event_form.location.label }} <small>Adresse oder Link zur Videokonferenz</small></label>
                 {{ event_form.location }}
+                <a class="event-location-link" href="#" target="_blank" rel="noopener noreferrer" data-location-link hidden></a>
                 {{ event_form.location.errors }}
-            </label>
+            </div>
 
-            <label class="event-form-field is-wide">
-                <span>{{ event_form.attendees.label }}</span>
+            <fieldset class="event-form-field event-attendees-field is-wide" data-availability-url="{% url 'calendar_availability' %}">
+                <legend>{{ event_form.attendees.label }}</legend>
                 <div class="recipient-checkbox-list">{{ event_form.attendees }}</div>
+                <small class="event-availability-hint" data-availability-hint aria-live="polite"></small>
                 {{ event_form.attendees.errors }}
-            </label>
+            </fieldset>
 
             <div class="event-form-actions is-wide">
                 <button class="ghost-button" type="button" data-event-dialog-close>Abbrechen</button>
@@ -503,17 +511,19 @@
                 {{ edit_form.category.errors }}
             </label>
 
-            <label class="event-form-field is-wide" for="{{ edit_form.location.id_for_label }}">
-                <span>{{ edit_form.location.label }}</span>
+            <div class="event-form-field is-wide">
+                <label for="{{ edit_form.location.id_for_label }}">{{ edit_form.location.label }} <small>Adresse oder Link zur Videokonferenz</small></label>
                 {{ edit_form.location }}
+                <a class="event-location-link" href="#" target="_blank" rel="noopener noreferrer" data-location-link hidden></a>
                 {{ edit_form.location.errors }}
-            </label>
+            </div>
 
-            <label class="event-form-field is-wide">
-                <span>{{ edit_form.attendees.label }}</span>
+            <fieldset class="event-form-field event-attendees-field is-wide" data-availability-url="{% url 'calendar_availability' %}">
+                <legend>{{ edit_form.attendees.label }}</legend>
                 <div class="recipient-checkbox-list">{{ edit_form.attendees }}</div>
+                <small class="event-availability-hint" data-availability-hint aria-live="polite"></small>
                 {{ edit_form.attendees.errors }}
-            </label>
+            </fieldset>
 
             <fieldset class="event-series-scope is-wide" data-event-edit-scope hidden>
                 <legend><i class="fa-solid fa-repeat" aria-hidden="true"></i> {{ edit_form.scope.label }}</legend>

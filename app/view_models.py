@@ -22,6 +22,7 @@ from app.models import (
     VocabularyCard,
     VocabularyList,
 )
+from app.services.calendar_service import location_link
 from app.services.dashboard import (
     ITEM_LIMITS,
     MAX_WIDGET_ITEMS,
@@ -57,6 +58,8 @@ from app.services.vocabulary import due_filter
 
 # Calendar views: the month grid plus time-grid views showing this many days side by side.
 CALENDAR_TIME_GRID_DAYS = {"week": 7, "three_days": 3, "day": 1}
+# Years the year view accepts in the URL.
+CALENDAR_YEAR_RANGE = (1900, 2200)
 # Time grid: the shortest height an event gets, and where the grid starts scrolled for ranges
 # that don't contain today.
 WEEK_MIN_EVENT_MINUTES = 20
@@ -598,10 +601,19 @@ def _upcoming_vacation_items(user, now, limit):
 def get_calendar_context(user, *, year=None, month=None, view=None, day=None):
     user_timezone = get_user_zoneinfo(user)
     now = localtime_for_user(profile_or_user=user)
-    view = view if view in CALENDAR_TIME_GRID_DAYS else "month"
+    view = view if view in CALENDAR_TIME_GRID_DAYS or view == "year" else "month"
     anchor = None
     grid_start = None
-    if view != "month":
+    if view == "year":
+        # The sidebar stats show the current month in the current year, January otherwise.
+        try:
+            year = int(year or now.year)
+            if not CALENDAR_YEAR_RANGE[0] <= year <= CALENDAR_YEAR_RANGE[1]:
+                raise ValueError
+        except (TypeError, ValueError):
+            year = now.year
+        month = now.month if year == now.year else 1
+    elif view != "month":
         # Time-grid views are anchored on a day (the week view on any day of its week); the stats
         # below then belong to that day's month, and the queried range covers both.
         try:
@@ -719,7 +731,13 @@ def get_calendar_context(user, *, year=None, month=None, view=None, day=None):
     month_label = f"{get_user_month_name(month_date, user)} {year}"
     calendar_url = reverse("calendar")
     time_grid = None
-    if view != "month":
+    year_grid = None
+    if view == "year":
+        year_grid = _calendar_year_grid(user, year, now, tasks_enabled)
+        period_label = str(year)
+        prev_url = f"{calendar_url}?view=year&year={year - 1}"
+        next_url = f"{calendar_url}?view=year&year={year + 1}"
+    elif view != "month":
         day_count = CALENDAR_TIME_GRID_DAYS[view]
         time_grid = _calendar_time_grid(
             user, view, grid_start, day_count, now, events_by_date, tasks_by_date, markers
@@ -743,6 +761,8 @@ def get_calendar_context(user, *, year=None, month=None, view=None, day=None):
             "url": (
                 f"{calendar_url}?view=month&year={year}&month={month}"
                 if key == "month"
+                else f"{calendar_url}?view=year&year={year}"
+                if key == "year"
                 else f"{calendar_url}?view={key}&date={switch_anchor.isoformat()}"
             ),
         }
@@ -755,6 +775,7 @@ def get_calendar_context(user, *, year=None, month=None, view=None, day=None):
         "calendar_view_options": view_options,
         "calendar_rows": rows,
         "calendar_grid": time_grid,
+        "calendar_year": year_grid,
         "period_label": period_label,
         "prev_url": prev_url,
         "next_url": next_url,
@@ -783,6 +804,74 @@ def get_calendar_context(user, *, year=None, month=None, view=None, day=None):
         "tasks_enabled": tasks_enabled,
         "due_tasks": due_tasks,
     }
+
+
+def _calendar_year_grid(user, year, now, tasks_enabled):
+    """Twelve small month grids for the year view: per day the number of events and open tasks
+    (as a busy level) plus holiday/vacation markers; every day links to its day view."""
+    user_timezone = get_user_zoneinfo(user)
+    first_day, last_day = date(year, 1, 1), date(year, 12, 31)
+    range_start = timezone.make_aware(datetime.combine(first_day, time.min), user_timezone)
+    range_end = timezone.make_aware(datetime.combine(last_day + timedelta(days=1), time.min), user_timezone)
+    events = (
+        _calendar_visible_events_query(user)
+        .filter(start_at__lt=range_end, end_at__gt=range_start)
+        .only("id", "start_at", "end_at", "is_all_day")
+    )
+    events_by_date = _group_calendar_events_by_date(events, first_day, last_day + timedelta(days=1), user)
+    task_counts = {}
+    if tasks_enabled:
+        for due_at in (
+            visible_tasks(user)
+            .filter(is_done=False, due_at__gte=range_start, due_at__lt=range_end)
+            .values_list("due_at", flat=True)
+        ):
+            due_day = localtime_for_user(due_at, user).date()
+            task_counts[due_day] = task_counts.get(due_day, 0) + 1
+    markers = calendar_day_markers(user, first_day, last_day) if feature_enabled("vacation_planner") else {}
+    calendar_url = reverse("calendar")
+    months = []
+    for month in range(1, 13):
+        month_date = date(year, month, 1)
+        weeks = []
+        for week in calendar.Calendar(firstweekday=0).monthdatescalendar(year, month):
+            row = []
+            for day in week:
+                if day.month != month:
+                    row.append(None)
+                    continue
+                event_count = len(events_by_date.get(day, []))
+                task_count = task_counts.get(day, 0)
+                day_markers = markers.get(day, [])
+                details = []
+                if event_count:
+                    details.append(f"{event_count} Termin" + ("e" if event_count != 1 else ""))
+                if task_count:
+                    details.append(f"{task_count} Aufgabe" + ("n" if task_count != 1 else ""))
+                details.extend(marker["label"] for marker in day_markers)
+                total = event_count + task_count
+                row.append(
+                    {
+                        "number": day.day,
+                        "url": f"{calendar_url}?view=day&date={day.isoformat()}",
+                        "today": day == now.date(),
+                        "weekend": day.weekday() >= 5,
+                        "level": min(total, 3),
+                        "holiday": any(marker["kind"] == "holiday" for marker in day_markers),
+                        "vacation": any(marker["kind"] == "vacation" for marker in day_markers),
+                        "label": format_user_date(day, user) + (f": {', '.join(details)}" if details else ""),
+                    }
+                )
+            weeks.append(row)
+        months.append(
+            {
+                "label": get_user_month_name(month_date, user),
+                "url": f"{calendar_url}?view=month&year={year}&month={month}",
+                "is_current": (year, month) == (now.year, now.month),
+                "weeks": weeks,
+            }
+        )
+    return {"year": year, "months": months}
 
 
 def _calendar_task_item(task, user):
@@ -960,6 +1049,8 @@ def _calendar_event_manage_fields(event, user):
         "event_id": event.id,
         "recurrence_id": event.recurrence_id,
         "can_delete": can_manage,
+        "location": event.location,
+        "location_link": location_link(event.location),
     }
     if can_manage:
         event_start = localtime_for_user(event.start_at, user)
@@ -1015,6 +1106,8 @@ def _pending_invitation_items(user):
             "event_title": row.event.title,
             "organizer_name": _display_name(row.event.user),
             "when": format_user_datetime(row.event.start_at, user),
+            "location": row.event.location,
+            "location_link": location_link(row.event.location),
         }
         for row in attendee_rows
     ]

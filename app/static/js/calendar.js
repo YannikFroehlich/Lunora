@@ -701,3 +701,139 @@ try {
 } catch {
   // Storage blocked: nothing to take over.
 }
+
+// Location: a web address links to the meeting, anything else to a map search (same rule as
+// location_link in calendar_service.py, which renders the links outside the dialogs).
+const locationLinkFor = (value) => {
+  const location = value.trim();
+  if (!location) return null;
+  if (/^https?:\/\/\S+$/i.test(location)) {
+    try {
+      const url = new URL(location);
+      return { href: url.href, label: "Online-Termin öffnen", icon: "fa-video" };
+    } catch {
+      // Not a valid URL after all: treat it as an address.
+    }
+  }
+  return {
+    href: `https://www.openstreetmap.org/search?query=${encodeURIComponent(location)}`,
+    label: "Auf der Karte zeigen",
+    icon: "fa-map-location-dot",
+  };
+};
+
+// Attendee availability: the dialog's own fields go to /calendar/availability/ as a query string,
+// and each ticked person gets a free/busy/away badge. Only that status comes back, never details.
+document.querySelectorAll("form.event-create-form").forEach((form) => {
+  const dialog = form.closest("dialog");
+  const fieldset = form.querySelector("[data-availability-url]");
+  const hint = form.querySelector("[data-availability-hint]");
+  const locationInput = form.querySelector("input[name='location']");
+  const locationLink = form.querySelector("[data-location-link]");
+  const eventIdInput = form.querySelector("[data-event-edit-id-input]");
+  let timer = 0;
+  let requestNumber = 0;
+
+  const syncLocationLink = () => {
+    if (!locationInput || !locationLink) return;
+    const link = locationLinkFor(locationInput.value);
+    locationLink.hidden = !link;
+    if (!link) return;
+    locationLink.href = link.href;
+    locationLink.replaceChildren();
+    const icon = document.createElement("i");
+    icon.className = `fa-solid ${link.icon}`;
+    icon.setAttribute("aria-hidden", "true");
+    locationLink.append(icon, ` ${link.label}`);
+  };
+
+  const badgeFor = (input) => {
+    const label = input.closest("label");
+    let badge = label?.querySelector(".availability-badge");
+    if (label && !badge) {
+      badge = document.createElement("span");
+      badge.className = "availability-badge";
+      label.append(badge);
+    }
+    return badge;
+  };
+
+  const clearBadges = () => {
+    form.querySelectorAll(".availability-badge").forEach((badge) => badge.remove());
+  };
+
+  const refreshAvailability = async () => {
+    if (!fieldset) return;
+    const checked = [...form.querySelectorAll("input[name='attendees']:checked")];
+    const current = ++requestNumber;
+    if (!checked.length) {
+      clearBadges();
+      if (hint) hint.textContent = "";
+      return;
+    }
+    const params = new URLSearchParams();
+    ["event_date", "end_date", "start_time", "end_time"].forEach((name) => {
+      const value = form.querySelector(`[name='${name}']`)?.value;
+      if (value) params.set(name, value);
+    });
+    if (form.querySelector("input[name='is_all_day']")?.checked) params.set("is_all_day", "on");
+    if (eventIdInput?.value) params.set("exclude_event", eventIdInput.value);
+    checked.forEach((input) => params.append("attendees", input.value));
+    try {
+      const response = await fetch(`${fieldset.dataset.availabilityUrl}?${params}`, {
+        headers: { Accept: "application/json" },
+        credentials: "same-origin",
+      });
+      if (current !== requestNumber) return;
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        clearBadges();
+        if (hint) hint.textContent = "Verfügbarkeit erscheint, sobald Datum und Uhrzeit vollständig sind.";
+        return;
+      }
+      clearBadges();
+      const byId = new Map(data.users.map((user) => [String(user.id), user]));
+      let conflicts = 0;
+      checked.forEach((input) => {
+        const user = byId.get(input.value);
+        const badge = user && badgeFor(input);
+        if (!badge) return;
+        badge.classList.add(`is-${user.status}`);
+        badge.textContent = user.label;
+        if (user.status !== "free") conflicts += 1;
+      });
+      if (hint) {
+        hint.textContent = conflicts
+          ? `${conflicts} von ${checked.length} Eingeladenen ${conflicts === 1 ? "ist" : "sind"} zu dieser Zeit nicht frei.`
+          : "Alle Eingeladenen sind zu dieser Zeit frei.";
+      }
+    } catch {
+      // Offline or server error: the dialog still works without the hint.
+    }
+  };
+
+  const scheduleRefresh = () => {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(refreshAvailability, 250);
+  };
+
+  form.addEventListener("input", (event) => {
+    if (event.target === locationInput) {
+      syncLocationLink();
+    } else {
+      scheduleRefresh();
+    }
+  });
+  form.addEventListener("change", scheduleRefresh);
+
+  // The dialogs are filled programmatically (edit data, dragged ranges) before they open.
+  if (dialog) {
+    new MutationObserver(() => {
+      if (dialog.open) {
+        syncLocationLink();
+        scheduleRefresh();
+      }
+    }).observe(dialog, { attributes: true, attributeFilter: ["open"] });
+  }
+  syncLocationLink();
+});

@@ -6,6 +6,16 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Calendar year view: "Jahr" in the view switch shows all twelve months at once, colours each day by
+  how much is on it and marks holidays and vacations. A day opens its day view, a month name the
+  month view.
+- When inviting people to an event, the dialog shows next to each ticked person whether they are
+  free, busy or on vacation at that time (only that status, no details of their events).
+- An event's location links to a map search (OpenStreetMap) in the "Heute" and "Nächste Termine"
+  lists, the invitations and the event dialogs; a web address as location opens the video call
+  instead.
+- Fixed labels in the calendar's dialogs pointing at the wrong field, because the create, edit and
+  reminder forms used the same field ids.
 - Notes with checklists show their progress (for example "2/5") in the note list; it turns green
   once every item is ticked and updates as soon as the note is saved.
 - Voice messages in chats: the microphone button next to the text field records a message (up to
