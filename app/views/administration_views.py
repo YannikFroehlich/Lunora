@@ -6,23 +6,18 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 
 from app.forms import SystemSettingsForm
+from app.models import UserSession
 from app.services.system_settings import get_system_settings, logout_other_authenticated_sessions
 
 
 def _active_session_stats():
-    active_sessions = Session.objects.filter(expire_date__gte=timezone.now())
-    authenticated_sessions = 0
-    user_ids = set()
-
-    for session in active_sessions:
-        user_id = session.get_decoded().get("_auth_user_id")
-        if user_id:
-            authenticated_sessions += 1
-            user_ids.add(user_id)
-
+    # UserSession rows index the signed-in sessions by user (see app.services.user_sessions).
+    live_rows = UserSession.objects.filter(
+        session_key__in=Session.objects.filter(expire_date__gte=timezone.now()).values("session_key")
+    )
     return {
-        "authenticated_sessions": authenticated_sessions,
-        "authenticated_users": len(user_ids),
+        "authenticated_sessions": live_rows.count(),
+        "authenticated_users": live_rows.values("user_id").distinct().count(),
     }
 
 

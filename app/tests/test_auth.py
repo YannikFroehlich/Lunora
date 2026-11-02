@@ -1,6 +1,8 @@
+from importlib import import_module
 from unittest.mock import patch
 from urllib.error import URLError
 
+from django.apps import apps
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -254,17 +256,40 @@ class DeviceSessionTests(TestCase):
         self.assertEqual(self.laptop.get("/home/").status_code, 200)
         self.assertEqual(UserSession.objects.filter(user=self.user).count(), 1)
 
-    def test_revoke_others_also_ends_sessions_that_were_never_tracked(self):
-        UserSession.objects.all().delete()
-        untracked = Client()
-        untracked.force_login(self.user)
-        UserSession.objects.all().delete()
+    def test_revoke_others_ends_every_other_session_of_the_user_only(self):
+        tablet = Client()
+        tablet.force_login(self.user)
+        tablet.get("/home/")
+        other = User.objects.create_user(username="tom", email="tom@example.com", password="pw-12345!")
+        Profile.objects.create(user=other, display_name="Tom")
+        stranger = Client()
+        stranger.post("/login/", {"username": "tom", "password": "pw-12345!"})
 
         self.laptop.post("/settings/", {"form_name": "session_revoke_others"})
 
         self.assertRedirects(self.phone.get("/home/"), "/login/?next=/home/")
-        self.assertRedirects(untracked.get("/home/"), "/login/?next=/home/")
+        self.assertRedirects(tablet.get("/home/"), "/login/?next=/home/")
         self.assertEqual(self.laptop.get("/home/").status_code, 200)
+        self.assertEqual(stranger.get("/home/").status_code, 200)
+
+    def test_backfill_migration_tracks_signed_in_sessions_that_have_no_row(self):
+        tracked_keys = {self.laptop.session.session_key, self.phone.session.session_key}
+        UserSession.objects.all().delete()
+        Client().get("/login/")  # an anonymous session must stay untracked
+
+        import_module("app.migrations.0063_track_existing_sessions").track_existing_sessions(apps, None)
+
+        self.assertEqual(
+            set(UserSession.objects.filter(user=self.user).values_list("session_key", flat=True)),
+            tracked_keys,
+        )
+        self.assertEqual(UserSession.objects.count(), 2)
+
+    def test_login_request_itself_is_tracked(self):
+        self.assertEqual(
+            set(UserSession.objects.filter(user=self.user).values_list("session_key", flat=True)),
+            {self.laptop.session.session_key, self.phone.session.session_key},
+        )
 
     def test_other_users_devices_cannot_be_revoked(self):
         other = User.objects.create_user(username="tom", email="tom@example.com", password="pw-12345!")

@@ -40,6 +40,7 @@ from app.services.calendar_service import (
 )
 from app.services.chat_files import infer_attachment_kind, validate_note_upload
 from app.services.image_uploads import PROFILE_IMAGE_ACCEPT, validate_profile_image_file
+from app.services.notes import display_name
 from app.services.notification_preferences import CATEGORY_DEFINITIONS
 from app.services.quick_add import parse_quick_add
 from app.services.tasks import DEFAULT_DUE_TIME
@@ -729,6 +730,12 @@ class TaskForm(forms.ModelForm):
         required=False,
         widget=forms.CheckboxSelectMultiple,
     )
+    assignee = forms.ModelChoiceField(
+        label="Zuweisen an",
+        queryset=User.objects.none(),
+        required=False,
+        empty_label="Niemand",
+    )
     # Declared explicitly (rather than left to ModelForm auto-generation) so Django doesn't
     # prepend its own blank "---------" choice alongside the model's own "Keine" option.
     priority = forms.ChoiceField(
@@ -740,7 +747,16 @@ class TaskForm(forms.ModelForm):
 
     class Meta:
         model = Task
-        fields = ["title", "due_at", "task_list", "parent", "priority", "labels", "recurrence_rule"]
+        fields = [
+            "title",
+            "due_at",
+            "task_list",
+            "parent",
+            "priority",
+            "labels",
+            "recurrence_rule",
+            "assignee",
+        ]
         labels = {"title": "Neue Aufgabe"}
         widgets = {
             "title": forms.TextInput(
@@ -760,9 +776,19 @@ class TaskForm(forms.ModelForm):
             # A parent must itself be a top-level task, which caps subtasks at one level deep.
             self.fields["parent"].queryset = Task.objects.filter(user=user, parent__isnull=True)
             self.fields["labels"].queryset = TaskLabel.objects.filter(owner=user)
+            self.fields["assignee"].queryset = (
+                User.objects.filter(is_active=True)
+                .exclude(pk=user.pk)
+                .select_related("profile")
+                .order_by("first_name", "email", "username")
+            )
+            self.fields["assignee"].label_from_instance = display_name
 
     def clean(self):
         cleaned_data = super().clean()
+        if cleaned_data.get("parent") and cleaned_data.get("assignee"):
+            # Subtasks follow their parent's assignee instead of having their own.
+            self.add_error("assignee", "Nur Hauptaufgaben können zugewiesen werden.")
         # Only new tasks read their title as quick-add text; editing keeps the title as typed.
         if self.instance.pk is None and self.user is not None and cleaned_data.get("title"):
             self._apply_quick_add(cleaned_data)
@@ -799,6 +825,16 @@ class TaskRescheduleForm(forms.Form):
     task_id = forms.IntegerField(min_value=1)
     due_date = forms.DateField(input_formats=["%Y-%m-%d"])
     due_time = forms.TimeField(required=False, input_formats=["%H:%M"])
+
+
+class CalendarEventMoveForm(forms.Form):
+    """An event dragged in the calendar: dropped onto a day, onto the time grid (start_minute), or its
+    bottom edge stretched on the time grid (end_minute), each counted in minutes after midnight."""
+
+    event_id = forms.IntegerField(min_value=1)
+    date = forms.DateField(input_formats=["%Y-%m-%d"])
+    start_minute = forms.IntegerField(required=False, min_value=0, max_value=24 * 60 - 1)
+    end_minute = forms.IntegerField(required=False, min_value=1, max_value=24 * 60)
 
 
 class TaskListForm(forms.ModelForm):

@@ -1,4 +1,5 @@
 import importlib
+import uuid
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
@@ -291,11 +292,14 @@ class CalendarWeekViewTests(TestCase):
             **extra,
         )
 
+    def view_urls(self, response):
+        return {option["key"]: option["url"] for option in response.context["calendar_view_options"]}
+
     def week(self, day="2099-08-12"):
         response = self.client.get(f"/calendar/?view=week&date={day}")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["calendar_view"], "week")
-        return response, {item["date_input"]: item for item in response.context["calendar_week"]["days"]}
+        return response, {item["date_input"]: item for item in response.context["calendar_grid"]["days"]}
 
     def test_week_shows_monday_to_sunday_of_the_anchor_day_with_navigation(self):
         response, days = self.week("2099-08-12")
@@ -304,15 +308,15 @@ class CalendarWeekViewTests(TestCase):
         self.assertEqual(
             [day["weekday"] for day in days.values()], ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
         )
-        week = response.context["calendar_week"]
+        week = response.context["calendar_grid"]
         self.assertEqual(week["label"], "KW 33")
         self.assertEqual(response.context["period_label"], "KW 33")
         self.assertEqual(response.context["calendar_rows"], [])
         self.assertEqual(week["scroll_minute"], 7 * 60)
         self.assertEqual(response.context["prev_url"], "/calendar/?view=week&date=2099-08-05")
         self.assertEqual(response.context["next_url"], "/calendar/?view=week&date=2099-08-19")
-        self.assertEqual(response.context["month_view_url"], "/calendar/?year=2099&month=8")
-        self.assertTemplateUsed(response, "app/partials/calendar_week.html")
+        self.assertEqual(self.view_urls(response)["month"], "/calendar/?view=month&year=2099&month=8")
+        self.assertTemplateUsed(response, "app/partials/calendar_time_grid.html")
         self.assertContains(response, 'aria-label="Nächste Woche"')
 
     def test_timed_events_are_placed_on_the_grid_and_overlaps_share_the_column(self):
@@ -369,17 +373,18 @@ class CalendarWeekViewTests(TestCase):
         self.assertIsNotNone(today_item["now_minute"])
         self.assertEqual([task["label"] for task in today_item["tasks"]], ["Steuer"])
         self.assertEqual(response.context["today_url"], "/calendar/?view=week")
-        self.assertEqual(response.context["week_view_url"], f"/calendar/?view=week&date={today.isoformat()}")
+        self.assertEqual(self.view_urls(response)["day"], f"/calendar/?view=day&date={today.isoformat()}")
 
     def test_month_view_stays_the_default_and_links_to_the_week(self):
         response = self.client.get("/calendar/?year=2099&month=8")
 
         self.assertEqual(response.context["calendar_view"], "month")
-        self.assertIsNone(response.context["calendar_week"])
+        self.assertIsNone(response.context["calendar_grid"])
         self.assertEqual(response.context["period_label"], "August 2099")
-        self.assertEqual(response.context["week_view_url"], "/calendar/?view=week&date=2099-08-01")
+        self.assertEqual(self.view_urls(response)["week"], "/calendar/?view=week&date=2099-08-01")
+        self.assertEqual(response.context["today_url"], "/calendar/?view=month")
         self.assertEqual(response.context["next_url"], "/calendar/?year=2099&month=9")
-        self.assertTemplateNotUsed(response, "app/partials/calendar_week.html")
+        self.assertTemplateNotUsed(response, "app/partials/calendar_time_grid.html")
 
     def test_posts_from_the_week_view_redirect_back_to_it(self):
         response = self.client.post(
@@ -573,3 +578,193 @@ class CalendarSeriesEditTests(TestCase):
         self.assertContains(response, 'data-edit-series="true"')
         self.assertContains(response, 'data-edit-series="false"')
         self.assertContains(response, 'name="scope" value="following"')
+
+
+class CalendarDayAndThreeDayViewTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
+        self.profile = Profile.objects.create(
+            user=self.user, display_name="Mira", timezone_name="Europe/Berlin"
+        )
+        self.client.login(username="mira@example.com", password="secret-12345")
+        self.berlin = ZoneInfo("Europe/Berlin")
+
+    def test_three_days_start_at_the_anchor_and_reach_into_the_next_month(self):
+        start = datetime(2099, 9, 1, 10, 0, tzinfo=self.berlin)
+        CalendarEvent.objects.create(
+            user=self.user, title="Kickoff", start_at=start, end_at=start + timedelta(hours=1)
+        )
+
+        response = self.client.get("/calendar/?view=three_days&date=2099-08-31")
+
+        grid = response.context["calendar_grid"]
+        self.assertEqual(
+            [day["date_input"] for day in grid["days"]], ["2099-08-31", "2099-09-01", "2099-09-02"]
+        )
+        self.assertEqual(grid["day_count"], 3)
+        self.assertEqual(grid["label"], "3 Tage")
+        self.assertEqual([event["label"] for event in grid["days"][1]["timed"]], ["Kickoff"])
+        # The stats stay with the anchor day's month.
+        self.assertEqual(response.context["month_label"], "August 2099")
+        self.assertEqual(response.context["prev_url"], "/calendar/?view=three_days&date=2099-08-28")
+        self.assertEqual(response.context["next_url"], "/calendar/?view=three_days&date=2099-09-03")
+        self.assertContains(response, "--week-days: 3")
+
+    def test_day_view_shows_one_day_named_by_its_weekday(self):
+        response = self.client.get("/calendar/?view=day&date=2099-08-12")
+
+        grid = response.context["calendar_grid"]
+        self.assertEqual([day["date_input"] for day in grid["days"]], ["2099-08-12"])
+        self.assertEqual(grid["label"], "Mittwoch")
+        self.assertEqual(grid["range_label"], "12.08.2099")
+        self.assertEqual(response.context["next_url"], "/calendar/?view=day&date=2099-08-13")
+        self.assertContains(response, 'aria-label="Nächster Tag"')
+
+    def test_the_chosen_view_is_remembered_for_the_plain_calendar_page(self):
+        self.assertEqual(self.client.get("/calendar/").context["calendar_view"], "month")
+
+        self.client.get("/calendar/?view=three_days&date=2099-08-12")
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.calendar_view, "three_days")
+        self.assertEqual(self.client.get("/calendar/").context["calendar_view"], "three_days")
+        # A month link without a view still shows that month.
+        self.assertEqual(self.client.get("/calendar/?year=2099&month=8").context["calendar_view"], "month")
+
+        self.client.get("/calendar/?view=month&year=2099&month=8")
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.calendar_view, "month")
+        self.client.get("/calendar/?view=unbekannt")
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.calendar_view, "month")
+
+
+class CalendarEventMoveTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=self.user, display_name="Mira", timezone_name="Europe/Berlin")
+        self.client.login(username="mira@example.com", password="secret-12345")
+        self.berlin = ZoneInfo("Europe/Berlin")
+        self.url = "/calendar/?view=week&date=2099-08-12"
+
+    def create_event(self, title, start, end, **extra):
+        return CalendarEvent.objects.create(
+            user=self.user,
+            title=title,
+            start_at=start.replace(tzinfo=self.berlin),
+            end_at=end.replace(tzinfo=self.berlin),
+            **extra,
+        )
+
+    def move(self, event, **fields):
+        return self.client.post(
+            self.url, {"form_name": "calendar_event_move", "event_id": event.pk, **fields}
+        )
+
+    def local(self, event):
+        event.refresh_from_db()
+        return event.start_at.astimezone(self.berlin).replace(tzinfo=None), event.end_at.astimezone(
+            self.berlin
+        ).replace(tzinfo=None)
+
+    def test_dropping_on_a_day_keeps_time_and_length_and_on_the_grid_sets_the_time(self):
+        event = self.create_event("Review", datetime(2099, 8, 12, 9, 30), datetime(2099, 8, 12, 11, 0))
+
+        response = self.move(event, date="2099-08-14")
+
+        self.assertRedirects(response, self.url)
+        self.assertEqual(self.local(event), (datetime(2099, 8, 14, 9, 30), datetime(2099, 8, 14, 11, 0)))
+
+        self.move(event, date="2099-08-15", start_minute=23 * 60)
+        self.assertEqual(self.local(event), (datetime(2099, 8, 15, 23, 0), datetime(2099, 8, 16, 0, 30)))
+
+    def test_moves_keep_the_wall_clock_time_across_daylight_saving_changes(self):
+        event = self.create_event(
+            "Sprechstunde", datetime(2099, 10, 21, 10, 0), datetime(2099, 10, 21, 11, 0)
+        )
+
+        self.move(event, date="2099-10-28")
+
+        self.assertEqual(self.local(event), (datetime(2099, 10, 28, 10, 0), datetime(2099, 10, 28, 11, 0)))
+
+    def test_all_day_events_only_change_their_days(self):
+        event = self.create_event("Messe", datetime(2099, 8, 10), datetime(2099, 8, 13), is_all_day=True)
+
+        self.move(event, date="2099-08-17", start_minute=600)
+
+        self.assertEqual(self.local(event), (datetime(2099, 8, 17), datetime(2099, 8, 20)))
+        self.move(event, date="2099-08-17", end_minute=600)
+        self.assertEqual(self.local(event), (datetime(2099, 8, 17), datetime(2099, 8, 20)))
+
+    def test_stretching_sets_the_end_but_not_before_the_start(self):
+        event = self.create_event("Workshop", datetime(2099, 8, 12, 14, 0), datetime(2099, 8, 12, 15, 0))
+
+        self.move(event, date="2099-08-12", end_minute=17 * 60 + 30)
+        self.assertEqual(self.local(event), (datetime(2099, 8, 12, 14, 0), datetime(2099, 8, 12, 17, 30)))
+
+        self.move(event, date="2099-08-12", end_minute=24 * 60)
+        self.assertEqual(self.local(event)[1], datetime(2099, 8, 13, 0, 0))
+
+        response = self.client.post(
+            self.url,
+            {
+                "form_name": "calendar_event_move",
+                "event_id": event.pk,
+                "date": "2099-08-12",
+                "end_minute": 14 * 60,
+            },
+            follow=True,
+        )
+        self.assertContains(response, "Termin konnte nicht verschoben werden.")
+        self.assertEqual(self.local(event)[1], datetime(2099, 8, 13, 0, 0))
+
+    def test_only_own_events_move_and_a_series_occurrence_moves_alone(self):
+        other = User.objects.create_user(username="jonas@example.com", email="jonas@example.com")
+        foreign = CalendarEvent.objects.create(
+            user=other,
+            title="Fremd",
+            start_at=datetime(2099, 8, 12, 9, 0, tzinfo=self.berlin),
+            end_at=datetime(2099, 8, 12, 10, 0, tzinfo=self.berlin),
+        )
+        CalendarEventAttendee.objects.create(event=foreign, user=self.user)
+
+        self.move(foreign, date="2099-08-14")
+        self.assertEqual(self.local(foreign)[0], datetime(2099, 8, 12, 9, 0))
+
+        series_id = uuid.uuid4()
+        first = self.create_event(
+            "Jour fixe", datetime(2099, 8, 10, 9, 0), datetime(2099, 8, 10, 10, 0), recurrence_id=series_id
+        )
+        second = self.create_event(
+            "Jour fixe", datetime(2099, 8, 17, 9, 0), datetime(2099, 8, 17, 10, 0), recurrence_id=series_id
+        )
+
+        self.move(first, date="2099-08-11", start_minute=13 * 60)
+
+        self.assertEqual(self.local(first)[0], datetime(2099, 8, 11, 13, 0))
+        self.assertEqual(self.local(second)[0], datetime(2099, 8, 17, 9, 0))
+        first.refresh_from_db()
+        self.assertEqual(first.recurrence_id, series_id)
+
+    def test_move_is_gated_by_the_event_creation_flag(self):
+        event = self.create_event("Review", datetime(2099, 8, 12, 9, 30), datetime(2099, 8, 12, 11, 0))
+        SystemSettings.objects.update_or_create(pk=1, defaults={"calendar_event_creation_enabled": False})
+
+        response = self.move(event, date="2099-08-14")
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(self.local(event)[0], datetime(2099, 8, 12, 9, 30))
+
+    def test_own_events_carry_move_data_and_resize_handles(self):
+        self.create_event("Review", datetime(2099, 8, 12, 9, 30), datetime(2099, 8, 12, 11, 0))
+        self.create_event("Nacht", datetime(2099, 8, 13, 22, 0), datetime(2099, 8, 14, 2, 0))
+
+        response = self.client.get(self.url)
+
+        self.assertContains(response, 'data-event-move="', count=3)
+        self.assertContains(response, 'data-move-start="570"')
+        # The night event can only be stretched where it ends, on the next day.
+        self.assertContains(response, "data-event-resize", count=2)

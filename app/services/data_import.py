@@ -4,9 +4,10 @@ Both parsers are hand-written on the stdlib, like the rest of Lunora's file form
 still pass validate_note_document, so a parser bug can only fail an import, never store bad JSON.
 """
 
+import calendar
 import re
 import uuid
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import PurePath
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -15,7 +16,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 
 from app.models import CalendarEvent
-from app.services.calendar_service import MANUAL_RECURRENCE_MAX_INSTANCES, expand_manual_recurrence
+from app.services.calendar_service import MANUAL_RECURRENCE_MAX_INSTANCES
 from app.services.note_content import ALLOWED_CODE_LANGUAGES, document_plain_text, validate_note_document
 from app.services.notes import create_note
 from app.services.user_preferences import get_user_zoneinfo
@@ -337,6 +338,13 @@ ICS_DURATION_RE = re.compile(
     r"(?:T(?:(?P<hours>\d+)H)?(?:(?P<minutes>\d+)M)?(?:(?P<seconds>\d+)S)?)?$"
 )
 SUPPORTED_FREQUENCIES = {"DAILY", "WEEKLY", "MONTHLY", "YEARLY"}
+# RRULE parts _ics_occurrences understands; a rule with any other part (BYSETPOS, BYWEEKNO, BYHOUR,
+# ...) imports as its first date only.
+SUPPORTED_RULE_PARTS = {"FREQ", "INTERVAL", "UNTIL", "COUNT", "WKST", "BYDAY", "BYMONTHDAY", "BYMONTH"}
+ICS_WEEKDAYS = {"MO": 0, "TU": 1, "WE": 2, "TH": 3, "FR": 4, "SA": 5, "SU": 6}
+BYDAY_RE = re.compile(r"^([+-]?\d{1,2})?(MO|TU|WE|TH|FR|SA|SU)$")
+# Periods walked at most, so a rule that rarely matches (FEB 30th never does) can't loop for long.
+MAX_RECURRENCE_PERIODS = 5000
 
 
 def _ics_unescape(value):
@@ -354,8 +362,13 @@ def _ics_properties(block_lines):
         for param in raw_params:
             key, _sep, param_value = param.partition("=")
             params[key.upper()] = param_value.strip('"')
-        # Keep the first occurrence; repeated properties (e.g. several EXDATEs) are not needed.
-        properties.setdefault(name.upper(), (value, params))
+        name = name.upper()
+        if name == "EXDATE":
+            # Calendars write several EXDATE lines, each possibly a comma-separated list.
+            properties.setdefault(name, []).append((value, params))
+            continue
+        # Keep the first occurrence of every other property.
+        properties.setdefault(name, (value, params))
     return properties
 
 
@@ -396,13 +409,38 @@ def _ics_duration(value):
     return -duration if match.group("sign") == "-" else duration
 
 
-def _ics_recurrence(rule, start_at):
-    """Map a simple RRULE onto Lunora's own series: (frequency, until, count), or None if too complex."""
+def _ics_occurrences(rule, start_at):
+    """Expand an RRULE from start_at into the series' start datetimes, or None for a rule this
+    importer can't read (then only the first date is imported).
+
+    Handles FREQ, INTERVAL, COUNT, UNTIL, BYDAY (with ordinals such as 2MO or -1FR in monthly and
+    yearly rules), BYMONTHDAY and BYMONTH. DTSTART is always the first occurrence, and every
+    occurrence keeps start_at's wall-clock time, so a series stays at 9:00 across DST changes.
+    """
     parts = dict(part.split("=", 1) for part in rule.upper().split(";") if "=" in part)
-    if parts.get("FREQ") not in SUPPORTED_FREQUENCIES or parts.get("INTERVAL", "1") != "1":
+    frequency = parts.get("FREQ")
+    if frequency not in SUPPORTED_FREQUENCIES or set(parts) - SUPPORTED_RULE_PARTS:
         return None
-    if set(parts) - {"FREQ", "INTERVAL", "UNTIL", "COUNT", "WKST"}:
+    try:
+        interval = int(parts.get("INTERVAL", "1"))
+        count = int(parts["COUNT"]) if "COUNT" in parts else MANUAL_RECURRENCE_MAX_INSTANCES
+        months = {int(value) for value in parts["BYMONTH"].split(",")} if "BYMONTH" in parts else set()
+        month_days = [int(value) for value in parts["BYMONTHDAY"].split(",")] if "BYMONTHDAY" in parts else []
+    except ValueError:
         return None
+    by_day = []
+    for token in parts["BYDAY"].split(",") if "BYDAY" in parts else []:
+        match = BYDAY_RE.match(token.strip())
+        if not match:
+            return None
+        by_day.append((int(match.group(1)) if match.group(1) else None, ICS_WEEKDAYS[match.group(2)]))
+    # "The 20th Monday of the year" and ordinals in daily/weekly rules are left to the fallback.
+    has_ordinal = any(ordinal for ordinal, _weekday in by_day)
+    if interval < 1 or count < 1 or (has_ordinal and frequency in {"DAILY", "WEEKLY"}):
+        return None
+    if frequency == "YEARLY" and by_day and not months:
+        return None
+
     until = start_at + timedelta(days=RECURRENCE_HORIZON_DAYS)
     if "UNTIL" in parts:
         parsed = _ics_datetime(parts["UNTIL"], {}, start_at.tzinfo)
@@ -411,8 +449,82 @@ def _ics_recurrence(rule, start_at):
             if parsed[1]:
                 until_value = datetime.combine(until_value.date(), time.max, tzinfo=until_value.tzinfo)
             until = min(until, until_value)
-    count = int(parts["COUNT"]) if parts.get("COUNT", "").isdigit() else None
-    return parts["FREQ"], until, count
+
+    limit = min(count, MANUAL_RECURRENCE_MAX_INSTANCES)
+    start_date = start_at.date()
+    occurrences = [start_at]
+    for period in range(MAX_RECURRENCE_PERIODS):
+        period_start, days = _rule_period_days(
+            frequency, start_date, period * interval, by_day, month_days, months
+        )
+        if datetime.combine(period_start, time.min, tzinfo=start_at.tzinfo) > until:
+            break
+        for day in sorted(set(days)):
+            if day <= start_date:
+                continue
+            occurrence = datetime.combine(day, start_at.time(), tzinfo=start_at.tzinfo)
+            if occurrence > until or len(occurrences) >= limit:
+                return occurrences
+            occurrences.append(occurrence)
+    return occurrences[:limit]
+
+
+def _rule_period_days(frequency, start_date, step, by_day, month_days, months):
+    """The first day of the step-th period (day, week, month or year) after start_date's own, and the
+    days of that period the rule picks."""
+    weekdays = {weekday for _ordinal, weekday in by_day}
+    if frequency == "DAILY":
+        day = start_date + timedelta(days=step)
+        matches = (
+            (not months or day.month in months)
+            and (not weekdays or day.weekday() in weekdays)
+            and (not month_days or day.day in _resolve_month_days(day.year, day.month, month_days))
+        )
+        return day, [day] if matches else []
+    if frequency == "WEEKLY":
+        # ponytail: weeks start on Monday (WKST is ignored); only an INTERVAL>1 rule with WKST=SU
+        # and a Sunday in BYDAY would come out a week off.
+        week_start = start_date - timedelta(days=start_date.weekday()) + timedelta(weeks=step)
+        days = [week_start + timedelta(days=weekday) for weekday in weekdays or {start_date.weekday()}]
+        return week_start, [day for day in days if not months or day.month in months]
+    if frequency == "MONTHLY":
+        month_index = start_date.month - 1 + step
+        first = date(start_date.year + month_index // 12, month_index % 12 + 1, 1)
+        if months and first.month not in months:
+            return first, []
+        return first, _rule_month_days(first.year, first.month, by_day, month_days, start_date.day)
+    year = start_date.year + step
+    days = []
+    for month in sorted(months or {start_date.month}):
+        days += _rule_month_days(year, month, by_day, month_days, start_date.day)
+    return date(year, 1, 1), days
+
+
+def _resolve_month_days(year, month, month_days):
+    """BYMONTHDAY values as real days of that month; -1 is the last day, impossible days drop out."""
+    last = calendar.monthrange(year, month)[1]
+    resolved = (value if value > 0 else last + value + 1 for value in month_days)
+    return {value for value in resolved if 1 <= value <= last}
+
+
+def _rule_month_days(year, month, by_day, month_days, default_day):
+    last = calendar.monthrange(year, month)[1]
+    if month_days:
+        days = [date(year, month, value) for value in _resolve_month_days(year, month, month_days)]
+        weekdays = {weekday for _ordinal, weekday in by_day}
+        return [day for day in days if not weekdays or day.weekday() in weekdays]
+    if by_day:
+        days = []
+        for ordinal, weekday in by_day:
+            matching = [date(year, month, value) for value in range(1, last + 1)]
+            matching = [day for day in matching if day.weekday() == weekday]
+            if ordinal is None:
+                days += matching
+            elif 1 <= abs(ordinal) <= len(matching):
+                days.append(matching[ordinal - 1 if ordinal > 0 else ordinal])
+        return days
+    # A monthly series on the 31st skips shorter months, as RFC 5545 asks.
+    return [date(year, month, default_day)] if default_day <= last else []
 
 
 def parse_ics_events(text, default_zone):
@@ -433,7 +545,14 @@ def parse_ics_events(text, default_zone):
 def _ics_event(properties, default_zone):
     if "DTSTART" not in properties:
         return None
-    if properties.get("STATUS", ("",))[0].strip().upper() == "CANCELLED":
+    # A VEVENT with RECURRENCE-ID replaces one occurrence of the series with the same UID; a
+    # cancelled one removes that occurrence, so it is kept instead of skipped.
+    recurrence_of = None
+    if "RECURRENCE-ID" in properties:
+        parsed = _ics_datetime(*properties["RECURRENCE-ID"], default_zone)
+        recurrence_of = parsed[0] if parsed else None
+    cancelled = properties.get("STATUS", ("",))[0].strip().upper() == "CANCELLED"
+    if cancelled and recurrence_of is None:
         return None
     start = _ics_datetime(*properties["DTSTART"], default_zone)
     if start is None:
@@ -457,7 +576,36 @@ def _ics_event(properties, default_zone):
         "end_at": end_at,
         "is_all_day": is_all_day,
         "rrule": properties.get("RRULE", ("",))[0].strip(),
+        "exdates": _ics_exdates(properties.get("EXDATE", []), default_zone),
+        "recurrence_of": recurrence_of,
+        "cancelled": cancelled,
     }
+
+
+def _ics_exdates(values, default_zone):
+    exdates = set()
+    for value, params in values:
+        for part in value.split(","):
+            parsed = _ics_datetime(part, params, default_zone)
+            if parsed:
+                exdates.add(parsed[0])
+    return exdates
+
+
+def _ics_event_row(user, event, start, recurrence_id, frequency):
+    return CalendarEvent(
+        user=user,
+        title=event["title"],
+        category=CalendarEvent.CATEGORY_APPOINTMENT,
+        description=event["description"],
+        location=event["location"],
+        start_at=start,
+        end_at=start + (event["end_at"] - event["start_at"]),
+        is_all_day=event["is_all_day"],
+        import_uid=event["uid"],
+        recurrence_id=recurrence_id,
+        recurrence_rule=frequency if recurrence_id else "",
+    )
 
 
 def import_ics_events(user, text):
@@ -467,48 +615,47 @@ def import_ics_events(user, text):
         CalendarEvent.objects.filter(user=user).exclude(import_uid="").values_list("import_uid", flat=True)
     )
     counts = {"created": 0, "duplicates": 0, "skipped": 0, "simplified": 0}
-    rows = []
+    events = []
+    overrides = {}
     for event in parse_ics_events(text, default_zone):
         if event is None:
             counts["skipped"] += 1
-            continue
+        elif event["recurrence_of"] is not None and event["uid"]:
+            overrides.setdefault(event["uid"], []).append(event)
+        else:
+            events.append(event)
+
+    rows = []
+    for event in events:
+        series_overrides = overrides.pop(event["uid"], []) if event["uid"] else []
         if event["uid"] and event["uid"] in known_uids:
             counts["duplicates"] += 1
             continue
         known_uids.add(event["uid"])
         starts = [event["start_at"]]
-        recurrence_id = None
         frequency = ""
         if event["rrule"]:
-            recurrence = _ics_recurrence(event["rrule"], event["start_at"])
-            if recurrence is None:
-                # ponytail: BYDAY/INTERVAL/EXDATE series import as their first date only; extend
-                # _ics_recurrence if real calendars need them.
+            occurrences = _ics_occurrences(event["rrule"], event["start_at"])
+            if occurrences is None:
                 counts["simplified"] += 1
             else:
-                frequency, until, count = recurrence
-                starts = expand_manual_recurrence(event["start_at"], frequency, until)[
-                    : count or MANUAL_RECURRENCE_MAX_INSTANCES
-                ]
-                recurrence_id = uuid.uuid4() if len(starts) > 1 else None
-        duration = event["end_at"] - event["start_at"]
+                starts = occurrences
+                frequency = re.search(r"FREQ=(\w+)", event["rrule"].upper()).group(1)
+        replaced = event["exdates"] | {override["recurrence_of"] for override in series_overrides}
+        starts = [start for start in starts if start not in replaced]
+        moved = [override for override in series_overrides if not override["cancelled"]]
+        if not starts and not moved:
+            counts["skipped"] += 1
+            continue
+        recurrence_id = uuid.uuid4() if len(starts) + len(moved) > 1 else None
+        rows.extend(_ics_event_row(user, event, start, recurrence_id, frequency) for start in starts)
         rows.extend(
-            CalendarEvent(
-                user=user,
-                title=event["title"],
-                category=CalendarEvent.CATEGORY_APPOINTMENT,
-                description=event["description"],
-                location=event["location"],
-                start_at=start,
-                end_at=start + duration,
-                is_all_day=event["is_all_day"],
-                import_uid=event["uid"],
-                recurrence_id=recurrence_id,
-                recurrence_rule=frequency if recurrence_id else "",
-            )
-            for start in starts
+            _ics_event_row(user, moved_event, moved_event["start_at"], recurrence_id, frequency)
+            for moved_event in moved
         )
         counts["created"] += 1
+    # Changed occurrences whose series isn't in the file have nothing to replace.
+    counts["skipped"] += sum(len(series_overrides) for series_overrides in overrides.values())
     CalendarEvent.objects.bulk_create(rows)
     return counts
 

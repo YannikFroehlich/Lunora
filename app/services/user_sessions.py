@@ -87,19 +87,14 @@ def revoke_session(user, session_id, *, current_key):
 
 
 def revoke_other_sessions(user, *, current_key):
-    """Sign out every other session of the user, including ones not tracked yet."""
-    # ponytail: decodes every live session (like the admin's global logout); index sessions by
-    # user if the session table grows large.
-    keys = {
-        session.session_key
-        for session in Session.objects.filter(expire_date__gt=timezone.now()).exclude(session_key=current_key)
-        if session.get_decoded().get("_auth_user_id") == str(user.pk)
-    }
-    keys.update(
-        UserSession.objects.filter(user=user)
-        .exclude(session_key=current_key)
-        .values_list("session_key", flat=True)
-    )
+    """Sign out every other session of the user.
+
+    UserSession rows index sessions by user: UserSessionMiddleware writes one for every
+    authenticated request (the login request included), and migration 0063 backfilled the sessions
+    that existed before tracking, so the session table never has to be decoded here.
+    """
+    others = UserSession.objects.filter(user=user).exclude(session_key=current_key)
+    keys = list(others.values_list("session_key", flat=True))
     Session.objects.filter(session_key__in=keys).delete()
-    UserSession.objects.filter(user=user).exclude(session_key=current_key).delete()
+    others.delete()
     return len(keys)

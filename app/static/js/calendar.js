@@ -474,3 +474,216 @@ if (draggableTasks.length) {
     form.submit();
   });
 }
+
+// Drag an own event with the mouse onto another day to move it there, or within the time grid to a new
+// time; the strip at the bottom of a timed event stretches its end. Moves keep the event's length and a
+// multi-day event moves by as many days as it was dragged. A plain click still opens the edit dialog.
+// Touch screens keep scrolling and edit through the dialog instead.
+const movableEvents = document.querySelectorAll("[data-event-move]");
+
+if (movableEvents.length) {
+  const MOVE_STEP = 15;
+  const DRAG_THRESHOLD = 4;
+  const dayTargets = ".calendar-day[data-date], .week-all-day-cell[data-date]";
+  let drag = null;
+  let suppressClick = false;
+
+  const dayNumber = (isoDate) => {
+    const [year, month, day] = isoDate.split("-").map(Number);
+    return Date.UTC(year, month - 1, day) / 86400000;
+  };
+
+  const isoDate = (number) => new Date(number * 86400000).toISOString().slice(0, 10);
+
+  const toMinutes = (value) => {
+    const [hours, minutes] = (value || "00:00").split(":").map(Number);
+    return hours * 60 + minutes;
+  };
+
+  const minuteIn = (column, clientY) => {
+    const rect = column.getBoundingClientRect();
+    return Math.round((((clientY - rect.top) / rect.height) * DAY_MINUTES) / MOVE_STEP) * MOVE_STEP;
+  };
+
+  const clearPreview = () => {
+    drag?.preview?.remove();
+    drag?.marked?.classList.remove("is-selected");
+    if (drag) {
+      drag.preview = null;
+      drag.marked = null;
+    }
+  };
+
+  const showGridPreview = (column, start, duration) => {
+    if (drag.marked) {
+      drag.marked.classList.remove("is-selected");
+      drag.marked = null;
+    }
+    if (!drag.preview || drag.preview.parentElement !== column) {
+      drag.preview?.remove();
+      drag.preview = document.createElement("span");
+      drag.preview.className = `week-selection is-event-drop ${drag.toneClass}`;
+      column.append(drag.preview);
+    }
+    drag.preview.style.setProperty("--start", start);
+    drag.preview.style.setProperty("--duration", duration);
+  };
+
+  const showDayPreview = (cell) => {
+    if (drag.marked !== cell) {
+      clearPreview();
+      cell.classList.add("is-selected");
+      drag.marked = cell;
+    }
+  };
+
+  // Where the event would land for the pointer position: the fields of the move form, or null.
+  const dropAt = (clientX, clientY) => {
+    const { chip } = drag;
+    if (drag.mode === "resize") {
+      const end = Math.min(Math.max(minuteIn(drag.column, clientY), drag.segmentStart + MOVE_STEP), DAY_MINUTES);
+      showGridPreview(drag.column, drag.segmentStart, end - drag.segmentStart);
+      return { date: drag.column.dataset.date, end_minute: end };
+    }
+    const target = document.elementFromPoint(clientX, clientY);
+    const column = target?.closest("[data-week-column]");
+    const cell = target?.closest(dayTargets);
+    const dayShift = (date) => dayNumber(date) - dayNumber(chip.dataset.moveDate);
+    if (column && chip.dataset.moveAllDay !== "true") {
+      const top = Math.min(Math.max(minuteIn(column, clientY - drag.grabOffset), 0), DAY_MINUTES - MOVE_STEP);
+      showGridPreview(column, top, drag.duration);
+      // The event's real start moves by as much as the dragged part did, even from a later day's part.
+      const start =
+        dayNumber(chip.dataset.editDate) * DAY_MINUTES +
+        toMinutes(chip.dataset.editStart) +
+        dayShift(column.dataset.date) * DAY_MINUTES +
+        top -
+        drag.segmentStart;
+      return { date: isoDate(Math.floor(start / DAY_MINUTES)), start_minute: start % DAY_MINUTES };
+    }
+    const day = cell || column;
+    if (!day) {
+      clearPreview();
+      return null;
+    }
+    showDayPreview(day);
+    return { date: isoDate(dayNumber(chip.dataset.editDate) + dayShift(day.dataset.date)) };
+  };
+
+  const submitMove = (fields) => {
+    const form = document.createElement("form");
+    form.method = "post";
+    form.action = `${window.location.pathname}${window.location.search}`;
+    const values = {
+      csrfmiddlewaretoken: document.querySelector("meta[name='csrf-token']")?.content || "",
+      form_name: "calendar_event_move",
+      event_id: drag.chip.dataset.eventMove,
+      ...fields,
+    };
+    Object.entries(values).forEach(([name, value]) => {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = name;
+      input.value = value;
+      form.append(input);
+    });
+    document.body.append(form);
+    form.submit();
+  };
+
+  const stopDrag = () => {
+    if (!drag) {
+      return;
+    }
+    clearPreview();
+    drag.chip.classList.remove("is-dragging");
+    document.body.classList.remove("is-event-dragging", "is-event-resizing");
+    drag = null;
+  };
+
+  document.addEventListener("pointerdown", (event) => {
+    const chip = event.button === 0 && event.pointerType !== "touch" && event.target.closest("[data-event-move]");
+    if (!chip) {
+      return;
+    }
+    const column = chip.closest("[data-week-column]");
+    const resizing = Boolean(column && event.target.closest("[data-event-resize]"));
+    const segmentStart = Number(chip.dataset.moveStart) || 0;
+    drag = {
+      chip,
+      column,
+      mode: resizing ? "resize" : "move",
+      x: event.clientX,
+      y: event.clientY,
+      active: false,
+      fields: null,
+      segmentStart,
+      duration: Number(chip.style.getPropertyValue("--duration")) || 60,
+      // How far below the event's top it was grabbed, so it doesn't jump to the pointer.
+      grabOffset: column ? event.clientY - chip.getBoundingClientRect().top : 0,
+      toneClass: [...chip.classList].find((name) => name.startsWith("tone-")) || "",
+    };
+    if (resizing) {
+      // Don't let the press start a move of the event the handle sits in.
+      event.preventDefault();
+    }
+  });
+
+  document.addEventListener("pointermove", (event) => {
+    if (!drag) {
+      return;
+    }
+    if (!drag.active) {
+      if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < DRAG_THRESHOLD) {
+        return;
+      }
+      drag.active = true;
+      drag.chip.classList.toggle("is-dragging", drag.mode === "move");
+      document.body.classList.add(drag.mode === "resize" ? "is-event-resizing" : "is-event-dragging");
+    }
+    drag.fields = dropAt(event.clientX, event.clientY);
+  });
+
+  document.addEventListener("pointerup", () => {
+    if (!drag) {
+      return;
+    }
+    const { active, fields } = drag;
+    if (active) {
+      // The release would also click the event and open its edit dialog.
+      suppressClick = true;
+      window.setTimeout(() => {
+        suppressClick = false;
+      }, 0);
+    }
+    const { editDate, editStart } = drag.chip.dataset;
+    const unchanged =
+      drag.mode === "move" &&
+      fields?.date === editDate &&
+      (fields.start_minute === undefined || fields.start_minute === toMinutes(editStart));
+    if (active && fields && !unchanged) {
+      submitMove(fields);
+    }
+    stopDrag();
+  });
+
+  document.addEventListener("pointercancel", stopDrag);
+
+  document.addEventListener(
+    "click",
+    (event) => {
+      if (suppressClick) {
+        event.preventDefault();
+        event.stopPropagation();
+        suppressClick = false;
+      }
+    },
+    true,
+  );
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      stopDrag();
+    }
+  });
+}

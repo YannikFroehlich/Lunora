@@ -3,10 +3,11 @@ from datetime import datetime, time, timedelta
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import F, Max
+from django.db.models import F, Max, Q
 from django.utils import timezone
 
 from app.models import Task, TaskLabel, TaskList, UserNotification
+from app.services.notes import display_name
 from app.services.user_preferences import (
     format_user_datetime,
     format_user_time,
@@ -40,9 +41,17 @@ def _step_recurrence(due_at, rule):
     return due_at
 
 
+def visible_tasks(user):
+    """The user's own tasks plus top-level tasks assigned to them and those tasks' subtasks."""
+    return Task.objects.filter(Q(user=user) | Q(assignee=user) | Q(parent__assignee=user))
+
+
 def toggle_task(user, task_id, is_done, *, now=None):
-    """Toggle a task done/open; completing a recurring task also spawns its next occurrence."""
-    task = Task.objects.filter(user=user, pk=task_id).first()
+    """Toggle a task done/open; completing a recurring task also spawns its next occurrence.
+
+    The assignee may tick a task off too; the next occurrence stays the owner's and keeps the assignee.
+    """
+    task = visible_tasks(user).filter(pk=task_id).first()
     if not task:
         return None
     task.is_done = is_done
@@ -52,7 +61,8 @@ def toggle_task(user, task_id, is_done, *, now=None):
         current_time = now or timezone.now()
         base_due = task.due_at or current_time
         next_task = Task.objects.create(
-            user=user,
+            user=task.user,
+            assignee=task.assignee,
             task_list=task.task_list,
             parent=task.parent,
             title=task.title,
@@ -77,7 +87,8 @@ def rearm_task_reminders(task, previous_due_at, *, now=None):
     task.email_notified_at = None
     task.desktop_notified_at = None
     if task.pk:
-        UserNotification.objects.filter(recipient_id=task.user_id, source_key=f"task:{task.pk}").delete()
+        # Owner or assignee may hold the row, depending on who was responsible back then.
+        UserNotification.objects.filter(source_key=f"task:{task.pk}").delete()
 
 
 def reschedule_task(user, task_id, *, due_date, due_time=None, now=None):
@@ -288,9 +299,11 @@ def _task_view_bucket(task, now, user):
 
 
 def dashboard_open_tasks(user, now, limit=5):
-    tasks = Task.objects.filter(user=user, is_done=False).order_by(
-        F("due_at").asc(nulls_last=True), "-created_at"
-    )[:limit]
+    tasks = (
+        visible_tasks(user)
+        .filter(is_done=False)
+        .order_by(F("due_at").asc(nulls_last=True), "-created_at")[:limit]
+    )
     return [
         {
             "id": task.id,
@@ -305,8 +318,10 @@ def dashboard_open_tasks(user, now, limit=5):
 
 def dashboard_today_tasks(user, now, limit=5):
     """Open tasks due today or overdue, for the calendar sidebar."""
-    candidates = Task.objects.filter(user=user, is_done=False, due_at__isnull=False).order_by(
-        F("due_at").asc(nulls_last=True)
+    candidates = (
+        visible_tasks(user)
+        .filter(is_done=False, due_at__isnull=False)
+        .order_by(F("due_at").asc(nulls_last=True))
     )
     today_tasks = [task for task in candidates if _task_view_bucket(task, now, user) == "today"][:limit]
     return [
@@ -330,8 +345,8 @@ def get_tasks_context(user, *, now=None, sort=None):
         else ("is_done", F("due_at").asc(nulls_last=True), "-created_at")
     )
     all_tasks = list(
-        Task.objects.filter(user=user)
-        .select_related("task_list")
+        visible_tasks(user)
+        .select_related("task_list", "user__profile", "assignee__profile", "parent")
         .prefetch_related("labels")
         .order_by(*order_by)
     )
@@ -344,11 +359,14 @@ def get_tasks_context(user, *, now=None, sort=None):
         else:
             top_level_tasks.append(task)
 
-    counts = {"all": 0, "open": 0, "done": 0, "overdue": 0, "today": 0, "upcoming": 0}
+    counts = {"all": 0, "open": 0, "done": 0, "overdue": 0, "today": 0, "upcoming": 0, "assigned": 0}
     task_items = []
 
     def build_item(task, *, is_subtask, filter_view=None, filter_task_list_id=None):
         due_state = _task_due_state(task, now, user)
+        # Assigned tasks (and their subtasks) belong to someone else: the assignee only ticks them
+        # off, and the owner's lists and labels mean nothing to them.
+        is_own = task.user_id == user.pk
         state = "done" if task.is_done else "overdue" if due_state == "is-overdue" else "open"
         counts["all"] += 1
         counts[state] += 1
@@ -370,12 +388,20 @@ def get_tasks_context(user, *, now=None, sort=None):
             "due_sort": task.due_at.isoformat() if task.due_at else "",
             "created_sort": task.created_at.isoformat(),
             "priority": task.priority,
-            "task_list_id": task.task_list_id,
-            "task_list_name": task.task_list.name if task.task_list else "",
-            "task_list_color": task.task_list.color if task.task_list else "",
+            "task_list_id": task.task_list_id if is_own else None,
+            "task_list_name": task.task_list.name if is_own and task.task_list else "",
+            "task_list_color": task.task_list.color if is_own and task.task_list else "",
             "labels": [
                 {"id": label.id, "name": label.name, "color": label.color} for label in task.labels.all()
-            ],
+            ]
+            if is_own
+            else [],
+            "is_own": is_own,
+            "assignee_id": task.assignee_id,
+            "assignee_name": display_name(task.assignee) if task.assignee else "",
+            "owner_name": "" if is_own else display_name(task.user),
+            "assigned_to_me": task.assignee_id == user.pk
+            or (task.parent is not None and task.parent.assignee_id == user.pk),
             "is_subtask": is_subtask,
             "parent_id": task.parent_id,
             "view": view_bucket,
@@ -383,7 +409,9 @@ def get_tasks_context(user, *, now=None, sort=None):
             # never appears orphaned when its parent is filtered out; its own badge/status
             # above still reflects its own due date.
             "filter_view": view_bucket if filter_view is None else filter_view,
-            "filter_task_list_id": task.task_list_id if filter_task_list_id is None else filter_task_list_id,
+            "filter_task_list_id": (task.task_list_id if is_own else None)
+            if filter_task_list_id is None
+            else filter_task_list_id,
         }
 
     for task in top_level_tasks:
@@ -397,6 +425,8 @@ def get_tasks_context(user, *, now=None, sort=None):
         ]
         item["subtask_count"] = len(children)
         item["open_subtask_count"] = sum(1 for child in children if not child.is_done)
+        if item["assigned_to_me"] and not task.is_done:
+            counts["assigned"] += 1
         task_items.append(item)
 
     task_lists = [

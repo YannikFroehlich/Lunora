@@ -6,6 +6,8 @@ from app.models import Habit, HabitCheck
 
 # How far back the page lets you tick off a day you forgot.
 EDITABLE_DAYS = 7
+# Checks loaded for streaks; a habit whose streak reaches this far back reloads its whole history.
+STREAK_WINDOW_DAYS = 400
 WEEKDAY_SHORT = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
 
 
@@ -37,6 +39,15 @@ def current_streak(habit, checked_dates, today):
     return streak
 
 
+def _streak_reaches(habit, streak, today, window_start):
+    """Whether a streak counted from checks since window_start may continue before it (one period
+    of slack, since an open today shifts the count back by one)."""
+    window_days = (today - window_start).days
+    if habit.cadence == Habit.CADENCE_WEEKLY:
+        return streak >= window_days // 7 - 1
+    return streak >= window_days - 1
+
+
 def _streak_label(habit, streak):
     if habit.cadence == Habit.CADENCE_WEEKLY:
         return f"{streak} {'Woche' if streak == 1 else 'Wochen'}"
@@ -57,15 +68,20 @@ def toggle_habit_check(user, habit_id, day, today):
 def habit_items(user, today):
     """Template rows for every habit: last week of days, streak and whether it's done for now."""
     habits = list(Habit.objects.filter(owner=user))
-    # ponytail: loads every check for the streak; cap by date if users keep habits for many years.
+    window_start = _week_start(today - timedelta(days=STREAK_WINDOW_DAYS))
     checks = {}
-    for habit_id, day in HabitCheck.objects.filter(habit__owner=user).values_list("habit_id", "date"):
+    for habit_id, day in HabitCheck.objects.filter(habit__owner=user, date__gte=window_start).values_list(
+        "habit_id", "date"
+    ):
         checks.setdefault(habit_id, set()).add(day)
     days = [today - timedelta(days=offset) for offset in range(EDITABLE_DAYS - 1, -1, -1)]
     items = []
     for habit in habits:
         checked = checks.get(habit.pk, set())
         streak = current_streak(habit, checked, today)
+        if _streak_reaches(habit, streak, today, window_start):
+            full_history = set(HabitCheck.objects.filter(habit=habit).values_list("date", flat=True))
+            streak = current_streak(habit, full_history, today)
         items.append(
             {
                 "id": habit.pk,

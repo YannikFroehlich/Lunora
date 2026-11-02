@@ -16,6 +16,7 @@ from app.models import (
     UserNotification,
 )
 from app.services.notifications import (
+    materialize_task_assignment_notifications,
     send_due_task_reminder_emails,
 )
 from app.services.scheduled_tasks import run_scheduled_tasks
@@ -127,7 +128,7 @@ class TaskTests(TestCase):
 
         self.assertEqual(
             response.context["task_counts"],
-            {"all": 3, "open": 2, "done": 1, "overdue": 1, "today": 1, "upcoming": 0},
+            {"all": 3, "open": 2, "done": 1, "overdue": 1, "today": 1, "upcoming": 0, "assigned": 0},
         )
         self.assertContains(response, 'data-task-state="overdue"')
         self.assertContains(response, "Überfällig")
@@ -687,3 +688,99 @@ class TaskRescheduleTests(TestCase):
             response = self.client.get(url)
             self.assertContains(response, 'data-task-date="2099-08-10"')
             self.assertContains(response, 'draggable="true"')
+
+
+class TaskAssignmentTests(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(
+            username="mira", email="mira@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=self.owner, display_name="Mira", notify_email=True, notify_reminders=True)
+        self.assignee = User.objects.create_user(
+            username="jonas", email="jonas@example.com", password="secret-12345"
+        )
+        Profile.objects.create(
+            user=self.assignee, display_name="Jonas", notify_email=True, notify_reminders=True
+        )
+
+    def test_assigning_notifies_the_assignee_who_sees_the_task_read_only(self):
+        self.client.login(username="mira", password="secret-12345")
+        self.client.post(
+            "/tasks/", {"form_name": "task_add", "title": "Folien bauen", "assignee": self.assignee.pk}
+        )
+        task = Task.objects.get(title="Folien bauen")
+        self.assertEqual((task.user, task.assignee), (self.owner, self.assignee))
+        notification = UserNotification.objects.get(recipient=self.assignee)
+        self.assertEqual(notification.kind, UserNotification.KIND_TASK_ASSIGNMENT)
+        self.assertEqual(notification.title, "Mira hat dir eine Aufgabe zugewiesen")
+
+        self.client.login(username="jonas", password="secret-12345")
+        response = self.client.get("/tasks/")
+        [item] = response.context["tasks"]
+        self.assertFalse(item["is_own"])
+        self.assertEqual(item["owner_name"], "Mira")
+        self.assertEqual(response.context["task_counts"]["assigned"], 1)
+        self.assertNotContains(response, 'value="task_delete"')
+
+    def test_assignee_can_tick_off_but_not_delete_or_edit(self):
+        task = Task.objects.create(user=self.owner, assignee=self.assignee, title="Folien bauen")
+        self.client.login(username="jonas", password="secret-12345")
+
+        self.client.post("/tasks/", {"form_name": "task_delete", "task_id": task.pk})
+        self.client.post("/tasks/", {"form_name": "task_edit", "task_id": task.pk, "title": "Gekapert"})
+        self.client.post("/tasks/", {"form_name": "task_toggle", "task_id": task.pk, "is_done": "on"})
+
+        task.refresh_from_db()
+        self.assertEqual(task.title, "Folien bauen")
+        self.assertTrue(task.is_done)
+
+    def test_completing_a_recurring_assigned_task_keeps_owner_and_assignee(self):
+        task = Task.objects.create(
+            user=self.owner,
+            assignee=self.assignee,
+            title="Müll rausbringen",
+            due_at=timezone.now(),
+            recurrence_rule="WEEKLY",
+        )
+
+        toggle_task(self.assignee, task.pk, True)
+
+        next_task = Task.objects.get(is_done=False)
+        self.assertEqual((next_task.user, next_task.assignee), (self.owner, self.assignee))
+
+    def test_subtasks_cannot_have_their_own_assignee(self):
+        parent = Task.objects.create(user=self.owner, title="Projekt")
+        self.client.login(username="mira", password="secret-12345")
+
+        self.client.post(
+            "/tasks/",
+            {"form_name": "task_add", "title": "Teil", "parent": parent.pk, "assignee": self.assignee.pk},
+        )
+
+        self.assertFalse(Task.objects.filter(title="Teil").exists())
+
+    def test_due_reminder_goes_to_the_assignee(self):
+        Task.objects.create(
+            user=self.owner,
+            assignee=self.assignee,
+            title="Rechnung prüfen",
+            due_at=timezone.now() - timedelta(minutes=5),
+        )
+
+        result = send_due_task_reminder_emails()
+
+        self.assertEqual(result, {"sent": 1, "failed": 0})
+        self.assertEqual(mail.outbox[0].to, ["jonas@example.com"])
+        due_row = UserNotification.objects.get(kind=UserNotification.KIND_TASK_DUE)
+        self.assertEqual(due_row.recipient, self.assignee)
+
+    def test_assignment_email_is_sent_once_by_the_automations(self):
+        task = Task.objects.create(user=self.owner, assignee=self.assignee, title="Folien bauen")
+        materialize_task_assignment_notifications([task])
+
+        run_scheduled_tasks()
+        run_scheduled_tasks()
+
+        assignment_mails = [message for message in mail.outbox if "zugewiesen" in message.subject]
+        self.assertEqual(len(assignment_mails), 1)
+        self.assertEqual(assignment_mails[0].to, ["jonas@example.com"])

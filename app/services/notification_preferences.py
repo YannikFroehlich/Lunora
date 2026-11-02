@@ -22,7 +22,7 @@ CATEGORY_DEFINITIONS = (
     {
         "key": NotificationPreference.CATEGORY_TASKS,
         "label": "Aufgaben",
-        "hint": "Fälligkeiten und Aufgabenhinweise",
+        "hint": "Fälligkeiten und Zuweisungen",
         "icon": "fa-list-check",
     },
     {
@@ -49,6 +49,7 @@ KIND_TO_CATEGORY = {
     UserNotification.KIND_CALENDAR_REMINDER: NotificationPreference.CATEGORY_CALENDAR,
     UserNotification.KIND_EVENT_INVITATION: NotificationPreference.CATEGORY_CALENDAR,
     UserNotification.KIND_TASK_DUE: NotificationPreference.CATEGORY_TASKS,
+    UserNotification.KIND_TASK_ASSIGNMENT: NotificationPreference.CATEGORY_TASKS,
     UserNotification.KIND_NOTE_MENTION: NotificationPreference.CATEGORY_NOTES,
     UserNotification.KIND_NOTE_COMMENT: NotificationPreference.CATEGORY_NOTES,
     UserNotification.KIND_NOTE_SHARE: NotificationPreference.CATEGORY_NOTES,

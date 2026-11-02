@@ -5,6 +5,7 @@ from django.shortcuts import redirect, render
 
 from app.forms import TaskForm, TaskLabelForm, TaskListForm, TaskRescheduleForm
 from app.models import Task, TaskLabel, TaskList
+from app.services.notifications import materialize_task_assignment_notifications
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.tasks import (
     create_task_label,
@@ -46,6 +47,7 @@ def tasks(request):
             task.recurrence_rule = task.recurrence_rule or Task.RECURRENCE_NONE
             task.save()
             task_form.save_m2m()
+            materialize_task_assignment_notifications([task])
             django_messages.success(request, _created_message(task, task_form.quick_add_result, request.user))
             return redirect(request.get_full_path())
     elif form_name == "task_toggle":
@@ -81,6 +83,7 @@ def tasks(request):
             edited_task.recurrence_rule = edited_task.recurrence_rule or Task.RECURRENCE_NONE
             edited_task.save()
             edit_form.save_m2m()
+            materialize_task_assignment_notifications([edited_task])
             django_messages.success(request, "Aufgabe aktualisiert.")
             return redirect(request.get_full_path())
     elif form_name == "task_list_add":

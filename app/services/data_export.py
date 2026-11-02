@@ -58,6 +58,7 @@ PROFILE_FIELDS = [
     "date_format",
     "time_format",
     "timezone_name",
+    "calendar_view",
     "notify_email",
     "notify_reminders",
     "notify_desktop",

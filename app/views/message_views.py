@@ -1,5 +1,6 @@
 import hashlib
 from datetime import timedelta
+from urllib.parse import urlencode
 
 from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
@@ -26,6 +27,7 @@ from app.services.message_queries import (
     last_messages_by_conversation,
     unread_counts_by_conversation,
 )
+from app.services.note_search import build_snippet, parse_search_query
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.user_preferences import (
     format_user_date,
@@ -36,6 +38,9 @@ from app.services.user_preferences import (
 
 MESSAGE_REACTION_EMOJIS = [emoji for emoji, _label in ChatMessageReaction.EMOJI_CHOICES]
 MESSAGE_STREAM_PAGE_SIZE = 50
+CHAT_SEARCH_LIMIT = 30
+# Newer messages kept below a search hit when the stream jumps to it.
+CHAT_SEARCH_NEWER_CONTEXT = 5
 
 
 @login_required
@@ -218,7 +223,8 @@ def messages(request, conversation_id=None):
 
     query = request.GET.get("q", "").strip()
     current_filter = request.GET.get("filter", "all")
-    message_before_id = request.GET.get("before", "").strip()
+    message_before_id = _message_before_id(request, selected_conversation)
+    chat_search_query = request.GET.get("find", "").strip()
     all_inbox_items = _build_inbox_items(all_conversations, request.user)
     message_match_ids = _conversation_ids_matching_message_query(all_conversations, query)
     inbox_items = _filter_inbox_items(all_inbox_items, query, current_filter, message_match_ids)
@@ -259,6 +265,13 @@ def messages(request, conversation_id=None):
         "message_items": message_items,
         "has_older_messages": message_window["has_older_messages"],
         "oldest_message_id": message_window["oldest_message_id"],
+        "showing_history": message_window["showing_history"],
+        "chat_search_query": chat_search_query,
+        "chat_search_results": _search_conversation_messages(
+            selected_conversation, request.user, chat_search_query
+        )
+        if selected_conversation
+        else [],
         "pinned_message_items": pinned_message_items,
         "reaction_emojis": MESSAGE_REACTION_EMOJIS,
         "message_form": message_form,
@@ -296,7 +309,7 @@ def messages_live_updates(request, conversation_id=None):
     all_conversations = list(Conversation.visible_for(request.user))
     query = request.GET.get("q", "").strip()
     current_filter = request.GET.get("filter", "all")
-    message_before_id = request.GET.get("before", "").strip()
+    message_before_id = _message_before_id(request, selected_conversation)
     all_inbox_items = _build_inbox_items(all_conversations, request.user)
     message_match_ids = _conversation_ids_matching_message_query(all_conversations, query)
     inbox_items = _filter_inbox_items(all_inbox_items, query, current_filter, message_match_ids)
@@ -337,6 +350,7 @@ def messages_live_updates(request, conversation_id=None):
                 "message_items": message_items,
                 "has_older_messages": message_window["has_older_messages"],
                 "oldest_message_id": message_window["oldest_message_id"],
+                "showing_history": message_window["showing_history"],
                 "pinned_message_items": pinned_message_items,
                 "current_member_state": _build_current_member_state(
                     current_member, request.user, selected_conversation
@@ -619,6 +633,7 @@ def _build_message_window(conversation, user, before_id=None):
             "message_items": [],
             "has_older_messages": False,
             "oldest_message_id": "",
+            "showing_history": False,
         }
 
     messages, has_older_messages = _paginated_conversation_messages(conversation, before_id=before_id)
@@ -627,7 +642,54 @@ def _build_message_window(conversation, user, before_id=None):
         "message_items": message_items,
         "has_older_messages": has_older_messages,
         "oldest_message_id": message_items[0]["message"].id if message_items else "",
+        # An older page ends before the newest messages, so the stream offers a way back to them.
+        "showing_history": bool(_coerce_positive_int(before_id)),
     }
+
+
+def _message_before_id(request, conversation):
+    """The page boundary from ?before=, or from ?around= (a search hit) with a few newer messages kept."""
+    around_id = _coerce_positive_int(request.GET.get("around"))
+    if not (around_id and conversation):
+        return request.GET.get("before", "").strip()
+    target = conversation.messages.filter(pk=around_id).only("id", "created_at").first()
+    if target is None:
+        return ""
+    newer_ids = list(
+        conversation.messages.filter(
+            Q(created_at__gt=target.created_at) | Q(created_at=target.created_at, id__gt=target.id)
+        )
+        .order_by("created_at", "id")
+        .values_list("id", flat=True)[: CHAT_SEARCH_NEWER_CONTEXT + 1]
+    )
+    # Few newer messages: the hit is already on the newest page.
+    return str(newer_ids[CHAT_SEARCH_NEWER_CONTEXT]) if len(newer_ids) > CHAT_SEARCH_NEWER_CONTEXT else ""
+
+
+def _search_conversation_messages(conversation, user, query):
+    """Newest messages of one conversation matching the query, each linking to its place in the stream.
+
+    Same syntax as the note search: words AND, "phrases", -exclusions; matched as substrings.
+    """
+    parsed = parse_search_query(query)
+    if not parsed:
+        return []
+    matches = conversation.messages.filter(is_deleted=False).select_related("sender", "sender__profile")
+    for fragment in parsed.terms + parsed.phrases:
+        matches = matches.filter(body__icontains=fragment)
+    for fragment in parsed.exclusions:
+        matches = matches.exclude(body__icontains=fragment)
+
+    detail_url = reverse("messages_detail", args=[conversation.id])
+    return [
+        {
+            "sender_name": Conversation.display_name_for_user(message.sender),
+            "time_label": _conversation_time_label(message.created_at, user),
+            "snippet": build_snippet(message.body, parsed, length=140),
+            "url": f"{detail_url}?{urlencode({'find': query, 'around': message.id})}#hit-{message.id}",
+        }
+        for message in matches.order_by("-created_at", "-id")[:CHAT_SEARCH_LIMIT]
+    ]
 
 
 def _paginated_conversation_messages(conversation, before_id=None):

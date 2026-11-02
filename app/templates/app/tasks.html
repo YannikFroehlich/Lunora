@@ -37,6 +37,13 @@
                     <span>Demnächst</span>
                     <em>{{ task_counts.upcoming }}</em>
                 </button>
+                {% if task_counts.assigned %}
+                <button type="button" class="task-view-link" data-task-view-link="assigned">
+                    <i class="fa-solid fa-user-check" aria-hidden="true"></i>
+                    <span>Mir zugewiesen</span>
+                    <em>{{ task_counts.assigned }}</em>
+                </button>
+                {% endif %}
             </nav>
 
             <div class="task-lists-section">
@@ -142,6 +149,10 @@
                         <label class="task-add-more-field">
                             <span>Wiederholung</span>
                             {{ task_form.recurrence_rule }}
+                        </label>
+                        <label class="task-add-more-field">
+                            <span>{{ task_form.assignee.label }}</span>
+                            {{ task_form.assignee }}
                         </label>
                         <div class="task-add-more-field task-add-labels">
                             <span>Labels</span>
@@ -250,9 +261,10 @@
                 <form
                     class="task-row {{ item.due_state }} {% if item.is_done %}is-done{% endif %}"
                     method="post"
-                    draggable="true"
+                    {% if item.is_own %}draggable="true"{% endif %}
                     data-task-row
                     data-task-id="{{ item.task.id }}"
+                    data-task-assigned="{{ item.assigned_to_me|yesno:'true,' }}"
                     data-task-parent="{{ item.parent_id|default_if_none:'' }}"
                     data-task-state="{{ item.state }}"
                     data-task-title="{{ item.title|lower }}"
@@ -266,7 +278,9 @@
                     <input type="hidden" name="form_name" value="task_toggle">
                     <input type="hidden" name="task_id" value="{{ item.task.id }}">
 
+                    {% if item.is_own %}
                     <span class="task-drag-handle" aria-hidden="true"><i class="fa-solid fa-grip-vertical"></i></span>
+                    {% endif %}
 
                     <input
                         class="task-checkbox"
@@ -283,8 +297,13 @@
                             <i class="fa-regular fa-calendar" aria-hidden="true"></i>
                             {{ item.due_label }}
                         </small>
-                        {% if item.task_list_name or item.labels or item.subtask_count %}
+                        {% if item.task_list_name or item.labels or item.assignee_name or item.owner_name %}
                         <span class="task-chips">
+                            {% if item.owner_name %}
+                            <span class="task-label-chip"><i class="fa-solid fa-user" aria-hidden="true"></i> von {{ item.owner_name }}</span>
+                            {% elif item.assignee_name %}
+                            <span class="task-label-chip"><i class="fa-solid fa-user-check" aria-hidden="true"></i> {{ item.assignee_name }}</span>
+                            {% endif %}
                             {% if item.task_list_name %}
                             <span class="task-list-badge tone-{{ item.task_list_color }}">{{ item.task_list_name }}</span>
                             {% endif %}
@@ -308,6 +327,7 @@
                     </button>
                     {% endif %}
 
+                    {% if item.is_own %}
                     <button type="button" class="task-edit-button" data-task-edit-open
                         data-task-id="{{ item.task.id }}"
                         data-edit-title="{{ item.title }}"
@@ -317,6 +337,7 @@
                         data-edit-recurrence="{{ item.task.recurrence_rule }}"
                         data-edit-labels="{% for label in item.labels %}{{ label.id }}{% if not forloop.last %},{% endif %}{% endfor %}"
                         data-edit-parent="{{ item.parent_id|default_if_none:'' }}"
+                        data-edit-assignee="{{ item.assignee_id|default_if_none:'' }}"
                         aria-label="Aufgabe bearbeiten">
                         <i class="fa-solid fa-pen" aria-hidden="true"></i>
                     </button>
@@ -324,16 +345,18 @@
                     <button class="task-delete-button" type="submit" name="form_name" value="task_delete" aria-label="Aufgabe löschen">
                         <i class="fa-solid fa-trash" aria-hidden="true"></i>
                     </button>
+                    {% endif %}
                 </form>
 
                 {% for child in item.subtasks %}
                 <form
                     class="task-row is-subtask {{ child.due_state }} {% if child.is_done %}is-done{% endif %}"
                     method="post"
-                    draggable="true"
+                    {% if child.is_own %}draggable="true"{% endif %}
                     data-task-row
                     data-task-subtask
                     data-task-id="{{ child.task.id }}"
+                    data-task-assigned="{{ child.assigned_to_me|yesno:'true,' }}"
                     data-task-parent="{{ child.parent_id|default_if_none:'' }}"
                     data-task-state="{{ child.state }}"
                     data-task-title="{{ child.title|lower }}"
@@ -347,7 +370,9 @@
                     <input type="hidden" name="form_name" value="task_toggle">
                     <input type="hidden" name="task_id" value="{{ child.task.id }}">
 
+                    {% if child.is_own %}
                     <span class="task-drag-handle" aria-hidden="true"><i class="fa-solid fa-grip-vertical"></i></span>
+                    {% endif %}
 
                     <input
                         class="task-checkbox"
@@ -372,6 +397,7 @@
 
                     <span class="task-status is-{{ child.status_tone }}">{{ child.status_label }}</span>
 
+                    {% if child.is_own %}
                     <button type="button" class="task-edit-button" data-task-edit-open
                         data-task-id="{{ child.task.id }}"
                         data-edit-title="{{ child.title }}"
@@ -388,9 +414,11 @@
                     <button class="task-delete-button" type="submit" name="form_name" value="task_delete" aria-label="Unteraufgabe löschen">
                         <i class="fa-solid fa-trash" aria-hidden="true"></i>
                     </button>
+                    {% endif %}
                 </form>
                 {% endfor %}
 
+                {% if item.is_own %}
                 <form method="post" class="task-subtask-add-form" data-task-subtask-add>
                     {% csrf_token %}
                     <input type="hidden" name="form_name" value="task_add">
@@ -398,6 +426,7 @@
                     <input type="text" name="title" placeholder="Unteraufgabe hinzufügen …" autocomplete="off" maxlength="180">
                     <button type="submit" aria-label="Unteraufgabe hinzufügen"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
                 </form>
+                {% endif %}
             </div>
             {% endfor %}
             </div>
@@ -464,6 +493,12 @@
             <label class="task-add-more-field">
                 <span>{{ edit_form.recurrence_rule.label }}</span>
                 {{ edit_form.recurrence_rule }}
+            </label>
+
+            <label class="task-add-more-field">
+                <span>{{ edit_form.assignee.label }}</span>
+                {{ edit_form.assignee }}
+                {{ edit_form.assignee.errors }}
             </label>
 
             <div class="task-edit-field is-wide task-add-labels">

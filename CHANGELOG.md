@@ -6,6 +6,22 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Importing an .ics file keeps whole recurring series: "every second week", "Mondays and
+  Wednesdays", "last Friday of the month" and similar rules now create all their dates instead of
+  only the first one. Skipped dates (EXDATE) stay out, and single occurrences that were moved or
+  cancelled in the source calendar are imported that way too.
+- Assign tasks to other Lunora users: "Zuweisen an" in a task's options hands a top-level task
+  to someone else. They get an inbox notice (plus e-mail and Web Push under the "Aufgaben"
+  category), see the task and its subtasks under "Mir zugewiesen", can tick them off, and receive
+  its due reminders instead of the owner. Editing and deleting stay with the owner.
+- Search a chat's history: the search field in the chat header lists matching messages of that
+  conversation, and a hit opens the history at that message, highlighted, with a link back to the
+  newest messages.
+- Drag your own calendar events with the mouse: onto another day in the month, week, three-day or day
+  view (the time stays), or within the time grid to a new time. Drag the bottom edge of an event in
+  the time grid to make it longer or shorter. A recurring event moves only that occurrence.
+- The calendar has a day view and a three-day view next to the month and week, which suit phones
+  better. The calendar remembers the view you picked last and opens it next time.
 - Hiding a dashboard widget while customizing removes it from the grid right away instead of leaving
   it dimmed in place; "Sichtbare Widgets" brings it back. The arrows now skip hidden widgets, so
   every click visibly moves a widget.

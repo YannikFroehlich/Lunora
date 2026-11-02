@@ -1,6 +1,16 @@
 (function () {
   const stream = document.getElementById("message-stream");
-  if (stream) {
+  // A search hit links to #hit-<id> (not the element's own id, so the browser doesn't scroll the
+  // whole page); center it in the stream and flash it instead of jumping to the newest message.
+  const linkedMessage = window.location.hash.startsWith("#hit-")
+    ? document.getElementById(`message-${window.location.hash.slice(5)}`)
+    : null;
+  if (linkedMessage && stream) {
+    const offset = linkedMessage.getBoundingClientRect().top - stream.getBoundingClientRect().top;
+    stream.scrollTop += offset - (stream.clientHeight - linkedMessage.offsetHeight) / 2;
+    linkedMessage.classList.add("is-highlighted");
+    window.setTimeout(() => linkedMessage.classList.remove("is-highlighted"), 1400);
+  } else if (stream) {
     stream.scrollTop = stream.scrollHeight;
   }
 
@@ -94,6 +104,10 @@
 
     if (currentUrl.searchParams.has("before")) {
       params.set("before", currentUrl.searchParams.get("before"));
+    }
+
+    if (currentUrl.searchParams.has("around")) {
+      params.set("around", currentUrl.searchParams.get("around"));
     }
 
     params.set("_", Date.now().toString());

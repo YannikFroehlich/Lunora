@@ -100,6 +100,12 @@ class Profile(models.Model):
         ("24h", "24-Stunden"),
         ("12h", "12-Stunden"),
     ]
+    CALENDAR_VIEW_CHOICES = [
+        ("month", "Monat"),
+        ("week", "Woche"),
+        ("three_days", "3 Tage"),
+        ("day", "Tag"),
+    ]
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile")
     display_name = models.CharField(max_length=120)
     profile_image = models.FileField(
@@ -114,6 +120,8 @@ class Profile(models.Model):
     date_format = models.CharField(max_length=24, choices=DATE_FORMAT_CHOICES, default="de_numeric")
     time_format = models.CharField(max_length=12, choices=TIME_FORMAT_CHOICES, default="24h")
     timezone_name = models.CharField(max_length=64, choices=timezone_choices, default="Europe/Berlin")
+    # The calendar view last picked with the view switch; /calendar/ without a period opens it.
+    calendar_view = models.CharField(max_length=12, choices=CALENDAR_VIEW_CHOICES, default="month")
     notify_email = models.BooleanField(default=False)
     notify_reminders = models.BooleanField(default=True)
     notify_desktop = models.BooleanField(default=False)
@@ -603,6 +611,15 @@ class Task(models.Model):
     parent = models.ForeignKey(
         "self", on_delete=models.CASCADE, blank=True, null=True, related_name="subtasks"
     )
+    # Another user responsible for a top-level task: sees it (and its subtasks), may tick it off
+    # and gets its due reminders; everything else stays with the owner.
+    assignee = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="assigned_tasks",
+    )
     title = models.CharField(max_length=180)
     due_at = models.DateTimeField(blank=True, null=True)
     priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default=PRIORITY_NONE, blank=True)
@@ -780,6 +797,7 @@ class UserNotification(models.Model):
     KIND_NOTE_SHARE = "note_share"
     KIND_VOCABULARY_SHARE = "vocabulary_share"
     KIND_WEATHER_ALERT = "weather_alert"
+    KIND_TASK_ASSIGNMENT = "task_assignment"
     KIND_CHOICES = [
         (KIND_CALENDAR_REMINDER, "Kalendererinnerung"),
         (KIND_TASK_DUE, "Fällige Aufgabe"),
@@ -789,6 +807,7 @@ class UserNotification(models.Model):
         (KIND_NOTE_SHARE, "Notizfreigabe"),
         (KIND_VOCABULARY_SHARE, "Vokabelfreigabe"),
         (KIND_WEATHER_ALERT, "Wetterwarnung"),
+        (KIND_TASK_ASSIGNMENT, "Aufgabenzuweisung"),
     ]
 
     recipient = models.ForeignKey(

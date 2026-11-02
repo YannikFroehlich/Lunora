@@ -4,6 +4,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.core.mail import send_mail
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from app.models import (
@@ -45,7 +46,17 @@ NOTIFICATION_PRESENTATION = {
     UserNotification.KIND_NOTE_SHARE: ("fa-share-nodes", "Freigabe", "note"),
     UserNotification.KIND_WEATHER_ALERT: ("fa-cloud-bolt", "Wetter", "weather"),
     UserNotification.KIND_VOCABULARY_SHARE: ("fa-language", "Vokabeln", "tools"),
+    UserNotification.KIND_TASK_ASSIGNMENT: ("fa-user-check", "Aufgabe", "task"),
 }
+
+
+def _tasks_due_for(user):
+    """Due reminders go to whoever is responsible: the assignee if there is one, else the owner."""
+    return Q(assignee=user) | Q(assignee__isnull=True, user=user)
+
+
+def _task_recipient(task):
+    return task.assignee or task.user
 
 
 def notification_display_items(notifications, user):
@@ -140,16 +151,17 @@ def materialize_due_user_notifications(
             is_done=False,
             due_at__isnull=False,
             due_at__lte=current_time,
-        ).select_related("user", "user__profile")
+        ).select_related("user", "user__profile", "assignee", "assignee__profile")
         if user is not None:
-            tasks = tasks.filter(user=user)
+            tasks = tasks.filter(_tasks_due_for(user))
         for task in tasks:
+            recipient = _task_recipient(task)
             rows.append(
                 {
-                    "recipient_id": task.user_id,
+                    "recipient_id": recipient.pk,
                     "kind": UserNotification.KIND_TASK_DUE,
                     "title": f"Aufgabe fällig: {task.title}",
-                    "body": f"Fällig am {format_user_datetime(task.due_at, task.user)}",
+                    "body": f"Fällig am {format_user_datetime(task.due_at, recipient)}",
                     "url": "/tasks/",
                     "source_key": f"task:{task.pk}",
                 }
@@ -239,6 +251,26 @@ def materialize_vocabulary_share_notifications(shares):
     return _create_missing_user_notifications(rows)
 
 
+def materialize_task_assignment_notifications(tasks):
+    rows = []
+    for task in tasks:
+        if task.assignee_id is None:
+            continue
+        rows.append(
+            {
+                "recipient_id": task.assignee_id,
+                "actor_id": task.user_id,
+                "kind": UserNotification.KIND_TASK_ASSIGNMENT,
+                "title": f"{_display_name(task.user)} hat dir eine Aufgabe zugewiesen",
+                "body": task.title,
+                "url": "/tasks/",
+                # Per assignee, so handing the task to someone else notifies them as well.
+                "source_key": f"task-assignment:{task.pk}:{task.assignee_id}",
+            }
+        )
+    return _create_missing_user_notifications(rows)
+
+
 def materialize_user_notification_sources(user, *, now=None, include_reminders=True, include_tasks=True):
     """Backfill all inbox-capable sources for one user without duplicating entries."""
     created = materialize_due_user_notifications(
@@ -271,6 +303,10 @@ def materialize_user_notification_sources(user, *, now=None, include_reminders=T
     )
     created += materialize_note_share_notifications(note_shares)
     created += materialize_vocabulary_share_notifications(vocabulary_shares)
+    if include_tasks:
+        created += materialize_task_assignment_notifications(
+            Task.objects.filter(assignee=user).select_related("user", "user__profile")
+        )
     return created
 
 
@@ -403,7 +439,7 @@ def claim_due_desktop_tasks(user, *, now=None, limit=5):
         tasks = list(
             Task.objects.select_for_update()
             .filter(
-                user=user,
+                _tasks_due_for(user),
                 is_done=False,
                 due_at__isnull=False,
                 due_at__lte=current_time,
@@ -432,23 +468,21 @@ def send_due_task_reminder_emails(*, now=None):
         include_reminders=False,
         include_tasks=True,
     )
-    tasks = list(
-        Task.objects.filter(
+    tasks = [
+        task
+        for task in Task.objects.filter(
             is_done=False,
             due_at__isnull=False,
             due_at__lte=current_time,
             email_notified_at__isnull=True,
-            user__is_active=True,
-            user__profile__notify_reminders=True,
-            user__profile__notify_email=True,
         )
-        .exclude(user__email="")
-        .select_related("user", "user__profile")
+        .select_related("user", "user__profile", "assignee", "assignee__profile")
         .order_by("due_at", "id")
-    )
+        if _task_reminder_email_wanted(_task_recipient(task))
+    ]
     tasks = filter_channel_items(
         tasks,
-        user_id_getter=lambda task: task.user_id,
+        user_id_getter=lambda task: _task_recipient(task).pk,
         category="tasks",
         channel=CHANNEL_EMAIL,
     )
@@ -461,11 +495,11 @@ def send_due_task_reminder_emails(*, now=None):
                 subject=f"Lunora-Aufgabe: {task.title}",
                 message=(
                     f"Deine Aufgabe „{task.title}“ ist fällig.\n\n"
-                    f"Fällig am: {format_user_datetime(task.due_at, task.user)}\n"
+                    f"Fällig am: {format_user_datetime(task.due_at, _task_recipient(task))}\n"
                     "Öffne Lunora, um sie als erledigt zu markieren."
                 ),
                 from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[task.user.email],
+                recipient_list=[_task_recipient(task).email],
             )
         except Exception:
             failed += 1
@@ -478,6 +512,17 @@ def send_due_task_reminder_emails(*, now=None):
         sent += int(bool(updated))
 
     return {"sent": sent, "failed": failed}
+
+
+def _task_reminder_email_wanted(recipient):
+    profile = getattr(recipient, "profile", None)
+    return bool(
+        recipient.is_active
+        and recipient.email
+        and profile is not None
+        and profile.notify_reminders
+        and profile.notify_email
+    )
 
 
 def send_weekly_summaries(*, now=None):
@@ -731,6 +776,7 @@ def send_pending_user_notification_emails(
     include_note_shares=True,
     include_vocabulary_shares=True,
     include_weather=True,
+    include_task_assignments=True,
 ):
     """Send inbox-backed e-mails for notification types without a source delivery column."""
     current_time = now or timezone.now()
@@ -741,6 +787,8 @@ def send_pending_user_notification_emails(
         kinds.append(UserNotification.KIND_VOCABULARY_SHARE)
     if include_weather:
         kinds.append(UserNotification.KIND_WEATHER_ALERT)
+    if include_task_assignments:
+        kinds.append(UserNotification.KIND_TASK_ASSIGNMENT)
     if not kinds:
         return {"sent": 0, "failed": 0, "disabled": True}
 

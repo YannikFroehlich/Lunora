@@ -71,3 +71,10 @@
     <p>Schreibe unten die erste Nachricht in dieser Unterhaltung.</p>
 </div>
 {% endfor %}
+
+{% if showing_history %}
+<a class="older-messages-link" href="{% url 'messages_detail' selected_conversation.id %}">
+    <i class="fa-solid fa-arrow-down" aria-hidden="true"></i>
+    <span>Zu den neuesten Nachrichten</span>
+</a>
+{% endif %}
