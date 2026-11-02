@@ -129,8 +129,14 @@ ICS = (
     "UID:team-1\r\n"
     "DTSTART:20991106T080000Z\r\n"
     "DTEND:20991106T090000Z\r\n"
-    "RRULE:FREQ=WEEKLY;BYDAY=MO,WE\r\n"
+    "RRULE:FREQ=WEEKLY;BYDAY=MO,WE;UNTIL=20991120T235959Z\r\n"
     "SUMMARY:Team\r\n"
+    "END:VEVENT\r\n"
+    "BEGIN:VEVENT\r\n"
+    "UID:letzter-montag-1\r\n"
+    "DTSTART:20991130T080000Z\r\n"
+    "RRULE:FREQ=MONTHLY;BYDAY=MO;BYSETPOS=-1\r\n"
+    "SUMMARY:Monatsabschluss\r\n"
     "END:VEVENT\r\n"
     "BEGIN:VEVENT\r\n"
     "UID:abgesagt-1\r\n"
@@ -150,7 +156,7 @@ class IcsImportTests(TestCase):
     def test_events_are_imported_once_with_times_series_and_text(self):
         counts = import_ics_events(self.user, ICS)
 
-        self.assertEqual(counts, {"created": 4, "duplicates": 0, "skipped": 1, "simplified": 1})
+        self.assertEqual(counts, {"created": 5, "duplicates": 0, "skipped": 1, "simplified": 1})
         dentist = CalendarEvent.objects.get(title="Zahnarzt, Kontrolle")
         self.assertEqual(dentist.start_at, datetime(2099, 11, 3, 9, tzinfo=BERLIN))
         self.assertEqual(dentist.end_at, datetime(2099, 11, 3, 10, tzinfo=BERLIN))
@@ -168,14 +174,100 @@ class IcsImportTests(TestCase):
         self.assertEqual(len({event.recurrence_id for event in christmas}), 1)
         call = CalendarEvent.objects.get(title="Call")
         self.assertEqual((call.end_at - call.start_at).total_seconds(), 1800)
-        self.assertEqual(CalendarEvent.objects.filter(title="Team").count(), 1)
+        team = CalendarEvent.objects.filter(title="Team").order_by("start_at")
+        self.assertEqual(
+            [event.start_at.date().isoformat() for event in team],
+            ["2099-11-06", "2099-11-09", "2099-11-11", "2099-11-16", "2099-11-18"],
+        )
+        self.assertEqual(CalendarEvent.objects.filter(title="Monatsabschluss").count(), 1)
         self.assertFalse(CalendarEvent.objects.filter(title="Abgesagt").exists())
 
         counts = import_ics_events(self.user, ICS)
 
         self.assertEqual(counts["created"], 0)
-        self.assertEqual(counts["duplicates"], 4)
-        self.assertEqual(CalendarEvent.objects.count(), 6)
+        self.assertEqual(counts["duplicates"], 5)
+        self.assertEqual(CalendarEvent.objects.count(), 11)
+
+    def _series(self, *lines):
+        body = "".join(f"{line}\r\n" for line in lines)
+        import_ics_events(self.user, f"BEGIN:VCALENDAR\r\n{body}END:VCALENDAR\r\n")
+        return [
+            event.start_at.astimezone(BERLIN).strftime("%Y-%m-%d %H:%M")
+            for event in CalendarEvent.objects.order_by("start_at")
+        ]
+
+    def test_interval_and_monthly_weekday_ordinals(self):
+        starts = self._series(
+            "BEGIN:VEVENT",
+            "UID:sprint",
+            "DTSTART;TZID=Europe/Berlin:20990105T100000",
+            "RRULE:FREQ=WEEKLY;INTERVAL=2;COUNT=3",
+            "SUMMARY:Sprint",
+            "END:VEVENT",
+            "BEGIN:VEVENT",
+            "UID:stammtisch",
+            "DTSTART;TZID=Europe/Berlin:20990130T190000",
+            "RRULE:FREQ=MONTHLY;BYDAY=-1FR;COUNT=3",
+            "SUMMARY:Stammtisch",
+            "END:VEVENT",
+        )
+
+        self.assertEqual(
+            starts,
+            [
+                "2099-01-05 10:00",
+                "2099-01-19 10:00",
+                "2099-01-30 19:00",
+                "2099-02-02 10:00",
+                "2099-02-27 19:00",
+                "2099-03-27 19:00",
+            ],
+        )
+
+    def test_monthly_day_31_skips_short_months_and_keeps_wall_clock_time_over_dst(self):
+        starts = self._series(
+            "BEGIN:VEVENT",
+            "UID:monatsende",
+            "DTSTART;TZID=Europe/Berlin:20990131T090000",
+            "RRULE:FREQ=MONTHLY;UNTIL=20990601T000000Z",
+            "SUMMARY:Monatsende",
+            "END:VEVENT",
+        )
+
+        self.assertEqual(starts, ["2099-01-31 09:00", "2099-03-31 09:00", "2099-05-31 09:00"])
+
+    def test_exdates_and_changed_or_cancelled_occurrences(self):
+        starts = self._series(
+            "BEGIN:VEVENT",
+            "UID:yoga",
+            "DTSTART;TZID=Europe/Berlin:20990105T180000",
+            "DTEND;TZID=Europe/Berlin:20990105T190000",
+            "RRULE:FREQ=WEEKLY;COUNT=5",
+            "EXDATE;TZID=Europe/Berlin:20990112T180000",
+            "SUMMARY:Yoga",
+            "END:VEVENT",
+            "BEGIN:VEVENT",
+            "UID:yoga",
+            "RECURRENCE-ID;TZID=Europe/Berlin:20990119T180000",
+            "DTSTART;TZID=Europe/Berlin:20990120T200000",
+            "DTEND;TZID=Europe/Berlin:20990120T213000",
+            "SUMMARY:Yoga (verschoben)",
+            "END:VEVENT",
+            "BEGIN:VEVENT",
+            "UID:yoga",
+            "RECURRENCE-ID;TZID=Europe/Berlin:20990126T180000",
+            "DTSTART;TZID=Europe/Berlin:20990126T180000",
+            "STATUS:CANCELLED",
+            "END:VEVENT",
+        )
+
+        self.assertEqual(starts, ["2099-01-05 18:00", "2099-01-20 20:00", "2099-02-02 18:00"])
+        moved = CalendarEvent.objects.get(title="Yoga (verschoben)")
+        self.assertEqual((moved.end_at - moved.start_at).total_seconds(), 5400)
+        self.assertEqual(len(set(CalendarEvent.objects.values_list("recurrence_id", flat=True))), 1)
+
+        import_ics_events(self.user, "BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n")
+        self.assertEqual(CalendarEvent.objects.count(), 3)
 
 
 class DataImportViewTests(TestCase):
@@ -198,9 +290,9 @@ class DataImportViewTests(TestCase):
         note = Note.objects.get(owner=self.user)
         self.assertEqual(note.title, "Einkauf")
         self.assertEqual(note.plain_text.split(), ["Milch", "Brot"])
-        self.assertEqual(CalendarEvent.objects.filter(user=self.user).count(), 6)
+        self.assertEqual(CalendarEvent.objects.filter(user=self.user).count(), 11)
         self.assertContains(response, "1 Notiz(en) importiert.")
-        self.assertContains(response, "„kalender.ics“: 4 Termin(e) importiert")
+        self.assertContains(response, "„kalender.ics“: 5 Termin(e) importiert")
         self.assertContains(response, "„bild.png“: Nur .md-, .txt- und .ics-Dateien")
         self.assertContains(response, "„kaputt.md“ ist keine UTF-8-Textdatei.")
 

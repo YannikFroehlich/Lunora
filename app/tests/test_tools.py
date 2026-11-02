@@ -8,6 +8,7 @@ from django.utils import timezone
 
 from app.models import (
     Habit,
+    HabitCheck,
     NotificationPreference,
     Profile,
     SystemSettings,
@@ -17,7 +18,7 @@ from app.models import (
     VocabularyList,
     VocabularyListShare,
 )
-from app.services.habits import current_streak, is_done_now
+from app.services.habits import STREAK_WINDOW_DAYS, current_streak, habit_items, is_done_now
 from app.services.notifications import send_pending_user_notification_emails
 from app.services.uml_content import validate_uml_document
 from app.services.user_preferences import localtime_for_user
@@ -508,6 +509,22 @@ class HabitTrackerTests(TestCase):
         self.assertEqual(current_streak(weekly, weekly_checks, today), 3)
         self.assertTrue(is_done_now(weekly, weekly_checks, today))
         self.assertEqual(current_streak(weekly, {date(2026, 10, 12)}, today), 0)
+
+    def test_streaks_longer_than_the_loaded_window_are_counted_in_full(self):
+        habit = Habit.objects.create(owner=self.user, title="Lesen")
+        weekly = Habit.objects.create(owner=self.user, title="Sport", cadence=Habit.CADENCE_WEEKLY)
+        long_streak = STREAK_WINDOW_DAYS + 50
+        HabitCheck.objects.bulk_create(
+            [
+                HabitCheck(habit=habit, date=self.today - timedelta(days=offset))
+                for offset in range(long_streak)
+            ]
+            + [HabitCheck(habit=weekly, date=self.today - timedelta(weeks=offset)) for offset in range(70)]
+        )
+
+        streaks = {item["title"]: item["streak"] for item in habit_items(self.user, self.today)}
+
+        self.assertEqual(streaks, {"Lesen": long_streak, "Sport": 70})
 
     def test_page_creates_toggles_and_deletes_only_own_habits(self):
         response = self.client.post(

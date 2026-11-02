@@ -104,6 +104,8 @@ def disabled_feature_response(request, feature_key, *, json_response=False):
 
 
 def logout_other_authenticated_sessions(current_session_key):
+    # The emergency logout deliberately decodes the whole session table instead of trusting the
+    # UserSession index, so it also catches anything that index might have missed.
     active_sessions = Session.objects.filter(expire_date__gte=timezone.now())
     sessions_to_delete = []
     affected_user_ids = set()

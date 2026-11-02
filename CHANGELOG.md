@@ -6,6 +6,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Importing an .ics file keeps whole recurring series: "every second week", "Mondays and
+  Wednesdays", "last Friday of the month" and similar rules now create all their dates instead of
+  only the first one. Skipped dates (EXDATE) stay out, and single occurrences that were moved or
+  cancelled in the source calendar are imported that way too.
 - Assign tasks to other Lunora users: "Zuweisen an" in a task's options hands a top-level task
   to someone else. They get an inbox notice (plus e-mail and Web Push under the "Aufgaben"
   category), see the task and its subtasks under "Mir zugewiesen", can tick them off, and receive
