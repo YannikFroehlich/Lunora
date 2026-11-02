@@ -39,7 +39,7 @@ from app.services.habits import habit_items
 from app.services.message_queries import unread_total_for_user
 from app.services.notifications import dashboard_latest_notifications
 from app.services.system_settings import feature_enabled, feature_flags
-from app.services.tasks import dashboard_open_tasks, dashboard_today_tasks
+from app.services.tasks import dashboard_open_tasks, dashboard_today_tasks, visible_tasks
 from app.services.user_preferences import (
     format_user_date,
     format_user_datetime,
@@ -89,7 +89,7 @@ def get_dashboard_context(user=None):
     dashboard_tasks = (
         dashboard_open_tasks(user, now, limit=MAX_WIDGET_ITEMS) if flags["tasks"] and user else []
     )
-    open_tasks_count = Task.objects.filter(user=user, is_done=False).count() if flags["tasks"] and user else 0
+    open_tasks_count = visible_tasks(user).filter(is_done=False).count() if flags["tasks"] and user else 0
     nav_tiles = _dashboard_nav_tiles(user, unread_messages_total, new_note_shares, open_tasks_count, flags)
     if user and "notifications" in visible_widget_ids:
         dashboard_notifications = dashboard_latest_notifications(user, limit=MAX_WIDGET_ITEMS)
@@ -231,7 +231,7 @@ def _dashboard_stat_tiles(user, now, flags, period):
 
     if flags["tasks"]:
         tasks_done = Task.objects.filter(user=user, is_done=True, updated_at__gte=period_start).count()
-        open_tasks = Task.objects.filter(user=user, is_done=False).count()
+        open_tasks = visible_tasks(user).filter(is_done=False).count()
         tiles.append(
             {
                 "icon": "fa-check-double",

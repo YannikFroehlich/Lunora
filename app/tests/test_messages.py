@@ -232,6 +232,58 @@ class MessagesPageTests(TestCase):
         self.assertEqual(older_message_bodies, [f"Nachricht {index}" for index in range(10)])
         self.assertFalse(response.context["has_older_messages"])
 
+    def test_chat_search_lists_matching_messages_of_this_conversation_only(self):
+        conversation = Conversation.objects.create(created_by=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.lukas)
+        ChatMessage.objects.create(conversation=conversation, sender=self.lukas, body="Treffen am Bahnhof")
+        ChatMessage.objects.create(conversation=conversation, sender=self.mira, body="Bahnhof oder Rathaus?")
+        ChatMessage.objects.create(
+            conversation=conversation, sender=self.mira, body="Bahnhof", is_deleted=True
+        )
+        ChatMessage.objects.create(conversation=conversation, sender=self.lukas, body="Kein Treffer")
+        other = Conversation.objects.create(created_by=self.anna)
+        ConversationMember.objects.create(conversation=other, user=self.anna)
+        ConversationMember.objects.create(conversation=other, user=self.mira)
+        ChatMessage.objects.create(conversation=other, sender=self.anna, body="Bahnhof bei Anna")
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get(f"/messages/{conversation.id}/", {"find": "bahnhof -rathaus"})
+
+        [result] = response.context["chat_search_results"]
+        self.assertEqual(result["sender_name"], "Lukas")
+        self.assertIn({"text": "Bahnhof", "match": True}, result["snippet"])
+        self.assertIn("around=", result["url"])
+        self.assertContains(response, "1 Treffer für")
+
+    def test_chat_search_hit_opens_the_stream_around_the_message(self):
+        conversation = Conversation.objects.create(created_by=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.lukas)
+        messages = [
+            ChatMessage.objects.create(
+                conversation=conversation, sender=self.lukas, body=f"Nachricht {index}"
+            )
+            for index in range(120)
+        ]
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get(f"/messages/{conversation.id}/", {"around": messages[20].id})
+
+        bodies = [item["message"].body for item in response.context["message_items"]]
+        self.assertEqual(bodies[-1], "Nachricht 25")
+        self.assertIn("Nachricht 20", bodies)
+        self.assertTrue(response.context["showing_history"])
+        self.assertContains(response, "Zu den neuesten Nachrichten")
+
+        live = self.client.get(f"/messages/{conversation.id}/live/", {"around": messages[20].id}).json()
+        self.assertIn(f'id="message-{messages[20].id}"', live["message_stream_html"])
+
+        # A hit among the newest messages keeps the normal newest page.
+        response = self.client.get(f"/messages/{conversation.id}/", {"around": messages[118].id})
+        self.assertFalse(response.context["showing_history"])
+        self.assertEqual(response.context["message_items"][-1]["message"].body, "Nachricht 119")
+
     def test_user_can_react_to_message(self):
         conversation = Conversation.objects.create(created_by=self.mira)
         ConversationMember.objects.create(conversation=conversation, user=self.mira)

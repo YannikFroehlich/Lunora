@@ -611,6 +611,15 @@ class Task(models.Model):
     parent = models.ForeignKey(
         "self", on_delete=models.CASCADE, blank=True, null=True, related_name="subtasks"
     )
+    # Another user responsible for a top-level task: sees it (and its subtasks), may tick it off
+    # and gets its due reminders; everything else stays with the owner.
+    assignee = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="assigned_tasks",
+    )
     title = models.CharField(max_length=180)
     due_at = models.DateTimeField(blank=True, null=True)
     priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default=PRIORITY_NONE, blank=True)
@@ -788,6 +797,7 @@ class UserNotification(models.Model):
     KIND_NOTE_SHARE = "note_share"
     KIND_VOCABULARY_SHARE = "vocabulary_share"
     KIND_WEATHER_ALERT = "weather_alert"
+    KIND_TASK_ASSIGNMENT = "task_assignment"
     KIND_CHOICES = [
         (KIND_CALENDAR_REMINDER, "Kalendererinnerung"),
         (KIND_TASK_DUE, "Fällige Aufgabe"),
@@ -797,6 +807,7 @@ class UserNotification(models.Model):
         (KIND_NOTE_SHARE, "Notizfreigabe"),
         (KIND_VOCABULARY_SHARE, "Vokabelfreigabe"),
         (KIND_WEATHER_ALERT, "Wetterwarnung"),
+        (KIND_TASK_ASSIGNMENT, "Aufgabenzuweisung"),
     ]
 
     recipient = models.ForeignKey(

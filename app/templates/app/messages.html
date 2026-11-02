@@ -73,7 +73,34 @@
                     <h2>{{ selected_title }}</h2>
                     <p><span class="status-dot"></span>{{ selected_members|length }} Mitglied{% if selected_members|length != 1 %}er{% endif %}</p>
                 </div>
+                <form class="chat-search" method="get" action="{% url 'messages_detail' selected_conversation.id %}" role="search">
+                    <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                    <input type="search" name="find" value="{{ chat_search_query }}" placeholder="Im Verlauf suchen" autocomplete="off" aria-label="Im Verlauf suchen">
+                </form>
             </header>
+
+            {% if chat_search_query %}
+            <section class="chat-search-results" aria-label="Suchergebnisse im Verlauf">
+                <header>
+                    <strong>{{ chat_search_results|length }}{% if chat_search_results|length >= 30 %}+{% endif %} Treffer für „{{ chat_search_query }}“</strong>
+                    <a class="icon-button" href="{% url 'messages_detail' selected_conversation.id %}" aria-label="Suche schließen"><i class="fa-solid fa-xmark" aria-hidden="true"></i></a>
+                </header>
+                {% if chat_search_results %}
+                <ol>
+                    {% for result in chat_search_results %}
+                    <li>
+                        <a href="{{ result.url }}">
+                            <span><strong>{{ result.sender_name }}</strong><small>{{ result.time_label }}</small></span>
+                            <span>{% for part in result.snippet %}{% if part.match %}<mark class="search-hit">{{ part.text }}</mark>{% else %}{{ part.text }}{% endif %}{% endfor %}</span>
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ol>
+                {% else %}
+                <p>Keine Nachricht in dieser Unterhaltung passt zu deiner Suche.</p>
+                {% endif %}
+            </section>
+            {% endif %}
 
             <div id="pinned-messages-region">{% include "app/partials/messages_pinned.html" %}</div>
 

@@ -47,6 +47,7 @@
   function taskMatchesView(row) {
     if (activeView === "all") return true;
     if (activeView === "list") return (row.dataset.taskList || "") === activeListId;
+    if (activeView === "assigned") return row.dataset.taskAssigned === "true";
     return row.dataset.taskView === activeView;
   }
 
@@ -256,6 +257,7 @@
     const prioritySelect = editForm?.querySelector("select[name='priority']");
     const recurrenceSelect = editForm?.querySelector("select[name='recurrence_rule']");
     const parentInput = editForm?.querySelector("input[name='parent']");
+    const assigneeSelect = editForm?.querySelector("select[name='assignee']");
     const labelInputs = editForm?.querySelectorAll("input[name='labels']") || [];
 
     const openEditDialog = (data) => {
@@ -266,6 +268,7 @@
       if (prioritySelect) prioritySelect.value = data.priority || "none";
       if (recurrenceSelect) recurrenceSelect.value = data.recurrence || "none";
       if (parentInput) parentInput.value = data.parent || "";
+      if (assigneeSelect) assigneeSelect.value = data.assignee || "";
 
       const labelIds = (data.labels || "").split(",").filter(Boolean);
       labelInputs.forEach((input) => {
@@ -290,6 +293,7 @@
           recurrence: button.dataset.editRecurrence,
           labels: button.dataset.editLabels,
           parent: button.dataset.editParent,
+          assignee: button.dataset.editAssignee,
         }),
       );
     });

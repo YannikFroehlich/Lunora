@@ -3,10 +3,11 @@ from django.db.models import Q
 from django.shortcuts import render
 from django.urls import reverse
 
-from app.models import Conversation, Task, UmlDiagram, VacationPeriod, VocabularyList
+from app.models import Conversation, UmlDiagram, VacationPeriod, VocabularyList
 from app.services.note_search import build_snippet, highlight_text, parse_search_query, search_notes
 from app.services.notes import accessible_notes
 from app.services.system_settings import feature_flags
+from app.services.tasks import visible_tasks
 from app.services.user_preferences import (
     format_user_date,
     format_user_datetime,
@@ -123,9 +124,11 @@ def global_search(request):
 
     task_results = []
     if query and flags["tasks"]:
-        tasks = Task.objects.filter(user=request.user, title__icontains=query).order_by(
-            "is_done", "due_at", "-id"
-        )[:SEARCH_RESULT_LIMIT]
+        tasks = (
+            visible_tasks(request.user)
+            .filter(title__icontains=query)
+            .order_by("is_done", "due_at", "-id")[:SEARCH_RESULT_LIMIT]
+        )
         task_results = [
             {
                 "title": task.title,

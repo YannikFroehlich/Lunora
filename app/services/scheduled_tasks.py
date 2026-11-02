@@ -43,6 +43,7 @@ def run_scheduled_tasks(*, now=None):
         include_note_shares=feature_enabled("notes"),
         include_vocabulary_shares=feature_enabled("tools"),
         include_weather=feature_enabled("weather"),
+        include_task_assignments=feature_enabled("tasks"),
     )
     web_push_result = send_pending_web_push_notifications(now=current_time)
     return {
