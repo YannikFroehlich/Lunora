@@ -1,0 +1,40 @@
+<li class="task-board-card{% if item.due_state %} {{ item.due_state }}{% endif %}"
+    draggable="true"
+    data-task-board-card
+    data-task-id="{{ item.task.id }}"
+    data-task-status="{{ item.status }}"
+    data-task-state="{{ item.state }}"
+    data-task-view="{{ item.filter_view }}"
+    data-task-list="{{ item.filter_task_list_id|default_if_none:'' }}"
+    data-task-assigned="{{ item.assigned_to_me|yesno:'true,' }}"
+    data-task-shared="{{ item.shared_with_me|yesno:'true,' }}"
+    data-task-due="{{ item.due_sort }}"
+    data-task-created="{{ item.created_sort }}"
+    data-task-priority="{{ item.priority }}"
+    data-task-title="{{ item.title|lower }}">
+    <strong>
+        {% if item.priority != "none" %}<i class="fa-solid fa-flag task-priority-flag is-{{ item.priority }}" aria-hidden="true"></i><span class="visually-hidden">Priorität {{ item.task.get_priority_display }}:</span>{% endif %}
+        {{ item.title }}
+    </strong>
+    <small><i class="fa-regular fa-calendar" aria-hidden="true"></i> {{ item.due_label }}</small>
+    {% if item.task_list_name or item.labels or item.owner_name or item.assignee_name or item.shared_names or item.subtask_count %}
+    <span class="task-chips">
+        {% if item.owner_name %}<span class="task-label-chip"><i class="fa-solid fa-user" aria-hidden="true"></i> von {{ item.owner_name }}</span>{% elif item.assignee_name %}<span class="task-label-chip"><i class="fa-solid fa-user-check" aria-hidden="true"></i> {{ item.assignee_name }}</span>{% endif %}
+        {% if item.shared_names %}<span class="task-label-chip" title="Geteilt mit {{ item.shared_names|join:', ' }}"><i class="fa-solid fa-user-group" aria-hidden="true"></i> {{ item.shared_names|length }}</span>{% endif %}
+        {% if item.task_list_name %}<span class="task-list-badge tone-{{ item.task_list_color }}">{{ item.task_list_name }}</span>{% endif %}
+        {% for label in item.labels %}<span class="task-label-chip tone-{{ label.color }}">{{ label.name }}</span>{% endfor %}
+        {% if item.subtask_count %}<span class="task-label-chip" title="Offene Unteraufgaben"><i class="fa-solid fa-list-check" aria-hidden="true"></i> {{ item.open_subtask_count }}/{{ item.subtask_count }}</span>{% endif %}
+    </span>
+    {% endif %}
+    <form method="post" class="task-board-move" aria-label="Status von „{{ item.title }}“">
+        {% csrf_token %}
+        <input type="hidden" name="form_name" value="task_status">
+        <input type="hidden" name="task_id" value="{{ item.task.id }}">
+        {% for key, label in task_status_choices %}
+        <button type="submit" name="status" value="{{ key }}"{% if key == item.status %} aria-pressed="true"{% else %} aria-pressed="false"{% endif %} title="{{ label }}">
+            <i class="fa-solid {% if key == 'open' %}fa-circle{% elif key == 'in_progress' %}fa-person-digging{% else %}fa-check{% endif %}" aria-hidden="true"></i>
+            <span class="visually-hidden">Status: {{ label }}</span>
+        </button>
+        {% endfor %}
+    </form>
+</li>

@@ -45,7 +45,7 @@ from app.services.image_uploads import PROFILE_IMAGE_ACCEPT, validate_profile_im
 from app.services.notes import display_name
 from app.services.notification_preferences import CATEGORY_DEFINITIONS
 from app.services.quick_add import parse_quick_add
-from app.services.tasks import DEFAULT_DUE_TIME
+from app.services.tasks import DEFAULT_DUE_TIME, update_task_shares
 from app.services.user_preferences import get_user_zoneinfo, localtime_for_user
 
 LOGIN_ATTEMPT_LIMIT = 5
@@ -744,6 +744,13 @@ class TaskForm(forms.ModelForm):
         required=False,
         empty_label="Niemand",
     )
+    # Not a model field: saved as TaskShare rows through save_shares() after the task is saved.
+    shared_with = forms.ModelMultipleChoiceField(
+        label="Teilen mit",
+        queryset=User.objects.none(),
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+    )
     # Declared explicitly (rather than left to ModelForm auto-generation) so Django doesn't
     # prepend its own blank "---------" choice alongside the model's own "Keine" option.
     priority = forms.ChoiceField(
@@ -791,16 +798,26 @@ class TaskForm(forms.ModelForm):
                 .order_by("first_name", "email", "username")
             )
             self.fields["assignee"].label_from_instance = display_name
+            self.fields["shared_with"].queryset = self.fields["assignee"].queryset
+            self.fields["shared_with"].label_from_instance = display_name
+        if self.instance.pk and not self.is_bound:
+            self.initial["shared_with"] = list(self.instance.shares.values_list("user_id", flat=True))
 
     def clean(self):
         cleaned_data = super().clean()
         if cleaned_data.get("parent") and cleaned_data.get("assignee"):
             # Subtasks follow their parent's assignee instead of having their own.
             self.add_error("assignee", "Nur Hauptaufgaben können zugewiesen werden.")
+        if cleaned_data.get("parent") and cleaned_data.get("shared_with"):
+            self.add_error("shared_with", "Nur Hauptaufgaben können geteilt werden.")
         # Only new tasks read their title as quick-add text; editing keeps the title as typed.
         if self.instance.pk is None and self.user is not None and cleaned_data.get("title"):
             self._apply_quick_add(cleaned_data)
         return cleaned_data
+
+    def save_shares(self, task):
+        """Sync the task's shares with the ticked people; returns the newly added share rows."""
+        return update_task_shares(task, self.cleaned_data.get("shared_with") or [])
 
     def _apply_quick_add(self, cleaned_data):
         """Take a due date/time, priority and labels from the title ("Bericht Freitag 14 Uhr !hoch #arbeit").

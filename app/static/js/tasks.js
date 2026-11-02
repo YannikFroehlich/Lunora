@@ -33,6 +33,15 @@
   let activeFilter = "all";
   let activeView = "all";
   let activeListId = "";
+  const taskBoard = document.querySelector("[data-task-board]");
+  const layoutButtons = Array.from(document.querySelectorAll("[data-task-layout]"));
+  const LAYOUT_STORAGE_KEY = "lunora-task-layout";
+  let activeLayout = "list";
+  try {
+    if (window.localStorage.getItem(LAYOUT_STORAGE_KEY) === "board") activeLayout = "board";
+  } catch {
+    // Storage blocked: start with the list.
+  }
 
   const PRIORITY_RANK = { high: 3, medium: 2, low: 1, none: 0 };
 
@@ -60,6 +69,7 @@
     const state = row.dataset.taskState;
     if (activeFilter === "all") return true;
     if (activeFilter === "open") return state === "open" || state === "overdue";
+    if (activeFilter === "in_progress") return row.dataset.taskStatus === "in_progress";
     return state === activeFilter;
   }
 
@@ -67,6 +77,7 @@
     if (activeView === "all") return true;
     if (activeView === "list") return (row.dataset.taskList || "") === activeListId;
     if (activeView === "assigned") return row.dataset.taskAssigned === "true";
+    if (activeView === "shared") return row.dataset.taskShared === "true";
     return row.dataset.taskView === activeView;
   }
 
@@ -124,8 +135,37 @@
     return dueDifference || createdValue(second) - createdValue(first);
   }
 
+  function applyBoardView() {
+    if (!taskBoard) return 0;
+    let visibleCount = 0;
+    taskBoard.querySelectorAll("[data-task-board-column]").forEach((column) => {
+      const list = column.querySelector("[data-task-board-drop]");
+      const cards = Array.from(column.querySelectorAll("[data-task-board-card]"));
+      cards.sort(compareRows).forEach((card) => list.appendChild(card));
+      let columnCount = 0;
+      cards.forEach((card) => {
+        const isVisible = taskMatchesFilter(card) && taskMatchesView(card);
+        card.hidden = !isVisible;
+        if (isVisible) columnCount += 1;
+      });
+      const counter = column.querySelector("[data-task-board-count]");
+      if (counter) counter.textContent = String(columnCount);
+      visibleCount += columnCount;
+    });
+    return visibleCount;
+  }
+
   function applyTaskView() {
     if (!taskList) return;
+    if (activeLayout === "board") {
+      const visibleCount = applyBoardView();
+      if (filterEmpty) filterEmpty.hidden = visibleCount !== 0;
+      if (resultsStatus) {
+        resultsStatus.textContent =
+          visibleCount === 1 ? "Eine Aufgabe wird angezeigt." : `${visibleCount} Aufgaben werden angezeigt.`;
+      }
+      return;
+    }
 
     const groups = Array.from(taskList.querySelectorAll("[data-task-group]"));
     groups
@@ -179,13 +219,42 @@
     });
   });
 
+  function markActiveViewLink(activeLink) {
+    viewLinks.forEach((candidate) => {
+      const isActive = candidate === activeLink;
+      candidate.classList.toggle("is-active", isActive);
+      candidate.setAttribute("aria-pressed", String(isActive));
+    });
+  }
+
   viewLinks.forEach((link) => {
     link.addEventListener("click", () => {
       activeView = link.dataset.taskViewLink || "all";
       activeListId = activeView === "list" ? link.dataset.taskViewList || "" : "";
-      viewLinks.forEach((candidate) => candidate.classList.toggle("is-active", candidate === link));
+      markActiveViewLink(link);
       applyTaskView();
     });
+  });
+  markActiveViewLink(viewLinks.find((link) => link.dataset.taskViewLink === "all"));
+
+  function setLayout(layout) {
+    activeLayout = layout === "board" && taskBoard ? "board" : "list";
+    if (taskList) taskList.hidden = activeLayout === "board";
+    if (taskBoard) taskBoard.hidden = activeLayout !== "board";
+    layoutButtons.forEach((button) => {
+      button.setAttribute("aria-pressed", String(button.dataset.taskLayout === activeLayout));
+      button.classList.toggle("is-active", button.dataset.taskLayout === activeLayout);
+    });
+    try {
+      window.localStorage.setItem(LAYOUT_STORAGE_KEY, activeLayout);
+    } catch {
+      // Storage blocked: the choice only lasts for this page view.
+    }
+    applyTaskView();
+  }
+
+  layoutButtons.forEach((button) => {
+    button.addEventListener("click", () => setLayout(button.dataset.taskLayout));
   });
 
   if (sortSelect) {
@@ -212,7 +281,7 @@
         button.classList.toggle("is-active", isActive);
         button.setAttribute("aria-pressed", String(isActive));
       });
-      viewLinks.forEach((link) => link.classList.toggle("is-active", link.dataset.taskViewLink === "all"));
+      markActiveViewLink(viewLinks.find((link) => link.dataset.taskViewLink === "all"));
       if (moreMenu) moreMenu.open = false;
       applyTaskView();
     });
@@ -278,6 +347,8 @@
     const parentInput = editForm?.querySelector("input[name='parent']");
     const assigneeSelect = editForm?.querySelector("select[name='assignee']");
     const labelInputs = editForm?.querySelectorAll("input[name='labels']") || [];
+    const shareInputs = editForm?.querySelectorAll("input[name='shared_with']") || [];
+    const shareField = editForm?.querySelector("[data-task-share-field]");
 
     const openEditDialog = (data) => {
       if (idInput) idInput.value = data.taskId || "";
@@ -293,6 +364,13 @@
       labelInputs.forEach((input) => {
         input.checked = labelIds.includes(input.value);
       });
+
+      // Only top-level tasks can be shared; a subtask follows its parent.
+      const shareIds = (data.shared || "").split(",").filter(Boolean);
+      shareInputs.forEach((input) => {
+        input.checked = shareIds.includes(input.value);
+      });
+      if (shareField) shareField.hidden = Boolean(data.parent);
 
       if (!editDialog.open) {
         editDialog.showModal();
@@ -313,6 +391,7 @@
           labels: button.dataset.editLabels,
           parent: button.dataset.editParent,
           assignee: button.dataset.editAssignee,
+          shared: button.dataset.editShared,
         }),
       );
     });
@@ -445,5 +524,49 @@
     }
   });
 
-  applyTaskView();
+  // Board: drag a card into another column (mouse); the move buttons on each card do the same
+  // with the keyboard or on touch screens.
+  let draggedBoardCard = null;
+  const statusForm = document.getElementById("task-status-form");
+
+  if (taskBoard && statusForm) {
+    taskBoard.addEventListener("dragstart", (event) => {
+      const card = event.target.closest("[data-task-board-card]");
+      if (!card) return;
+      draggedBoardCard = card;
+      card.classList.add("is-dragging");
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", card.dataset.taskId || "");
+    });
+
+    taskBoard.addEventListener("dragend", () => {
+      draggedBoardCard?.classList.remove("is-dragging");
+      draggedBoardCard = null;
+      taskBoard.querySelectorAll(".is-drop-target").forEach((column) => column.classList.remove("is-drop-target"));
+    });
+
+    taskBoard.addEventListener("dragover", (event) => {
+      const column = event.target.closest("[data-task-board-column]");
+      if (!draggedBoardCard || !column) return;
+      event.preventDefault();
+      taskBoard.querySelectorAll(".is-drop-target").forEach((candidate) => {
+        if (candidate !== column) candidate.classList.remove("is-drop-target");
+      });
+      column.classList.add("is-drop-target");
+    });
+
+    taskBoard.addEventListener("drop", (event) => {
+      const column = event.target.closest("[data-task-board-column]");
+      if (!draggedBoardCard || !column) return;
+      event.preventDefault();
+      const status = column.dataset.taskBoardColumn;
+      if (status === draggedBoardCard.dataset.taskStatus) return;
+      column.querySelector("[data-task-board-drop]")?.appendChild(draggedBoardCard);
+      statusForm.querySelector("[data-task-status-id]").value = draggedBoardCard.dataset.taskId;
+      statusForm.querySelector("[data-task-status-value]").value = status;
+      statusForm.submit();
+    });
+  }
+
+  setLayout(activeLayout);
 })();

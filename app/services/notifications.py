@@ -17,6 +17,7 @@ from app.models import (
     NoteShare,
     Profile,
     Task,
+    TaskShare,
     UserNotification,
     VocabularyListShare,
     WeatherLocation,
@@ -53,6 +54,7 @@ NOTIFICATION_PRESENTATION = {
     UserNotification.KIND_HABIT_REMINDER: ("fa-seedling", "Gewohnheit", "tools"),
     UserNotification.KIND_TASK_COMMENT: ("fa-comment", "Aufgabe", "task"),
     UserNotification.KIND_TASK_RETURNED: ("fa-rotate-left", "Aufgabe", "task"),
+    UserNotification.KIND_TASK_SHARE: ("fa-user-group", "Aufgabe", "task"),
 }
 
 
@@ -277,16 +279,36 @@ def materialize_task_assignment_notifications(tasks):
     return _create_missing_user_notifications(rows)
 
 
+def materialize_task_share_notifications(shares):
+    rows = []
+    for share in shares:
+        task = share.task
+        rows.append(
+            {
+                "recipient_id": share.user_id,
+                "actor_id": task.user_id,
+                "kind": UserNotification.KIND_TASK_SHARE,
+                "title": f"{_display_name(task.user)} hat eine Aufgabe mit dir geteilt",
+                "body": task.title,
+                "url": "/tasks/",
+                # Per person; leaving or being removed deletes it, so a new share notifies again.
+                "source_key": f"task-share:{task.pk}:{share.user_id}",
+            }
+        )
+    return _create_missing_user_notifications(rows)
+
+
 def materialize_task_comment_notification(comment):
-    """Tell the other side of an assigned task (owner or assignee) about a new comment.
+    """Tell everyone else involved in a task (owner, assignee, shares) about a new comment.
 
     Created when the comment is written, not backfilled, so a later assignee isn't flooded with the
-    task's older conversation.
+    task's older conversation. All recipients share one source key, so editing or deleting the
+    comment updates every copy.
     """
+    from app.services.tasks import task_participants
+
     task = comment.task
-    recipient_id = task.assignee_id if comment.author_id == task.user_id else task.user_id
-    if recipient_id is None or recipient_id == comment.author_id:
-        return 0
+    recipients = sorted(task_participants(task) - {comment.author_id})
     return _create_missing_user_notifications(
         [
             {
@@ -298,6 +320,7 @@ def materialize_task_comment_notification(comment):
                 "url": "/tasks/",
                 "source_key": f"task-comment:{comment.pk}",
             }
+            for recipient_id in recipients
         ]
     )
 
@@ -398,6 +421,9 @@ def materialize_user_notification_sources(
     if include_tasks:
         created += materialize_task_assignment_notifications(
             Task.objects.filter(assignee=user).select_related("user", "user__profile")
+        )
+        created += materialize_task_share_notifications(
+            TaskShare.objects.filter(user=user).select_related("task__user", "task__user__profile")
         )
     if include_habits:
         created += materialize_due_habit_reminders(user=user, now=now)
@@ -887,6 +913,7 @@ def send_pending_user_notification_emails(
             UserNotification.KIND_TASK_ASSIGNMENT,
             UserNotification.KIND_TASK_COMMENT,
             UserNotification.KIND_TASK_RETURNED,
+            UserNotification.KIND_TASK_SHARE,
         ]
     if include_habit_reminders:
         kinds.append(UserNotification.KIND_HABIT_REMINDER)

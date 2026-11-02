@@ -6,6 +6,14 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Tasks have a board view: "Board" next to "Liste" shows the tasks in the columns "Offen", "In Arbeit"
+  and "Erledigt". Drag a card into another column, or use the three status buttons on each card. The
+  new "In Arbeit" status also shows in the list and has its own filter.
+- Share a task with several people ("Teilen mit" in a task's options): everyone it is shared with sees
+  it with its subtasks under "Mit mir geteilt", can change its status and joins its comments, and is
+  notified about the share and new comments. Only the owner edits or deletes it; anyone it was shared
+  with can stop sharing it with themselves ("Teilen beenden").
+- Fixed the task row buttons wrapping into a second line since "Als Vorlage speichern" was added.
 - Calendar year view: "Jahr" in the view switch shows all twelve months at once, colours each day by
   how much is on it and marks holidays and vacations. A day opens its day view, a month name the
   month view.

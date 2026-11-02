@@ -6,7 +6,7 @@ from django.db import transaction
 from django.db.models import F, Max, Q
 from django.utils import timezone
 
-from app.models import Task, TaskComment, TaskLabel, TaskList, TaskTemplate, UserNotification
+from app.models import Task, TaskComment, TaskLabel, TaskList, TaskShare, TaskTemplate, UserNotification
 from app.services.notes import display_name
 from app.services.user_preferences import (
     format_user_datetime,
@@ -42,21 +42,61 @@ def _step_recurrence(due_at, rule):
     return due_at
 
 
+def _shared_task_ids(user):
+    return TaskShare.objects.filter(user=user).values("task_id")
+
+
 def visible_tasks(user):
-    """The user's own tasks plus top-level tasks assigned to them and those tasks' subtasks."""
-    return Task.objects.filter(Q(user=user) | Q(assignee=user) | Q(parent__assignee=user))
+    """The user's own tasks plus top-level tasks assigned to or shared with them, with their subtasks.
+
+    Shares are matched through a subquery rather than a join, so a task never shows up twice.
+    """
+    shared = _shared_task_ids(user)
+    return Task.objects.filter(
+        Q(user=user)
+        | Q(assignee=user)
+        | Q(parent__assignee=user)
+        | Q(pk__in=shared)
+        | Q(parent_id__in=shared)
+    )
+
+
+def task_participants(task):
+    """Everyone involved in a top-level task: owner, assignee and the people it is shared with."""
+    user_ids = {task.user_id, *task.shares.values_list("user_id", flat=True)}
+    if task.assignee_id:
+        user_ids.add(task.assignee_id)
+    return user_ids
 
 
 def toggle_task(user, task_id, is_done, *, now=None):
     """Toggle a task done/open; completing a recurring task also spawns its next occurrence.
 
-    The assignee may tick a task off too; the next occurrence stays the owner's and keeps the assignee.
+    The assignee and people the task is shared with may tick it off too; the next occurrence stays
+    the owner's and keeps the assignee and shares.
     """
     task = visible_tasks(user).filter(pk=task_id).first()
     if not task:
         return None
-    task.is_done = is_done
-    task.save(update_fields=["is_done", "updated_at"])
+    return _apply_task_status(task, Task.STATUS_DONE if is_done else Task.STATUS_OPEN, now=now)
+
+
+def set_task_status(user, task_id, status, *, now=None):
+    """Move a visible task to open, in progress or done (the board's columns)."""
+    if status not in dict(Task.STATUS_CHOICES):
+        return None
+    task = visible_tasks(user).filter(pk=task_id).first()
+    if not task:
+        return None
+    return _apply_task_status(task, status, now=now)
+
+
+def _apply_task_status(task, status, *, now=None):
+    was_done = task.is_done
+    task.is_done = status == Task.STATUS_DONE
+    task.is_in_progress = status == Task.STATUS_IN_PROGRESS
+    task.save(update_fields=["is_done", "is_in_progress", "updated_at"])
+    is_done = task.is_done and not was_done
 
     if is_done and task.recurrence_rule != Task.RECURRENCE_NONE:
         current_time = now or timezone.now()
@@ -72,7 +112,39 @@ def toggle_task(user, task_id, is_done, *, now=None):
             recurrence_rule=task.recurrence_rule,
         )
         next_task.labels.set(task.labels.all())
+        TaskShare.objects.bulk_create(
+            [TaskShare(task=next_task, user_id=share.user_id) for share in task.shares.all()]
+        )
     return task
+
+
+@transaction.atomic
+def update_task_shares(task, users):
+    """Share a top-level task with exactly ``users``; returns the newly created share rows.
+
+    People who lose access also lose the inbox row about the share, so sharing again notifies again.
+    """
+    wanted = {user.pk for user in users} - {task.user_id}
+    existing = set(task.shares.values_list("user_id", flat=True))
+    removed = existing - wanted
+    if removed:
+        task.shares.filter(user_id__in=removed).delete()
+        UserNotification.objects.filter(
+            source_key__in=[f"task-share:{task.pk}:{user_id}" for user_id in removed]
+        ).delete()
+    return TaskShare.objects.bulk_create(
+        [TaskShare(task=task, user_id=user_id) for user_id in sorted(wanted - existing)]
+    )
+
+
+def leave_task_share(user, task_id):
+    """Someone a task was shared with removes it from their own tasks; returns the task or None."""
+    share = TaskShare.objects.filter(user=user, task_id=task_id).select_related("task__user").first()
+    if share is None:
+        return None
+    share.delete()
+    UserNotification.objects.filter(source_key=f"task-share:{task_id}:{user.pk}").delete()
+    return share.task
 
 
 def _clean_comment_body(body):
@@ -85,16 +157,21 @@ def _clean_comment_body(body):
 
 
 def _own_task_comments(user):
-    """Comments the user wrote on tasks they still own or are assigned to."""
-    return TaskComment.objects.filter(author=user).filter(Q(task__user=user) | Q(task__assignee=user))
+    """Comments the user wrote on tasks they still own, are assigned to or share."""
+    return TaskComment.objects.filter(author=user).filter(
+        Q(task__user=user) | Q(task__assignee=user) | Q(task_id__in=_shared_task_ids(user))
+    )
 
 
 def add_task_comment(user, task_id, body):
-    """Comment on an assigned top-level task as its owner or assignee; returns None otherwise."""
+    """Comment on an assigned or shared top-level task as one of its participants; None otherwise."""
     clean_body = _clean_comment_body(body)
     task = (
         Task.objects.filter(
-            Q(user=user) | Q(assignee=user), pk=task_id, parent__isnull=True, assignee__isnull=False
+            Q(user=user) | Q(assignee=user) | Q(pk__in=_shared_task_ids(user)),
+            Q(assignee__isnull=False) | Q(shares__isnull=False),
+            pk=task_id,
+            parent__isnull=True,
         )
         .select_related("user")
         .first()
@@ -458,7 +535,7 @@ def get_tasks_context(user, *, now=None, sort=None):
     all_tasks = list(
         visible_tasks(user)
         .select_related("task_list", "user__profile", "assignee__profile", "parent")
-        .prefetch_related("labels", "comments__author__profile")
+        .prefetch_related("labels", "comments__author__profile", "shares__user__profile", "parent__shares")
         .order_by(*order_by)
     )
 
@@ -470,7 +547,17 @@ def get_tasks_context(user, *, now=None, sort=None):
         else:
             top_level_tasks.append(task)
 
-    counts = {"all": 0, "open": 0, "done": 0, "overdue": 0, "today": 0, "upcoming": 0, "assigned": 0}
+    counts = {
+        "all": 0,
+        "open": 0,
+        "done": 0,
+        "overdue": 0,
+        "today": 0,
+        "upcoming": 0,
+        "assigned": 0,
+        "shared": 0,
+        "in_progress": 0,
+    }
     task_items = []
 
     def build_item(task, *, is_subtask, filter_view=None, filter_task_list_id=None):
@@ -486,11 +573,18 @@ def get_tasks_context(user, *, now=None, sort=None):
         view_bucket = _task_view_bucket(task, now, user)
         if view_bucket:
             counts[view_bucket] += 1
+        if task.is_in_progress and not task.is_done:
+            counts["in_progress"] += 1
+        shares = list(task.shares.all())
+        share_owner = task.parent if is_subtask and task.parent else task
+        shared_with_me = any(share.user_id == user.pk for share in share_owner.shares.all())
 
         return {
             "task": task,
             "title": task.title,
             "is_done": task.is_done,
+            "status": task.status,
+            "status_name": dict(Task.STATUS_CHOICES)[task.status],
             "due_label": _task_due_detail(task, now, user),
             "due_state": due_state,
             "state": state,
@@ -513,7 +607,10 @@ def get_tasks_context(user, *, now=None, sort=None):
             "owner_name": "" if is_own else display_name(task.user),
             "assigned_to_me": task.assignee_id == user.pk
             or (task.parent is not None and task.parent.assignee_id == user.pk),
-            # Only assigned top-level tasks carry a conversation between owner and assignee.
+            "shared_with_me": shared_with_me,
+            "shared_names": [display_name(share.user) for share in shares],
+            "share_ids": ",".join(str(share.user_id) for share in shares),
+            # Only assigned or shared top-level tasks carry a conversation between the people involved.
             "comments": [
                 {
                     "id": comment.pk,
@@ -525,7 +622,7 @@ def get_tasks_context(user, *, now=None, sort=None):
                 }
                 for comment in task.comments.all()
             ]
-            if task.assignee_id and not is_subtask
+            if (task.assignee_id or shares) and not is_subtask
             else None,
             "is_subtask": is_subtask,
             "parent_id": task.parent_id,
@@ -552,7 +649,18 @@ def get_tasks_context(user, *, now=None, sort=None):
         item["open_subtask_count"] = sum(1 for child in children if not child.is_done)
         if item["assigned_to_me"] and not task.is_done:
             counts["assigned"] += 1
+        if item["shared_with_me"] and not task.is_done:
+            counts["shared"] += 1
         task_items.append(item)
+
+    board_columns = [
+        {
+            "key": key,
+            "label": label,
+            "items": [item for item in task_items if item["status"] == key],
+        }
+        for key, label in Task.STATUS_CHOICES
+    ]
 
     task_lists = [
         {
@@ -570,6 +678,8 @@ def get_tasks_context(user, *, now=None, sort=None):
     return {
         "active_page": "tasks",
         "tasks": task_items,
+        "task_board_columns": board_columns,
+        "task_status_choices": Task.STATUS_CHOICES,
         "task_counts": counts,
         "task_lists": task_lists,
         "inbox_open_count": inbox_open_count,

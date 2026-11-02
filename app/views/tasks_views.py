@@ -10,6 +10,7 @@ from app.services.notifications import (
     materialize_task_assignment_notifications,
     materialize_task_comment_notification,
     materialize_task_return_notification,
+    materialize_task_share_notifications,
 )
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.tasks import (
@@ -24,6 +25,7 @@ from app.services.tasks import (
     delete_task_template,
     edit_task_comment,
     get_tasks_context,
+    leave_task_share,
     move_task,
     move_task_list,
     rearm_task_reminders,
@@ -31,6 +33,7 @@ from app.services.tasks import (
     reschedule_task,
     return_task,
     save_task_template,
+    set_task_status,
     toggle_task,
 )
 from app.services.user_preferences import format_user_datetime
@@ -60,11 +63,25 @@ def tasks(request):
             task.save()
             task_form.save_m2m()
             materialize_task_assignment_notifications([task])
+            materialize_task_share_notifications(task_form.save_shares(task))
             django_messages.success(request, _created_message(task, task_form.quick_add_result, request.user))
             return redirect(request.get_full_path())
     elif form_name == "task_toggle":
         toggle_task(request.user, request.POST.get("task_id"), request.POST.get("is_done") == "on")
         return redirect(local_return_to(request) or request.get_full_path())
+    elif form_name == "task_status":
+        # The board's columns (and their move buttons): open, in progress or done.
+        if (
+            set_task_status(request.user, request.POST.get("task_id") or 0, request.POST.get("status"))
+            is None
+        ):
+            django_messages.error(request, "Status konnte nicht geändert werden.")
+        return redirect(local_return_to(request) or request.get_full_path())
+    elif form_name == "task_share_leave":
+        task = leave_task_share(request.user, request.POST.get("task_id") or 0)
+        if task is not None:
+            django_messages.success(request, f"„{task.title}“ wird nicht mehr mit dir geteilt.")
+        return redirect(request.get_full_path())
     elif form_name == "task_reschedule":
         # Sent by dropping a task onto another day (or time slot) in the calendar.
         reschedule_form = TaskRescheduleForm(request.POST)
@@ -154,7 +171,7 @@ def tasks(request):
             django_messages.error(request, "Aufgabe konnte nicht bearbeitet werden.")
             return redirect(request.get_full_path())
         previous_due_at = task.due_at
-        edit_form = TaskForm(request.POST, instance=task, user=request.user)
+        edit_form = TaskForm(request.POST, instance=task, user=request.user, auto_id="id_edit_%s")
         if edit_form.is_valid():
             edited_task = edit_form.save(commit=False)
             rearm_task_reminders(edited_task, previous_due_at)
@@ -163,6 +180,7 @@ def tasks(request):
             edited_task.save()
             edit_form.save_m2m()
             materialize_task_assignment_notifications([edited_task])
+            materialize_task_share_notifications(edit_form.save_shares(edited_task))
             django_messages.success(request, "Aufgabe aktualisiert.")
             return redirect(request.get_full_path())
     elif form_name == "task_list_add":
@@ -246,7 +264,8 @@ def tasks(request):
     context["task_form"] = task_form
     context["task_list_form"] = TaskListForm()
     context["task_label_form"] = TaskLabelForm()
-    context["edit_form"] = edit_form or TaskForm(user=request.user)
+    # Shares the page with the add form, so its fields get their own ids for <label for>.
+    context["edit_form"] = edit_form or TaskForm(user=request.user, auto_id="id_edit_%s")
     # Editing keeps the title as typed, so the quick-add example belongs to the add form only.
     context["edit_form"].fields["title"].widget.attrs["placeholder"] = "Titel der Aufgabe"
     context["editing_task_id"] = editing_task_id

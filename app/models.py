@@ -633,16 +633,51 @@ class Task(models.Model):
     labels = models.ManyToManyField(TaskLabel, blank=True, related_name="tasks")
     position = models.PositiveIntegerField(default=0)
     is_done = models.BooleanField(default=False)
+    # The board's middle column ("In Arbeit"); always False once the task is done.
+    is_in_progress = models.BooleanField(default=False)
     email_notified_at = models.DateTimeField(blank=True, null=True)
     desktop_notified_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    STATUS_OPEN = "open"
+    STATUS_IN_PROGRESS = "in_progress"
+    STATUS_DONE = "done"
+    STATUS_CHOICES = [
+        (STATUS_OPEN, "Offen"),
+        (STATUS_IN_PROGRESS, "In Arbeit"),
+        (STATUS_DONE, "Erledigt"),
+    ]
 
     class Meta:
         ordering = ["is_done", "-created_at"]
 
     def __str__(self):
         return self.title
+
+    @property
+    def status(self):
+        if self.is_done:
+            return self.STATUS_DONE
+        return self.STATUS_IN_PROGRESS if self.is_in_progress else self.STATUS_OPEN
+
+
+class TaskShare(models.Model):
+    """A top-level task shared with another user: they see it with its subtasks, may change its
+    status and take part in its comments; editing and deleting stay with the owner."""
+
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="shares")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="task_shares")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["task", "user"], name="unique_task_share_per_user"),
+        ]
+
+    def __str__(self):
+        return f"{self.task} → {self.user}"
 
 
 class TaskComment(models.Model):
@@ -848,6 +883,7 @@ class UserNotification(models.Model):
     KIND_HABIT_REMINDER = "habit_reminder"
     KIND_TASK_COMMENT = "task_comment"
     KIND_TASK_RETURNED = "task_returned"
+    KIND_TASK_SHARE = "task_share"
     KIND_CHOICES = [
         (KIND_CALENDAR_REMINDER, "Kalendererinnerung"),
         (KIND_TASK_DUE, "Fällige Aufgabe"),
@@ -861,6 +897,7 @@ class UserNotification(models.Model):
         (KIND_HABIT_REMINDER, "Gewohnheitserinnerung"),
         (KIND_TASK_COMMENT, "Aufgabenkommentar"),
         (KIND_TASK_RETURNED, "Zurückgegebene Aufgabe"),
+        (KIND_TASK_SHARE, "Geteilte Aufgabe"),
     ]
 
     recipient = models.ForeignKey(
