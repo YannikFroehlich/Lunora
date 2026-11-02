@@ -939,7 +939,14 @@ function initNotesApp() {
         TextAlign.configure({ types: ["heading", "paragraph"] }),
         TableKit.configure({ table: { resizable: true } }),
         TaskList,
-        TaskItem.configure({ nested: true }),
+        TaskItem.configure({
+          nested: true,
+          // Tiptap's default label is English ("Task item checkbox for …").
+          a11y: {
+            checkboxLabel: (node, checked) =>
+              `${node.textContent || "Leerer Punkt"}: ${checked ? "erledigt" : "offen"}`,
+          },
+        }),
         CharacterCount,
         NoteImage.configure({ getZoom: () => editorZoom }),
         NoteAttachmentNode,
@@ -1002,6 +1009,11 @@ function initNotesApp() {
         }),
       ],
       editorProps: {
+        attributes: {
+          role: "textbox",
+          "aria-multiline": "true",
+          "aria-label": "Notizinhalt",
+        },
         handlePaste(_view, event) {
           const files = Array.from(event.clipboardData?.files || []);
           if (!files.length || !note?.can_edit || note?.is_deleted) return false;

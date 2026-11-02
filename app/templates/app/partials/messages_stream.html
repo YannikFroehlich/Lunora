@@ -10,6 +10,7 @@
     <article id="message-{{ item.message.id }}" class="bubble is-{{ item.side }}{% if item.is_deleted %} is-deleted{% endif %}{% if item.is_pinned %} is-pinned{% endif %}"
              tabindex="{% if item.can_delete or item.can_react %}0{% else %}-1{% endif %}"
              aria-label="Nachricht von {{ item.sender_name }} um {{ item.time }}"
+             {% if item.can_delete or item.can_react %}aria-describedby="message-actions-hint"{% endif %}
              data-message-id="{{ item.message.id }}"
              data-can-delete="{% if item.can_delete %}true{% else %}false{% endif %}"
              data-can-react="{% if item.can_react %}true{% else %}false{% endif %}"

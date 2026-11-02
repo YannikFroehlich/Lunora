@@ -1172,6 +1172,19 @@
   color: var(--color-accent-strong);
 }
 
+/* Reachable with Tab even while faded out, so show it whenever it has keyboard focus. */
+.note-editor-zoom-indicator:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* The colour input is tiny and tucked into the corner; ring the whole control instead. */
+.toolbar-color:has(input:focus-visible) {
+  color: var(--color-heading);
+  background: var(--surface-control);
+  box-shadow: var(--focus-ring);
+}
+
 .note-editor-statusbar {
   display: flex;
   justify-content: flex-end;

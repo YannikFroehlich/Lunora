@@ -114,7 +114,7 @@
             {% endif %}
         </section>
 
-        <aside class="side-stack">
+        <div class="side-stack">
             <section class="glass-panel calendar-filter-panel">
                 <div class="panel-title panel-title-between">
                     <div><h2>Kategorien</h2><p>Farben im Kalender</p></div>
@@ -274,6 +274,7 @@
                 <form id="reminder-add-form" class="reminder-add-form" method="post">
                     {% csrf_token %}
                     <input type="hidden" name="form_name" value="reminder_add">
+                    <label class="visually-hidden" for="{{ reminder_form.title.id_for_label }}">Neue Erinnerung</label>
                     {{ reminder_form.title }}
                     {{ reminder_form.title.errors }}
                     <label class="reminder-date-field" for="{{ reminder_form.due_at.id_for_label }}">
@@ -289,7 +290,7 @@
                     {% csrf_token %}
                     <input type="hidden" name="form_name" value="reminder_toggle">
                     <input type="hidden" name="reminder_id" value="{{ item.reminder.id }}">
-                    <input type="checkbox" name="is_done" {% if item.is_done %}checked{% endif %} onchange="this.form.submit()">
+                    <input type="checkbox" name="is_done" {% if item.is_done %}checked{% endif %} onchange="this.form.submit()" aria-label="Erinnerung „{{ item.title }}“ {% if item.is_done %}wieder öffnen{% else %}erledigen{% endif %}">
                     <span>{{ item.title }}<small>{{ item.due_label }}</small></span>
                     <button class="reminder-delete-button" type="submit" name="form_name" value="reminder_delete" aria-label="Erinnerung löschen">
                         <i class="fa-solid fa-trash" aria-hidden="true"></i>
@@ -321,7 +322,7 @@
                     <input type="hidden" name="form_name" value="task_toggle">
                     <input type="hidden" name="task_id" value="{{ item.id }}">
                     <input type="hidden" name="return_to" value="{{ request.get_full_path }}">
-                    <input type="checkbox" name="is_done" onchange="this.form.submit()">
+                    <input type="checkbox" name="is_done" onchange="this.form.submit()" aria-label="Aufgabe „{{ item.title }}“ erledigen">
                     <span>{{ item.title }}<small>{{ item.due_label }}</small></span>
                 </form>
                 {% endfor %}
@@ -336,7 +337,7 @@
                 {% endif %}
             </section>
             {% endif %}
-        </aside>
+        </div>
 
         <section class="glass-panel month-stats">
             <article><i class="fa-regular fa-calendar"></i><strong>{{ month_stats.events }}</strong><span>Termine</span><small>in {{ month_label }}</small></article>

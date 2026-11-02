@@ -151,8 +151,13 @@
   gap: 22px;
 }
 
-.settings-column > .glass-panel,
-.settings-column > form.glass-panel {
+/* Panels holding a form wrap it as <section role="tabpanel"><form class="settings-panel-form">, because
+   a <form> may not carry role="tabpanel"; the form itself takes no part in the layout. */
+.settings-panel-form {
+  display: contents;
+}
+
+.settings-column > .glass-panel {
   padding: 28px 30px;
 }
 

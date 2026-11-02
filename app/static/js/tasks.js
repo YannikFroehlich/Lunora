@@ -568,5 +568,88 @@
     });
   }
 
+  // Keyboard alternative to dragging: Alt+ArrowUp/Down moves the focused task (manual sort) or list
+  // one place; after the reload the moved item gets its focus back.
+  const REFOCUS_KEY = "lunora-task-refocus";
+
+  function submitReorder(formId, fields, refocus) {
+    const reorderForm = document.getElementById(formId);
+    if (!reorderForm) return;
+    Object.entries(fields).forEach(([selector, value]) => {
+      reorderForm.querySelector(selector).value = value;
+    });
+    try {
+      sessionStorage.setItem(REFOCUS_KEY, refocus);
+    } catch {
+      // Storage blocked: the move still happens, focus just starts at the top.
+    }
+    reorderForm.submit();
+  }
+
+  document.addEventListener("keydown", (event) => {
+    if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
+    const up = event.key === "ArrowUp";
+
+    const listItem = event.target.closest?.("[data-task-list-item]");
+    if (listItem) {
+      const items = Array.from(document.querySelectorAll("[data-task-list-item]"));
+      const target = items[items.indexOf(listItem) + (up ? -1 : 1)];
+      if (!target) return;
+      event.preventDefault();
+      submitReorder(
+        "task-list-reorder-form",
+        {
+          "[data-list-reorder-task-list-id]": listItem.dataset.taskListId,
+          "[data-list-reorder-target-id]": target.dataset.taskListId,
+          "[data-list-reorder-placement]": up ? "before" : "after",
+        },
+        `list:${listItem.dataset.taskListId}`,
+      );
+      return;
+    }
+
+    const row = event.target.closest?.("[data-task-row]");
+    if (!row || row.getAttribute("draggable") !== "true") return;
+    event.preventDefault();
+    if (!dragEnabled()) {
+      if (resultsStatus) resultsStatus.textContent = "Zum Verschieben zuerst „Manuell“ sortieren.";
+      return;
+    }
+    const siblings = Array.from(document.querySelectorAll("[data-task-row]")).filter(
+      (candidate) =>
+        candidate.dataset.taskParent === row.dataset.taskParent &&
+        candidate.getAttribute("draggable") === "true" &&
+        !candidate.hidden &&
+        !candidate.closest("[data-task-group]")?.hidden,
+    );
+    const target = siblings[siblings.indexOf(row) + (up ? -1 : 1)];
+    if (!target) return;
+    submitReorder(
+      "task-reorder-form",
+      {
+        "[data-reorder-task-id]": row.dataset.taskId,
+        "[data-reorder-target-id]": target.dataset.taskId,
+        "[data-reorder-placement]": up ? "before" : "after",
+      },
+      `task:${row.dataset.taskId}`,
+    );
+  });
+
+  // Sorting moves the rows in the DOM, which drops focus, so restore it afterwards.
   setLayout(activeLayout);
+
+  try {
+    const refocus = sessionStorage.getItem(REFOCUS_KEY);
+    if (refocus) {
+      sessionStorage.removeItem(REFOCUS_KEY);
+      const [kind, id] = refocus.split(":");
+      const element =
+        kind === "list"
+          ? document.querySelector(`[data-task-list-item][data-task-list-id="${id}"] .task-view-link`)
+          : document.querySelector(`[data-task-row][data-task-id="${id}"] .task-checkbox`);
+      element?.focus();
+    }
+  } catch {
+    // Storage blocked: nothing to restore.
+  }
 })();

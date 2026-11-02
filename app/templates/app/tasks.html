@@ -20,7 +20,7 @@
     </header>
 
     <div class="task-layout">
-        <aside class="glass-panel task-sidebar">
+        <section class="glass-panel task-sidebar" aria-label="Ansichten und Listen">
             <nav class="task-views" aria-label="Ansichten" data-task-views>
                 <button type="button" class="task-view-link is-active" data-task-view-link="all">
                     <i class="fa-solid fa-inbox" aria-hidden="true"></i>
@@ -61,6 +61,7 @@
                         <form method="post" class="task-inline-add-form">
                             {% csrf_token %}
                             <input type="hidden" name="form_name" value="task_list_add">
+                            <label class="visually-hidden" for="{{ task_list_form.name.id_for_label }}">Name der neuen Liste</label>
                             {{ task_list_form.name }}
                             <div class="task-color-grid">
                                 {% for value, label in task_list_form.fields.color.choices %}
@@ -97,8 +98,8 @@
                                     {% csrf_token %}
                                     <input type="hidden" name="form_name" value="task_list_rename">
                                     <input type="hidden" name="task_list_id" value="{{ list.id }}">
-                                    <input type="text" name="name" value="{{ list.name }}" maxlength="80" required>
-                                    <button type="submit"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>
+                                    <input type="text" name="name" value="{{ list.name }}" maxlength="80" required aria-label="Liste „{{ list.name }}“ umbenennen">
+                                    <button type="submit" aria-label="Namen speichern"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>
                                 </form>
                                 <form method="post">
                                     {% csrf_token %}
@@ -162,7 +163,7 @@
                 </p>
                 {% endif %}
             </div>
-        </aside>
+        </section>
 
         <section class="glass-panel task-panel">
             <div class="panel-title task-panel-title">
@@ -176,6 +177,7 @@
 
                 <div class="task-add-row">
                     <div class="task-title-field">
+                        <label class="visually-hidden" for="{{ task_form.title.id_for_label }}">Neue Aufgabe</label>
                         {{ task_form.title }}
                     </div>
                     <label class="task-date-field" for="{{ task_form.due_at.id_for_label }}">
@@ -223,7 +225,7 @@
                             <details class="task-inline-add">
                                 <summary><i class="fa-solid fa-plus" aria-hidden="true"></i> Neues Label</summary>
                                 <div class="task-inline-add-form">
-                                    <input type="text" name="name" form="task-label-quick-add" placeholder="Neues Label …" autocomplete="off" maxlength="40" required>
+                                    <input type="text" name="name" form="task-label-quick-add" placeholder="Neues Label …" autocomplete="off" maxlength="40" required aria-label="Name des neuen Labels">
                                     <div class="task-color-grid">
                                         {% for value, label in task_label_form.fields.color.choices %}
                                         <label class="task-color-dot tone-{{ value }}" title="{{ label }}">
@@ -289,6 +291,7 @@
                     </button>
                 </div>
 
+                <p id="task-reorder-hint" class="visually-hidden">Bei manueller Sortierung verschiebt Alt und Pfeil nach oben oder unten die fokussierte Aufgabe; ebenso Listen in der Seitenleiste.</p>
                 <div class="task-view-actions">
                     <div class="task-layout-switch" role="group" aria-label="Darstellung">
                         <button type="button" data-task-layout="list" aria-pressed="true" title="Liste">
@@ -301,7 +304,7 @@
                     <label class="task-sort-control">
                         <i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i>
                         <span>Sortieren</span>
-                        <select data-task-sort data-initial-sort="{{ sort|default:'' }}" aria-label="Aufgaben sortieren">
+                        <select data-task-sort data-initial-sort="{{ sort|default:'' }}" aria-label="Aufgaben sortieren" aria-describedby="task-reorder-hint">
                             <option value="due">Fälligkeit</option>
                             <option value="priority">Priorität</option>
                             <option value="newest">Neueste zuerst</option>
@@ -571,7 +574,7 @@
                     {% csrf_token %}
                     <input type="hidden" name="form_name" value="task_add">
                     <input type="hidden" name="parent" value="{{ item.task.id }}">
-                    <input type="text" name="title" placeholder="Unteraufgabe hinzufügen …" autocomplete="off" maxlength="180">
+                    <input type="text" name="title" placeholder="Unteraufgabe hinzufügen …" autocomplete="off" maxlength="180" aria-label="Unteraufgabe zu „{{ item.title }}“ hinzufügen">
                     <button type="submit" aria-label="Unteraufgabe hinzufügen"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
                 </form>
                 {% endif %}

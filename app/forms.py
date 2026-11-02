@@ -247,6 +247,11 @@ class CustomHolidayForm(forms.ModelForm):
             "name": forms.TextInput(attrs={"placeholder": "z. B. Betriebsruhe", "autocomplete": "off"}),
         }
 
+    def __init__(self, *args, **kwargs):
+        # Rendered next to the vacation period form, which also has a "name" field.
+        kwargs.setdefault("auto_id", "id_holiday_%s")
+        super().__init__(*args, **kwargs)
+
     def clean_name(self):
         return self.cleaned_data["name"].strip()
 
@@ -606,6 +611,7 @@ class MessageForm(forms.ModelForm):
             "body": forms.Textarea(
                 attrs={
                     "placeholder": "Nachricht schreiben ...",
+                    "aria-label": "Nachricht",
                     "autocomplete": "off",
                     "rows": 1,
                 }
@@ -659,6 +665,7 @@ class ConversationStartForm(forms.Form):
     )
 
     def __init__(self, *args, user=None, **kwargs):
+        kwargs.setdefault("auto_id", "id_start_%s")  # shares the page with the compose form
         super().__init__(*args, **kwargs)
         users = (
             User.objects.filter(is_active=True)
@@ -871,6 +878,11 @@ class TaskListForm(forms.ModelForm):
             "name": forms.TextInput(attrs={"placeholder": "Neue Liste …", "autocomplete": "off"}),
         }
 
+    def __init__(self, *args, **kwargs):
+        # The tasks page also renders the label form, which has a "name" field too.
+        kwargs.setdefault("auto_id", "id_list_%s")
+        super().__init__(*args, **kwargs)
+
 
 class BookmarkForm(forms.ModelForm):
     url = forms.URLField(
@@ -956,6 +968,11 @@ class TaskLabelForm(forms.ModelForm):
         widgets = {
             "name": forms.TextInput(attrs={"placeholder": "Neues Label …", "autocomplete": "off"}),
         }
+
+    def __init__(self, *args, **kwargs):
+        # The tasks page also renders the list form, which has a "name" field too.
+        kwargs.setdefault("auto_id", "id_label_%s")
+        super().__init__(*args, **kwargs)
 
     def clean_title(self):
         return self.cleaned_data["title"].strip()

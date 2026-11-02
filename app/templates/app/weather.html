@@ -42,7 +42,7 @@
         <div class="weather-search-wrap">
             <label class="search-field">
                 <i class="fa-solid fa-magnifying-glass"></i>
-                <input type="search" name="q" value="{{ search_query }}" placeholder="Ort suchen" autocomplete="off" aria-label="Ort suchen" aria-autocomplete="list" aria-expanded="false" aria-controls="weather-suggestions">
+                <input type="search" name="q" value="{{ search_query }}" placeholder="Ort suchen" autocomplete="off" aria-label="Ort suchen" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="weather-suggestions">
             </label>
             <input type="hidden" name="lat" data-weather-lat>
             <input type="hidden" name="lon" data-weather-lon>
@@ -197,7 +197,7 @@
                 <div class="air-score"><strong>{{ air_quality.score }}</strong><span>{{ air_quality.label }}</span></div>
                 <div class="air-copy">
                     <p>Die Luftqualität ist gut und stellt kein Risiko dar.</p>
-                    <div class="quality-scale" aria-label="Luftqualität Skala">
+                    <div class="quality-scale" role="img" aria-label="Skala der Luftqualität">
                         <span></span><span></span><span></span>
                     </div>
                     <small>Ideal für einen Spaziergang oder kurzes Lüften.</small>
@@ -254,6 +254,8 @@
                   data-weather-map-default-layer="{{ weather_map.default_layer }}">
                 <div class="weather-map-canvas"
                      data-weather-map-canvas
+                     role="application"
+                     aria-roledescription="Karte"
                      aria-label="Weltkarte. Mit Pfeiltasten, Maus oder Berührung verschieben."></div>
 
                 <div class="weather-map-actions" aria-label="Kartensteuerung">

@@ -435,7 +435,9 @@
       return;
     }
 
-    if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) {
+    // Enter on the focused bubble itself (not on a link inside it) opens the menu as well.
+    const isEnterOnBubble = event.key === "Enter" && event.target === bubble;
+    if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10") && !isEnterOnBubble) {
       return;
     }
 
@@ -540,8 +542,11 @@
   });
 
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
+    if (event.key === "Escape" && !contextMenu.hidden) {
+      // Return keyboard focus to the message the menu was opened for.
+      const bubble = activeBubble;
       hideContextMenu();
+      bubble?.focus();
     }
   });
 

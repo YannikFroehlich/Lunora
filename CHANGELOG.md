@@ -6,6 +6,14 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Accessibility pass over all pages (checked with axe-core in light and dark mode, including open
+  dialogs, and by keyboard): every form field now has a label for screen readers, labels no longer
+  point at a field of another form on the same page, the notes editor, its checklist boxes and the
+  dark-mode toggle have German labels, page regions are announced correctly, and the week view's
+  event details have enough contrast. New keyboard alternatives: Alt+↑/↓ moves the focused task
+  (manual sort) or list, Enter opens the actions of a focused chat message (Escape returns to it),
+  and Enter/Space on a vacation-planner day opens its menu (Shift+Enter selects a range). Colour
+  pickers and practice options show a visible focus ring.
 - Faster note search on PostgreSQL: the searchable text of every note is now kept in an indexed
   column that is updated on save, instead of being re-analysed for every search. Results and their
   order stay the same.

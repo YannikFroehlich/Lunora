@@ -1061,6 +1061,11 @@ a.tool-card:hover {
   pointer-events: none;
 }
 
+.vocab-choice-group input:focus-visible + span {
+  border-color: var(--focus-border);
+  box-shadow: var(--focus-ring);
+}
+
 .vocab-choice-group span {
   display: inline-flex;
   align-items: center;
