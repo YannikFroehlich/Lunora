@@ -38,7 +38,7 @@ from app.services.calendar_service import (
     expand_manual_recurrence,
     series_scope_events,
 )
-from app.services.chat_files import infer_attachment_kind, validate_note_upload
+from app.services.chat_files import CHAT_VOICE_MAX_SECONDS, validate_chat_upload
 from app.services.image_uploads import PROFILE_IMAGE_ACCEPT, validate_profile_image_file
 from app.services.notes import display_name
 from app.services.notification_preferences import CATEGORY_DEFINITIONS
@@ -594,6 +594,7 @@ class NotificationCategoryPreferencesForm(forms.Form):
 
 class MessageForm(forms.ModelForm):
     attachment = forms.FileField(label="Anhang", required=False)
+    voice_duration = forms.IntegerField(required=False, min_value=0, max_value=CHAT_VOICE_MAX_SECONDS)
 
     class Meta:
         model = ChatMessage
@@ -619,7 +620,7 @@ class MessageForm(forms.ModelForm):
     def clean_attachment(self):
         upload = self.cleaned_data.get("attachment")
         if upload:
-            validate_note_upload(upload, kind=infer_attachment_kind(upload.name))
+            self.attachment_kind = validate_chat_upload(upload)
         return upload
 
     def clean(self):

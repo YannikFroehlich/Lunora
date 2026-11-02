@@ -405,7 +405,8 @@ class ChatMessageReaction(models.Model):
 class ChatMessageAttachment(models.Model):
     KIND_IMAGE = "image"
     KIND_FILE = "file"
-    KIND_CHOICES = [(KIND_IMAGE, "Bild"), (KIND_FILE, "Datei")]
+    KIND_AUDIO = "audio"
+    KIND_CHOICES = [(KIND_IMAGE, "Bild"), (KIND_FILE, "Datei"), (KIND_AUDIO, "Sprachnachricht")]
 
     message = models.OneToOneField(ChatMessage, on_delete=models.CASCADE, related_name="attachment")
     uploaded_by = models.ForeignKey(
@@ -421,6 +422,8 @@ class ChatMessageAttachment(models.Model):
     original_name = models.CharField(max_length=255)
     content_type = models.CharField(max_length=160)
     size = models.PositiveBigIntegerField()
+    # Recording length reported by the browser for voice messages; only used as a label.
+    duration_seconds = models.PositiveIntegerField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

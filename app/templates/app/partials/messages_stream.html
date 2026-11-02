@@ -33,6 +33,12 @@
                 <a href="{{ item.attachment.inline_url }}" target="_blank" rel="noopener">
                     <img src="{{ item.attachment.inline_url }}" alt="{{ item.attachment.name }}" loading="lazy">
                 </a>
+                {% elif item.attachment.kind == 'audio' %}
+                <div class="voice-message">
+                    <i class="fa-solid fa-microphone" aria-hidden="true"></i>
+                    <audio controls preload="metadata" src="{{ item.attachment.inline_url }}" aria-label="Sprachnachricht{% if item.attachment.duration_label %}, {{ item.attachment.duration_label }} Minuten{% endif %}"></audio>
+                    {% if item.attachment.duration_label %}<small>{{ item.attachment.duration_label }}</small>{% endif %}
+                </div>
                 {% else %}
                 <a class="attachment-chip" href="{{ item.attachment.download_url }}">
                     <i class="fa-solid fa-file"></i>

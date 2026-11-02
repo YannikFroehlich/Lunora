@@ -547,4 +547,142 @@
 
   window.addEventListener("resize", hideContextMenu);
   window.addEventListener("scroll", hideContextMenu, true);
+
+  // Voice messages: MediaRecorder records into memory, the finished recording is put into the
+  // normal attachment input and the compose form is submitted like any other attachment, so the
+  // server path (validation, storage, live updates) stays the same as for files.
+  const VOICE_MAX_SECONDS = 300;
+  const VOICE_FORMATS = [
+    ["audio/webm;codecs=opus", "webm"],
+    ["audio/webm", "webm"],
+    ["audio/ogg;codecs=opus", "ogg"],
+    ["audio/mp4", "m4a"],
+  ];
+  const voiceSupported = Boolean(navigator.mediaDevices?.getUserMedia) && typeof window.MediaRecorder === "function";
+  let voiceRecording = null;
+
+  function pickVoiceFormat() {
+    return VOICE_FORMATS.find(([mimeType]) => MediaRecorder.isTypeSupported?.(mimeType)) || null;
+  }
+
+  function formatVoiceElapsed(seconds) {
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  }
+
+  function syncVoiceButton() {
+    const button = document.getElementById("compose-voice-button");
+    if (button) {
+      button.hidden = !voiceSupported || !pickVoiceFormat();
+    }
+  }
+
+  function setVoiceStripVisible(visible) {
+    const strip = document.getElementById("voice-recorder-strip");
+    const form = document.querySelector(".compose-bar");
+    if (strip) {
+      strip.hidden = !visible;
+    }
+    if (form) {
+      form.hidden = visible;
+    }
+  }
+
+  function finishVoiceRecording(send) {
+    if (!voiceRecording) {
+      return;
+    }
+    voiceRecording.send = send;
+    window.clearInterval(voiceRecording.timer);
+    if (voiceRecording.recorder.state !== "inactive") {
+      voiceRecording.recorder.stop();
+    }
+  }
+
+  async function startVoiceRecording() {
+    const format = pickVoiceFormat();
+    if (!format || voiceRecording) {
+      return;
+    }
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      window.alert("Ohne Zugriff auf das Mikrofon kann keine Sprachnachricht aufgenommen werden.");
+      return;
+    }
+    const [mimeType, extension] = format;
+    const recorder = new MediaRecorder(stream, { mimeType });
+    const chunks = [];
+    const startedAt = Date.now();
+    voiceRecording = { recorder, send: false, timer: 0 };
+
+    recorder.addEventListener("dataavailable", (event) => {
+      if (event.data?.size) {
+        chunks.push(event.data);
+      }
+    });
+    recorder.addEventListener("stop", () => {
+      stream.getTracks().forEach((track) => track.stop());
+      const { send } = voiceRecording;
+      voiceRecording = null;
+      setVoiceStripVisible(false);
+      const seconds = Math.min(VOICE_MAX_SECONDS, Math.round((Date.now() - startedAt) / 1000));
+      if (!send || !chunks.length || seconds < 1) {
+        return;
+      }
+      const file = new File(chunks, `Sprachnachricht.${extension}`, { type: mimeType.split(";")[0] });
+      const input = document.getElementById("compose-attachment-input");
+      const durationInput = document.getElementById("compose-voice-duration");
+      const form = document.querySelector(".compose-bar");
+      if (!input || !form || typeof DataTransfer !== "function") {
+        return;
+      }
+      const transfer = new DataTransfer();
+      transfer.items.add(file);
+      input.files = transfer.files;
+      if (durationInput) {
+        durationInput.value = String(seconds);
+      }
+      form.requestSubmit();
+    });
+
+    const elapsedLabel = document.querySelector("[data-voice-elapsed]");
+    voiceRecording.timer = window.setInterval(() => {
+      const seconds = Math.floor((Date.now() - startedAt) / 1000);
+      if (elapsedLabel) {
+        elapsedLabel.textContent = formatVoiceElapsed(seconds);
+      }
+      if (seconds >= VOICE_MAX_SECONDS) {
+        finishVoiceRecording(true);
+      }
+    }, 250);
+    if (elapsedLabel) {
+      elapsedLabel.textContent = "0:00";
+    }
+    recorder.start(1000);
+    setVoiceStripVisible(true);
+    document.querySelector("[data-voice-stop]")?.focus();
+  }
+
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("#compose-voice-button")) {
+      startVoiceRecording();
+    } else if (event.target.closest("[data-voice-stop]")) {
+      finishVoiceRecording(true);
+    } else if (event.target.closest("[data-voice-cancel]")) {
+      finishVoiceRecording(false);
+      document.getElementById("compose-voice-button")?.focus();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && voiceRecording) {
+      finishVoiceRecording(false);
+    }
+  });
+
+  syncVoiceButton();
+  new MutationObserver(syncVoiceButton).observe(document.getElementById("message-compose-region") || document.body, {
+    childList: true,
+  });
 })();

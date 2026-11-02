@@ -6,6 +6,9 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Voice messages in chats: the microphone button next to the text field records a message (up to
+  five minutes, "Senden" or "Verwerfen"), which the chat plays back inline with its length. MP3,
+  M4A, Ogg and WebM audio files can also be attached with the paperclip.
 - Task comments can be edited (marked "bearbeitet") and deleted by their author.
 - An assigned task can be declined or handed back ("Ablehnen oder zurückgeben", with an optional
   reason); the owner is notified and the task is theirs alone again.
