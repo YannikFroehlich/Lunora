@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Notes with checklists show their progress (for example "2/5") in the note list; it turns green
+  once every item is ticked and updates as soon as the note is saved.
 - Voice messages in chats: the microphone button next to the text field records a message (up to
   five minutes, "Senden" or "Verwerfen"), which the chat plays back inline with its length. MP3,
   M4A, Ogg and WebM audio files can also be attached with the paperclip.

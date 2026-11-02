@@ -10,7 +10,7 @@ from django.utils import timezone
 from app.services.chat_files import chat_upload_to
 from app.services.dashboard import default_dashboard_layout
 from app.services.image_uploads import validate_profile_image_file
-from app.services.note_content import empty_note_document
+from app.services.note_content import document_checklist_counts, empty_note_document
 from app.services.note_files import note_upload_to, private_note_storage
 from app.services.uml_content import empty_uml_document
 
@@ -1155,6 +1155,9 @@ class Note(models.Model):
     title = models.CharField(max_length=200, default="Unbenannte Notiz")
     document = models.JSONField(default=empty_note_document)
     plain_text = models.TextField(blank=True)
+    # Checklist progress (taskItem nodes), derived from ``document`` in save() for the note list.
+    checklist_done = models.PositiveIntegerField(default=0)
+    checklist_total = models.PositiveIntegerField(default=0)
     revision = models.PositiveIntegerField(default=1)
     last_edited_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -1178,6 +1181,16 @@ class Note(models.Model):
 
     def __str__(self):
         return self.title
+
+    def save(self, *args, **kwargs):
+        # Every path that writes ``document`` (editor save, restore, conflict copy, import)
+        # goes through here, so the derived checklist counts can't drift from the document.
+        update_fields = kwargs.get("update_fields")
+        if update_fields is None or "document" in update_fields:
+            self.checklist_done, self.checklist_total = document_checklist_counts(self.document)
+            if update_fields is not None:
+                kwargs["update_fields"] = {*update_fields, "checklist_done", "checklist_total"}
+        super().save(*args, **kwargs)
 
 
 class NoteTemplate(models.Model):
