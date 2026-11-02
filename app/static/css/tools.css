@@ -32,7 +32,9 @@
   padding: 24px;
   color: var(--color-text);
   text-decoration: none;
-  transition: transform 180ms ease, border-color 180ms ease;
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease;
 }
 
 a.tool-card:hover {
@@ -266,7 +268,9 @@ a.tool-card:hover {
   font-size: var(--text-md);
   font-weight: 600;
   list-style: none;
-  transition: background 150ms ease, border-color 150ms ease;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease;
 }
 
 .uml-tool::-webkit-details-marker {
@@ -504,7 +508,9 @@ a.tool-card:hover {
 }
 
 .uml-color-swatch[aria-pressed="true"] {
-  box-shadow: 0 0 0 3px var(--surface-panel), 0 0 0 5px var(--color-accent-strong);
+  box-shadow:
+    0 0 0 3px var(--surface-panel),
+    0 0 0 5px var(--color-accent-strong);
 }
 
 .uml-field-error {
@@ -1127,7 +1133,9 @@ a.tool-card:hover {
   background: var(--surface-control);
   border: 2px solid var(--glass-border-soft);
   border-radius: var(--radius-lg);
-  transition: border-color 180ms ease, background 180ms ease;
+  transition:
+    border-color 180ms ease,
+    background 180ms ease;
 }
 
 .vocab-card[data-state="right"] {
@@ -1326,9 +1334,29 @@ a.tool-card:hover {
 
 /* ---- Habits ---------------------------------------------------------------------------------- */
 
+.habit-create-form {
+  grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr)) auto;
+}
+
+.habit-reminder {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-muted);
+}
+
+.habit-reminder input {
+  min-height: 36px;
+  padding: 0 8px;
+  color: var(--color-text);
+  background: var(--surface-control);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-xs);
+}
+
 .habit-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   align-items: center;
   gap: 16px;
   padding: 14px 16px;
@@ -1415,6 +1443,11 @@ a.tool-card:hover {
     grid-column: 1 / -1;
     grid-row: 2;
     justify-content: space-between;
+  }
+
+  .habit-reminder {
+    grid-column: 1 / -1;
+    grid-row: 3;
   }
 
   .habit-days form {

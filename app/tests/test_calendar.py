@@ -375,6 +375,23 @@ class CalendarWeekViewTests(TestCase):
         self.assertEqual(response.context["today_url"], "/calendar/?view=week")
         self.assertEqual(self.view_urls(response)["day"], f"/calendar/?view=day&date={today.isoformat()}")
 
+    def test_tasks_assigned_to_the_user_show_up_but_cannot_be_dragged(self):
+        owner = User.objects.create_user(username="jonas", email="jonas@example.com", password="secret-12345")
+        Profile.objects.create(user=owner, display_name="Jonas")
+        due_at = datetime(2099, 8, 12, 10, tzinfo=self.berlin)
+        Task.objects.create(user=owner, assignee=self.user, title="Folien", due_at=due_at)
+        Task.objects.create(user=owner, title="Nicht meine", due_at=due_at)
+        Task.objects.create(user=self.user, title="Eigene", due_at=due_at)
+
+        response, days = self.week("2099-08-12")
+
+        tasks = {task["label"]: task for task in days["2099-08-12"]["tasks"]}
+        self.assertEqual(set(tasks), {"Folien", "Eigene"})
+        self.assertEqual((tasks["Folien"]["can_move"], tasks["Folien"]["owner_name"]), (False, "Jonas"))
+        self.assertTrue(tasks["Eigene"]["can_move"])
+        self.assertContains(response, "zugewiesen von Jonas")
+        self.assertEqual(response.content.decode().count("data-task-drag="), 1)
+
     def test_month_view_stays_the_default_and_links_to_the_week(self):
         response = self.client.get("/calendar/?year=2099&month=8")
 

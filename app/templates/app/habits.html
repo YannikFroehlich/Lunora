@@ -19,7 +19,7 @@
     </header>
 
     <section class="glass-panel uml-create-panel">
-        <form class="vocab-create-form" method="post">
+        <form class="vocab-create-form habit-create-form" method="post">
             {% csrf_token %}
             <input type="hidden" name="form_name" value="habit_add">
             <label class="vocab-field vocab-field-wide">
@@ -33,6 +33,10 @@
             <label class="vocab-field">
                 <span>{{ habit_form.color.label }}</span>
                 {{ habit_form.color }}
+            </label>
+            <label class="vocab-field">
+                <span>{{ habit_form.reminder_time.label }}</span>
+                {{ habit_form.reminder_time }}
             </label>
             <button class="primary-button" type="submit"><i class="fa-solid fa-plus" aria-hidden="true"></i> Anlegen</button>
             {% if habit_form.errors %}<ul class="errorlist">{% for field in habit_form %}{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}{% endfor %}</ul>{% endif %}
@@ -68,6 +72,14 @@
                 </form>
                 {% endfor %}
             </div>
+            <form class="habit-reminder" method="post" title="Erinnerung, falls {% if habit.cadence == "weekly" %}sonntags die Woche{% else %}der Tag{% endif %} noch offen ist; leer = aus">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="habit_reminder">
+                <input type="hidden" name="habit_id" value="{{ habit.id }}">
+                <i class="fa-{% if habit.reminder_time %}solid{% else %}regular{% endif %} fa-bell" aria-hidden="true"></i>
+                <input type="time" name="reminder_time" value="{{ habit.reminder_time|time:'H:i' }}" aria-label="Erinnerung für „{{ habit.title }}“">
+                <button class="icon-button" type="submit" aria-label="Erinnerung für „{{ habit.title }}“ speichern"><i class="fa-solid fa-check" aria-hidden="true"></i></button>
+            </form>
             <form method="post" data-confirm="„{{ habit.title }}“ mit allen Einträgen löschen?">
                 {% csrf_token %}
                 <input type="hidden" name="form_name" value="habit_delete">

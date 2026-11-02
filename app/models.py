@@ -641,6 +641,23 @@ class Task(models.Model):
         return self.title
 
 
+class TaskComment(models.Model):
+    """A note between a task's owner and its assignee; only assigned top-level tasks have them."""
+
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="comments")
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="task_comments"
+    )
+    body = models.TextField(max_length=2000)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return self.body[:80]
+
+
 class UmlDiagram(models.Model):
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="uml_diagrams")
     title = models.CharField(max_length=120)
@@ -750,6 +767,8 @@ class Habit(models.Model):
     title = models.CharField(max_length=120)
     cadence = models.CharField(max_length=10, choices=CADENCE_CHOICES, default=CADENCE_DAILY)
     color = models.CharField(max_length=10, choices=COLOR_CHOICES, default="green")
+    # Owner's local time; still open then (daily: today, weekly: on Sunday) means one inbox reminder.
+    reminder_time = models.TimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -798,6 +817,8 @@ class UserNotification(models.Model):
     KIND_VOCABULARY_SHARE = "vocabulary_share"
     KIND_WEATHER_ALERT = "weather_alert"
     KIND_TASK_ASSIGNMENT = "task_assignment"
+    KIND_HABIT_REMINDER = "habit_reminder"
+    KIND_TASK_COMMENT = "task_comment"
     KIND_CHOICES = [
         (KIND_CALENDAR_REMINDER, "Kalendererinnerung"),
         (KIND_TASK_DUE, "Fällige Aufgabe"),
@@ -808,6 +829,8 @@ class UserNotification(models.Model):
         (KIND_VOCABULARY_SHARE, "Vokabelfreigabe"),
         (KIND_WEATHER_ALERT, "Wetterwarnung"),
         (KIND_TASK_ASSIGNMENT, "Aufgabenzuweisung"),
+        (KIND_HABIT_REMINDER, "Gewohnheitserinnerung"),
+        (KIND_TASK_COMMENT, "Aufgabenkommentar"),
     ]
 
     recipient = models.ForeignKey(

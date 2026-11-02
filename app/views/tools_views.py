@@ -8,7 +8,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods
 
-from app.forms import HabitForm
+from app.forms import HabitForm, HabitReminderForm
 from app.models import Habit, UmlDiagram
 from app.services.habits import habit_items, toggle_habit_check
 from app.services.system_settings import disabled_feature_response, feature_enabled
@@ -65,6 +65,16 @@ def habits(request):
         if day:
             toggle_habit_check(request.user, request.POST.get("habit_id") or 0, day, today)
         return redirect(local_return_to(request) or "habits")
+    elif form_name == "habit_reminder":
+        habit = Habit.objects.filter(owner=request.user, pk=request.POST.get("habit_id") or 0).first()
+        reminder_form = HabitReminderForm(request.POST, instance=habit)
+        if habit and reminder_form.is_valid():
+            reminder_form.save()
+            django_messages.success(
+                request,
+                "Erinnerung gespeichert." if habit.reminder_time else "Erinnerung ausgeschaltet.",
+            )
+        return redirect("habits")
     elif form_name == "habit_delete":
         if Habit.objects.filter(owner=request.user, pk=request.POST.get("habit_id") or 0).delete()[0]:
             django_messages.success(request, "Gewohnheit gelöscht.")

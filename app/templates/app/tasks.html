@@ -348,6 +348,32 @@
                     {% endif %}
                 </form>
 
+                {% if item.comments is not None %}
+                <details class="task-comments" id="task-comments-{{ item.task.id }}">
+                    <summary>
+                        <i class="fa-regular fa-comment" aria-hidden="true"></i>
+                        {% if item.comments %}{{ item.comments|length }} Kommentar{{ item.comments|length|pluralize:"e" }}{% else %}Kommentieren{% endif %}
+                    </summary>
+                    {% if item.comments %}
+                    <ol>
+                        {% for comment in item.comments %}
+                        <li class="{% if comment.is_own %}is-own{% endif %}">
+                            <span><strong>{{ comment.author_name }}</strong><small>{{ comment.time_label }}</small></span>
+                            <p>{{ comment.body|linebreaksbr }}</p>
+                        </li>
+                        {% endfor %}
+                    </ol>
+                    {% endif %}
+                    <form method="post" class="task-subtask-add-form task-comment-form">
+                        {% csrf_token %}
+                        <input type="hidden" name="form_name" value="task_comment">
+                        <input type="hidden" name="task_id" value="{{ item.task.id }}">
+                        <input type="text" name="body" placeholder="Kommentar schreiben …" autocomplete="off" maxlength="2000" required aria-label="Kommentar zu „{{ item.title }}“">
+                        <button type="submit" aria-label="Kommentar senden"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i></button>
+                    </form>
+                </details>
+                {% endif %}
+
                 {% for child in item.subtasks %}
                 <form
                     class="task-row is-subtask {{ child.due_state }} {% if child.is_done %}is-done{% endif %}"

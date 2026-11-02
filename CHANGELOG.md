@@ -6,6 +6,14 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Tasks assigned to you now also appear in your calendar (with a small person icon). You can tick
+  them off there; only the owner can drag them to another day.
+- Habit reminders: give a habit a reminder time (when creating it, or with the bell on its card) and
+  Lunora reminds you once in the notification center, by Web Push and by e-mail if it is still open
+  then. Daily habits remind every day, weekly ones on Sunday if nothing was checked that week.
+  Ticking the habit off removes the reminder again.
+- Comments on assigned tasks: owner and assignee can write to each other below the task. The other
+  side is notified in the notification center, by Web Push and by e-mail ("Aufgaben" category).
 - Importing an .ics file keeps whole recurring series: "every second week", "Mondays and
   Wednesdays", "last Friday of the month" and similar rules now create all their dates instead of
   only the first one. Skipped dates (EXDATE) stay out, and single occurrences that were moved or

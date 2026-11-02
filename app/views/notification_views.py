@@ -38,6 +38,7 @@ def notification_center(request):
         request.user,
         include_reminders=flags.get("calendar_reminders", False),
         include_tasks=flags.get("tasks", False),
+        include_habits=flags.get("tools", False),
     )
 
     selected_filter = request.GET.get("status", "unread")

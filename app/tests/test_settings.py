@@ -1505,7 +1505,16 @@ class SettingsProfileTests(TestCase):
 
         days = {day["date_input"]: day for week in response.context["calendar_rows"] for day in week}
         self.assertEqual(
-            days["2099-03-10"]["tasks"], [{"id": late_task.id, "label": "Steuererklärung", "time": "23:30"}]
+            days["2099-03-10"]["tasks"],
+            [
+                {
+                    "id": late_task.id,
+                    "label": "Steuererklärung",
+                    "time": "23:30",
+                    "can_move": True,
+                    "owner_name": "",
+                }
+            ],
         )
         self.assertEqual(days["2099-03-11"]["tasks"], [])
         self.assertEqual(days["2099-03-12"]["tasks"], [])

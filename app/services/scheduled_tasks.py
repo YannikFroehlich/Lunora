@@ -1,6 +1,7 @@
 from django.utils import timezone
 
 from app.services.notifications import (
+    materialize_due_habit_reminders,
     send_due_reminder_emails,
     send_due_task_reminder_emails,
     send_new_invitation_emails,
@@ -38,12 +39,17 @@ def run_scheduled_tasks(*, now=None):
         weather_push_result = materialize_web_push_weather_alerts(now=current_time)
     else:
         weather_push_result = {"created": 0, "failed": 0, "disabled": True}
+    if feature_enabled("tools"):
+        habit_reminder_result = {"created": materialize_due_habit_reminders(now=current_time)}
+    else:
+        habit_reminder_result = {"created": 0, "disabled": True}
     notification_email_result = send_pending_user_notification_emails(
         now=current_time,
         include_note_shares=feature_enabled("notes"),
         include_vocabulary_shares=feature_enabled("tools"),
         include_weather=feature_enabled("weather"),
         include_task_assignments=feature_enabled("tasks"),
+        include_habit_reminders=feature_enabled("tools"),
     )
     web_push_result = send_pending_web_push_notifications(now=current_time)
     return {
@@ -53,6 +59,7 @@ def run_scheduled_tasks(*, now=None):
         "task_reminder_emails": task_reminder_result,
         "weekly_summaries": weekly_result,
         "weather_push_alerts": weather_push_result,
+        "habit_reminders": habit_reminder_result,
         "notification_emails": notification_email_result,
         "web_push": web_push_result,
     }

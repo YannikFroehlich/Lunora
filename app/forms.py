@@ -877,11 +877,24 @@ class BookmarkForm(forms.ModelForm):
 class HabitForm(forms.ModelForm):
     class Meta:
         model = Habit
-        fields = ["title", "cadence", "color"]
-        labels = {"title": "Gewohnheit", "cadence": "Rhythmus", "color": "Farbe"}
+        fields = ["title", "cadence", "color", "reminder_time"]
+        labels = {
+            "title": "Gewohnheit",
+            "cadence": "Rhythmus",
+            "color": "Farbe",
+            "reminder_time": "Erinnerung um",
+        }
         widgets = {
             "title": forms.TextInput(attrs={"placeholder": "z. B. 10 Minuten lesen", "autocomplete": "off"}),
+            "reminder_time": forms.TimeInput(attrs={"type": "time"}, format="%H:%M"),
         }
+
+
+class HabitReminderForm(forms.ModelForm):
+    class Meta:
+        model = Habit
+        fields = ["reminder_time"]
+        widgets = {"reminder_time": forms.TimeInput(attrs={"type": "time"}, format="%H:%M")}
 
 
 class VocabularyListForm(forms.ModelForm):

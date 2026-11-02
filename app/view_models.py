@@ -637,9 +637,13 @@ def get_calendar_context(user, *, year=None, month=None, view=None, day=None):
     tasks_enabled = feature_enabled("tasks")
     tasks_by_date = {}
     if tasks_enabled:
-        for task in Task.objects.filter(
-            user=user, is_done=False, due_at__gte=range_start, due_at__lt=range_end
-        ).order_by("due_at", "id"):
+        # Includes tasks assigned to the user; only their own can be dragged to another day.
+        for task in (
+            visible_tasks(user)
+            .filter(is_done=False, due_at__gte=range_start, due_at__lt=range_end)
+            .select_related("user__profile")
+            .order_by("due_at", "id")
+        ):
             tasks_by_date.setdefault(localtime_for_user(task.due_at, user).date(), []).append(task)
 
     markers = {}
@@ -680,14 +684,7 @@ def get_calendar_context(user, *, year=None, month=None, view=None, day=None):
                         }
                         for event in day_events[:3]
                     ],
-                    "tasks": [
-                        {
-                            "id": task.id,
-                            "label": task.title,
-                            "time": format_user_time(task.due_at, user),
-                        }
-                        for task in shown_tasks
-                    ],
+                    "tasks": [_calendar_task_item(task, user) for task in shown_tasks],
                     "overflow": len(day_events) + len(day_tasks) - min(len(day_events), 3) - len(shown_tasks),
                 }
             )
@@ -788,6 +785,17 @@ def get_calendar_context(user, *, year=None, month=None, view=None, day=None):
     }
 
 
+def _calendar_task_item(task, user):
+    is_own = task.user_id == user.pk
+    return {
+        "id": task.id,
+        "label": task.title,
+        "time": format_user_time(task.due_at, user),
+        "can_move": is_own,
+        "owner_name": "" if is_own else _display_name(task.user),
+    }
+
+
 def _calendar_time_grid(user, view, grid_start, day_count, now, events_by_date, tasks_by_date, markers):
     """Day columns for the week, three-day and day views: all-day items on top, timed events placed
     on a 24 h grid."""
@@ -861,10 +869,7 @@ def _calendar_time_grid(user, view, grid_start, day_count, now, events_by_date, 
                     for marker in markers.get(day, [])
                 ],
                 "all_day": all_day,
-                "tasks": [
-                    {"id": task.id, "label": task.title, "time": format_user_time(task.due_at, user)}
-                    for task in tasks_by_date.get(day, [])
-                ],
+                "tasks": [_calendar_task_item(task, user) for task in tasks_by_date.get(day, [])],
                 "timed": timed,
                 "now_minute": now.hour * 60 + now.minute if day == now.date() else None,
             }
