@@ -687,3 +687,17 @@ if (movableEvents.length) {
     }
   });
 }
+
+// A chat message sent here with "Als Termin" (messages.js) lands in the quick-add field, where a
+// date like "morgen 14 Uhr" can be added before saving.
+try {
+  const prefill = JSON.parse(sessionStorage.getItem("lunora-chat-prefill") || "null");
+  const quickAddInput = document.querySelector(".calendar-quick-add [name='text']");
+  if (prefill?.target === "event" && quickAddInput) {
+    sessionStorage.removeItem("lunora-chat-prefill");
+    quickAddInput.value = `${prefill.text.slice(0, 230)} `;
+    quickAddInput.focus();
+  }
+} catch {
+  // Storage blocked: nothing to take over.
+}

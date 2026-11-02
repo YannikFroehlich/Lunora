@@ -9,6 +9,8 @@ EDITABLE_DAYS = 7
 # Checks loaded for streaks; a habit whose streak reaches this far back reloads its whole history.
 STREAK_WINDOW_DAYS = 400
 WEEKDAY_SHORT = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
+# The statistics heatmap: one column per week, ending with the current one (about a year).
+HEATMAP_WEEKS = 53
 
 
 def _week_start(day):
@@ -37,6 +39,46 @@ def current_streak(habit, checked_dates, today):
         streak += 1
         current -= step
     return streak
+
+
+def longest_streak(habit, checked_dates):
+    """The longest run of consecutive days (daily) or weeks (weekly) among the given checks."""
+    if habit.cadence == Habit.CADENCE_WEEKLY:
+        periods, step = sorted({_week_start(day) for day in checked_dates}), timedelta(weeks=1)
+    else:
+        periods, step = sorted(set(checked_dates)), timedelta(days=1)
+    best = run = 0
+    previous = None
+    for period in periods:
+        run = run + 1 if previous is not None and period - previous == step else 1
+        best = max(best, run)
+        previous = period
+    return best
+
+
+def habit_stats(habit, checked_dates, today, streak):
+    """Heatmap of the last HEATMAP_WEEKS weeks plus totals, best streak and recent completion rate."""
+    first_day = _week_start(today) - timedelta(weeks=HEATMAP_WEEKS - 1)
+    in_range = {day for day in checked_dates if first_day <= day <= today}
+    if habit.cadence == Habit.CADENCE_WEEKLY:
+        recent = {_week_start(today) - timedelta(weeks=offset) for offset in range(12)}
+        rate = round(len(recent & {_week_start(day) for day in in_range}) / 12 * 100)
+        rate_label = "der letzten 12 Wochen"
+    else:
+        recent_start = today - timedelta(days=29)
+        rate = round(sum(1 for day in in_range if day >= recent_start) / 30 * 100)
+        rate_label = "der letzten 30 Tage"
+    best = max(longest_streak(habit, in_range), streak)
+    return {
+        "total": len(in_range),
+        "best_streak_label": _streak_label(habit, best),
+        "rate": rate,
+        "rate_label": rate_label,
+        "heatmap": [
+            {"date": day, "checked": day in in_range, "is_future": day > today}
+            for day in (first_day + timedelta(days=offset) for offset in range(HEATMAP_WEEKS * 7))
+        ],
+    }
 
 
 def _streak_reaches(habit, streak, today, window_start):
@@ -97,6 +139,7 @@ def habit_items(user, today):
                 "streak": streak,
                 "streak_label": _streak_label(habit, streak),
                 "done_now": is_done_now(habit, checked, today),
+                "stats": habit_stats(habit, checked, today, streak),
                 "days": [
                     {
                         "date": day.isoformat(),

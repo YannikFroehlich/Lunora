@@ -52,6 +52,7 @@ NOTIFICATION_PRESENTATION = {
     UserNotification.KIND_TASK_ASSIGNMENT: ("fa-user-check", "Aufgabe", "task"),
     UserNotification.KIND_HABIT_REMINDER: ("fa-seedling", "Gewohnheit", "tools"),
     UserNotification.KIND_TASK_COMMENT: ("fa-comment", "Aufgabe", "task"),
+    UserNotification.KIND_TASK_RETURNED: ("fa-rotate-left", "Aufgabe", "task"),
 }
 
 
@@ -296,6 +297,24 @@ def materialize_task_comment_notification(comment):
                 "body": comment.body[:300],
                 "url": "/tasks/",
                 "source_key": f"task-comment:{comment.pk}",
+            }
+        ]
+    )
+
+
+def materialize_task_return_notification(task, former_assignee, reason=""):
+    """Tell the owner that the assignee handed a task back (declined or returned it)."""
+    return _create_missing_user_notifications(
+        [
+            {
+                "recipient_id": task.user_id,
+                "actor_id": former_assignee.pk,
+                "kind": UserNotification.KIND_TASK_RETURNED,
+                "title": f"{_display_name(former_assignee)} hat „{task.title}“ zurückgegeben",
+                "body": reason[:300],
+                "url": "/tasks/",
+                # A task can be assigned and returned again, so every return gets its own row.
+                "source_key": f"task-returned:{task.pk}:{former_assignee.pk}:{timezone.now().timestamp()}",
             }
         ]
     )
@@ -864,7 +883,11 @@ def send_pending_user_notification_emails(
     if include_weather:
         kinds.append(UserNotification.KIND_WEATHER_ALERT)
     if include_task_assignments:
-        kinds += [UserNotification.KIND_TASK_ASSIGNMENT, UserNotification.KIND_TASK_COMMENT]
+        kinds += [
+            UserNotification.KIND_TASK_ASSIGNMENT,
+            UserNotification.KIND_TASK_COMMENT,
+            UserNotification.KIND_TASK_RETURNED,
+        ]
     if include_habit_reminders:
         kinds.append(UserNotification.KIND_HABIT_REMINDER)
     if not kinds:

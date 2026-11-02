@@ -107,6 +107,54 @@
                     {% endfor %}
                 </ul>
             </div>
+
+            <div class="task-lists-section">
+                <div class="task-lists-heading">
+                    <span>Vorlagen</span>
+                </div>
+                {% if task_templates %}
+                <ul class="task-list-nav">
+                    {% for template in task_templates %}
+                    <li class="task-list-nav-item task-template-item">
+                        <form method="post">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_name" value="task_template_use">
+                            <input type="hidden" name="template_id" value="{{ template.id }}">
+                            <button type="submit" class="task-view-link" title="Neue Aufgabe aus dieser Vorlage anlegen">
+                                <i class="fa-regular fa-clone" aria-hidden="true"></i>
+                                <span>{{ template.title }}</span>
+                                {% if template.subtask_count %}<em title="{{ template.subtask_count }} Punkte auf der Checkliste">{{ template.subtask_count }}</em>{% endif %}
+                            </button>
+                        </form>
+                        <details class="task-list-manage">
+                            <summary aria-label="{{ template.title }} verwalten"><i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i></summary>
+                            <div class="task-list-manage-popover">
+                                <form method="post" class="task-list-rename-form">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="form_name" value="task_template_use">
+                                    <input type="hidden" name="template_id" value="{{ template.id }}">
+                                    <input type="datetime-local" name="due_at" aria-label="Fällig am">
+                                    <button type="submit" aria-label="Mit Fälligkeit anlegen"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
+                                </form>
+                                <form method="post" data-confirm="Vorlage „{{ template.title }}“ löschen?">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="form_name" value="task_template_delete">
+                                    <input type="hidden" name="template_id" value="{{ template.id }}">
+                                    <button type="submit" class="task-list-delete-button">
+                                        <i class="fa-solid fa-trash" aria-hidden="true"></i> Vorlage löschen
+                                    </button>
+                                </form>
+                            </div>
+                        </details>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="task-templates-hint">
+                    Speichere eine Aufgabe über <i class="fa-regular fa-clone" aria-hidden="true"></i> „Als Vorlage speichern“, samt Unteraufgaben als Checkliste.
+                </p>
+                {% endif %}
+            </div>
         </aside>
 
         <section class="glass-panel task-panel">
@@ -328,6 +376,10 @@
                     {% endif %}
 
                     {% if item.is_own %}
+                    <button class="task-edit-button" type="submit" name="form_name" value="task_template_save" aria-label="Als Vorlage speichern" title="Als Vorlage speichern">
+                        <i class="fa-regular fa-clone" aria-hidden="true"></i>
+                    </button>
+
                     <button type="button" class="task-edit-button" data-task-edit-open
                         data-task-id="{{ item.task.id }}"
                         data-edit-title="{{ item.title }}"
@@ -358,8 +410,24 @@
                     <ol>
                         {% for comment in item.comments %}
                         <li class="{% if comment.is_own %}is-own{% endif %}">
-                            <span><strong>{{ comment.author_name }}</strong><small>{{ comment.time_label }}</small></span>
+                            <span>
+                                <strong>{{ comment.author_name }}</strong>
+                                <small>{{ comment.time_label }}{% if comment.is_edited %} · bearbeitet{% endif %}</small>
+                            </span>
                             <p>{{ comment.body|linebreaksbr }}</p>
+                            {% if comment.is_own %}
+                            <details class="task-comment-manage">
+                                <summary>Bearbeiten</summary>
+                                <form method="post" class="task-subtask-add-form task-comment-form">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="form_name" value="task_comment_edit">
+                                    <input type="hidden" name="comment_id" value="{{ comment.id }}">
+                                    <input type="text" name="body" value="{{ comment.body }}" autocomplete="off" maxlength="2000" required aria-label="Kommentar bearbeiten">
+                                    <button type="submit" aria-label="Änderung speichern"><i class="fa-solid fa-check" aria-hidden="true"></i></button>
+                                    <button type="submit" name="form_name" value="task_comment_delete" formnovalidate data-confirm="Kommentar löschen?" aria-label="Kommentar löschen"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
+                                </form>
+                            </details>
+                            {% endif %}
                         </li>
                         {% endfor %}
                     </ol>
@@ -370,6 +438,19 @@
                         <input type="hidden" name="task_id" value="{{ item.task.id }}">
                         <input type="text" name="body" placeholder="Kommentar schreiben …" autocomplete="off" maxlength="2000" required aria-label="Kommentar zu „{{ item.title }}“">
                         <button type="submit" aria-label="Kommentar senden"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i></button>
+                    </form>
+                </details>
+                {% endif %}
+
+                {% if item.assigned_to_me and not item.is_own %}
+                <details class="task-comments task-return">
+                    <summary><i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Ablehnen oder zurückgeben</summary>
+                    <form method="post" class="task-subtask-add-form task-comment-form" data-confirm="„{{ item.title }}“ an {{ item.owner_name }} zurückgeben?">
+                        {% csrf_token %}
+                        <input type="hidden" name="form_name" value="task_return">
+                        <input type="hidden" name="task_id" value="{{ item.task.id }}">
+                        <input type="text" name="reason" placeholder="Grund (optional) …" autocomplete="off" maxlength="300" aria-label="Grund für die Rückgabe">
+                        <button type="submit" aria-label="Aufgabe zurückgeben"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i></button>
                     </form>
                 </details>
                 {% endif %}

@@ -6,7 +6,7 @@ from django.db import transaction
 from django.db.models import F, Max, Q
 from django.utils import timezone
 
-from app.models import Task, TaskComment, TaskLabel, TaskList, UserNotification
+from app.models import Task, TaskComment, TaskLabel, TaskList, TaskTemplate, UserNotification
 from app.services.notes import display_name
 from app.services.user_preferences import (
     format_user_datetime,
@@ -16,6 +16,7 @@ from app.services.user_preferences import (
 )
 
 UPCOMING_WINDOW_DAYS = 7
+MAX_TASK_TEMPLATES = 50
 TASK_POSITION_STEP = 1000
 # Time of day for a task that only gets a date: dropped onto a calendar day, or typed as "morgen".
 DEFAULT_DUE_TIME = time(9)
@@ -74,13 +75,23 @@ def toggle_task(user, task_id, is_done, *, now=None):
     return task
 
 
-def add_task_comment(user, task_id, body):
-    """Comment on an assigned top-level task as its owner or assignee; returns None otherwise."""
+def _clean_comment_body(body):
     clean_body = (body or "").strip()
     if not clean_body:
         raise ValidationError("Der Kommentar darf nicht leer sein.")
     if len(clean_body) > 2000:
         raise ValidationError("Der Kommentar ist zu lang (höchstens 2000 Zeichen).")
+    return clean_body
+
+
+def _own_task_comments(user):
+    """Comments the user wrote on tasks they still own or are assigned to."""
+    return TaskComment.objects.filter(author=user).filter(Q(task__user=user) | Q(task__assignee=user))
+
+
+def add_task_comment(user, task_id, body):
+    """Comment on an assigned top-level task as its owner or assignee; returns None otherwise."""
+    clean_body = _clean_comment_body(body)
     task = (
         Task.objects.filter(
             Q(user=user) | Q(assignee=user), pk=task_id, parent__isnull=True, assignee__isnull=False
@@ -91,6 +102,87 @@ def add_task_comment(user, task_id, body):
     if task is None:
         return None
     return TaskComment.objects.create(task=task, author=user, body=clean_body)
+
+
+def edit_task_comment(user, comment_id, body):
+    """Change one of the user's own comments; the other side's unread notification follows along."""
+    clean_body = _clean_comment_body(body)
+    comment = _own_task_comments(user).filter(pk=comment_id).first()
+    if comment is None:
+        return None
+    if comment.body != clean_body:
+        comment.body = clean_body
+        comment.edited_at = timezone.now()
+        comment.save(update_fields=["body", "edited_at"])
+        UserNotification.objects.filter(source_key=f"task-comment:{comment.pk}", read_at__isnull=True).update(
+            body=clean_body[:300]
+        )
+    return comment
+
+
+def delete_task_comment(user, comment_id):
+    """Delete one of the user's own comments together with its notification; returns its task id."""
+    comment = _own_task_comments(user).filter(pk=comment_id).first()
+    if comment is None:
+        return None
+    UserNotification.objects.filter(source_key=f"task-comment:{comment.pk}").delete()
+    comment.delete()
+    return comment.task_id
+
+
+def return_task(user, task_id):
+    """The assignee declines or hands back an assigned task; it becomes the owner's alone again."""
+    task = Task.objects.filter(assignee=user, pk=task_id).select_related("user").first()
+    if task is None:
+        return None
+    task.assignee = None
+    task.save(update_fields=["assignee", "updated_at"])
+    # Assigning the same person again later should notify them again.
+    UserNotification.objects.filter(source_key=f"task-assignment:{task.pk}:{user.pk}").delete()
+    return task
+
+
+def save_task_template(user, task_id):
+    """Save an own top-level task with its subtasks (as a checklist) as a reusable template."""
+    task = Task.objects.filter(user=user, pk=task_id, parent__isnull=True).first()
+    if task is None:
+        return None
+    if TaskTemplate.objects.filter(owner=user).count() >= MAX_TASK_TEMPLATES:
+        raise ValidationError(f"Du kannst höchstens {MAX_TASK_TEMPLATES} Vorlagen speichern.")
+    template = TaskTemplate.objects.create(
+        owner=user,
+        title=task.title,
+        priority=task.priority or Task.PRIORITY_NONE,
+        task_list=task.task_list,
+        subtask_titles=list(task.subtasks.order_by("created_at", "id").values_list("title", flat=True)),
+    )
+    template.labels.set(task.labels.all())
+    return template
+
+
+@transaction.atomic
+def create_task_from_template(user, template_id, *, due_at=None):
+    """Create a fresh open task (and its checklist of subtasks) from one of the user's templates."""
+    template = TaskTemplate.objects.filter(owner=user, pk=template_id).first()
+    if template is None:
+        return None
+    task = Task.objects.create(
+        user=user,
+        title=template.title,
+        priority=template.priority,
+        task_list=template.task_list,
+        due_at=due_at,
+    )
+    task.labels.set(template.labels.all())
+    # One at a time, so each subtask gets its own created_at and the checklist keeps its order.
+    for title in template.subtask_titles:
+        Task.objects.create(user=user, parent=task, title=title)
+    return task
+
+
+def delete_task_template(user, template_id):
+    deleted, _details = TaskTemplate.objects.filter(owner=user, pk=template_id).delete()
+    return bool(deleted)
 
 
 def rearm_task_reminders(task, previous_due_at, *, now=None):
@@ -424,9 +516,11 @@ def get_tasks_context(user, *, now=None, sort=None):
             # Only assigned top-level tasks carry a conversation between owner and assignee.
             "comments": [
                 {
+                    "id": comment.pk,
                     "author_name": display_name(comment.author),
                     "is_own": comment.author_id == user.pk,
                     "time_label": format_user_datetime(comment.created_at, user),
+                    "is_edited": comment.edited_at is not None,
                     "body": comment.body,
                 }
                 for comment in task.comments.all()
@@ -480,4 +574,8 @@ def get_tasks_context(user, *, now=None, sort=None):
         "task_lists": task_lists,
         "inbox_open_count": inbox_open_count,
         "task_labels": list(TaskLabel.objects.filter(owner=user)),
+        "task_templates": [
+            {"id": template.pk, "title": template.title, "subtask_count": len(template.subtask_titles)}
+            for template in TaskTemplate.objects.filter(owner=user)
+        ],
     }

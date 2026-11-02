@@ -650,12 +650,36 @@ class TaskComment(models.Model):
     )
     body = models.TextField(max_length=2000)
     created_at = models.DateTimeField(auto_now_add=True)
+    edited_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
         ordering = ["created_at", "id"]
 
     def __str__(self):
         return self.body[:80]
+
+
+class TaskTemplate(models.Model):
+    """A reusable task with its checklist of subtasks, saved from an existing task."""
+
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="task_templates"
+    )
+    title = models.CharField(max_length=180)
+    priority = models.CharField(max_length=10, choices=Task.PRIORITY_CHOICES, default=Task.PRIORITY_NONE)
+    task_list = models.ForeignKey(
+        TaskList, on_delete=models.SET_NULL, blank=True, null=True, related_name="templates"
+    )
+    labels = models.ManyToManyField(TaskLabel, blank=True, related_name="templates")
+    # Subtask titles in creation order; using the template creates them in the same order.
+    subtask_titles = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["title", "id"]
+
+    def __str__(self):
+        return self.title
 
 
 class UmlDiagram(models.Model):
@@ -819,6 +843,7 @@ class UserNotification(models.Model):
     KIND_TASK_ASSIGNMENT = "task_assignment"
     KIND_HABIT_REMINDER = "habit_reminder"
     KIND_TASK_COMMENT = "task_comment"
+    KIND_TASK_RETURNED = "task_returned"
     KIND_CHOICES = [
         (KIND_CALENDAR_REMINDER, "Kalendererinnerung"),
         (KIND_TASK_DUE, "Fällige Aufgabe"),
@@ -831,6 +856,7 @@ class UserNotification(models.Model):
         (KIND_TASK_ASSIGNMENT, "Aufgabenzuweisung"),
         (KIND_HABIT_REMINDER, "Gewohnheitserinnerung"),
         (KIND_TASK_COMMENT, "Aufgabenkommentar"),
+        (KIND_TASK_RETURNED, "Zurückgegebene Aufgabe"),
     ]
 
     recipient = models.ForeignKey(
