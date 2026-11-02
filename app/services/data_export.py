@@ -176,7 +176,7 @@ def _notes(user, archive):
 
 
 def _tasks(user):
-    tasks = Task.objects.filter(user=user).prefetch_related("labels").order_by("id")
+    tasks = Task.objects.filter(user=user).prefetch_related("labels", "comments__author").order_by("id")
     return {
         "lists": list(TaskList.objects.filter(owner=user).values("id", "name", "color")),
         "labels": list(TaskLabel.objects.filter(owner=user).values("id", "name", "color")),
@@ -192,6 +192,14 @@ def _tasks(user):
                 "parent_id": task.parent_id,
                 "label_ids": [label.pk for label in task.labels.all()],
                 "created_at": task.created_at,
+                "comments": [
+                    {
+                        "author": comment.author.get_username(),
+                        "body": comment.body,
+                        "created_at": comment.created_at,
+                    }
+                    for comment in task.comments.all()
+                ],
             }
             for task in tasks
         ],
@@ -282,6 +290,7 @@ def _habits(user):
             "title": habit.title,
             "cadence": habit.cadence,
             "color": habit.color,
+            "reminder_time": habit.reminder_time,
             "created_at": habit.created_at,
             "checked_days": [check.date for check in habit.checks.all()],
         }

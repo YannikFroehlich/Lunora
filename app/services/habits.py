@@ -2,7 +2,7 @@
 
 from datetime import timedelta
 
-from app.models import Habit, HabitCheck
+from app.models import Habit, HabitCheck, UserNotification
 
 # How far back the page lets you tick off a day you forgot.
 EDITABLE_DAYS = 7
@@ -62,6 +62,10 @@ def toggle_habit_check(user, habit_id, day, today):
     deleted, _details = HabitCheck.objects.filter(habit=habit, date=day).delete()
     if not deleted:
         HabitCheck.objects.create(habit=habit, date=day)
+        # Done now, so an unread "still open" reminder is no longer true.
+        UserNotification.objects.filter(
+            recipient=user, source_key__startswith=f"habit:{habit.pk}:", read_at__isnull=True
+        ).delete()
     return habit
 
 
@@ -89,6 +93,7 @@ def habit_items(user, today):
                 "color": habit.color,
                 "cadence": habit.cadence,
                 "cadence_label": habit.get_cadence_display(),
+                "reminder_time": habit.reminder_time,
                 "streak": streak,
                 "streak_label": _streak_label(habit, streak),
                 "done_now": is_done_now(habit, checked, today),

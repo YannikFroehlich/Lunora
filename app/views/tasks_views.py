@@ -5,9 +5,13 @@ from django.shortcuts import redirect, render
 
 from app.forms import TaskForm, TaskLabelForm, TaskListForm, TaskRescheduleForm
 from app.models import Task, TaskLabel, TaskList
-from app.services.notifications import materialize_task_assignment_notifications
+from app.services.notifications import (
+    materialize_task_assignment_notifications,
+    materialize_task_comment_notification,
+)
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.tasks import (
+    add_task_comment,
     create_task_label,
     create_task_list,
     delete_task,
@@ -64,6 +68,21 @@ def tasks(request):
         ):
             django_messages.error(request, "Aufgabe konnte nicht verschoben werden.")
         return redirect(local_return_to(request) or request.get_full_path())
+    elif form_name == "task_comment":
+        try:
+            comment = add_task_comment(
+                request.user, request.POST.get("task_id") or 0, request.POST.get("body")
+            )
+        except ValidationError as error:
+            django_messages.error(request, " ".join(error.messages))
+        else:
+            if comment is None:
+                django_messages.error(request, "Diese Aufgabe kann nicht kommentiert werden.")
+            else:
+                materialize_task_comment_notification(comment)
+                # Reopen the conversation that was just written in.
+                return redirect(f"{request.get_full_path()}#task-comments-{comment.task_id}")
+        return redirect(request.get_full_path())
     elif form_name == "task_delete":
         if delete_task(request.user, request.POST.get("task_id")):
             django_messages.success(request, "Aufgabe gelöscht.")

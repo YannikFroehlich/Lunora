@@ -22,7 +22,7 @@ CATEGORY_DEFINITIONS = (
     {
         "key": NotificationPreference.CATEGORY_TASKS,
         "label": "Aufgaben",
-        "hint": "Fälligkeiten und Zuweisungen",
+        "hint": "Fälligkeiten, Zuweisungen und Kommentare",
         "icon": "fa-list-check",
     },
     {
@@ -40,7 +40,7 @@ CATEGORY_DEFINITIONS = (
     {
         "key": NotificationPreference.CATEGORY_TOOLS,
         "label": "Werkzeuge",
-        "hint": "Mit dir geteilte Vokabellisten",
+        "hint": "Vokabelfreigaben und Gewohnheiten",
         "icon": "fa-toolbox",
     },
 )
@@ -50,11 +50,13 @@ KIND_TO_CATEGORY = {
     UserNotification.KIND_EVENT_INVITATION: NotificationPreference.CATEGORY_CALENDAR,
     UserNotification.KIND_TASK_DUE: NotificationPreference.CATEGORY_TASKS,
     UserNotification.KIND_TASK_ASSIGNMENT: NotificationPreference.CATEGORY_TASKS,
+    UserNotification.KIND_TASK_COMMENT: NotificationPreference.CATEGORY_TASKS,
     UserNotification.KIND_NOTE_MENTION: NotificationPreference.CATEGORY_NOTES,
     UserNotification.KIND_NOTE_COMMENT: NotificationPreference.CATEGORY_NOTES,
     UserNotification.KIND_NOTE_SHARE: NotificationPreference.CATEGORY_NOTES,
     UserNotification.KIND_WEATHER_ALERT: NotificationPreference.CATEGORY_WEATHER,
     UserNotification.KIND_VOCABULARY_SHARE: NotificationPreference.CATEGORY_TOOLS,
+    UserNotification.KIND_HABIT_REMINDER: NotificationPreference.CATEGORY_TOOLS,
 }
 
 

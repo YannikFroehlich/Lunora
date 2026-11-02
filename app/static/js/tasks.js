@@ -11,6 +11,12 @@
   const dateLabel = document.querySelector("[data-task-date-label]");
   const moreMenu = document.querySelector(".task-more-menu");
 
+  // After writing a comment the page returns to #task-comments-<id>; keep that conversation open.
+  if (window.location.hash.startsWith("#task-comments-")) {
+    const openComments = document.getElementById(window.location.hash.slice(1));
+    if (openComments) openComments.open = true;
+  }
+
   let activeFilter = "all";
   let activeView = "all";
   let activeListId = "";

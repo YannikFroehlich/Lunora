@@ -11,6 +11,7 @@ from app.models import (
     Profile,
     SystemSettings,
     Task,
+    TaskComment,
     TaskLabel,
     TaskList,
     UserNotification,
@@ -784,3 +785,50 @@ class TaskAssignmentTests(TestCase):
         assignment_mails = [message for message in mail.outbox if "zugewiesen" in message.subject]
         self.assertEqual(len(assignment_mails), 1)
         self.assertEqual(assignment_mails[0].to, ["jonas@example.com"])
+
+    def test_owner_and_assignee_discuss_an_assigned_task(self):
+        task = Task.objects.create(user=self.owner, assignee=self.assignee, title="Folien bauen")
+        own_only = Task.objects.create(user=self.owner, title="Privat")
+        self.client.login(username="jonas", password="secret-12345")
+
+        response = self.client.post(
+            "/tasks/", {"form_name": "task_comment", "task_id": task.pk, "body": "Bis Freitag?"}
+        )
+        self.client.post("/tasks/", {"form_name": "task_comment", "task_id": own_only.pk, "body": "Fremd"})
+        self.client.post("/tasks/", {"form_name": "task_comment", "task_id": task.pk, "body": "   "})
+
+        self.assertRedirects(response, f"/tasks/#task-comments-{task.pk}", fetch_redirect_response=False)
+        self.assertEqual(
+            list(TaskComment.objects.values_list("author__username", "body")), [("jonas", "Bis Freitag?")]
+        )
+        notification = UserNotification.objects.get(kind=UserNotification.KIND_TASK_COMMENT)
+        self.assertEqual(
+            (notification.recipient, notification.title), (self.owner, "Jonas hat „Folien bauen“ kommentiert")
+        )
+
+        self.client.login(username="mira", password="secret-12345")
+        self.client.post("/tasks/", {"form_name": "task_comment", "task_id": task.pk, "body": "Ja, passt."})
+        response = self.client.get("/tasks/")
+        item = next(item for item in response.context["tasks"] if item["task"] == task)
+        self.assertEqual(
+            [(comment["author_name"], comment["is_own"]) for comment in item["comments"]],
+            [("Jonas", False), ("Mira", True)],
+        )
+        self.assertIsNone(
+            next(item for item in response.context["tasks"] if item["task"] == own_only)["comments"]
+        )
+        self.assertEqual(
+            UserNotification.objects.filter(
+                kind=UserNotification.KIND_TASK_COMMENT, recipient=self.assignee
+            ).count(),
+            1,
+        )
+
+    def test_unrelated_users_cannot_comment(self):
+        task = Task.objects.create(user=self.owner, assignee=self.assignee, title="Folien bauen")
+        User.objects.create_user(username="lea", email="lea@example.com", password="secret-12345")
+        self.client.login(username="lea", password="secret-12345")
+
+        self.client.post("/tasks/", {"form_name": "task_comment", "task_id": task.pk, "body": "Hallo"})
+
+        self.assertFalse(TaskComment.objects.exists())

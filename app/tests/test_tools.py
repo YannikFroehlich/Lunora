@@ -1,5 +1,6 @@
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from django.contrib.auth.models import User
 from django.core import mail
@@ -19,7 +20,7 @@ from app.models import (
     VocabularyListShare,
 )
 from app.services.habits import STREAK_WINDOW_DAYS, current_streak, habit_items, is_done_now
-from app.services.notifications import send_pending_user_notification_emails
+from app.services.notifications import materialize_due_habit_reminders, send_pending_user_notification_emails
 from app.services.uml_content import validate_uml_document
 from app.services.user_preferences import localtime_for_user
 from app.services.vocabulary import parse_bulk_cards, review_card
@@ -525,6 +526,83 @@ class HabitTrackerTests(TestCase):
         streaks = {item["title"]: item["streak"] for item in habit_items(self.user, self.today)}
 
         self.assertEqual(streaks, {"Lesen": long_streak, "Sport": 70})
+
+    def test_daily_reminder_fires_once_after_its_time_while_the_habit_is_open(self):
+        berlin = ZoneInfo("Europe/Berlin")
+        habit = Habit.objects.create(owner=self.user, title="Lesen", reminder_time=time(19))
+        Habit.objects.create(owner=self.user, title="Ohne Erinnerung")
+
+        before = materialize_due_habit_reminders(now=datetime(2099, 3, 4, 18, 59, tzinfo=berlin))
+        after = materialize_due_habit_reminders(now=datetime(2099, 3, 4, 19, 30, tzinfo=berlin))
+        again = materialize_due_habit_reminders(now=datetime(2099, 3, 4, 21, 0, tzinfo=berlin))
+
+        self.assertEqual((before, after, again), (0, 1, 0))
+        reminder = UserNotification.objects.get(recipient=self.user)
+        self.assertEqual(reminder.kind, UserNotification.KIND_HABIT_REMINDER)
+        self.assertEqual(reminder.title, "Gewohnheit offen: Lesen")
+
+        HabitCheck.objects.create(habit=habit, date=date(2099, 3, 5))
+        self.assertEqual(materialize_due_habit_reminders(now=datetime(2099, 3, 5, 20, tzinfo=berlin)), 0)
+
+    def test_checking_a_habit_removes_its_unread_reminder(self):
+        habit = Habit.objects.create(owner=self.user, title="Lesen", reminder_time=time(0))
+        materialize_due_habit_reminders()
+        self.assertTrue(UserNotification.objects.filter(recipient=self.user).exists())
+
+        self.client.post(
+            "/tools/habits/",
+            {"form_name": "habit_toggle", "habit_id": habit.id, "date": self.today.isoformat()},
+        )
+
+        self.assertFalse(UserNotification.objects.filter(recipient=self.user).exists())
+
+    def test_weekly_reminder_only_on_sunday_of_an_open_week(self):
+        berlin = ZoneInfo("Europe/Berlin")
+        habit = Habit.objects.create(
+            owner=self.user, title="Sport", cadence=Habit.CADENCE_WEEKLY, reminder_time=time(10)
+        )
+        other = Habit.objects.create(
+            owner=self.user, title="Putzen", cadence=Habit.CADENCE_WEEKLY, reminder_time=time(10)
+        )
+        HabitCheck.objects.create(habit=other, date=date(2099, 3, 3))
+
+        saturday = materialize_due_habit_reminders(now=datetime(2099, 3, 7, 12, tzinfo=berlin))
+        sunday = materialize_due_habit_reminders(now=datetime(2099, 3, 8, 12, tzinfo=berlin))
+
+        self.assertEqual((saturday, sunday), (0, 1))
+        self.assertEqual(UserNotification.objects.get().source_key, f"habit:{habit.pk}:2099-03-08")
+
+    def test_reminder_time_is_set_and_cleared_only_on_own_habits(self):
+        habit = Habit.objects.create(owner=self.user, title="Lesen")
+        foreign = Habit.objects.create(owner=self.other, title="Fremd")
+
+        self.client.post(
+            "/tools/habits/", {"form_name": "habit_reminder", "habit_id": habit.id, "reminder_time": "07:30"}
+        )
+        self.client.post(
+            "/tools/habits/",
+            {"form_name": "habit_reminder", "habit_id": foreign.id, "reminder_time": "07:30"},
+        )
+        habit.refresh_from_db()
+        foreign.refresh_from_db()
+        self.assertEqual((habit.reminder_time, foreign.reminder_time), (time(7, 30), None))
+        self.assertContains(self.client.get("/tools/habits/"), 'value="07:30"')
+
+        self.client.post(
+            "/tools/habits/", {"form_name": "habit_reminder", "habit_id": habit.id, "reminder_time": ""}
+        )
+        habit.refresh_from_db()
+        self.assertIsNone(habit.reminder_time)
+
+    def test_habit_reminder_is_mailed_once(self):
+        Profile.objects.filter(user=self.user).update(notify_email=True)
+        Habit.objects.create(owner=self.user, title="Lesen", reminder_time=time(0))
+        materialize_due_habit_reminders()
+
+        send_pending_user_notification_emails()
+        send_pending_user_notification_emails()
+
+        self.assertEqual([message.subject for message in mail.outbox], ["Lunora: Gewohnheit offen: Lesen"])
 
     def test_page_creates_toggles_and_deletes_only_own_habits(self):
         response = self.client.post(

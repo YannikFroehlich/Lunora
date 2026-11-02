@@ -11,6 +11,8 @@ from app.models import (
     CalendarEvent,
     CalendarEventAttendee,
     CalendarReminder,
+    Habit,
+    HabitCheck,
     NoteActivityNotification,
     NoteShare,
     Profile,
@@ -20,6 +22,7 @@ from app.models import (
     WeatherLocation,
     WeeklySummaryDelivery,
 )
+from app.services.habits import is_done_now
 from app.services.message_queries import unread_total_for_user
 from app.services.notification_preferences import (
     CHANNEL_EMAIL,
@@ -47,6 +50,8 @@ NOTIFICATION_PRESENTATION = {
     UserNotification.KIND_WEATHER_ALERT: ("fa-cloud-bolt", "Wetter", "weather"),
     UserNotification.KIND_VOCABULARY_SHARE: ("fa-language", "Vokabeln", "tools"),
     UserNotification.KIND_TASK_ASSIGNMENT: ("fa-user-check", "Aufgabe", "task"),
+    UserNotification.KIND_HABIT_REMINDER: ("fa-seedling", "Gewohnheit", "tools"),
+    UserNotification.KIND_TASK_COMMENT: ("fa-comment", "Aufgabe", "task"),
 }
 
 
@@ -271,7 +276,75 @@ def materialize_task_assignment_notifications(tasks):
     return _create_missing_user_notifications(rows)
 
 
-def materialize_user_notification_sources(user, *, now=None, include_reminders=True, include_tasks=True):
+def materialize_task_comment_notification(comment):
+    """Tell the other side of an assigned task (owner or assignee) about a new comment.
+
+    Created when the comment is written, not backfilled, so a later assignee isn't flooded with the
+    task's older conversation.
+    """
+    task = comment.task
+    recipient_id = task.assignee_id if comment.author_id == task.user_id else task.user_id
+    if recipient_id is None or recipient_id == comment.author_id:
+        return 0
+    return _create_missing_user_notifications(
+        [
+            {
+                "recipient_id": recipient_id,
+                "actor_id": comment.author_id,
+                "kind": UserNotification.KIND_TASK_COMMENT,
+                "title": f"{_display_name(comment.author)} hat „{task.title}“ kommentiert",
+                "body": comment.body[:300],
+                "url": "/tasks/",
+                "source_key": f"task-comment:{comment.pk}",
+            }
+        ]
+    )
+
+
+def materialize_due_habit_reminders(*, user=None, now=None):
+    """One inbox row per habit and day once its reminder time has passed while it is still open:
+    daily habits every day, weekly habits on Sunday if nothing was checked that week."""
+    current_time = now or timezone.now()
+    habits = Habit.objects.filter(reminder_time__isnull=False, owner__is_active=True).select_related(
+        "owner", "owner__profile"
+    )
+    if user is not None:
+        habits = habits.filter(owner=user)
+    habits = list(habits)
+    checked = {}
+    for habit_id, day in HabitCheck.objects.filter(
+        habit__in=habits, date__gte=current_time.date() - timedelta(days=8)
+    ).values_list("habit_id", "date"):
+        checked.setdefault(habit_id, set()).add(day)
+
+    rows = []
+    for habit in habits:
+        local_now = localtime_for_user(current_time, habit.owner)
+        today = local_now.date()
+        if local_now.time() < habit.reminder_time:
+            continue
+        if habit.cadence == Habit.CADENCE_WEEKLY and today.weekday() != 6:
+            continue
+        if is_done_now(habit, checked.get(habit.pk, set()), today):
+            continue
+        rows.append(
+            {
+                "recipient_id": habit.owner_id,
+                "kind": UserNotification.KIND_HABIT_REMINDER,
+                "title": f"Gewohnheit offen: {habit.title}",
+                "body": "Diese Woche noch nicht erledigt."
+                if habit.cadence == Habit.CADENCE_WEEKLY
+                else "Heute noch nicht erledigt.",
+                "url": "/tools/habits/",
+                "source_key": f"habit:{habit.pk}:{today.isoformat()}",
+            }
+        )
+    return _create_missing_user_notifications(rows)
+
+
+def materialize_user_notification_sources(
+    user, *, now=None, include_reminders=True, include_tasks=True, include_habits=True
+):
     """Backfill all inbox-capable sources for one user without duplicating entries."""
     created = materialize_due_user_notifications(
         user=user,
@@ -307,6 +380,8 @@ def materialize_user_notification_sources(user, *, now=None, include_reminders=T
         created += materialize_task_assignment_notifications(
             Task.objects.filter(assignee=user).select_related("user", "user__profile")
         )
+    if include_habits:
+        created += materialize_due_habit_reminders(user=user, now=now)
     return created
 
 
@@ -777,6 +852,7 @@ def send_pending_user_notification_emails(
     include_vocabulary_shares=True,
     include_weather=True,
     include_task_assignments=True,
+    include_habit_reminders=True,
 ):
     """Send inbox-backed e-mails for notification types without a source delivery column."""
     current_time = now or timezone.now()
@@ -788,7 +864,9 @@ def send_pending_user_notification_emails(
     if include_weather:
         kinds.append(UserNotification.KIND_WEATHER_ALERT)
     if include_task_assignments:
-        kinds.append(UserNotification.KIND_TASK_ASSIGNMENT)
+        kinds += [UserNotification.KIND_TASK_ASSIGNMENT, UserNotification.KIND_TASK_COMMENT]
+    if include_habit_reminders:
+        kinds.append(UserNotification.KIND_HABIT_REMINDER)
     if not kinds:
         return {"sent": 0, "failed": 0, "disabled": True}
 

@@ -6,7 +6,7 @@ from django.db import transaction
 from django.db.models import F, Max, Q
 from django.utils import timezone
 
-from app.models import Task, TaskLabel, TaskList, UserNotification
+from app.models import Task, TaskComment, TaskLabel, TaskList, UserNotification
 from app.services.notes import display_name
 from app.services.user_preferences import (
     format_user_datetime,
@@ -72,6 +72,25 @@ def toggle_task(user, task_id, is_done, *, now=None):
         )
         next_task.labels.set(task.labels.all())
     return task
+
+
+def add_task_comment(user, task_id, body):
+    """Comment on an assigned top-level task as its owner or assignee; returns None otherwise."""
+    clean_body = (body or "").strip()
+    if not clean_body:
+        raise ValidationError("Der Kommentar darf nicht leer sein.")
+    if len(clean_body) > 2000:
+        raise ValidationError("Der Kommentar ist zu lang (höchstens 2000 Zeichen).")
+    task = (
+        Task.objects.filter(
+            Q(user=user) | Q(assignee=user), pk=task_id, parent__isnull=True, assignee__isnull=False
+        )
+        .select_related("user")
+        .first()
+    )
+    if task is None:
+        return None
+    return TaskComment.objects.create(task=task, author=user, body=clean_body)
 
 
 def rearm_task_reminders(task, previous_due_at, *, now=None):
@@ -347,7 +366,7 @@ def get_tasks_context(user, *, now=None, sort=None):
     all_tasks = list(
         visible_tasks(user)
         .select_related("task_list", "user__profile", "assignee__profile", "parent")
-        .prefetch_related("labels")
+        .prefetch_related("labels", "comments__author__profile")
         .order_by(*order_by)
     )
 
@@ -402,6 +421,18 @@ def get_tasks_context(user, *, now=None, sort=None):
             "owner_name": "" if is_own else display_name(task.user),
             "assigned_to_me": task.assignee_id == user.pk
             or (task.parent is not None and task.parent.assignee_id == user.pk),
+            # Only assigned top-level tasks carry a conversation between owner and assignee.
+            "comments": [
+                {
+                    "author_name": display_name(comment.author),
+                    "is_own": comment.author_id == user.pk,
+                    "time_label": format_user_datetime(comment.created_at, user),
+                    "body": comment.body,
+                }
+                for comment in task.comments.all()
+            ]
+            if task.assignee_id and not is_subtask
+            else None,
             "is_subtask": is_subtask,
             "parent_id": task.parent_id,
             "view": view_bucket,
