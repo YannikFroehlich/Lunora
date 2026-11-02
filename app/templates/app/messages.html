@@ -116,6 +116,12 @@
                 </div>
                 <button type="button" role="menuitem" data-menu-action="reply"><i class="fa-solid fa-reply"></i> Antworten</button>
                 <button type="button" role="menuitem" data-menu-action="pin"><i class="fa-solid fa-thumbtack"></i><span data-menu-pin-label>Anpinnen</span></button>
+                {% if feature_flags.tasks %}
+                <button type="button" role="menuitem" data-menu-action="prefill" data-prefill-target="task" data-prefill-url="{% url 'tasks' %}"><i class="fa-solid fa-list-check"></i> Als Aufgabe</button>
+                {% endif %}
+                {% if feature_flags.calendar_event_creation %}
+                <button type="button" role="menuitem" data-menu-action="prefill" data-prefill-target="event" data-prefill-url="{% url 'calendar' %}"><i class="fa-regular fa-calendar-plus"></i> Als Termin</button>
+                {% endif %}
                 <button class="is-danger" type="button" role="menuitem" data-menu-action="delete"><i class="fa-solid fa-trash"></i> Löschen</button>
             </div>
 

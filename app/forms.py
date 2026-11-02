@@ -1156,6 +1156,13 @@ class CalendarEventForm(_CalendarEventDateTimeForm):
         return events[0] if events else None
 
 
+class TaskTemplateUseForm(forms.Form):
+    """Create a task from a template, optionally due at a given time (the user's timezone is active)."""
+
+    template_id = forms.IntegerField()
+    due_at = forms.DateTimeField(required=False, input_formats=["%Y-%m-%dT%H:%M"])
+
+
 class CalendarQuickAddForm(forms.Form):
     """One line like "Zahnarzt morgen 14 Uhr" becomes an event: an hour long at the named time, or all
     day when only a date is given. Anything more detailed goes through the full event dialog."""

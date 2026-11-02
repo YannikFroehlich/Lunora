@@ -17,6 +17,19 @@
     if (openComments) openComments.open = true;
   }
 
+  // A chat message sent here with "Als Aufgabe" (messages.js) lands in the title field.
+  try {
+    const prefill = JSON.parse(sessionStorage.getItem("lunora-chat-prefill") || "null");
+    const titleInput = document.querySelector("#task-add-form [name='title']");
+    if (prefill?.target === "task" && titleInput) {
+      sessionStorage.removeItem("lunora-chat-prefill");
+      titleInput.value = prefill.text.slice(0, 180);
+      titleInput.focus();
+    }
+  } catch {
+    // Storage blocked: nothing to take over.
+  }
+
   let activeFilter = "all";
   let activeView = "all";
   let activeListId = "";

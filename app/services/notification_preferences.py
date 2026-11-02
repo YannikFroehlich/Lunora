@@ -51,6 +51,7 @@ KIND_TO_CATEGORY = {
     UserNotification.KIND_TASK_DUE: NotificationPreference.CATEGORY_TASKS,
     UserNotification.KIND_TASK_ASSIGNMENT: NotificationPreference.CATEGORY_TASKS,
     UserNotification.KIND_TASK_COMMENT: NotificationPreference.CATEGORY_TASKS,
+    UserNotification.KIND_TASK_RETURNED: NotificationPreference.CATEGORY_TASKS,
     UserNotification.KIND_NOTE_MENTION: NotificationPreference.CATEGORY_NOTES,
     UserNotification.KIND_NOTE_COMMENT: NotificationPreference.CATEGORY_NOTES,
     UserNotification.KIND_NOTE_SHARE: NotificationPreference.CATEGORY_NOTES,

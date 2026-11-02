@@ -86,6 +86,17 @@
                 <input type="hidden" name="habit_id" value="{{ habit.id }}">
                 <button class="icon-button" type="submit" aria-label="„{{ habit.title }}“ löschen" title="Löschen"><i class="fa-regular fa-trash-can" aria-hidden="true"></i></button>
             </form>
+            <details class="habit-stats">
+                <summary><i class="fa-solid fa-chart-simple" aria-hidden="true"></i> Statistik</summary>
+                <dl class="habit-stat-numbers">
+                    <div><dt>Abgehakt im letzten Jahr</dt><dd>{{ habit.stats.total }}</dd></div>
+                    <div><dt>Beste Serie</dt><dd>{{ habit.stats.best_streak_label }}</dd></div>
+                    <div><dt>Quote {{ habit.stats.rate_label }}</dt><dd>{{ habit.stats.rate }} %</dd></div>
+                </dl>
+                <div class="habit-heatmap" aria-hidden="true">
+                    {% for cell in habit.stats.heatmap %}<span class="{% if cell.checked %}is-checked{% endif %}{% if cell.is_future %} is-future{% endif %}" title="{{ cell.date|date:'D, d.m.Y' }}"></span>{% endfor %}
+                </div>
+            </details>
         </li>
         {% endfor %}
     </ul>

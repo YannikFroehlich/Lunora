@@ -964,6 +964,27 @@
   overflow-wrap: anywhere;
 }
 
+.task-comments li .task-comment-manage summary {
+  font-size: var(--text-xs);
+}
+
+.task-comment-manage .task-comment-form {
+  margin-top: 6px;
+}
+
+.task-template-item > form:first-child {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.task-templates-hint {
+  margin: 4px 9px 0;
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
+
 .task-comment-form {
   margin-left: 0;
   padding: 0;

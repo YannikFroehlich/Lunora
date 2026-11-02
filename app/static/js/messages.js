@@ -461,6 +461,20 @@
       return;
     }
 
+    if (action === "prefill") {
+      // tasks.js / calendar.js put the text into their quick-add field, where a date can be added.
+      try {
+        sessionStorage.setItem(
+          "lunora-chat-prefill",
+          JSON.stringify({ target: button.dataset.prefillTarget, text: bubble.dataset.preview || "" }),
+        );
+      } catch {
+        // Storage blocked: open the page empty.
+      }
+      window.location.href = button.dataset.prefillUrl;
+      return;
+    }
+
     submitMessageAction(bubble.dataset.messageId, action, button.dataset.emoji || "");
   });
 

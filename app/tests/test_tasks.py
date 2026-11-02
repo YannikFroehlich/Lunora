@@ -14,6 +14,7 @@ from app.models import (
     TaskComment,
     TaskLabel,
     TaskList,
+    TaskTemplate,
     UserNotification,
 )
 from app.services.notifications import (
@@ -824,6 +825,69 @@ class TaskAssignmentTests(TestCase):
             1,
         )
 
+    def test_authors_edit_and_delete_only_their_own_comments(self):
+        task = Task.objects.create(user=self.owner, assignee=self.assignee, title="Folien bauen")
+        self.client.login(username="jonas", password="secret-12345")
+        self.client.post("/tasks/", {"form_name": "task_comment", "task_id": task.pk, "body": "Bis Freitag?"})
+        comment = TaskComment.objects.get()
+
+        response = self.client.post(
+            "/tasks/", {"form_name": "task_comment_edit", "comment_id": comment.pk, "body": "Bis Montag?"}
+        )
+        comment.refresh_from_db()
+        self.assertRedirects(response, f"/tasks/#task-comments-{task.pk}", fetch_redirect_response=False)
+        self.assertEqual(comment.body, "Bis Montag?")
+        self.assertIsNotNone(comment.edited_at)
+        self.assertEqual(
+            UserNotification.objects.get(kind=UserNotification.KIND_TASK_COMMENT).body, "Bis Montag?"
+        )
+
+        self.client.login(username="mira", password="secret-12345")
+        self.client.post(
+            "/tasks/", {"form_name": "task_comment_edit", "comment_id": comment.pk, "body": "Fremd"}
+        )
+        self.client.post("/tasks/", {"form_name": "task_comment_delete", "comment_id": comment.pk})
+        comment.refresh_from_db()
+        self.assertEqual(comment.body, "Bis Montag?")
+
+        self.client.login(username="jonas", password="secret-12345")
+        self.client.post(
+            "/tasks/",
+            # The delete button's form_name comes after the hidden field and wins, as in the browser.
+            {
+                "form_name": ["task_comment_edit", "task_comment_delete"],
+                "comment_id": comment.pk,
+                "body": "x",
+            },
+        )
+        self.assertFalse(TaskComment.objects.exists())
+        self.assertFalse(UserNotification.objects.filter(kind=UserNotification.KIND_TASK_COMMENT).exists())
+
+    def test_assignee_returns_a_task_to_its_owner(self):
+        task = Task.objects.create(user=self.owner, assignee=self.assignee, title="Folien bauen")
+        materialize_task_assignment_notifications([task])
+        self.client.login(username="mira", password="secret-12345")
+        self.client.post("/tasks/", {"form_name": "task_return", "task_id": task.pk})
+        task.refresh_from_db()
+        self.assertEqual(task.assignee, self.assignee)
+
+        self.client.login(username="jonas", password="secret-12345")
+        self.client.post("/tasks/", {"form_name": "task_return", "task_id": task.pk, "reason": "Keine Zeit"})
+
+        task.refresh_from_db()
+        self.assertIsNone(task.assignee)
+        returned = UserNotification.objects.get(kind=UserNotification.KIND_TASK_RETURNED)
+        self.assertEqual(
+            (returned.recipient, returned.title, returned.body),
+            (self.owner, "Jonas hat „Folien bauen“ zurückgegeben", "Keine Zeit"),
+        )
+        self.assertNotIn(task, [item["task"] for item in self.client.get("/tasks/").context["tasks"]])
+
+        # Assigning the same person again notifies them again.
+        task.assignee = self.assignee
+        task.save()
+        self.assertEqual(materialize_task_assignment_notifications([task]), 1)
+
     def test_unrelated_users_cannot_comment(self):
         task = Task.objects.create(user=self.owner, assignee=self.assignee, title="Folien bauen")
         User.objects.create_user(username="lea", email="lea@example.com", password="secret-12345")
@@ -832,3 +896,53 @@ class TaskAssignmentTests(TestCase):
         self.client.post("/tasks/", {"form_name": "task_comment", "task_id": task.pk, "body": "Hallo"})
 
         self.assertFalse(TaskComment.objects.exists())
+
+
+class TaskTemplateTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="mira", email="mira@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=self.user, display_name="Mira", timezone_name="Europe/Berlin")
+        self.client.login(username="mira", password="secret-12345")
+
+    def test_a_task_with_its_checklist_is_saved_and_reused_as_a_template(self):
+        label = TaskLabel.objects.create(owner=self.user, name="Büro")
+        task = Task.objects.create(user=self.user, title="Monatsabschluss", priority=Task.PRIORITY_HIGH)
+        task.labels.add(label)
+        for title in ("Belege sammeln", "Rechnungen prüfen", "Bericht senden"):
+            Task.objects.create(user=self.user, parent=task, title=title)
+
+        self.client.post("/tasks/", {"form_name": "task_template_save", "task_id": task.pk})
+        template = TaskTemplate.objects.get()
+        self.assertEqual(template.subtask_titles, ["Belege sammeln", "Rechnungen prüfen", "Bericht senden"])
+
+        self.client.post(
+            "/tasks/",
+            {"form_name": "task_template_use", "template_id": template.pk, "due_at": "2099-03-31T17:00"},
+        )
+
+        copy = Task.objects.exclude(pk=task.pk).get(parent__isnull=True)
+        self.assertEqual((copy.title, copy.priority, copy.is_done), ("Monatsabschluss", "high", False))
+        self.assertEqual(copy.due_at, datetime(2099, 3, 31, 17, tzinfo=ZoneInfo("Europe/Berlin")))
+        self.assertEqual(list(copy.labels.all()), [label])
+        self.assertEqual(
+            list(copy.subtasks.order_by("created_at", "id").values_list("title", flat=True)),
+            ["Belege sammeln", "Rechnungen prüfen", "Bericht senden"],
+        )
+        context = self.client.get("/tasks/").context
+        self.assertEqual(
+            context["task_templates"], [{"id": template.pk, "title": "Monatsabschluss", "subtask_count": 3}]
+        )
+
+    def test_templates_stay_with_their_owner(self):
+        other = User.objects.create_user(username="lukas", email="lukas@example.com", password="secret-12345")
+        foreign_task = Task.objects.create(user=other, title="Fremd")
+        foreign_template = TaskTemplate.objects.create(owner=other, title="Fremd")
+
+        self.client.post("/tasks/", {"form_name": "task_template_save", "task_id": foreign_task.pk})
+        self.client.post("/tasks/", {"form_name": "task_template_use", "template_id": foreign_template.pk})
+        self.client.post("/tasks/", {"form_name": "task_template_delete", "template_id": foreign_template.pk})
+
+        self.assertEqual(list(TaskTemplate.objects.values_list("owner__username", flat=True)), ["lukas"])
+        self.assertFalse(Task.objects.filter(user=self.user).exists())

@@ -3,26 +3,34 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.shortcuts import redirect, render
 
-from app.forms import TaskForm, TaskLabelForm, TaskListForm, TaskRescheduleForm
+from app.forms import TaskForm, TaskLabelForm, TaskListForm, TaskRescheduleForm, TaskTemplateUseForm
 from app.models import Task, TaskLabel, TaskList
+from app.services.notes import display_name
 from app.services.notifications import (
     materialize_task_assignment_notifications,
     materialize_task_comment_notification,
+    materialize_task_return_notification,
 )
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.tasks import (
     add_task_comment,
+    create_task_from_template,
     create_task_label,
     create_task_list,
     delete_task,
+    delete_task_comment,
     delete_task_label,
     delete_task_list,
+    delete_task_template,
+    edit_task_comment,
     get_tasks_context,
     move_task,
     move_task_list,
     rearm_task_reminders,
     rename_task_list,
     reschedule_task,
+    return_task,
+    save_task_template,
     toggle_task,
 )
 from app.services.user_preferences import format_user_datetime
@@ -82,6 +90,58 @@ def tasks(request):
                 materialize_task_comment_notification(comment)
                 # Reopen the conversation that was just written in.
                 return redirect(f"{request.get_full_path()}#task-comments-{comment.task_id}")
+        return redirect(request.get_full_path())
+    elif form_name in ("task_comment_edit", "task_comment_delete"):
+        comment_id = request.POST.get("comment_id") or 0
+        try:
+            if form_name == "task_comment_edit":
+                comment = edit_task_comment(request.user, comment_id, request.POST.get("body"))
+                task_id = comment.task_id if comment else None
+            else:
+                task_id = delete_task_comment(request.user, comment_id)
+        except ValidationError as error:
+            django_messages.error(request, " ".join(error.messages))
+            return redirect(request.get_full_path())
+        if task_id is None:
+            django_messages.error(request, "Dieser Kommentar kann nicht geändert werden.")
+            return redirect(request.get_full_path())
+        return redirect(f"{request.get_full_path()}#task-comments-{task_id}")
+    elif form_name == "task_return":
+        task = return_task(request.user, request.POST.get("task_id") or 0)
+        if task is None:
+            django_messages.error(request, "Diese Aufgabe kann nicht zurückgegeben werden.")
+        else:
+            materialize_task_return_notification(
+                task, request.user, (request.POST.get("reason") or "").strip()
+            )
+            django_messages.success(request, f"„{task.title}“ an {display_name(task.user)} zurückgegeben.")
+        return redirect(request.get_full_path())
+    elif form_name == "task_template_save":
+        try:
+            template = save_task_template(request.user, request.POST.get("task_id") or 0)
+        except ValidationError as error:
+            django_messages.error(request, " ".join(error.messages))
+        else:
+            if template:
+                django_messages.success(request, f"Vorlage „{template.title}“ gespeichert.")
+        return redirect(request.get_full_path())
+    elif form_name == "task_template_use":
+        use_form = TaskTemplateUseForm(request.POST)
+        task = (
+            create_task_from_template(
+                request.user, use_form.cleaned_data["template_id"], due_at=use_form.cleaned_data["due_at"]
+            )
+            if use_form.is_valid()
+            else None
+        )
+        if task is None:
+            django_messages.error(request, "Aufgabe konnte nicht aus der Vorlage erstellt werden.")
+        else:
+            django_messages.success(request, f"Aufgabe „{task.title}“ aus Vorlage erstellt.")
+        return redirect(request.get_full_path())
+    elif form_name == "task_template_delete":
+        if delete_task_template(request.user, request.POST.get("template_id") or 0):
+            django_messages.success(request, "Vorlage gelöscht.")
         return redirect(request.get_full_path())
     elif form_name == "task_delete":
         if delete_task(request.user, request.POST.get("task_id")):

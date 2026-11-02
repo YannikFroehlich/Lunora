@@ -6,6 +6,16 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Task comments can be edited (marked "bearbeitet") and deleted by their author.
+- An assigned task can be declined or handed back ("Ablehnen oder zurückgeben", with an optional
+  reason); the owner is notified and the task is theirs alone again.
+- Task templates: save a task with its subtasks as a reusable checklist (copy icon in the row) and
+  create new tasks from it in the "Vorlagen" sidebar section, optionally with a due date.
+- Habit statistics: each habit shows a heatmap of the last year, the number of check-ins, its best
+  streak and the completion rate of the last 30 days (12 weeks for weekly habits).
+- Chat messages can be taken over as a task or an event from their context menu; the text lands in
+  the quick-add field of the tasks page or the calendar, where a date can be added.
+- Fixed the habit create form being squeezed into one row on phones.
 - Tasks assigned to you now also appear in your calendar (with a small person icon). You can tick
   them off there; only the owner can drag them to another day.
 - Habit reminders: give a habit a reminder time (when creating it, or with the bell on its card) and

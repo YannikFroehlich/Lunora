@@ -19,7 +19,14 @@ from app.models import (
     VocabularyList,
     VocabularyListShare,
 )
-from app.services.habits import STREAK_WINDOW_DAYS, current_streak, habit_items, is_done_now
+from app.services.habits import (
+    STREAK_WINDOW_DAYS,
+    current_streak,
+    habit_items,
+    habit_stats,
+    is_done_now,
+    longest_streak,
+)
 from app.services.notifications import materialize_due_habit_reminders, send_pending_user_notification_emails
 from app.services.uml_content import validate_uml_document
 from app.services.user_preferences import localtime_for_user
@@ -526,6 +533,27 @@ class HabitTrackerTests(TestCase):
         streaks = {item["title"]: item["streak"] for item in habit_items(self.user, self.today)}
 
         self.assertEqual(streaks, {"Lesen": long_streak, "Sport": 70})
+
+    def test_statistics_count_the_last_year_best_streak_and_recent_rate(self):
+        daily = Habit(cadence=Habit.CADENCE_DAILY)
+        weekly = Habit(cadence=Habit.CADENCE_WEEKLY)
+        today = date(2099, 3, 4)  # a Wednesday
+        checks = {today - timedelta(days=offset) for offset in (0, 1, 2, 10, 11, 12, 13, 400)}
+
+        self.assertEqual(longest_streak(daily, checks), 4)
+        self.assertEqual(longest_streak(weekly, {date(2099, 3, 2), date(2099, 3, 10), date(2099, 3, 25)}), 2)
+
+        stats = habit_stats(daily, checks, today, 3)
+        self.assertEqual((stats["total"], stats["best_streak_label"], stats["rate"]), (7, "4 Tage", 23))
+        self.assertEqual(len(stats["heatmap"]), 53 * 7)
+        self.assertEqual(stats["heatmap"][0]["date"].weekday(), 0)
+        self.assertEqual(
+            [cell["date"] for cell in stats["heatmap"] if cell["is_future"]],
+            [date(2099, 3, 5), date(2099, 3, 6), date(2099, 3, 7), date(2099, 3, 8)],
+        )
+
+        weekly_stats = habit_stats(weekly, {date(2099, 3, 2), date(2099, 2, 20)}, today, 2)
+        self.assertEqual((weekly_stats["rate"], weekly_stats["rate_label"]), (17, "der letzten 12 Wochen"))
 
     def test_daily_reminder_fires_once_after_its_time_while_the_habit_is_open(self):
         berlin = ZoneInfo("Europe/Berlin")

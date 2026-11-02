@@ -22,6 +22,7 @@ from app.models import (
     Task,
     TaskLabel,
     TaskList,
+    TaskTemplate,
     UmlDiagram,
     VacationPeriod,
     VacationYear,
@@ -197,11 +198,22 @@ def _tasks(user):
                         "author": comment.author.get_username(),
                         "body": comment.body,
                         "created_at": comment.created_at,
+                        "edited_at": comment.edited_at,
                     }
                     for comment in task.comments.all()
                 ],
             }
             for task in tasks
+        ],
+        "templates": [
+            {
+                "title": template.title,
+                "priority": template.priority,
+                "list_id": template.task_list_id,
+                "label_ids": [label.pk for label in template.labels.all()],
+                "subtasks": template.subtask_titles,
+            }
+            for template in TaskTemplate.objects.filter(owner=user).prefetch_related("labels")
         ],
     }
 
