@@ -65,8 +65,7 @@ def calendar(request):
             return disabled_feature_response(request, "calendar_event_creation")
         editing_event_id = request.POST.get("event_id")
         event = CalendarEvent.objects.filter(
-            pk=editing_event_id,
-            user=request.user,
+            pk=editing_event_id, user=request.user, subscription=None
         ).first()
         if event is None:
             django_messages.error(request, "Termin konnte nicht bearbeitet werden.")
@@ -98,7 +97,9 @@ def calendar(request):
     if request.method == "POST" and request.POST.get("form_name") == "calendar_event_delete":
         if not calendar_event_creation_enabled:
             return disabled_feature_response(request, "calendar_event_creation")
-        event = CalendarEvent.objects.filter(pk=request.POST.get("event_id"), user=request.user).first()
+        event = CalendarEvent.objects.filter(
+            pk=request.POST.get("event_id"), user=request.user, subscription=None
+        ).first()
         if event is not None:
             # The edit dialog's delete button sends the chosen series scope along.
             _total, deleted = series_scope_events(event, request.POST.get("scope")).delete()
@@ -112,8 +113,7 @@ def calendar(request):
         recurrence_id = request.POST.get("recurrence_id")
         if recurrence_id:
             CalendarEvent.objects.filter(
-                recurrence_id=recurrence_id,
-                user=request.user,
+                recurrence_id=recurrence_id, user=request.user, subscription=None
             ).delete()
             django_messages.success(request, "Terminserie gelöscht.")
         return redirect(request.get_full_path())
@@ -202,8 +202,12 @@ def _respond_to_invitation(request):
 @login_required
 def calendar_event_detail(request, event_id):
     """One event with its invitees and comments; for the organizer and everyone invited."""
-    event = get_object_or_404(CalendarEvent.objects.select_related("user__profile"), pk=event_id)
+    event = get_object_or_404(
+        CalendarEvent.objects.select_related("user__profile", "subscription"), pk=event_id
+    )
     if not can_view_event(event, request.user):
+        raise Http404
+    if event.subscription_id and not feature_enabled("calendar_subscriptions"):
         raise Http404
     comments_enabled = feature_enabled("calendar_event_creation")
     comment_error = ""

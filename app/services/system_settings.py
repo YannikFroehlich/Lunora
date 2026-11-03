@@ -12,6 +12,7 @@ FEATURE_FIELDS = {
     "calendar_event_creation": "calendar_event_creation_enabled",
     "calendar_reminders": "calendar_reminders_enabled",
     "calendar_feed": "calendar_feed_enabled",
+    "calendar_subscriptions": "calendar_subscriptions_enabled",
     "messages": "messages_enabled",
     "notes": "notes_enabled",
     "vacation_planner": "vacation_planner_enabled",
@@ -27,6 +28,7 @@ FEATURE_LABELS = {
     "calendar_event_creation": "Termin-Erstellung",
     "calendar_reminders": "Erinnerungen",
     "calendar_feed": "Kalender-Abo",
+    "calendar_subscriptions": "Externe Kalender",
     "messages": "Nachrichten",
     "notes": "Notizen",
     "vacation_planner": "Urlaubsplaner",
@@ -44,6 +46,7 @@ class DefaultSystemSettings:
     calendar_event_creation_enabled: bool = True
     calendar_reminders_enabled: bool = True
     calendar_feed_enabled: bool = True
+    calendar_subscriptions_enabled: bool = True
     messages_enabled: bool = True
     notes_enabled: bool = True
     vacation_planner_enabled: bool = True

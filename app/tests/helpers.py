@@ -1,5 +1,6 @@
 """Shared fixtures and fake HTTP responses for the test modules."""
 
+import io
 import json
 
 PNG_1X1_BYTES = (
@@ -94,3 +95,36 @@ def postgres_connection():
     # select_for_update() refuses to compile in autocommit; asking would open a connection.
     connection.get_autocommit = lambda: False
     return connection
+
+
+class FakeHttpConnection:
+    """Stands in for http.client.HTTP(S)Connection: answers with the queued (status, headers, body)
+    tuples in order and records (host, path) of every request."""
+
+    responses = []
+    requests = []
+
+    def __init__(self, host, port=None, timeout=None):
+        self.host = host
+
+    def request(self, method, path, headers=None):
+        FakeHttpConnection.requests.append((self.host, path))
+
+    def getresponse(self):
+        return FakeHttpResponse(*FakeHttpConnection.responses.pop(0))
+
+    def close(self):
+        pass
+
+
+class FakeHttpResponse:
+    def __init__(self, status, headers, body):
+        self.status = status
+        self.headers = headers
+        self.body = io.BytesIO(body)
+
+    def getheader(self, name, default=None):
+        return self.headers.get(name, default)
+
+    def read(self, size=-1):
+        return self.body.read(size)

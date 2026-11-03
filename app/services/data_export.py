@@ -14,6 +14,7 @@ from app.models import (
     CalendarEvent,
     CalendarEventComment,
     CalendarReminder,
+    CalendarSubscription,
     ChatMessage,
     ChatMessageAttachment,
     Habit,
@@ -241,7 +242,8 @@ def _tasks(user):
 def _calendar(user):
     return {
         "events": list(
-            CalendarEvent.objects.filter(user=user).values(
+            # Events of subscribed calendars are copies of someone else's data, re-fetched on every sync.
+            CalendarEvent.objects.filter(user=user, subscription=None).values(
                 "title",
                 "category",
                 "description",
@@ -254,6 +256,10 @@ def _calendar(user):
         ),
         "reminders": list(
             CalendarReminder.objects.filter(user=user).values("title", "due_at", "is_done", "created_at")
+        ),
+        # The address stays out: it is a credential that reads the external calendar.
+        "subscriptions": list(
+            CalendarSubscription.objects.filter(user=user).values("name", "color", "created_at")
         ),
         "comments": [
             {"event": comment.event.title, "body": comment.body, "created_at": comment.created_at}

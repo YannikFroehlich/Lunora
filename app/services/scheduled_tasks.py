@@ -1,6 +1,7 @@
 from django.utils import timezone
 
 from app.services.audit_log import purge_old_entries
+from app.services.calendar_subscriptions import sync_due_subscriptions
 from app.services.chat import send_due_scheduled_messages
 from app.services.notifications import (
     materialize_due_habit_reminders,
@@ -37,6 +38,10 @@ def run_scheduled_tasks(*, now=None):
     else:
         task_reminder_result = {"sent": 0, "failed": 0, "disabled": True}
     weekly_result = send_weekly_summaries(now=current_time)
+    if feature_enabled("calendar_subscriptions"):
+        subscription_result = sync_due_subscriptions(now=current_time)
+    else:
+        subscription_result = {"synced": 0, "failed": 0, "disabled": True}
     if feature_enabled("weather"):
         weather_push_result = materialize_web_push_weather_alerts(now=current_time)
     else:
@@ -67,6 +72,7 @@ def run_scheduled_tasks(*, now=None):
         "note_activity_emails": note_activity_result,
         "task_reminder_emails": task_reminder_result,
         "weekly_summaries": weekly_result,
+        "calendar_subscriptions": subscription_result,
         "weather_push_alerts": weather_push_result,
         "habit_reminders": habit_reminder_result,
         "scheduled_messages": scheduled_message_result,

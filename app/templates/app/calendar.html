@@ -94,7 +94,7 @@
                         {% if event.can_delete %}
                         <button type="button" class="event-chip tone-{{ event.tone }}" title="{{ event.time }} · {{ event.label }} (bearbeiten oder verschieben)" {% include 'app/partials/calendar_event_edit_data.html' %} {% include 'app/partials/calendar_event_move_data.html' %}>{{ event.label }}</button>
                         {% else %}
-                        <a class="event-chip tone-{{ event.tone }} {% if event.is_invited %}is-invited{% endif %}" href="{{ event.detail_url }}" title="{{ event.time }} · {{ event.label }} (Details)">{% if event.is_invited %}<i class="fa-solid fa-user-group" aria-hidden="true"></i>{% endif %}{{ event.label }}</a>
+                        <a class="event-chip tone-{{ event.tone }} {% if event.is_invited %}is-invited{% endif %}" href="{{ event.detail_url }}" title="{{ event.time }} · {{ event.label }}{% if event.subscription_name %} · {{ event.subscription_name }}{% endif %} (Details)">{% if event.is_invited %}<i class="fa-solid fa-user-group" aria-hidden="true"></i>{% elif event.subscription_name %}<i class="fa-solid fa-rss" aria-hidden="true"></i>{% endif %}{{ event.label }}</a>
                         {% endif %}
                         {% endfor %}
                         {% for task in day.tasks %}
@@ -151,6 +151,7 @@
                     {% include 'app/partials/calendar_location_link.html' with item=event %}
                     {% if event.recurrence_id %}<i class="fa-solid fa-repeat" title="Wiederkehrender Termin"></i>{% endif %}
                     {% if event.is_invited %}<i class="fa-solid fa-user-group" title="Einladung"></i>{% endif %}
+                    {% if event.subscription_name %}<i class="fa-solid fa-rss" title="Abonniert: {{ event.subscription_name }}"></i>{% endif %}
                     <i class="fa-solid {{ event.icon }}"></i>
                     {% if event.can_delete %}
                     <span class="event-row-actions">
@@ -202,6 +203,7 @@
                     {% include 'app/partials/calendar_location_link.html' with item=event %}
                     {% if event.recurrence_id %}<i class="fa-solid fa-repeat" title="Wiederkehrender Termin"></i>{% endif %}
                     {% if event.is_invited %}<i class="fa-solid fa-user-group" title="Einladung"></i>{% endif %}
+                    {% if event.subscription_name %}<i class="fa-solid fa-rss" title="Abonniert: {{ event.subscription_name }}"></i>{% endif %}
                     <i class="fa-solid {{ event.icon }}"></i>
                     {% if event.can_delete %}
                     <span class="event-row-actions">

@@ -10,7 +10,7 @@ Lunora ist ein kleines Django-basiertes Workspace-Dashboard mit ruhiger Glas-UI.
 - Werkzeuge: Gewohnheiten-Tracker mit Serien, Fokus-Timer, UML-Klassendiagramme und Vokabeltrainer
 - Datenexport als ZIP und Import von Markdown-Notizen sowie .ics-Kalenderdateien
 - Wetterseite mit Ortssuche, Demo-Daten ohne API-Key, OpenWeather-Anbindung und Regenradar-Proxy
-- Eigenständiger Kalender mit Kategorien (Termin, Meeting, Deadline, Privat, Sonstiges), fälligen Aufgaben in der Monatsübersicht, Tagesliste, kommenden Terminen und Erinnerungen; per privatem Abo-Link (iCal) in Google Kalender, Apple Kalender oder Outlook abonnierbar
+- Eigenständiger Kalender mit Kategorien (Termin, Meeting, Deadline, Privat, Sonstiges), fälligen Aufgaben in der Monatsübersicht, Tagesliste, kommenden Terminen und Erinnerungen; per privatem Abo-Link (iCal) in Google Kalender, Apple Kalender oder Outlook abonnierbar; umgekehrt lassen sich private Google-, Outlook- oder iCloud-Kalender per geheimer iCal-Adresse schreibgeschützt in Lunora einblenden
 - Nachrichtenseite mit Direktunterhaltungen, ungelesenen Nachrichten, Live-Updates, Reaktionen, angepinnten Nachrichten, Lesestatus, Stummschalten und Blockieren
 - Zentrale Benachrichtigungs-Inbox mit ungelesenem Badge, Filter und Lesestatus sowie detaillierten Kanalregeln pro Kategorie für Inbox, E-Mail und Web Push
 - Web-Push-Zustellung für Termineinladungen, Erinnerungen, Aufgaben, Notizaktivitäten, Freigaben und Wetterwarnungen mit Ruhezeit, Geräte-Test und automatischer Wiederholung
@@ -268,5 +268,6 @@ python manage.py purge_expired_notes
 - Keine echten Secrets, API-Keys, privaten Kalenderlinks, lokalen Datenbanken oder Uploads committen.
 - `.env`, `db.sqlite3` und `media/` sind lokale Entwicklungsdaten.
 - Kalender-Abo-Links (`/calendar/feed/<token>.ics`) sind ohne Login abrufbar; das Token ist das einzige Geheimnis. Es wird nur in den eigenen Einstellungen angezeigt und lässt sich dort neu erzeugen oder deaktivieren. Google Kalender aktualisiert abonnierte Kalender nur etwa alle 8–24 Stunden.
+- Geheime iCal-Adressen externer Kalender werden wie Passwörter behandelt: Lunora zeigt sie nach dem Speichern nicht wieder an, exportiert und loggt sie nicht und ruft sie nur über öffentliche Adressen ab (kein Zugriff auf interne Netze, auch nicht über Weiterleitungen oder DNS). Den Abruf übernimmt der `run_automations`-Prozess etwa alle 30 Minuten.
 - Notizanhänge liegen unter `DJANGO_PRIVATE_MEDIA_ROOT` und dürfen nur über die berechtigungsgeprüften Download-Endpunkte ausgeliefert werden.
 - Wetter-API-Keys bleiben serverseitig und werden nicht an Browser-JavaScript weitergegeben.
