@@ -6,6 +6,11 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Event reminders: an event can remind you "Zum Beginn", 5/15/30 minutes, 1–2 hours, 1–2 days or a
+  week before it starts. The reminder reaches you and everyone who accepted the invitation, through
+  the notification center, e-mail, Web Push and the browser, with the event's time, place and a link
+  to its day. Moving or editing the event moves the reminder along; events with a reminder show a
+  bell in the lists.
 - Health check for monitoring: `/healthz/` answers 200 while the database, the cache and the
   background automations are working and 503 otherwise, with only a status word per check.
 - Accessibility pass over all pages (checked with axe-core in light and dark mode, including open

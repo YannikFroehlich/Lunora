@@ -182,7 +182,7 @@ def claim_desktop_notifications(request):
 
     if feature_enabled("calendar_reminders"):
         notifications.extend(
-            {**reminder, "url": calendar_url} for reminder in claim_due_desktop_reminders(request.user)
+            {"url": calendar_url, **reminder} for reminder in claim_due_desktop_reminders(request.user)
         )
 
     if feature_enabled("calendar_event_creation"):

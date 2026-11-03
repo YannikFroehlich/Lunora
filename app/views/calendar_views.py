@@ -20,6 +20,7 @@ from app.services.calendar_service import (
     build_calendar_feed,
     move_calendar_event,
     series_scope_events,
+    sync_event_reminders,
 )
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.user_preferences import format_user_date, format_user_time
@@ -117,10 +118,17 @@ def calendar(request):
     if request.method == "POST" and request.POST.get("form_name") == "event_rsvp":
         status = request.POST.get("status")
         if status in {CalendarEventAttendee.STATUS_ACCEPTED, CalendarEventAttendee.STATUS_DECLINED}:
-            CalendarEventAttendee.objects.filter(
-                pk=request.POST.get("attendee_id"),
-                user=request.user,
-            ).update(status=status, responded_at=timezone.now())
+            attendee = (
+                CalendarEventAttendee.objects.filter(pk=request.POST.get("attendee_id"), user=request.user)
+                .select_related("event")
+                .first()
+            )
+            if attendee is not None:
+                attendee.status = status
+                attendee.responded_at = timezone.now()
+                attendee.save(update_fields=["status", "responded_at"])
+                # Accepting adds the event's reminder for this person, declining removes it.
+                sync_event_reminders([attendee.event])
         return redirect(request.get_full_path())
 
     if request.method == "POST" and request.POST.get("form_name") == "reminder_add":

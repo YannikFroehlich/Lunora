@@ -255,6 +255,7 @@ if (editDialog) {
   const allDayInput = editForm?.querySelector("input[name='is_all_day']");
   const locationInput = editForm?.querySelector("input[name='location']");
   const categorySelect = editForm?.querySelector("select[name='category']");
+  const reminderSelect = editForm?.querySelector("select[name='reminder_minutes']");
   const attendeeInputs = editForm?.querySelectorAll("input[name='attendees']") || [];
   const timeFields = editForm?.querySelectorAll("[data-event-edit-time-field]") || [];
   const scopeFieldset = editForm?.querySelector("[data-event-edit-scope]");
@@ -305,6 +306,7 @@ if (editDialog) {
     if (allDayInput) allDayInput.checked = data.allDay === "true";
     if (locationInput) locationInput.value = data.location || "";
     if (categorySelect) categorySelect.value = data.category || "other";
+    if (reminderSelect) reminderSelect.value = data.reminder || "";
 
     const attendeeIds = (data.attendees || "").split(",").filter(Boolean);
     attendeeInputs.forEach((input) => {
@@ -334,6 +336,7 @@ if (editDialog) {
         category: button.dataset.editCategory,
         location: button.dataset.editLocation,
         attendees: button.dataset.editAttendees,
+        reminder: button.dataset.editReminder,
         series: button.dataset.editSeries,
       }),
     );

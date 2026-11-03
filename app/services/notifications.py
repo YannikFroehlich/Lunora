@@ -34,7 +34,7 @@ from app.services.notification_preferences import (
     notification_channel_enabled,
     notification_preference_map,
 )
-from app.services.user_preferences import format_user_datetime, localtime_for_user
+from app.services.user_preferences import format_user_date, format_user_datetime, localtime_for_user
 from app.services.weather_service import get_weather_alert_for_location, weather_location_to_dict
 
 logger = logging.getLogger(__name__)
@@ -123,6 +123,30 @@ def _create_missing_user_notifications(rows):
     return created
 
 
+def reminder_texts(reminder, user):
+    """Title, body and link of a due reminder; an event's reminder speaks about the event."""
+    event = reminder.event
+    if event is None:
+        return {
+            "title": f"Erinnerung fällig: {reminder.title}",
+            "body": f"Fällig am {format_user_datetime(reminder.due_at, user)}",
+            "url": "/calendar/",
+        }
+    local_start = localtime_for_user(event.start_at, user)
+    when = (
+        f"Ganztägig am {format_user_date(event.start_at, user)}"
+        if event.is_all_day
+        else f"Beginnt {format_user_datetime(event.start_at, user)}"
+    )
+    if event.location:
+        when = f"{when} · {event.location}"
+    return {
+        "title": f"Termin: {event.title}",
+        "body": when,
+        "url": f"/calendar/?view=day&date={local_start.date().isoformat()}",
+    }
+
+
 def materialize_due_user_notifications(
     *,
     user=None,
@@ -139,17 +163,18 @@ def materialize_due_user_notifications(
             is_done=False,
             due_at__isnull=False,
             due_at__lte=current_time,
-        ).select_related("user", "user__profile")
+        ).select_related("user", "user__profile", "event")
         if user is not None:
             reminders = reminders.filter(user=user)
         for reminder in reminders:
+            texts = reminder_texts(reminder, reminder.user)
             rows.append(
                 {
                     "recipient_id": reminder.user_id,
                     "kind": UserNotification.KIND_CALENDAR_REMINDER,
-                    "title": f"Erinnerung fällig: {reminder.title}",
-                    "body": f"Fällig am {format_user_datetime(reminder.due_at, reminder.user)}",
-                    "url": "/calendar/",
+                    "title": texts["title"],
+                    "body": texts["body"],
+                    "url": texts["url"],
                     "source_key": f"calendar-reminder:{reminder.pk}",
                 }
             )
@@ -461,6 +486,7 @@ def claim_due_desktop_reminders(user, *, now=None, limit=5):
                 due_at__lte=current_time,
                 desktop_notified_at__isnull=True,
             )
+            .select_related("event")
             .order_by("due_at", "id")[:limit]
         )
         if reminders:
@@ -468,14 +494,18 @@ def claim_due_desktop_reminders(user, *, now=None, limit=5):
                 desktop_notified_at=current_time
             )
 
-    return [
-        {
+    items = []
+    for reminder in reminders:
+        item = {
             "id": reminder.id,
             "title": reminder.title,
             "due_label": format_user_datetime(reminder.due_at, user),
         }
-        for reminder in reminders
-    ]
+        if reminder.event_id:
+            texts = reminder_texts(reminder, user)
+            item.update({"title": texts["title"], "body": texts["body"], "url": texts["url"]})
+        items.append(item)
+    return items
 
 
 def send_due_reminder_emails(*, now=None):
@@ -497,7 +527,7 @@ def send_due_reminder_emails(*, now=None):
             user__profile__notify_email=True,
         )
         .exclude(user__email="")
-        .select_related("user", "user__profile")
+        .select_related("user", "user__profile", "event")
         .order_by("due_at", "id")
     )
     reminders = filter_channel_items(
@@ -511,13 +541,20 @@ def send_due_reminder_emails(*, now=None):
     failed = 0
     for reminder in reminders:
         try:
-            send_mail(
-                subject=f"Lunora-Erinnerung: {reminder.title}",
-                message=(
+            if reminder.event_id:
+                texts = reminder_texts(reminder, reminder.user)
+                subject = f"Lunora: {reminder.event.title}"
+                message = f"{texts['title']}\n{texts['body']}\n\nÖffne Lunora, um den Termin anzusehen."
+            else:
+                subject = f"Lunora-Erinnerung: {reminder.title}"
+                message = (
                     f"Deine Erinnerung „{reminder.title}“ ist fällig.\n\n"
                     f"Fällig am: {format_user_datetime(reminder.due_at, reminder.user)}\n"
                     "Öffne Lunora, um sie als erledigt zu markieren."
-                ),
+                )
+            send_mail(
+                subject=subject,
+                message=message,
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 recipient_list=[reminder.user.email],
             )
@@ -976,7 +1013,9 @@ def _weekly_summary_text(user, current_time):
         ).order_by("start_at", "title")[:5]
     )
     reminders = list(
-        CalendarReminder.objects.filter(user=user, is_done=False).order_by("due_at", "created_at")[:5]
+        CalendarReminder.objects.filter(user=user, is_done=False, event__isnull=True).order_by(
+            "due_at", "created_at"
+        )[:5]
     )
     unread_messages = unread_total_for_user(user)
     new_note_shares = NoteShare.objects.filter(
