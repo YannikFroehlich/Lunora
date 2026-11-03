@@ -337,6 +337,19 @@
     border-color: var(--color-accent-strong);
 }
 
+/* The day clicked on the calendar page, flashed for three seconds (vacation_planner.js); removing
+   the class fades it out. */
+.vacation-calendar .calendar-day {
+    transition:
+        background-color 0.6s ease,
+        box-shadow 0.6s ease;
+}
+
+.vacation-calendar .calendar-day.is-flashed {
+    background: color-mix(in srgb, var(--color-accent) 40%, transparent);
+    box-shadow: inset 0 0 0 2px var(--color-accent-strong);
+}
+
 .calendar-hint {
     margin: -6px 0 14px;
     color: var(--color-muted);

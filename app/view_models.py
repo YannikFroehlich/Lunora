@@ -581,7 +581,8 @@ def _soonest(items, limit):
 
 
 def _vacation_calendar_url(day):
-    return f"{reverse('vacation_planner')}?year={day.year}&month={day.month}#vacation-calendar"
+    # `day` makes the planner flash that day once (vacation_planner.js).
+    return f"{reverse('vacation_planner')}?year={day.year}&month={day.month}&day={day.isoformat()}#vacation-calendar"
 
 
 def _upcoming_vacation_items(user, now, limit):

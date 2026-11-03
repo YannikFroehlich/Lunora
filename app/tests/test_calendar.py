@@ -153,7 +153,8 @@ class CalendarVacationAndRangeTests(TestCase):
         self.assertEqual([marker["label"] for marker in days["2026-12-22"]["markers"]], ["Tarifurlaub"])
         self.assertEqual(days["2026-12-22"]["markers"][0]["tone"], "green")
         self.assertEqual(
-            days["2026-12-22"]["markers"][0]["url"], "/vacation-planner/?year=2026&month=12#vacation-calendar"
+            days["2026-12-22"]["markers"][0]["url"],
+            "/vacation-planner/?year=2026&month=12&day=2026-12-22#vacation-calendar",
         )
         self.assertEqual(days["2026-12-22"]["events"], [])
         self.assertEqual(
@@ -162,7 +163,7 @@ class CalendarVacationAndRangeTests(TestCase):
                 {
                     "label": "Erster Weihnachtstag",
                     "tone": "red",
-                    "url": "/vacation-planner/?year=2026&month=12#vacation-calendar",
+                    "url": "/vacation-planner/?year=2026&month=12&day=2026-12-25#vacation-calendar",
                 }
             ],
         )
