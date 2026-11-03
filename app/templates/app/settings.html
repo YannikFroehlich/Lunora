@@ -23,7 +23,7 @@
 
     <nav class="settings-section-switcher" aria-label="Einstellungsbereiche" data-settings-tabs hidden>
         <div class="settings-section-tabs" role="tablist" aria-label="Einstellungsbereich auswählen">
-            <button class="settings-section-tab is-active" type="button" role="tab" id="settings-tab-appearance" aria-selected="true" aria-controls="appearance-form" tabindex="0" data-settings-tab="appearance">
+            <button class="settings-section-tab is-active" type="button" role="tab" id="settings-tab-appearance" aria-selected="true" aria-controls="settings-panel-appearance" tabindex="0" data-settings-tab="appearance">
                 <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
                 <span>Darstellung</span>
             </button>
@@ -56,7 +56,8 @@
 
     <div class="settings-grid" data-settings-panels>
         <div class="settings-column">
-            <form id="appearance-form" class="glass-panel appearance-panel" method="post" role="tabpanel" aria-labelledby="settings-tab-appearance" data-settings-panel="appearance">
+            <section id="settings-panel-appearance" class="glass-panel appearance-panel" role="tabpanel" aria-labelledby="settings-tab-appearance" data-settings-panel="appearance">
+            <form class="settings-panel-form" method="post" id="appearance-form">
                 {% csrf_token %}
                 <input type="hidden" name="form_name" value="appearance">
                 <input type="hidden" name="return_to" value="{{ return_to }}">
@@ -65,8 +66,8 @@
                 <div class="form-errors">{{ appearance_form.non_field_errors }}</div>
                 {% endif %}
 
-                <label class="field-label">Theme</label>
-                <div class="theme-options theme-mode-options">
+                <span class="field-label" id="appearance-theme-label">Modus</span>
+                <div class="theme-options theme-mode-options" role="radiogroup" aria-labelledby="appearance-theme-label">
                     <label class="choice-card {% if appearance_form.theme.value == 'light' %}is-active{% endif %}" data-theme-choice="light">
                         <input type="radio" name="{{ appearance_form.theme.html_name }}" value="light" {% if appearance_form.theme.value == 'light' %}checked{% endif %}>
                         <i class="fa-regular fa-sun"></i>
@@ -85,8 +86,8 @@
                 </div>
                 {{ appearance_form.theme.errors }}
 
-                <label class="field-label">Farbthema</label>
-                <div class="theme-options palette-options">
+                <span class="field-label" id="appearance-palette-label">Farbthema</span>
+                <div class="theme-options palette-options" role="radiogroup" aria-labelledby="appearance-palette-label">
                     {% for value, label in appearance_form.color_theme.field.choices %}
                     <label class="choice-card {% if appearance_form.color_theme.value == value %}is-active{% endif %}" data-color-theme-choice="{{ value }}">
                         <input type="radio" name="{{ appearance_form.color_theme.html_name }}" value="{{ value }}" {% if appearance_form.color_theme.value == value %}checked{% endif %}>
@@ -102,8 +103,8 @@
                 <div class="slider-labels"><span>Dezent</span><span>Ausgeglichen</span><span>Kräftig</span></div>
                 {{ appearance_form.theme_strength.errors }}
 
-                <label class="field-label">Akzentfarbe</label>
-                <div class="color-row">
+                <span class="field-label" id="appearance-accent-label">Akzentfarbe</span>
+                <div class="color-row" role="radiogroup" aria-labelledby="appearance-accent-label">
                     {% for color, label in appearance_form.accent_color.field.choices %}
                     <label class="color-dot {% if appearance_form.accent_color.value == color %}is-active{% endif %}" style="--dot-color: {{ color }}" aria-label="Akzentfarbe {{ label }}" title="{{ label }}">
                         <input type="radio" name="{{ appearance_form.accent_color.html_name }}" value="{{ color }}" {% if appearance_form.accent_color.value == color %}checked{% endif %}>
@@ -112,7 +113,7 @@
                 </div>
                 {{ appearance_form.accent_color.errors }}
 
-                <label class="field-label">Hintergrund-Weichheit</label>
+                <label class="field-label" for="{{ appearance_form.background_softness.id_for_label }}">Hintergrund-Weichheit</label>
                 {{ appearance_form.background_softness }}
                 <div class="slider-labels"><span>Subtil</span><span>Ausgeglichen</span><span>Reich</span></div>
                 {{ appearance_form.background_softness.errors }}
@@ -122,6 +123,7 @@
                     Darstellung speichern
                 </button>
             </form>
+            </section>
 
             <section id="settings-panel-calendar" class="glass-panel calendar-settings-panel" role="tabpanel" aria-labelledby="settings-tab-calendar" data-settings-panel="calendar">
                 <div class="panel-title">
@@ -193,7 +195,8 @@
                 {% endif %}
             </section>
 
-            <form id="settings-panel-notifications" class="glass-panel notifications-panel" method="post" role="tabpanel" aria-labelledby="settings-tab-notifications" data-settings-panel="notifications">
+            <section id="settings-panel-notifications" class="glass-panel notifications-panel" role="tabpanel" aria-labelledby="settings-tab-notifications" data-settings-panel="notifications">
+            <form class="settings-panel-form" method="post">
                 {% csrf_token %}
                 <input type="hidden" name="form_name" value="notifications">
                 <input type="hidden" name="return_to" value="{{ return_to }}">
@@ -279,6 +282,7 @@
                     Benachrichtigungen speichern
                 </button>
             </form>
+            </section>
         </div>
 
         <div class="settings-column">
@@ -353,7 +357,8 @@
                 </form>
             </section>
 
-            <form id="settings-panel-region" class="glass-panel region-panel" method="post" role="tabpanel" aria-labelledby="settings-tab-profile" data-settings-panel="profile">
+            <section id="settings-panel-region" class="glass-panel region-panel" role="tabpanel" aria-labelledby="settings-tab-profile" data-settings-panel="profile">
+            <form class="settings-panel-form" method="post">
                 {% csrf_token %}
                 <input type="hidden" name="form_name" value="region">
                 <input type="hidden" name="return_to" value="{{ return_to }}">
@@ -394,8 +399,10 @@
                     Sprache &amp; Region speichern
                 </button>
             </form>
+            </section>
 
-            <form id="settings-panel-weather" class="glass-panel weather-preferences-panel" method="post" role="tabpanel" aria-labelledby="settings-tab-weather" data-settings-panel="weather">
+            <section id="settings-panel-weather" class="glass-panel weather-preferences-panel" role="tabpanel" aria-labelledby="settings-tab-weather" data-settings-panel="weather">
+            <form class="settings-panel-form" method="post">
                 {% csrf_token %}
                 <input type="hidden" name="form_name" value="weather">
                 <input type="hidden" name="return_to" value="{{ return_to }}">
@@ -416,6 +423,7 @@
                     Wetter speichern
                 </button>
             </form>
+            </section>
 
             <section id="settings-panel-security" class="glass-panel security-panel" role="tabpanel" aria-labelledby="settings-tab-security" data-settings-panel="security">
                 <div class="panel-title"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i><h2>Zwei-Faktor-Anmeldung</h2></div>

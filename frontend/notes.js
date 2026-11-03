@@ -32,6 +32,7 @@ import typescript from "highlight.js/lib/languages/typescript";
 import xml from "highlight.js/lib/languages/xml";
 import yaml from "highlight.js/lib/languages/yaml";
 
+import { checklistProgress } from "./checklist-utils.js";
 import { normalizeLinkHref } from "./link-utils.js";
 import { eventToShortcut, findShortcutConflict, mergeShortcuts, shortcutMatches } from "./shortcut-utils.js";
 import { SLASH_MENU_ITEMS, filterSlashMenuItems } from "./slash-menu.js";
@@ -938,7 +939,14 @@ function initNotesApp() {
         TextAlign.configure({ types: ["heading", "paragraph"] }),
         TableKit.configure({ table: { resizable: true } }),
         TaskList,
-        TaskItem.configure({ nested: true }),
+        TaskItem.configure({
+          nested: true,
+          // Tiptap's default label is English ("Task item checkbox for …").
+          a11y: {
+            checkboxLabel: (node, checked) =>
+              `${node.textContent || "Leerer Punkt"}: ${checked ? "erledigt" : "offen"}`,
+          },
+        }),
         CharacterCount,
         NoteImage.configure({ getZoom: () => editorZoom }),
         NoteAttachmentNode,
@@ -1001,6 +1009,11 @@ function initNotesApp() {
         }),
       ],
       editorProps: {
+        attributes: {
+          role: "textbox",
+          "aria-multiline": "true",
+          "aria-label": "Notizinhalt",
+        },
         handlePaste(_view, event) {
           const files = Array.from(event.clipboardData?.files || []);
           if (!files.length || !note?.can_edit || note?.is_deleted) return false;
@@ -1805,10 +1818,21 @@ function initNotesApp() {
     card.dataset.notePinned = String(Boolean(savedNote.is_pinned));
     card.dataset.noteArchived = String(Boolean(savedNote.is_archived));
     if (preview) preview.textContent = savedNote.preview?.trim() || "Noch kein Inhalt";
+    updateChecklistBadge(card.querySelector("[data-note-card-checklist]"), savedNote);
     if (updated) {
       updated.dateTime = savedNote.updated_at;
       updated.textContent = savedNote.updated_at?.slice(0, 10) || "";
     }
+  }
+
+  function updateChecklistBadge(badge, savedNote) {
+    if (!badge || typeof savedNote.checklist_total !== "number") return;
+    const { done, total, label, complete } = checklistProgress(savedNote.checklist_done, savedNote.checklist_total);
+    badge.hidden = total === 0;
+    badge.classList.toggle("is-complete", complete);
+    badge.title = `${done} von ${total} Punkten erledigt`;
+    const text = badge.querySelector("[data-note-card-checklist-label]");
+    if (text) text.textContent = label;
   }
 
   function draftKey() {

@@ -1,11 +1,12 @@
 from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
-from django.http import Http404, HttpResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 
 from app.forms import (
+    CalendarAvailabilityForm,
     CalendarEventEditForm,
     CalendarEventForm,
     CalendarEventMoveForm,
@@ -15,6 +16,7 @@ from app.forms import (
 from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, Profile
 from app.services.calendar_service import (
     SERIES_SCOPE_THIS,
+    attendee_availability,
     build_calendar_feed,
     move_calendar_event,
     series_scope_events,
@@ -195,6 +197,29 @@ def _calendar_view(request):
     if not any(request.GET.get(key) for key in ("year", "month", "date")):
         return profile.calendar_view
     return view
+
+
+@login_required
+@require_GET
+def calendar_availability(request):
+    """Free/busy of the people ticked in an event dialog for the time entered there (JSON)."""
+    if not feature_enabled("calendar_event_creation"):
+        return disabled_feature_response(request, "calendar_event_creation", json_response=True)
+    form = CalendarAvailabilityForm(request.GET, user=request.user)
+    if not form.is_valid() or "start_at" not in form.cleaned_data:
+        return JsonResponse({"ok": False, "users": []}, status=400)
+    exclude_event = form.cleaned_data.get("exclude_event")
+    if exclude_event and not CalendarEvent.objects.filter(pk=exclude_event, user=request.user).exists():
+        exclude_event = None
+    users = attendee_availability(
+        form.cleaned_data["attendees"],
+        form.cleaned_data["start_at"],
+        form.cleaned_data["end_at"],
+        exclude_event_id=exclude_event,
+    )
+    response = JsonResponse({"ok": True, "users": users})
+    response["Cache-Control"] = "private, no-store"
+    return response
 
 
 @require_GET

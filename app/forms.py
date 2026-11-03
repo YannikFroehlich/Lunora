@@ -32,18 +32,20 @@ from app.models import (
     VocabularyList,
 )
 from app.services.calendar_service import (
+    AVAILABILITY_MAX_SPAN,
+    AVAILABILITY_MAX_USERS,
     SERIES_SCOPE_CHOICES,
     SERIES_SCOPE_FOLLOWING,
     SERIES_SCOPE_THIS,
     expand_manual_recurrence,
     series_scope_events,
 )
-from app.services.chat_files import infer_attachment_kind, validate_note_upload
+from app.services.chat_files import CHAT_VOICE_MAX_SECONDS, validate_chat_upload
 from app.services.image_uploads import PROFILE_IMAGE_ACCEPT, validate_profile_image_file
 from app.services.notes import display_name
 from app.services.notification_preferences import CATEGORY_DEFINITIONS
 from app.services.quick_add import parse_quick_add
-from app.services.tasks import DEFAULT_DUE_TIME
+from app.services.tasks import DEFAULT_DUE_TIME, update_task_shares
 from app.services.user_preferences import get_user_zoneinfo, localtime_for_user
 
 LOGIN_ATTEMPT_LIMIT = 5
@@ -244,6 +246,11 @@ class CustomHolidayForm(forms.ModelForm):
             "date": forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
             "name": forms.TextInput(attrs={"placeholder": "z. B. Betriebsruhe", "autocomplete": "off"}),
         }
+
+    def __init__(self, *args, **kwargs):
+        # Rendered next to the vacation period form, which also has a "name" field.
+        kwargs.setdefault("auto_id", "id_holiday_%s")
+        super().__init__(*args, **kwargs)
 
     def clean_name(self):
         return self.cleaned_data["name"].strip()
@@ -594,6 +601,7 @@ class NotificationCategoryPreferencesForm(forms.Form):
 
 class MessageForm(forms.ModelForm):
     attachment = forms.FileField(label="Anhang", required=False)
+    voice_duration = forms.IntegerField(required=False, min_value=0, max_value=CHAT_VOICE_MAX_SECONDS)
 
     class Meta:
         model = ChatMessage
@@ -603,6 +611,7 @@ class MessageForm(forms.ModelForm):
             "body": forms.Textarea(
                 attrs={
                     "placeholder": "Nachricht schreiben ...",
+                    "aria-label": "Nachricht",
                     "autocomplete": "off",
                     "rows": 1,
                 }
@@ -619,7 +628,7 @@ class MessageForm(forms.ModelForm):
     def clean_attachment(self):
         upload = self.cleaned_data.get("attachment")
         if upload:
-            validate_note_upload(upload, kind=infer_attachment_kind(upload.name))
+            self.attachment_kind = validate_chat_upload(upload)
         return upload
 
     def clean(self):
@@ -656,6 +665,7 @@ class ConversationStartForm(forms.Form):
     )
 
     def __init__(self, *args, user=None, **kwargs):
+        kwargs.setdefault("auto_id", "id_start_%s")  # shares the page with the compose form
         super().__init__(*args, **kwargs)
         users = (
             User.objects.filter(is_active=True)
@@ -694,6 +704,11 @@ class CalendarReminderForm(forms.ModelForm):
                 }
             )
         }
+
+    def __init__(self, *args, **kwargs):
+        # Shares the calendar page with the event dialogs, which also have a "title" field.
+        kwargs.setdefault("auto_id", "id_reminder_%s")
+        super().__init__(*args, **kwargs)
 
     def clean_title(self):
         return self.cleaned_data["title"].strip()
@@ -735,6 +750,13 @@ class TaskForm(forms.ModelForm):
         queryset=User.objects.none(),
         required=False,
         empty_label="Niemand",
+    )
+    # Not a model field: saved as TaskShare rows through save_shares() after the task is saved.
+    shared_with = forms.ModelMultipleChoiceField(
+        label="Teilen mit",
+        queryset=User.objects.none(),
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
     )
     # Declared explicitly (rather than left to ModelForm auto-generation) so Django doesn't
     # prepend its own blank "---------" choice alongside the model's own "Keine" option.
@@ -783,16 +805,26 @@ class TaskForm(forms.ModelForm):
                 .order_by("first_name", "email", "username")
             )
             self.fields["assignee"].label_from_instance = display_name
+            self.fields["shared_with"].queryset = self.fields["assignee"].queryset
+            self.fields["shared_with"].label_from_instance = display_name
+        if self.instance.pk and not self.is_bound:
+            self.initial["shared_with"] = list(self.instance.shares.values_list("user_id", flat=True))
 
     def clean(self):
         cleaned_data = super().clean()
         if cleaned_data.get("parent") and cleaned_data.get("assignee"):
             # Subtasks follow their parent's assignee instead of having their own.
             self.add_error("assignee", "Nur Hauptaufgaben können zugewiesen werden.")
+        if cleaned_data.get("parent") and cleaned_data.get("shared_with"):
+            self.add_error("shared_with", "Nur Hauptaufgaben können geteilt werden.")
         # Only new tasks read their title as quick-add text; editing keeps the title as typed.
         if self.instance.pk is None and self.user is not None and cleaned_data.get("title"):
             self._apply_quick_add(cleaned_data)
         return cleaned_data
+
+    def save_shares(self, task):
+        """Sync the task's shares with the ticked people; returns the newly added share rows."""
+        return update_task_shares(task, self.cleaned_data.get("shared_with") or [])
 
     def _apply_quick_add(self, cleaned_data):
         """Take a due date/time, priority and labels from the title ("Bericht Freitag 14 Uhr !hoch #arbeit").
@@ -845,6 +877,11 @@ class TaskListForm(forms.ModelForm):
         widgets = {
             "name": forms.TextInput(attrs={"placeholder": "Neue Liste …", "autocomplete": "off"}),
         }
+
+    def __init__(self, *args, **kwargs):
+        # The tasks page also renders the label form, which has a "name" field too.
+        kwargs.setdefault("auto_id", "id_list_%s")
+        super().__init__(*args, **kwargs)
 
 
 class BookmarkForm(forms.ModelForm):
@@ -931,6 +968,11 @@ class TaskLabelForm(forms.ModelForm):
         widgets = {
             "name": forms.TextInput(attrs={"placeholder": "Neues Label …", "autocomplete": "off"}),
         }
+
+    def __init__(self, *args, **kwargs):
+        # The tasks page also renders the list form, which has a "name" field too.
+        kwargs.setdefault("auto_id", "id_label_%s")
+        super().__init__(*args, **kwargs)
 
     def clean_title(self):
         return self.cleaned_data["title"].strip()
@@ -1219,6 +1261,27 @@ def event_last_date(event, local_start, local_end):
     return last_date if last_date > local_start.date() else None
 
 
+class CalendarAvailabilityForm(_CalendarEventDateTimeForm):
+    """The date/time part of the event dialogs, sent as a query string to look up whether the
+    selected attendees are free; uses the same field names so the dialog can send itself as is."""
+
+    exclude_event = forms.IntegerField(required=False, min_value=1)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["title"].required = False
+
+    def clean(self):
+        cleaned_data = super().clean()
+        start_at, end_at = cleaned_data.get("start_at"), cleaned_data.get("end_at")
+        if start_at and end_at and end_at - start_at > AVAILABILITY_MAX_SPAN:
+            raise forms.ValidationError("Der Zeitraum ist zu lang.")
+        attendees = cleaned_data.get("attendees")
+        if attendees is not None and len(attendees) > AVAILABILITY_MAX_USERS:
+            raise forms.ValidationError("Zu viele Personen ausgewählt.")
+        return cleaned_data
+
+
 class CalendarEventEditForm(_CalendarEventDateTimeForm):
     # Only offered for events of a series; anything else always edits just the event itself.
     scope = forms.ChoiceField(
@@ -1231,6 +1294,8 @@ class CalendarEventEditForm(_CalendarEventDateTimeForm):
 
     def __init__(self, *args, user=None, instance=None, **kwargs):
         self.instance = instance
+        # Rendered on the same page as CalendarEventForm; its own ids keep every <label for> unique.
+        kwargs.setdefault("auto_id", "id_edit_%s")
         super().__init__(*args, user=user, **kwargs)
         if instance is not None and not self.is_bound:
             instance_start = localtime_for_user(instance.start_at, user)

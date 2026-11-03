@@ -18,7 +18,7 @@
     </header>
 
     <div class="messages-layout">
-        <aside class="glass-panel inbox-panel">
+        <section class="glass-panel inbox-panel" aria-label="Unterhaltungen">
             <form class="message-search" method="get" action="{% url 'messages' %}">
                 <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
                 <input type="search" name="q" value="{{ query }}" placeholder="Unterhaltungen suchen" autocomplete="off" aria-label="Unterhaltungen suchen">
@@ -26,11 +26,11 @@
                 <button type="submit" aria-label="Suchen"><i class="fa-solid fa-arrow-right"></i></button>
             </form>
 
-            <div class="filter-row" role="list" aria-label="Unterhaltungsfilter">
-                <a role="listitem" class="{% if current_filter == 'all' %}is-active{% endif %}" href="{% url 'messages' %}{% if query %}?q={{ query|urlencode }}{% endif %}" {% if current_filter == 'all' %}aria-current="page"{% endif %}>Alle</a>
-                <a role="listitem" class="{% if current_filter == 'unread' %}is-active{% endif %}" href="{% url 'messages' %}?filter=unread{% if query %}&q={{ query|urlencode }}{% endif %}" {% if current_filter == 'unread' %}aria-current="page"{% endif %}>Ungelesen{% if unread_total %}<span aria-label="{{ unread_total }} ungelesene Nachrichten">{{ unread_total }}</span>{% endif %}</a>
-                <a role="listitem" class="{% if current_filter == 'groups' %}is-active{% endif %}" href="{% url 'messages' %}?filter=groups{% if query %}&q={{ query|urlencode }}{% endif %}" {% if current_filter == 'groups' %}aria-current="page"{% endif %}>Gruppen</a>
-            </div>
+            <nav class="filter-row" aria-label="Unterhaltungsfilter">
+                <a class="{% if current_filter == 'all' %}is-active{% endif %}" href="{% url 'messages' %}{% if query %}?q={{ query|urlencode }}{% endif %}" {% if current_filter == 'all' %}aria-current="page"{% endif %}>Alle</a>
+                <a class="{% if current_filter == 'unread' %}is-active{% endif %}" href="{% url 'messages' %}?filter=unread{% if query %}&q={{ query|urlencode }}{% endif %}" {% if current_filter == 'unread' %}aria-current="page"{% endif %}>Ungelesen{% if unread_total %}<span aria-hidden="true">{{ unread_total }}</span><span class="visually-hidden">, {{ unread_total }} ungelesene Nachrichten</span>{% endif %}</a>
+                <a class="{% if current_filter == 'groups' %}is-active{% endif %}" href="{% url 'messages' %}?filter=groups{% if query %}&q={{ query|urlencode }}{% endif %}" {% if current_filter == 'groups' %}aria-current="page"{% endif %}>Gruppen</a>
+            </nav>
 
             <details class="new-chat-card" data-new-chat-card {% if start_form.errors %}open{% endif %}>
                 <summary><i class="fa-solid fa-pen-to-square"></i> Neue Unterhaltung</summary>
@@ -57,7 +57,7 @@
             </details>
 
             {% include "app/partials/messages_contact_list.html" %}
-        </aside>
+        </section>
 
         <section class="glass-panel chat-panel" data-messages-live-url="{% if selected_conversation %}{% url 'messages_live_detail_updates' selected_conversation.id %}{% else %}{% url 'messages_live_updates' %}{% endif %}" {% if selected_conversation %}data-messages-typing-url="{% url 'messages_typing_ping' selected_conversation.id %}"{% endif %}>
             {% if selected_conversation %}
@@ -102,6 +102,7 @@
             </section>
             {% endif %}
 
+            <p id="message-actions-hint" class="visually-hidden">Eingabetaste oder Kontextmenütaste öffnet Antworten, Reaktionen und weitere Aktionen.</p>
             <div id="pinned-messages-region">{% include "app/partials/messages_pinned.html" %}</div>
 
             <div class="message-stream" id="message-stream" aria-live="polite" aria-label="Nachrichtenverlauf">
@@ -144,7 +145,7 @@
             {% endif %}
         </section>
 
-        <aside class="glass-panel details-panel">
+        <section class="glass-panel details-panel" aria-label="Details zur Unterhaltung">
             {% if selected_conversation %}
             <div class="details-head">
                 <h2>Details</h2>
@@ -243,7 +244,7 @@
                 <p>Sobald du einen Chat auswählst, siehst du hier die Mitglieder.</p>
             </div>
             {% endif %}
-        </aside>
+        </section>
     </div>
 </section>
 {% endblock %}

@@ -8,7 +8,7 @@ from .auth_views import (
     login_two_factor,
     register,
 )
-from .calendar_views import calendar, calendar_feed
+from .calendar_views import calendar, calendar_availability, calendar_feed
 from .core_views import dashboard_bookmarks, dashboard_layout_update, data_export, home, settings
 from .message_views import chat_attachment_download, chat_typing_ping, messages, messages_live_updates
 from .note_views import (
@@ -78,6 +78,7 @@ from .weather_views import dashboard_weather, weather, weather_map_tile, weather
 
 __all__ = [
     "calendar",
+    "calendar_availability",
     "calendar_feed",
     "administration",
     "home",

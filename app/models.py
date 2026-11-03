@@ -3,6 +3,8 @@ import zoneinfo
 from datetime import time
 
 from django.conf import settings
+from django.contrib.postgres.indexes import GinIndex
+from django.contrib.postgres.search import SearchVectorField
 from django.db import models
 from django.db.models import Count, Exists, OuterRef, Prefetch, Q, Subquery
 from django.utils import timezone
@@ -10,8 +12,9 @@ from django.utils import timezone
 from app.services.chat_files import chat_upload_to
 from app.services.dashboard import default_dashboard_layout
 from app.services.image_uploads import validate_profile_image_file
-from app.services.note_content import empty_note_document
+from app.services.note_content import document_checklist_counts, empty_note_document
 from app.services.note_files import note_upload_to, private_note_storage
+from app.services.note_search import refresh_note_search_vectors
 from app.services.uml_content import empty_uml_document
 
 
@@ -101,6 +104,7 @@ class Profile(models.Model):
         ("12h", "12-Stunden"),
     ]
     CALENDAR_VIEW_CHOICES = [
+        ("year", "Jahr"),
         ("month", "Monat"),
         ("week", "Woche"),
         ("three_days", "3 Tage"),
@@ -405,7 +409,8 @@ class ChatMessageReaction(models.Model):
 class ChatMessageAttachment(models.Model):
     KIND_IMAGE = "image"
     KIND_FILE = "file"
-    KIND_CHOICES = [(KIND_IMAGE, "Bild"), (KIND_FILE, "Datei")]
+    KIND_AUDIO = "audio"
+    KIND_CHOICES = [(KIND_IMAGE, "Bild"), (KIND_FILE, "Datei"), (KIND_AUDIO, "Sprachnachricht")]
 
     message = models.OneToOneField(ChatMessage, on_delete=models.CASCADE, related_name="attachment")
     uploaded_by = models.ForeignKey(
@@ -421,6 +426,8 @@ class ChatMessageAttachment(models.Model):
     original_name = models.CharField(max_length=255)
     content_type = models.CharField(max_length=160)
     size = models.PositiveBigIntegerField()
+    # Recording length reported by the browser for voice messages; only used as a label.
+    duration_seconds = models.PositiveIntegerField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -629,16 +636,51 @@ class Task(models.Model):
     labels = models.ManyToManyField(TaskLabel, blank=True, related_name="tasks")
     position = models.PositiveIntegerField(default=0)
     is_done = models.BooleanField(default=False)
+    # The board's middle column ("In Arbeit"); always False once the task is done.
+    is_in_progress = models.BooleanField(default=False)
     email_notified_at = models.DateTimeField(blank=True, null=True)
     desktop_notified_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    STATUS_OPEN = "open"
+    STATUS_IN_PROGRESS = "in_progress"
+    STATUS_DONE = "done"
+    STATUS_CHOICES = [
+        (STATUS_OPEN, "Offen"),
+        (STATUS_IN_PROGRESS, "In Arbeit"),
+        (STATUS_DONE, "Erledigt"),
+    ]
 
     class Meta:
         ordering = ["is_done", "-created_at"]
 
     def __str__(self):
         return self.title
+
+    @property
+    def status(self):
+        if self.is_done:
+            return self.STATUS_DONE
+        return self.STATUS_IN_PROGRESS if self.is_in_progress else self.STATUS_OPEN
+
+
+class TaskShare(models.Model):
+    """A top-level task shared with another user: they see it with its subtasks, may change its
+    status and take part in its comments; editing and deleting stay with the owner."""
+
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="shares")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="task_shares")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["task", "user"], name="unique_task_share_per_user"),
+        ]
+
+    def __str__(self):
+        return f"{self.task} → {self.user}"
 
 
 class TaskComment(models.Model):
@@ -844,6 +886,7 @@ class UserNotification(models.Model):
     KIND_HABIT_REMINDER = "habit_reminder"
     KIND_TASK_COMMENT = "task_comment"
     KIND_TASK_RETURNED = "task_returned"
+    KIND_TASK_SHARE = "task_share"
     KIND_CHOICES = [
         (KIND_CALENDAR_REMINDER, "Kalendererinnerung"),
         (KIND_TASK_DUE, "Fällige Aufgabe"),
@@ -857,6 +900,7 @@ class UserNotification(models.Model):
         (KIND_HABIT_REMINDER, "Gewohnheitserinnerung"),
         (KIND_TASK_COMMENT, "Aufgabenkommentar"),
         (KIND_TASK_RETURNED, "Zurückgegebene Aufgabe"),
+        (KIND_TASK_SHARE, "Geteilte Aufgabe"),
     ]
 
     recipient = models.ForeignKey(
@@ -1152,6 +1196,12 @@ class Note(models.Model):
     title = models.CharField(max_length=200, default="Unbenannte Notiz")
     document = models.JSONField(default=empty_note_document)
     plain_text = models.TextField(blank=True)
+    # Checklist progress (taskItem nodes), derived from ``document`` in save() for the note list.
+    checklist_done = models.PositiveIntegerField(default=0)
+    checklist_total = models.PositiveIntegerField(default=0)
+    # Weighted title/plain_text tsvector for the ranked search (app/services/note_search.py).
+    # Only filled on PostgreSQL, by save(); stays NULL on SQLite, which searches by substring.
+    search_vector = SearchVectorField(blank=True, null=True, editable=False)
     revision = models.PositiveIntegerField(default=1)
     last_edited_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -1171,10 +1221,24 @@ class Note(models.Model):
         ordering = ["-updated_at", "-id"]
         indexes = [
             models.Index(fields=["owner", "deleted_at", "updated_at"], name="app_note_owner_state_idx"),
+            # Created on PostgreSQL only (see migration 0071); SQLite has no GIN.
+            GinIndex(fields=["search_vector"], name="app_note_search_vector_gin"),
         ]
 
     def __str__(self):
         return self.title
+
+    def save(self, *args, **kwargs):
+        # Every path that writes ``document`` (editor save, restore, conflict copy, import)
+        # goes through here, so the derived checklist counts can't drift from the document.
+        update_fields = kwargs.get("update_fields")
+        if update_fields is None or "document" in update_fields:
+            self.checklist_done, self.checklist_total = document_checklist_counts(self.document)
+            if update_fields is not None:
+                kwargs["update_fields"] = {*update_fields, "checklist_done", "checklist_total"}
+        super().save(*args, **kwargs)
+        if update_fields is None or {"title", "plain_text"} & set(update_fields):
+            refresh_note_search_vectors([self.pk], using=kwargs.get("using") or self._state.db or "default")
 
 
 class NoteTemplate(models.Model):

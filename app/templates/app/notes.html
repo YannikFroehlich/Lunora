@@ -10,7 +10,7 @@
 
 {% block content %}
 <section class="page-shell notes-shell" data-notes-app>
-    <aside class="glass-panel notes-sidebar {% if selected_note_data %}has-selection{% endif %}" data-notes-sidebar>
+    <section class="glass-panel notes-sidebar {% if selected_note_data %}has-selection{% endif %}" data-notes-sidebar aria-label="Notizliste">
         <header class="notes-sidebar-header">
             <div>
                 <span class="eyebrow"><i class="fa-solid fa-note-sticky"></i> Lunora Notes</span>
@@ -32,7 +32,7 @@
             <input type="hidden" name="status" value="{{ current_status }}">
             <label class="notes-search">
                 <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-                <input type="search" name="q" value="{{ query }}" placeholder="Notizen durchsuchen" data-notes-search>
+                <input type="search" name="q" value="{{ query }}" placeholder="Notizen durchsuchen" aria-label="Notizen durchsuchen" data-notes-search>
             </label>
             <div class="notes-filter-tabs" aria-label="Notizstatus">
                 <button class="{% if current_status == 'all' %}is-active{% endif %}" name="status" value="all">Alle</button>
@@ -120,9 +120,9 @@
                 {% endif %}
             </div>
         </div>
-    </aside>
+    </section>
 
-    <main class="glass-panel note-workspace {% if not selected_note_data %}is-empty{% endif %}" data-note-workspace>
+    <section aria-label="Notiz" class="glass-panel note-workspace {% if not selected_note_data %}is-empty{% endif %}" data-note-workspace>
         {% if selected_note_data %}
         <header class="note-document-header">
             <a class="notes-mobile-back" href="{% url 'notes' %}" aria-label="Zur Notizübersicht">
@@ -208,8 +208,8 @@
                     <div class="toolbar-group">
                         <button type="button" data-command="superscript" aria-label="Hochgestellt">x<sup>2</sup></button>
                         <button type="button" data-command="subscript" aria-label="Tiefgestellt">x<sub>2</sub></button>
-                        <label class="toolbar-color" aria-label="Textfarbe"><i class="fa-solid fa-font"></i><input type="color" value="#40372f" data-format="textColor"></label>
-                        <label class="toolbar-color" aria-label="Markierfarbe"><i class="fa-solid fa-highlighter"></i><input type="color" value="#f1d99e" data-format="highlight"></label>
+                        <label class="toolbar-color"><i class="fa-solid fa-font" aria-hidden="true"></i><input type="color" value="#40372f" data-format="textColor" aria-label="Textfarbe"></label>
+                        <label class="toolbar-color"><i class="fa-solid fa-highlighter" aria-hidden="true"></i><input type="color" value="#f1d99e" data-format="highlight" aria-label="Markierfarbe"></label>
                     </div>
                     <div class="toolbar-group">
                         <button type="button" data-command="alignLeft" aria-label="Linksbündig"><i class="fa-solid fa-align-left"></i></button>
@@ -267,13 +267,13 @@
                         <div class="note-editor-page" data-note-editor></div>
                     </div>
                 </div>
-                <aside class="note-outline-panel soft-scrollbar" data-note-outline-panel hidden>
+                <section class="note-outline-panel soft-scrollbar" data-note-outline-panel hidden aria-label="Gliederung">
                     <header class="note-outline-header">
                         <span><i class="fa-solid fa-bars-staggered" aria-hidden="true"></i> Inhaltsverzeichnis</span>
                         <button type="button" data-command="outline" aria-label="Inhaltsverzeichnis schließen"><i class="fa-solid fa-xmark"></i></button>
                     </header>
                     <div class="note-outline-list" data-note-outline-list></div>
-                </aside>
+                </section>
             </div>
             <footer class="note-editor-statusbar">
                 <span data-word-count>0 Wörter · 0 Zeichen</span>
@@ -291,8 +291,8 @@
             </footer>
             {% endif %}
         </div>
-        <input type="file" accept="{{ note_image_accept }}" hidden data-image-input>
-        <input type="file" accept="{{ note_file_accept }}" hidden data-file-input>
+        <input type="file" accept="{{ note_image_accept }}" hidden data-image-input aria-label="Bild einfügen">
+        <input type="file" accept="{{ note_file_accept }}" hidden data-file-input aria-label="Datei anhängen">
         {% else %}
         <div class="empty-chat-state note-empty-state">
             <i class="fa-regular fa-note-sticky"></i>
@@ -306,7 +306,7 @@
             <button class="primary-button" type="button" data-command="newNote"><i class="fa-solid fa-plus"></i> Neue Notiz</button>
         </div>
         {% endif %}
-    </main>
+    </section>
 </section>
 
 <dialog class="notes-dialog template-dialog" data-template-dialog>
@@ -341,7 +341,7 @@
             <button value="cancel" aria-label="Schließen"><i class="fa-solid fa-xmark"></i></button>
         </header>
         <p class="dialog-hint">LaTeX-Syntax, z. B. <code>x^2 + y^2 = z^2</code> oder <code>\frac{1}{2}</code>.</p>
-        <textarea class="math-dialog-input" data-math-input rows="3" spellcheck="false" placeholder="LaTeX-Formel eingeben…"></textarea>
+        <textarea class="math-dialog-input" data-math-input rows="3" spellcheck="false" placeholder="LaTeX-Formel eingeben…" aria-label="LaTeX-Formel"></textarea>
         <label class="math-dialog-toggle">
             <input type="checkbox" data-math-block-toggle>
             <span>Als eigener Absatz (Blockformel)</span>

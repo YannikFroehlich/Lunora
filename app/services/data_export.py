@@ -177,7 +177,11 @@ def _notes(user, archive):
 
 
 def _tasks(user):
-    tasks = Task.objects.filter(user=user).prefetch_related("labels", "comments__author").order_by("id")
+    tasks = (
+        Task.objects.filter(user=user)
+        .prefetch_related("labels", "comments__author", "shares__user")
+        .order_by("id")
+    )
     return {
         "lists": list(TaskList.objects.filter(owner=user).values("id", "name", "color")),
         "labels": list(TaskLabel.objects.filter(owner=user).values("id", "name", "color")),
@@ -189,6 +193,8 @@ def _tasks(user):
                 "priority": task.priority,
                 "recurrence_rule": task.recurrence_rule,
                 "is_done": task.is_done,
+                "is_in_progress": task.is_in_progress,
+                "shared_with": [share.user.get_username() for share in task.shares.all()],
                 "list_id": task.task_list_id,
                 "parent_id": task.parent_id,
                 "label_ids": [label.pk for label in task.labels.all()],

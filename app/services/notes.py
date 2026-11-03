@@ -476,6 +476,8 @@ def serialize_note(note, user, *, include_document=True):
         "title": note.title,
         "plain_text": note.plain_text,
         "preview": note.plain_text[:180],
+        "checklist_done": note.checklist_done,
+        "checklist_total": note.checklist_total,
         "revision": note.revision,
         "permission": permission,
         "can_edit": permission in {"owner", NoteShare.ROLE_EDITOR},

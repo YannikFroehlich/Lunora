@@ -382,6 +382,29 @@ class NotePostgresSearchSqlTests(SimpleTestCase):
 
         self.assertIn("%rakete%", params)
 
+    def test_search_reads_the_stored_vector_instead_of_building_one_per_row(self):
+        sql, _params = self.compile_search("rakete")
+
+        self.assertIn('"app_note"."search_vector" @@', sql)
+        self.assertNotIn("to_tsvector", sql)
+        self.assertIn("COALESCE(ts_rank", sql)
+
+    def test_refresh_builds_the_weighted_vector_for_the_stored_column(self):
+        from django.db.models.sql import UpdateQuery
+
+        from app.services.note_search import note_search_vector
+
+        query = UpdateQuery(Note)
+        query.add_update_values({"search_vector": note_search_vector()})
+        query.add_filter("pk__in", [1])
+        sql, params = query.get_compiler(connection=postgres_connection()).as_sql()
+
+        self.assertIn('UPDATE "app_note" SET "search_vector" = ', sql)
+        self.assertIn("setweight(to_tsvector", sql)
+        self.assertIn("german", params)
+        self.assertIn("A", params)
+        self.assertIn("B", params)
+
     def test_terms_that_are_not_bare_words_are_dropped_from_the_raw_tsquery(self):
         # search_type="raw" is handed to to_tsquery(); a stray operator would be a
         # database error at query time, so the parser must never emit one.
@@ -478,3 +501,36 @@ class NoteSearchViewTests(TestCase):
 
         self.assertNotContains(response, "<script>alert(1)</script>")
         self.assertContains(response, "&lt;script&gt;")
+
+
+class NoteSearchVectorMaintenanceTests(TestCase):
+    def setUp(self):
+        self.mira = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
+
+    def test_save_refreshes_the_vector_only_when_searchable_text_changes(self):
+        with patch("app.models.refresh_note_search_vectors") as refresh:
+            note = Note.objects.create(owner=self.mira, title="Rakete", plain_text="Start")
+            refresh.assert_called_once_with([note.pk], using="default")
+
+            refresh.reset_mock()
+            note.save(update_fields=["revision"])
+            refresh.assert_not_called()
+
+            note.save(update_fields=["title"])
+            refresh.assert_called_once()
+
+    def test_vector_is_stored_on_postgresql_and_left_empty_elsewhere(self):
+        from django.db import connection
+
+        from app.services.note_search import refresh_note_search_vectors
+
+        note = Note.objects.create(owner=self.mira, title="Raketenstart", plain_text="Häuser am Fluss")
+        note.refresh_from_db()
+        if connection.vendor == "postgresql":
+            self.assertIn("'raketenstart':1A", note.search_vector)
+            self.assertEqual(refresh_note_search_vectors([note.pk]), 1)
+        else:
+            self.assertIsNone(note.search_vector)
+            self.assertEqual(refresh_note_search_vectors([note.pk]), 0)

@@ -21,5 +21,13 @@
         {% if item.is_pinned %}<i class="fa-solid fa-thumbtack note-card-pin-icon" aria-hidden="true"></i>{% endif %}
         {% if item.icon %}<i class="fa-solid fa-{{ item.icon }} note-card-icon" aria-hidden="true"></i>{% endif %}
         <strong data-note-card-title>{{ item.title }}</strong>
+        <span class="note-card-checklist{% if item.checklist_total and item.checklist_done == item.checklist_total %} is-complete{% endif %}"
+              data-note-card-checklist
+              title="{{ item.checklist_done }} von {{ item.checklist_total }} Punkten erledigt"
+              {% if not item.checklist_total %}hidden{% endif %}>
+            <i class="fa-solid fa-list-check" aria-hidden="true"></i>
+            <span class="visually-hidden">Checkliste:</span>
+            <span data-note-card-checklist-label>{{ item.checklist_done }}/{{ item.checklist_total }}</span>
+        </span>
     </a>
 </div>

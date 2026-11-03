@@ -370,6 +370,20 @@ def document_plain_text(document):
     return re.sub(r"\n{3,}", "\n\n", "".join(parts)).strip()
 
 
+def document_checklist_counts(document):
+    """Return ``(done, total)`` over every ``taskItem`` in the document (nested ones included)."""
+    done = total = 0
+    stack = [document] if isinstance(document, dict) else []
+    while stack:
+        node = stack.pop()
+        if node.get("type") == "taskItem":
+            total += 1
+            if (node.get("attrs") or {}).get("checked") is True:
+                done += 1
+        stack.extend(child for child in node.get("content") or [] if isinstance(child, dict))
+    return done, total
+
+
 def extract_mention_user_ids(document):
     """Collect mention userIds from an already-trusted (previously validated) document tree."""
     user_ids = set()

@@ -10,6 +10,7 @@
 {% block content %}
 <section class="page-shell uml-shell" data-uml-editor data-save-url="{% url 'uml_diagram_api' diagram.id %}">
     <header class="glass-panel uml-header">
+        <h1 class="visually-hidden">UML-Diagramm „{{ diagram.title }}“ bearbeiten</h1>
         <a class="icon-button" href="{% url 'uml_diagrams' %}" aria-label="Zur Diagrammübersicht" title="Zur Übersicht">
             <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
         </a>
@@ -71,7 +72,7 @@
                 <button type="button" data-uml-export="import"><i class="fa-solid fa-file-import" aria-hidden="true"></i> JSON importieren …</button>
             </div>
         </details>
-        <input type="file" accept="application/json,.json" hidden data-uml-import-input>
+        <input type="file" accept="application/json,.json" hidden data-uml-import-input aria-label="Diagramm als JSON importieren">
     </div>
 
     <div class="uml-workspace">
@@ -199,7 +200,7 @@
                 <h2 id="uml-dialog-title" data-uml-dialog-title>Export</h2>
                 <button class="icon-button" value="close" aria-label="Schließen"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
             </div>
-            <textarea readonly spellcheck="false" data-uml-dialog-text></textarea>
+            <textarea readonly spellcheck="false" data-uml-dialog-text aria-labelledby="uml-dialog-title"></textarea>
             <div class="uml-dialog-actions">
                 <button class="ghost-button" type="button" data-uml-dialog-copy><i class="fa-regular fa-clipboard" aria-hidden="true"></i> Kopieren</button>
                 <button class="primary-button" type="button" data-uml-dialog-download><i class="fa-solid fa-download" aria-hidden="true"></i> Herunterladen</button>

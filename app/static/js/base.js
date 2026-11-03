@@ -135,7 +135,7 @@ function updateThemeButton(theme) {
   const isDarkMode = theme === "dark";
   themeToggleIcon.classList.toggle("fa-moon", !isDarkMode);
   themeToggleIcon.classList.toggle("fa-sun", isDarkMode);
-  themeToggleButton.setAttribute("aria-label", isDarkMode ? "Switch to light mode" : "Switch to dark mode");
+  themeToggleButton.setAttribute("aria-label", isDarkMode ? "Zum hellen Modus wechseln" : "Zum dunklen Modus wechseln");
 }
 
 function updateThemeChoices() {
@@ -143,7 +143,6 @@ function updateThemeChoices() {
   themeChoiceButtons.forEach((button) => {
     const isActive = button.dataset.themeChoice === preference;
     button.classList.toggle("is-active", isActive);
-    button.setAttribute("aria-pressed", String(isActive));
     const input = button.querySelector("input[type='radio']");
     if (input) {
       input.checked = isActive;

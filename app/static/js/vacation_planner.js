@@ -359,6 +359,24 @@
       }
     });
 
+    // Keyboard: Enter or Space on a focused day opens the menu for it, with Shift for the range from
+    // the day picked before (the same as dragging across days with the mouse).
+    let keyboardAnchor = null;
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      const day = event.target.closest?.(".calendar-day[data-date]");
+      if (!day || event.target !== day) return;
+      event.preventDefault();
+      if (event.shiftKey && keyboardAnchor) {
+        setSelection(keyboardAnchor, day.dataset.date);
+      } else {
+        keyboardAnchor = day.dataset.date;
+        setSelection(day.dataset.date, day.dataset.date);
+      }
+      const rect = day.getBoundingClientRect();
+      openMenu(rect.left + 12, rect.bottom - 8);
+    });
+
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && !menu.hidden) {
         hideMenu();

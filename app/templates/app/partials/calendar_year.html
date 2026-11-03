@@ -1,0 +1,31 @@
+<div class="calendar-year-legend" aria-hidden="true">
+    <span><i class="year-legend-swatch is-level-1"></i> wenig</span>
+    <span><i class="year-legend-swatch is-level-3"></i> viel los</span>
+    <span><i class="year-legend-swatch is-holiday"></i> Feiertag</span>
+    <span><i class="year-legend-swatch is-vacation"></i> Urlaub</span>
+</div>
+<div class="calendar-year-grid">
+    {% for month in calendar_year.months %}
+    <section class="calendar-year-month{% if month.is_current %} is-current{% endif %}" aria-labelledby="year-month-{{ forloop.counter }}">
+        <h3 id="year-month-{{ forloop.counter }}"><a href="{{ month.url }}">{{ month.label }}</a></h3>
+        <table class="calendar-year-table">
+            <thead>
+                <tr><th scope="col" abbr="Montag">Mo</th><th scope="col" abbr="Dienstag">Di</th><th scope="col" abbr="Mittwoch">Mi</th><th scope="col" abbr="Donnerstag">Do</th><th scope="col" abbr="Freitag">Fr</th><th scope="col" abbr="Samstag">Sa</th><th scope="col" abbr="Sonntag">So</th></tr>
+            </thead>
+            <tbody>
+                {% for week in month.weeks %}
+                <tr>
+                    {% for day in week %}
+                    {% if day %}
+                    <td><a class="year-day is-level-{{ day.level }}{% if day.today %} is-today{% endif %}{% if day.weekend %} is-weekend{% endif %}{% if day.holiday %} is-holiday{% endif %}{% if day.vacation %} is-vacation{% endif %}" href="{{ day.url }}" title="{{ day.label }}" aria-label="{{ day.label }}"{% if day.today %} aria-current="date"{% endif %}>{{ day.number }}</a></td>
+                    {% else %}
+                    <td></td>
+                    {% endif %}
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+    {% endfor %}
+</div>

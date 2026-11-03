@@ -20,7 +20,7 @@
     </header>
 
     <div class="task-layout">
-        <aside class="glass-panel task-sidebar">
+        <section class="glass-panel task-sidebar" aria-label="Ansichten und Listen">
             <nav class="task-views" aria-label="Ansichten" data-task-views>
                 <button type="button" class="task-view-link is-active" data-task-view-link="all">
                     <i class="fa-solid fa-inbox" aria-hidden="true"></i>
@@ -44,6 +44,13 @@
                     <em>{{ task_counts.assigned }}</em>
                 </button>
                 {% endif %}
+                {% if task_counts.shared %}
+                <button type="button" class="task-view-link" data-task-view-link="shared">
+                    <i class="fa-solid fa-user-group" aria-hidden="true"></i>
+                    <span>Mit mir geteilt</span>
+                    <em>{{ task_counts.shared }}</em>
+                </button>
+                {% endif %}
             </nav>
 
             <div class="task-lists-section">
@@ -54,6 +61,7 @@
                         <form method="post" class="task-inline-add-form">
                             {% csrf_token %}
                             <input type="hidden" name="form_name" value="task_list_add">
+                            <label class="visually-hidden" for="{{ task_list_form.name.id_for_label }}">Name der neuen Liste</label>
                             {{ task_list_form.name }}
                             <div class="task-color-grid">
                                 {% for value, label in task_list_form.fields.color.choices %}
@@ -90,8 +98,8 @@
                                     {% csrf_token %}
                                     <input type="hidden" name="form_name" value="task_list_rename">
                                     <input type="hidden" name="task_list_id" value="{{ list.id }}">
-                                    <input type="text" name="name" value="{{ list.name }}" maxlength="80" required>
-                                    <button type="submit"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>
+                                    <input type="text" name="name" value="{{ list.name }}" maxlength="80" required aria-label="Liste „{{ list.name }}“ umbenennen">
+                                    <button type="submit" aria-label="Namen speichern"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>
                                 </form>
                                 <form method="post">
                                     {% csrf_token %}
@@ -155,7 +163,7 @@
                 </p>
                 {% endif %}
             </div>
-        </aside>
+        </section>
 
         <section class="glass-panel task-panel">
             <div class="panel-title task-panel-title">
@@ -169,6 +177,7 @@
 
                 <div class="task-add-row">
                     <div class="task-title-field">
+                        <label class="visually-hidden" for="{{ task_form.title.id_for_label }}">Neue Aufgabe</label>
                         {{ task_form.title }}
                     </div>
                     <label class="task-date-field" for="{{ task_form.due_at.id_for_label }}">
@@ -202,6 +211,12 @@
                             <span>{{ task_form.assignee.label }}</span>
                             {{ task_form.assignee }}
                         </label>
+                        {% if task_form.shared_with.field.queryset.exists %}
+                        <fieldset class="task-add-more-field task-share-field">
+                            <legend>{{ task_form.shared_with.label }}</legend>
+                            <div class="task-label-checks">{{ task_form.shared_with }}</div>
+                        </fieldset>
+                        {% endif %}
                         <div class="task-add-more-field task-add-labels">
                             <span>Labels</span>
                             <div class="task-label-checks">
@@ -210,7 +225,7 @@
                             <details class="task-inline-add">
                                 <summary><i class="fa-solid fa-plus" aria-hidden="true"></i> Neues Label</summary>
                                 <div class="task-inline-add-form">
-                                    <input type="text" name="name" form="task-label-quick-add" placeholder="Neues Label …" autocomplete="off" maxlength="40" required>
+                                    <input type="text" name="name" form="task-label-quick-add" placeholder="Neues Label …" autocomplete="off" maxlength="40" required aria-label="Name des neuen Labels">
                                     <div class="task-color-grid">
                                         {% for value, label in task_label_form.fields.color.choices %}
                                         <label class="task-color-dot tone-{{ value }}" title="{{ label }}">
@@ -265,6 +280,9 @@
                     <button class="task-filter" type="button" data-task-filter="open" aria-pressed="false">
                         Offen <span>{{ task_counts.open }}</span>
                     </button>
+                    <button class="task-filter" type="button" data-task-filter="in_progress" aria-pressed="false">
+                        In Arbeit <span>{{ task_counts.in_progress }}</span>
+                    </button>
                     <button class="task-filter" type="button" data-task-filter="done" aria-pressed="false">
                         Erledigt <span>{{ task_counts.done }}</span>
                     </button>
@@ -273,11 +291,20 @@
                     </button>
                 </div>
 
+                <p id="task-reorder-hint" class="visually-hidden">Bei manueller Sortierung verschiebt Alt und Pfeil nach oben oder unten die fokussierte Aufgabe; ebenso Listen in der Seitenleiste.</p>
                 <div class="task-view-actions">
+                    <div class="task-layout-switch" role="group" aria-label="Darstellung">
+                        <button type="button" data-task-layout="list" aria-pressed="true" title="Liste">
+                            <i class="fa-solid fa-list" aria-hidden="true"></i><span>Liste</span>
+                        </button>
+                        <button type="button" data-task-layout="board" aria-pressed="false" title="Board">
+                            <i class="fa-solid fa-table-columns" aria-hidden="true"></i><span>Board</span>
+                        </button>
+                    </div>
                     <label class="task-sort-control">
                         <i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i>
                         <span>Sortieren</span>
-                        <select data-task-sort data-initial-sort="{{ sort|default:'' }}" aria-label="Aufgaben sortieren">
+                        <select data-task-sort data-initial-sort="{{ sort|default:'' }}" aria-label="Aufgaben sortieren" aria-describedby="task-reorder-hint">
                             <option value="due">Fälligkeit</option>
                             <option value="priority">Priorität</option>
                             <option value="newest">Neueste zuerst</option>
@@ -313,6 +340,8 @@
                     data-task-row
                     data-task-id="{{ item.task.id }}"
                     data-task-assigned="{{ item.assigned_to_me|yesno:'true,' }}"
+                    data-task-shared="{{ item.shared_with_me|yesno:'true,' }}"
+                    data-task-status="{{ item.status }}"
                     data-task-parent="{{ item.parent_id|default_if_none:'' }}"
                     data-task-state="{{ item.state }}"
                     data-task-title="{{ item.title|lower }}"
@@ -340,17 +369,20 @@
                     >
 
                     <div class="task-copy">
-                        <strong>{{ item.title }}</strong>
+                        <strong>{{ item.title }}{% if item.status == "in_progress" %} <span class="task-progress-chip"><i class="fa-solid fa-person-digging" aria-hidden="true"></i> In Arbeit</span>{% endif %}</strong>
                         <small>
                             <i class="fa-regular fa-calendar" aria-hidden="true"></i>
                             {{ item.due_label }}
                         </small>
-                        {% if item.task_list_name or item.labels or item.assignee_name or item.owner_name %}
+                        {% if item.task_list_name or item.labels or item.assignee_name or item.owner_name or item.shared_names %}
                         <span class="task-chips">
                             {% if item.owner_name %}
                             <span class="task-label-chip"><i class="fa-solid fa-user" aria-hidden="true"></i> von {{ item.owner_name }}</span>
                             {% elif item.assignee_name %}
                             <span class="task-label-chip"><i class="fa-solid fa-user-check" aria-hidden="true"></i> {{ item.assignee_name }}</span>
+                            {% endif %}
+                            {% if item.shared_names %}
+                            <span class="task-label-chip" title="Geteilt mit {{ item.shared_names|join:', ' }}"><i class="fa-solid fa-user-group" aria-hidden="true"></i> {{ item.shared_names|join:", " }}</span>
                             {% endif %}
                             {% if item.task_list_name %}
                             <span class="task-list-badge tone-{{ item.task_list_color }}">{{ item.task_list_name }}</span>
@@ -376,7 +408,7 @@
                     {% endif %}
 
                     {% if item.is_own %}
-                    <button class="task-edit-button" type="submit" name="form_name" value="task_template_save" aria-label="Als Vorlage speichern" title="Als Vorlage speichern">
+                    <button class="task-edit-button task-template-button" type="submit" name="form_name" value="task_template_save" aria-label="Als Vorlage speichern" title="Als Vorlage speichern">
                         <i class="fa-regular fa-clone" aria-hidden="true"></i>
                     </button>
 
@@ -390,6 +422,7 @@
                         data-edit-labels="{% for label in item.labels %}{{ label.id }}{% if not forloop.last %},{% endif %}{% endfor %}"
                         data-edit-parent="{{ item.parent_id|default_if_none:'' }}"
                         data-edit-assignee="{{ item.assignee_id|default_if_none:'' }}"
+                        data-edit-shared="{{ item.share_ids }}"
                         aria-label="Aufgabe bearbeiten">
                         <i class="fa-solid fa-pen" aria-hidden="true"></i>
                     </button>
@@ -442,6 +475,15 @@
                 </details>
                 {% endif %}
 
+                {% if item.shared_with_me and not item.is_own %}
+                <form method="post" class="task-share-leave" data-confirm="„{{ item.title }}“ nicht mehr mit dir teilen?">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="task_share_leave">
+                    <input type="hidden" name="task_id" value="{{ item.task.id }}">
+                    <button type="submit"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i> Teilen beenden</button>
+                </form>
+                {% endif %}
+
                 {% if item.assigned_to_me and not item.is_own %}
                 <details class="task-comments task-return">
                     <summary><i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Ablehnen oder zurückgeben</summary>
@@ -464,6 +506,8 @@
                     data-task-subtask
                     data-task-id="{{ child.task.id }}"
                     data-task-assigned="{{ child.assigned_to_me|yesno:'true,' }}"
+                    data-task-shared="{{ child.shared_with_me|yesno:'true,' }}"
+                    data-task-status="{{ child.status }}"
                     data-task-parent="{{ child.parent_id|default_if_none:'' }}"
                     data-task-state="{{ child.state }}"
                     data-task-title="{{ child.title|lower }}"
@@ -491,7 +535,7 @@
                     >
 
                     <div class="task-copy">
-                        <strong>{{ child.title }}</strong>
+                        <strong>{{ child.title }}{% if child.status == "in_progress" %} <span class="task-progress-chip"><i class="fa-solid fa-person-digging" aria-hidden="true"></i> In Arbeit</span>{% endif %}</strong>
                         <small>
                             <i class="fa-regular fa-calendar" aria-hidden="true"></i>
                             {{ child.due_label }}
@@ -530,7 +574,7 @@
                     {% csrf_token %}
                     <input type="hidden" name="form_name" value="task_add">
                     <input type="hidden" name="parent" value="{{ item.task.id }}">
-                    <input type="text" name="title" placeholder="Unteraufgabe hinzufügen …" autocomplete="off" maxlength="180">
+                    <input type="text" name="title" placeholder="Unteraufgabe hinzufügen …" autocomplete="off" maxlength="180" aria-label="Unteraufgabe zu „{{ item.title }}“ hinzufügen">
                     <button type="submit" aria-label="Unteraufgabe hinzufügen"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
                 </form>
                 {% endif %}
@@ -544,6 +588,25 @@
                 <span>Wähle eine andere Ansicht oder setze die Filter zurück.</span>
             </div>
             <p class="task-results-status" data-task-results-status aria-live="polite"></p>
+
+            <div class="task-board" data-task-board hidden>
+                {% for column in task_board_columns %}
+                <section class="task-board-column is-{{ column.key }}" data-task-board-column="{{ column.key }}" aria-labelledby="task-board-{{ column.key }}">
+                    <h3 id="task-board-{{ column.key }}">{{ column.label }} <span data-task-board-count>{{ column.items|length }}</span></h3>
+                    <ul class="task-board-cards" data-task-board-drop="{{ column.key }}">
+                        {% for item in column.items %}
+                        {% include 'app/partials/task_board_card.html' %}
+                        {% endfor %}
+                    </ul>
+                </section>
+                {% endfor %}
+            </div>
+            <form id="task-status-form" method="post" hidden>
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="task_status">
+                <input type="hidden" name="task_id" data-task-status-id>
+                <input type="hidden" name="status" data-task-status-value>
+            </form>
             {% else %}
             <div class="task-empty-state">
                 <i class="fa-regular fa-square-check" aria-hidden="true"></i>
@@ -607,6 +670,14 @@
                 {{ edit_form.assignee }}
                 {{ edit_form.assignee.errors }}
             </label>
+
+            {% if edit_form.shared_with.field.queryset.exists %}
+            <fieldset class="task-edit-field is-wide task-share-field" data-task-share-field>
+                <legend>{{ edit_form.shared_with.label }} <small>nur Hauptaufgaben</small></legend>
+                <div class="task-label-checks">{{ edit_form.shared_with }}</div>
+                {{ edit_form.shared_with.errors }}
+            </fieldset>
+            {% endif %}
 
             <div class="task-edit-field is-wide task-add-labels">
                 <span>{{ edit_form.labels.label }}</span>

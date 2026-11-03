@@ -1484,9 +1484,9 @@
   }
 }
 
-/* Drei Spalten: Anhang-Button, Textarea, Senden — ergaenzt die Basisregel weiter oben. */
+/* Anhang-Button, Textarea, Mikrofon (nur mit MediaRecorder sichtbar), Senden — ergaenzt die Basisregel weiter oben. */
 .compose-bar {
-  grid-template-columns: 44px 1fr 52px;
+  grid-template-columns: 44px minmax(0, 1fr) auto 52px;
 }
 
 .attach-button {
@@ -1502,8 +1502,100 @@
   cursor: pointer;
 }
 
-.attach-button:hover {
+.attach-button:hover,
+.voice-button:hover {
   background: var(--surface-selected);
+}
+
+/* The file input stays in the tab order (visually hidden), so the ring goes on the label. */
+.attach-button:focus-within {
+  border-color: var(--focus-border);
+  box-shadow: var(--focus-ring);
+}
+
+.voice-button {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  align-self: end;
+  place-items: center;
+  color: var(--color-accent-strong);
+  background: var(--surface-control-hover);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.voice-recorder-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  background: var(--surface-control);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-sm);
+}
+
+.voice-recorder-strip > span:nth-child(2) {
+  flex: 1;
+}
+
+.voice-recorder-strip time {
+  font-variant-numeric: tabular-nums;
+}
+
+.voice-recorder-dot {
+  width: 10px;
+  height: 10px;
+  background: var(--color-danger);
+  border-radius: 50%;
+  animation: voice-recorder-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes voice-recorder-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-recorder-dot {
+    animation: none;
+  }
+}
+
+.voice-send-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  color: var(--color-on-accent);
+  background: var(--color-accent);
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.voice-message {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.voice-message > i {
+  color: var(--color-accent-strong);
+}
+
+.voice-message audio {
+  width: 240px;
+  max-width: 58vw;
+  height: 36px;
+}
+
+.voice-message small {
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .reply-preview-strip,
@@ -1592,6 +1684,8 @@
 [data-theme="dark"] .reply-quote,
 [data-theme="dark"] .reply-preview-strip,
 [data-theme="dark"] .attachment-preview-chip,
+[data-theme="dark"] .voice-recorder-strip,
+[data-theme="dark"] .voice-button,
 [data-theme="dark"] .attach-button {
   background: rgba(255, 255, 255, 0.06);
 }

@@ -477,6 +477,7 @@
 
 .note-list-card-link > strong {
   min-width: 0;
+  margin-right: 6px;
   overflow: hidden;
   color: var(--color-heading);
   font-size: var(--text-sm);
@@ -488,6 +489,24 @@
 .note-list-card.is-selected {
   background: color-mix(in srgb, var(--color-accent) 20%, transparent);
   border-color: var(--color-accent-strong);
+}
+
+.note-card-checklist {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 1px 7px;
+  color: var(--color-muted);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  background: var(--surface-control);
+  border-radius: var(--radius-pill);
+}
+
+.note-card-checklist.is-complete {
+  color: var(--color-success);
 }
 
 .note-card-pin-icon {
@@ -1151,6 +1170,19 @@
 
 .note-editor-zoom-indicator:hover {
   color: var(--color-accent-strong);
+}
+
+/* Reachable with Tab even while faded out, so show it whenever it has keyboard focus. */
+.note-editor-zoom-indicator:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* The colour input is tiny and tucked into the corner; ring the whole control instead. */
+.toolbar-color:has(input:focus-visible) {
+  color: var(--color-heading);
+  background: var(--surface-control);
+  box-shadow: var(--focus-ring);
 }
 
 .note-editor-statusbar {

@@ -10,6 +10,7 @@
     <article id="message-{{ item.message.id }}" class="bubble is-{{ item.side }}{% if item.is_deleted %} is-deleted{% endif %}{% if item.is_pinned %} is-pinned{% endif %}"
              tabindex="{% if item.can_delete or item.can_react %}0{% else %}-1{% endif %}"
              aria-label="Nachricht von {{ item.sender_name }} um {{ item.time }}"
+             {% if item.can_delete or item.can_react %}aria-describedby="message-actions-hint"{% endif %}
              data-message-id="{{ item.message.id }}"
              data-can-delete="{% if item.can_delete %}true{% else %}false{% endif %}"
              data-can-react="{% if item.can_react %}true{% else %}false{% endif %}"
@@ -33,6 +34,12 @@
                 <a href="{{ item.attachment.inline_url }}" target="_blank" rel="noopener">
                     <img src="{{ item.attachment.inline_url }}" alt="{{ item.attachment.name }}" loading="lazy">
                 </a>
+                {% elif item.attachment.kind == 'audio' %}
+                <div class="voice-message">
+                    <i class="fa-solid fa-microphone" aria-hidden="true"></i>
+                    <audio controls preload="metadata" src="{{ item.attachment.inline_url }}" aria-label="Sprachnachricht{% if item.attachment.duration_label %}, {{ item.attachment.duration_label }} Minuten{% endif %}"></audio>
+                    {% if item.attachment.duration_label %}<small>{{ item.attachment.duration_label }}</small>{% endif %}
+                </div>
                 {% else %}
                 <a class="attachment-chip" href="{{ item.attachment.download_url }}">
                     <i class="fa-solid fa-file"></i>

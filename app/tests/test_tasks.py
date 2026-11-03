@@ -14,6 +14,7 @@ from app.models import (
     TaskComment,
     TaskLabel,
     TaskList,
+    TaskShare,
     TaskTemplate,
     UserNotification,
 )
@@ -22,7 +23,7 @@ from app.services.notifications import (
     send_due_task_reminder_emails,
 )
 from app.services.scheduled_tasks import run_scheduled_tasks
-from app.services.tasks import dashboard_today_tasks, toggle_task
+from app.services.tasks import dashboard_today_tasks, toggle_task, visible_tasks
 from app.services.user_preferences import get_user_zoneinfo
 
 
@@ -130,7 +131,17 @@ class TaskTests(TestCase):
 
         self.assertEqual(
             response.context["task_counts"],
-            {"all": 3, "open": 2, "done": 1, "overdue": 1, "today": 1, "upcoming": 0, "assigned": 0},
+            {
+                "all": 3,
+                "open": 2,
+                "done": 1,
+                "overdue": 1,
+                "today": 1,
+                "upcoming": 0,
+                "assigned": 0,
+                "shared": 0,
+                "in_progress": 0,
+            },
         )
         self.assertContains(response, 'data-task-state="overdue"')
         self.assertContains(response, "Überfällig")
@@ -946,3 +957,170 @@ class TaskTemplateTests(TestCase):
 
         self.assertEqual(list(TaskTemplate.objects.values_list("owner__username", flat=True)), ["lukas"])
         self.assertFalse(Task.objects.filter(user=self.user).exists())
+
+
+class TaskBoardAndShareTests(TestCase):
+    def setUp(self):
+        self.mira = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
+        self.lukas = User.objects.create_user(
+            username="lukas@example.com", email="lukas@example.com", password="secret-12345"
+        )
+        self.anna = User.objects.create_user(
+            username="anna@example.com", email="anna@example.com", password="secret-12345"
+        )
+        for user, name in ((self.mira, "Mira"), (self.lukas, "Lukas"), (self.anna, "Anna")):
+            Profile.objects.create(user=user, display_name=name)
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+    def login(self, user):
+        self.client.logout()
+        self.client.login(username=user.username, password="secret-12345")
+
+    def set_status(self, task, status):
+        return self.client.post("/tasks/", {"form_name": "task_status", "task_id": task.pk, "status": status})
+
+    def share(self, title="Umzug planen", users=()):
+        response = self.client.post(
+            "/tasks/",
+            {"form_name": "task_add", "title": title, "shared_with": [user.pk for user in users]},
+        )
+        self.assertEqual(response.status_code, 302)
+        return Task.objects.get(title=title)
+
+    def test_status_moves_between_open_in_progress_and_done(self):
+        task = Task.objects.create(user=self.mira, title="Bericht")
+
+        self.set_status(task, "in_progress")
+        task.refresh_from_db()
+        self.assertEqual(task.status, "in_progress")
+
+        self.set_status(task, "done")
+        task.refresh_from_db()
+        self.assertEqual((task.is_done, task.is_in_progress), (True, False))
+
+        self.set_status(task, "open")
+        task.refresh_from_db()
+        self.assertEqual(task.status, "open")
+
+        response = self.set_status(task, "bogus")
+        self.assertEqual(response.status_code, 302)
+        task.refresh_from_db()
+        self.assertEqual(task.status, "open")
+
+    def test_ticking_off_an_in_progress_task_clears_the_flag(self):
+        task = Task.objects.create(user=self.mira, title="Bericht", is_in_progress=True)
+        toggle_task(self.mira, task.pk, True)
+        task.refresh_from_db()
+        self.assertFalse(task.is_in_progress)
+
+    def test_recurring_task_spawns_its_next_occurrence_only_once(self):
+        task = Task.objects.create(
+            user=self.mira, title="Gießen", recurrence_rule="DAILY", due_at=timezone.now()
+        )
+        TaskShare.objects.create(task=task, user=self.lukas)
+        self.set_status(task, "done")
+        self.set_status(task, "done")
+        self.assertEqual(Task.objects.filter(title="Gießen").count(), 2)
+        next_task = Task.objects.get(title="Gießen", is_done=False)
+        self.assertEqual(list(next_task.shares.values_list("user_id", flat=True)), [self.lukas.pk])
+
+    def test_board_groups_top_level_tasks_by_status(self):
+        Task.objects.create(user=self.mira, title="Offen")
+        parent = Task.objects.create(user=self.mira, title="Läuft", is_in_progress=True)
+        Task.objects.create(user=self.mira, title="Teil", parent=parent)
+        Task.objects.create(user=self.mira, title="Fertig", is_done=True)
+
+        response = self.client.get("/tasks/")
+
+        columns = {
+            column["key"]: [item["title"] for item in column["items"]]
+            for column in response.context["task_board_columns"]
+        }
+        self.assertEqual(columns, {"open": ["Offen"], "in_progress": ["Läuft"], "done": ["Fertig"]})
+        self.assertEqual(response.context["task_counts"]["in_progress"], 1)
+        self.assertContains(response, 'data-task-board-column="in_progress"')
+        self.assertContains(response, 'id="id_title"', count=1)
+        self.assertContains(response, 'id="id_edit_title"', count=1)
+
+    def test_sharing_notifies_and_lets_people_work_on_the_task(self):
+        task = self.share(users=[self.lukas, self.anna])
+
+        self.assertEqual(set(task.shares.values_list("user_id", flat=True)), {self.lukas.pk, self.anna.pk})
+        notification = UserNotification.objects.get(
+            recipient=self.lukas, kind=UserNotification.KIND_TASK_SHARE
+        )
+        self.assertEqual(notification.source_key, f"task-share:{task.pk}:{self.lukas.pk}")
+
+        self.login(self.lukas)
+        response = self.client.get("/tasks/")
+        item = next(item for item in response.context["tasks"] if item["task"].pk == task.pk)
+        self.assertTrue(item["shared_with_me"])
+        self.assertFalse(item["is_own"])
+        self.assertEqual(response.context["task_counts"]["shared"], 1)
+        # Visible exactly once, although shared with two people.
+        self.assertEqual(visible_tasks(self.lukas).filter(pk=task.pk).count(), 1)
+
+        self.set_status(task, "in_progress")
+        task.refresh_from_db()
+        self.assertTrue(task.is_in_progress)
+
+        # Editing and deleting stay with the owner.
+        self.client.post("/tasks/", {"form_name": "task_delete", "task_id": task.pk})
+        self.assertTrue(Task.objects.filter(pk=task.pk).exists())
+
+        self.client.post("/tasks/", {"form_name": "task_comment", "task_id": task.pk, "body": "Mache ich!"})
+        recipients = set(
+            UserNotification.objects.filter(kind=UserNotification.KIND_TASK_COMMENT).values_list(
+                "recipient_id", flat=True
+            )
+        )
+        self.assertEqual(recipients, {self.mira.pk, self.anna.pk})
+
+    def test_shared_subtasks_are_visible_and_unrelated_users_see_nothing(self):
+        task = self.share(users=[self.lukas])
+        Task.objects.create(user=self.mira, title="Kartons", parent=task)
+
+        self.assertEqual(
+            set(visible_tasks(self.lukas).values_list("title", flat=True)), {"Umzug planen", "Kartons"}
+        )
+        self.assertFalse(visible_tasks(self.anna).exists())
+        self.login(self.anna)
+        self.set_status(task, "done")
+        task.refresh_from_db()
+        self.assertFalse(task.is_done)
+
+    def test_leaving_and_unsharing_remove_access_and_notification(self):
+        task = self.share(users=[self.lukas, self.anna])
+
+        self.login(self.lukas)
+        self.client.post("/tasks/", {"form_name": "task_share_leave", "task_id": task.pk})
+        self.assertFalse(visible_tasks(self.lukas).exists())
+        self.assertFalse(UserNotification.objects.filter(recipient=self.lukas).exists())
+
+        self.login(self.mira)
+        response = self.client.post(
+            "/tasks/",
+            {"form_name": "task_edit", "task_id": task.pk, "title": task.title, "shared_with": []},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(task.shares.exists())
+        self.assertFalse(UserNotification.objects.filter(recipient=self.anna).exists())
+
+    def test_subtasks_cannot_be_shared(self):
+        parent = Task.objects.create(user=self.mira, title="Haupt")
+        response = self.client.post(
+            "/tasks/",
+            {"form_name": "task_add", "title": "Teil", "parent": parent.pk, "shared_with": [self.lukas.pk]},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Task.objects.filter(title="Teil").exists())
+
+    def test_shares_appear_in_the_data_export(self):
+        task = self.share(users=[self.lukas])
+        from app.services.data_export import _tasks
+
+        exported = next(row for row in _tasks(self.mira)["tasks"] if row["id"] == task.pk)
+        self.assertEqual(exported["shared_with"], ["lukas@example.com"])
+        self.assertFalse(exported["is_in_progress"])

@@ -6,7 +6,7 @@ from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.db.models import Count, Max, Q
-from django.http import FileResponse, JsonResponse
+from django.http import FileResponse, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
@@ -21,7 +21,7 @@ from app.models import (
     Conversation,
     ConversationMember,
 )
-from app.services.chat_files import infer_attachment_kind
+from app.services.chat_files import audio_content_type, infer_attachment_kind
 from app.services.message_queries import (
     current_members_by_conversation,
     last_messages_by_conversation,
@@ -86,7 +86,9 @@ def messages(request, conversation_id=None):
                 message.save()
                 upload = message_form.cleaned_data.get("attachment")
                 if upload:
-                    _create_chat_attachment(message, request.user, upload)
+                    _create_chat_attachment(
+                        message, request.user, upload, message_form.cleaned_data.get("voice_duration")
+                    )
                 selected_conversation.updated_at = message.created_at
                 selected_conversation.save(update_fields=["updated_at"])
                 selected_conversation.mark_read_for(request.user)
@@ -417,16 +419,51 @@ def chat_attachment_download(request, file_id, disposition):
     if not Conversation.visible_for(request.user).filter(pk=attachment.message.conversation_id).exists():
         return JsonResponse({"ok": False, "error": "Datei nicht gefunden."}, status=404)
 
-    response = FileResponse(
-        attachment.file.open("rb"),
-        content_type=attachment.content_type or "application/octet-stream",
-    )
+    content_type = attachment.content_type or "application/octet-stream"
+    byte_range = _requested_byte_range(request, attachment.size) if disposition == "inline" else None
+    if byte_range == "invalid":
+        response = HttpResponse(status=416)
+        response["Content-Range"] = f"bytes */{attachment.size}"
+        return response
+    if byte_range:
+        # Safari only plays <audio> from servers that answer Range requests with 206.
+        start, end = byte_range
+        with attachment.file.open("rb") as handle:
+            handle.seek(start)
+            chunk = handle.read(end - start + 1)
+        response = HttpResponse(chunk, status=206, content_type=content_type)
+        response["Content-Range"] = f"bytes {start}-{end}/{attachment.size}"
+    else:
+        response = FileResponse(attachment.file.open("rb"), content_type=content_type)
+    response["Accept-Ranges"] = "bytes" if disposition == "inline" else "none"
     response["Content-Disposition"] = content_disposition_header(
         disposition == "download",
         attachment.original_name,
     )
     response["X-Content-Type-Options"] = "nosniff"
     return response
+
+
+def _requested_byte_range(request, size):
+    """Parse a single ``bytes=start-end`` range; ``None`` serves the whole file."""
+    header = request.headers.get("Range", "")
+    if not header.startswith("bytes=") or "," in header or size <= 0:
+        return None
+    start_text, _, end_text = header[len("bytes=") :].strip().partition("-")
+    try:
+        if start_text:
+            start = int(start_text)
+            end = int(end_text) if end_text else size - 1
+        else:
+            suffix = int(end_text)
+            if suffix <= 0:
+                return "invalid"
+            start, end = max(size - suffix, 0), size - 1
+    except ValueError:
+        return None
+    if start < 0 or start >= size or end < start:
+        return "invalid"
+    return start, min(end, size - 1)
 
 
 def _get_user_conversation(user, conversation_id):
@@ -869,17 +906,30 @@ def _delete_chat_message_for_user(message, user):
     message.save(update_fields=["body", "is_deleted", "deleted_at", "is_pinned", "pinned_at", "pinned_by"])
 
 
-def _create_chat_attachment(message, user, upload):
+def _create_chat_attachment(message, user, upload, duration_seconds=None):
     kind = infer_attachment_kind(upload.name)
+    is_audio = kind == ChatMessageAttachment.KIND_AUDIO
+    content_type = (
+        audio_content_type(upload.name)
+        if is_audio
+        else (getattr(upload, "content_type", "") or "application/octet-stream")
+    )
     ChatMessageAttachment.objects.create(
         message=message,
         uploaded_by=user,
         kind=kind,
         original_name=upload.name[:255],
-        content_type=(getattr(upload, "content_type", "") or "application/octet-stream")[:160],
+        content_type=content_type[:160],
         size=upload.size,
+        duration_seconds=duration_seconds if is_audio else None,
         file=upload,
     )
+
+
+def _format_duration(seconds):
+    if seconds is None:
+        return ""
+    return f"{seconds // 60}:{seconds % 60:02d}"
 
 
 def _format_file_size(size_bytes):
@@ -898,6 +948,7 @@ def _build_attachment_item(message):
         "kind": attachment.kind,
         "name": attachment.original_name,
         "size_label": _format_file_size(attachment.size),
+        "duration_label": _format_duration(attachment.duration_seconds),
         "inline_url": reverse("chat_attachment_download", args=[attachment.file_id, "inline"]),
         "download_url": reverse("chat_attachment_download", args=[attachment.file_id, "download"]),
     }
@@ -991,11 +1042,11 @@ def _message_preview_text(message):
         return message.body
     attachment = getattr(message, "attachment", None)
     if attachment:
-        return (
-            "📷 Bild"
-            if attachment.kind == ChatMessageAttachment.KIND_IMAGE
-            else f"📎 {attachment.original_name}"
-        )
+        if attachment.kind == ChatMessageAttachment.KIND_IMAGE:
+            return "📷 Bild"
+        if attachment.kind == ChatMessageAttachment.KIND_AUDIO:
+            return "🎤 Sprachnachricht"
+        return f"📎 {attachment.original_name}"
     return ""
 
 

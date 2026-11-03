@@ -1,6 +1,7 @@
 import calendar
 import secrets
 from datetime import UTC, datetime, time, timedelta
+from urllib.parse import quote, urlparse
 
 from django.db.models import Q
 from django.utils import timezone
@@ -8,6 +9,12 @@ from django.utils import timezone
 from app.models import CalendarEvent, CalendarEventAttendee, VacationPeriod
 from app.services.system_settings import feature_enabled
 from app.services.user_preferences import get_user_zoneinfo, localtime_for_user
+
+# Map search for an event's location; OpenStreetMap needs no API key and sets no tracking cookies.
+LOCATION_MAP_SEARCH_URL = "https://www.openstreetmap.org/search?query={query}"
+# Upper bound for one availability lookup, so the endpoint can't be used to scan whole calendars.
+AVAILABILITY_MAX_SPAN = timedelta(days=31)
+AVAILABILITY_MAX_USERS = 50
 
 # Subscribers only need recent history; everything ahead is always included.
 FEED_LOOKBACK_DAYS = 180
@@ -238,3 +245,58 @@ def _ics_fold(line):
         current_size += char_size
     chunks.append(current)
     return "\r\n ".join(chunks)
+
+
+def location_link(location):
+    """Where an event's location should link to: the meeting itself for a web address (video calls),
+    otherwise a map search. ``None`` for an empty location."""
+    location = (location or "").strip()
+    if not location:
+        return None
+    parsed = urlparse(location)
+    if parsed.scheme in {"http", "https"} and parsed.netloc and " " not in location:
+        return {"url": location, "label": "Online-Termin öffnen", "icon": "fa-video", "is_online": True}
+    return {
+        "url": LOCATION_MAP_SEARCH_URL.format(query=quote(location, safe="")),
+        "label": "Auf der Karte zeigen",
+        "icon": "fa-map-location-dot",
+        "is_online": False,
+    }
+
+
+def attendee_availability(users, start_at, end_at, *, exclude_event_id=None):
+    """Free/busy of ``users`` between ``start_at`` and ``end_at``.
+
+    Only a status per person comes back, never titles or times of their events: own events and
+    accepted invitations count as busy, a booked vacation (when the planner is on) as away.
+    ``exclude_event_id`` leaves out the event being edited, which would otherwise always collide.
+    """
+    users = list(users)
+    user_ids = [user.pk for user in users]
+    events = CalendarEvent.objects.filter(start_at__lt=end_at, end_at__gt=start_at)
+    if exclude_event_id:
+        events = events.exclude(pk=exclude_event_id)
+    busy = set(events.filter(user_id__in=user_ids).values_list("user_id", flat=True))
+    busy.update(
+        CalendarEventAttendee.objects.filter(
+            user_id__in=user_ids,
+            status=CalendarEventAttendee.STATUS_ACCEPTED,
+            event__in=events,
+        ).values_list("user_id", flat=True)
+    )
+    away = set()
+    if feature_enabled("vacation_planner"):
+        for user in users:
+            zone = get_user_zoneinfo(user)
+            first_day = start_at.astimezone(zone).date()
+            last_day = (end_at - timedelta(microseconds=1)).astimezone(zone).date()
+            if VacationPeriod.objects.filter(
+                user=user, start_date__lte=last_day, end_date__gte=first_day
+            ).exists():
+                away.add(user.pk)
+    labels = {"away": "im Urlaub", "busy": "belegt", "free": "frei"}
+    result = []
+    for user in users:
+        status = "away" if user.pk in away else "busy" if user.pk in busy else "free"
+        result.append({"id": user.pk, "status": status, "label": labels[status]})
+    return result

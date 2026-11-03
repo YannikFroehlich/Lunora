@@ -6,6 +6,40 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Accessibility pass over all pages (checked with axe-core in light and dark mode, including open
+  dialogs, and by keyboard): every form field now has a label for screen readers, labels no longer
+  point at a field of another form on the same page, the notes editor, its checklist boxes and the
+  dark-mode toggle have German labels, page regions are announced correctly, and the week view's
+  event details have enough contrast. New keyboard alternatives: Alt+↑/↓ moves the focused task
+  (manual sort) or list, Enter opens the actions of a focused chat message (Escape returns to it),
+  and Enter/Space on a vacation-planner day opens its menu (Shift+Enter selects a range). Colour
+  pickers and practice options show a visible focus ring.
+- Faster note search on PostgreSQL: the searchable text of every note is now kept in an indexed
+  column that is updated on save, instead of being re-analysed for every search. Results and their
+  order stay the same.
+- Tasks have a board view: "Board" next to "Liste" shows the tasks in the columns "Offen", "In Arbeit"
+  and "Erledigt". Drag a card into another column, or use the three status buttons on each card. The
+  new "In Arbeit" status also shows in the list and has its own filter.
+- Share a task with several people ("Teilen mit" in a task's options): everyone it is shared with sees
+  it with its subtasks under "Mit mir geteilt", can change its status and joins its comments, and is
+  notified about the share and new comments. Only the owner edits or deletes it; anyone it was shared
+  with can stop sharing it with themselves ("Teilen beenden").
+- Fixed the task row buttons wrapping into a second line since "Als Vorlage speichern" was added.
+- Calendar year view: "Jahr" in the view switch shows all twelve months at once, colours each day by
+  how much is on it and marks holidays and vacations. A day opens its day view, a month name the
+  month view.
+- When inviting people to an event, the dialog shows next to each ticked person whether they are
+  free, busy or on vacation at that time (only that status, no details of their events).
+- An event's location links to a map search (OpenStreetMap) in the "Heute" and "Nächste Termine"
+  lists, the invitations and the event dialogs; a web address as location opens the video call
+  instead.
+- Fixed labels in the calendar's dialogs pointing at the wrong field, because the create, edit and
+  reminder forms used the same field ids.
+- Notes with checklists show their progress (for example "2/5") in the note list; it turns green
+  once every item is ticked and updates as soon as the note is saved.
+- Voice messages in chats: the microphone button next to the text field records a message (up to
+  five minutes, "Senden" or "Verwerfen"), which the chat plays back inline with its length. MP3,
+  M4A, Ogg and WebM audio files can also be attached with the paperclip.
 - Task comments can be edited (marked "bearbeitet") and deleted by their author.
 - An assigned task can be declined or handed back ("Ablehnen oder zurückgeben", with an optional
   reason); the owner is notified and the task is theirs alone again.

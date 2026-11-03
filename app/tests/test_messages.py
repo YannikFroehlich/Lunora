@@ -594,6 +594,84 @@ class MessagesPageTests(TestCase):
             response = self.client.get(download_url)
             self.assertEqual(response.status_code, 404)
 
+    def _send_voice(self, conversation, name, data, content_type, duration="7"):
+        upload = SimpleUploadedFile(name, data, content_type=content_type)
+        return self.client.post(
+            f"/messages/{conversation.id}/",
+            {
+                "form_name": "message",
+                "conversation_id": str(conversation.id),
+                "body": "",
+                "voice_duration": duration,
+                "attachment": upload,
+            },
+        )
+
+    def _direct_conversation(self):
+        conversation = Conversation.objects.create(created_by=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.mira)
+        ConversationMember.objects.create(conversation=conversation, user=self.lukas)
+        return conversation
+
+    def test_voice_message_is_stored_as_audio_and_played_inline(self):
+        conversation = self._direct_conversation()
+        webm = b"\x1a\x45\xdf\xa3" + b"\x00" * 60
+        self.client.login(username="mira@example.com", password="secret-12345")
+        with TemporaryDirectory() as private_root, override_settings(PRIVATE_MEDIA_ROOT=private_root):
+            response = self._send_voice(conversation, "Sprachnachricht.webm", webm, "video/webm")
+            self.assertRedirects(response, f"/messages/{conversation.id}/")
+
+            attachment = conversation.messages.get().attachment
+            self.assertEqual(attachment.kind, "audio")
+            self.assertEqual(attachment.content_type, "audio/webm")
+            self.assertEqual(attachment.duration_seconds, 7)
+
+            page = self.client.get(f"/messages/{conversation.id}/")
+            self.assertContains(page, "<audio controls")
+            self.assertContains(page, "0:07")
+
+            url = f"/messages/attachments/{attachment.file_id}/inline/"
+            partial = self.client.get(url, HTTP_RANGE="bytes=0-3")
+            self.assertEqual(partial.status_code, 206)
+            self.assertEqual(partial["Content-Range"], f"bytes 0-3/{len(webm)}")
+            self.assertEqual(partial.content, webm[:4])
+
+            suffix = self.client.get(url, HTTP_RANGE="bytes=-2")
+            self.assertEqual(suffix.status_code, 206)
+            self.assertEqual(suffix.content, webm[-2:])
+
+            unsatisfiable = self.client.get(url, HTTP_RANGE=f"bytes={len(webm) + 5}-")
+            self.assertEqual(unsatisfiable.status_code, 416)
+
+            full = self.client.get(url)
+            self.assertEqual(full.status_code, 200)
+            self.assertEqual(full["Accept-Ranges"], "bytes")
+            full.close()
+
+    def test_voice_message_with_wrong_signature_is_rejected(self):
+        conversation = self._direct_conversation()
+        self.client.login(username="mira@example.com", password="secret-12345")
+        with TemporaryDirectory() as private_root, override_settings(PRIVATE_MEDIA_ROOT=private_root):
+            response = self._send_voice(conversation, "Sprachnachricht.ogg", b"not audio", "audio/ogg")
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(conversation.messages.exists())
+
+            response = self._send_voice(conversation, "fake.m4a", b"\x00\x00\x00\x18ftypM4A ", "text/html")
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(conversation.messages.exists())
+
+    def test_voice_message_duration_is_capped(self):
+        conversation = self._direct_conversation()
+        self.client.login(username="mira@example.com", password="secret-12345")
+        with TemporaryDirectory() as private_root, override_settings(PRIVATE_MEDIA_ROOT=private_root):
+            response = self._send_voice(conversation, "a.ogg", b"OggS" + b"\x00" * 20, "audio/ogg", "9999")
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(conversation.messages.exists())
+
+            response = self._send_voice(conversation, "a.mp3", b"ID3" + b"\x00" * 20, "audio/mpeg")
+            self.assertRedirects(response, f"/messages/{conversation.id}/")
+            self.assertEqual(conversation.messages.get().attachment.content_type, "audio/mpeg")
+
     def test_message_without_body_or_attachment_is_invalid(self):
         conversation = Conversation.objects.create(created_by=self.mira)
         ConversationMember.objects.create(conversation=conversation, user=self.mira)

@@ -90,6 +90,46 @@ class NotesTests(TestCase):
             content_type="application/json",
         )
 
+    def test_checklist_progress_is_derived_on_save_and_shown_in_list(self):
+        note = self.create_note("Packliste")
+        self.assertEqual((note.checklist_done, note.checklist_total), (0, 0))
+
+        def task(text, checked):
+            return {
+                "type": "taskItem",
+                "attrs": {"checked": checked},
+                "content": [{"type": "paragraph", "content": [{"type": "text", "text": text}]}],
+            }
+
+        nested = task("Zelt", True)
+        nested["content"].append({"type": "taskList", "content": [task("Heringe", False)]})
+        document = {
+            "type": "doc",
+            "content": [{"type": "taskList", "content": [nested, task("Schlafsack", True)]}],
+        }
+        response = self.client.patch(
+            f"/notes/api/{note.id}/",
+            data=json.dumps({"title": note.title, "document": document, "base_revision": note.revision}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()["note"]
+        self.assertEqual((payload["checklist_done"], payload["checklist_total"]), (2, 3))
+        note.refresh_from_db()
+        self.assertEqual((note.checklist_done, note.checklist_total), (2, 3))
+
+        page = self.client.get("/notes/")
+        self.assertContains(page, "data-note-card-checklist-label>2/3<")
+        self.assertContains(page, "2 von 3 Punkten erledigt")
+
+        # update_fields without "document" keeps the stored counts untouched.
+        Note.objects.filter(pk=note.pk).update(checklist_done=0)
+        note.refresh_from_db()
+        note.title = "Packliste Sommer"
+        note.save(update_fields=["title"])
+        note.refresh_from_db()
+        self.assertEqual(note.checklist_done, 0)
+
     def test_notes_require_login_and_render_editor(self):
         self.client.logout()
         self.assertRedirects(self.client.get("/notes/"), "/login/?next=/notes/")
