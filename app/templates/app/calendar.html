@@ -196,15 +196,26 @@
                 {% if upcoming_events %}
                 {% for event in upcoming_events %}
                 <div class="upcoming-row tone-{{ event.tone }}">
-                    <span class="upcoming-dot" aria-hidden="true"></span>
-                    <span>{{ event.date }}</span>
-                    <strong>{% if event.url %}<a href="{{ event.url }}">{{ event.title }}</a>{% else %}{{ event.title }}{% endif %}{% if event.has_reminder %} <i class="fa-regular fa-bell event-reminder-icon" aria-hidden="true" title="Mit Erinnerung"></i><span class="visually-hidden">, mit Erinnerung</span>{% endif %}</strong>
-                    <small>{{ event.category }}</small>
-                    {% include 'app/partials/calendar_location_link.html' with item=event %}
-                    {% if event.recurrence_id %}<i class="fa-solid fa-repeat" title="Wiederkehrender Termin"></i>{% endif %}
-                    {% if event.is_invited %}<i class="fa-solid fa-user-group" title="Einladung"></i>{% endif %}
-                    {% if event.subscription_name %}<i class="fa-solid fa-rss" title="Abonniert: {{ event.subscription_name }}"></i>{% endif %}
-                    <i class="fa-solid {{ event.icon }}"></i>
+                    <span class="upcoming-date{% if event.badge.is_today %} is-today{% endif %}" title="{{ event.date }}">
+                        <small>{{ event.badge.weekday }}</small>
+                        <strong>{{ event.badge.day }}</strong>
+                        <small>{{ event.badge.month }}</small>
+                    </span>
+                    <div class="upcoming-body">
+                        <strong>{% if event.url %}<a href="{{ event.url }}">{{ event.title }}</a>{% else %}{{ event.title }}{% endif %}{% if event.has_reminder %} <i class="fa-regular fa-bell event-reminder-icon" aria-hidden="true" title="Mit Erinnerung"></i><span class="visually-hidden">, mit Erinnerung</span>{% endif %}</strong>
+                        <span class="upcoming-meta">
+                            <span class="upcoming-dot" aria-hidden="true"></span>
+                            {% if event.time %}<span>{{ event.time }}</span>{% endif %}
+                            <span>{{ event.category }}</span>
+                            {% include 'app/partials/calendar_location_link.html' with item=event %}
+                        </span>
+                    </div>
+                    <span class="upcoming-icons">
+                        {% if event.recurrence_id %}<i class="fa-solid fa-repeat" aria-hidden="true" title="Wiederkehrender Termin"></i><span class="visually-hidden">Wiederkehrend</span>{% endif %}
+                        {% if event.is_invited %}<i class="fa-solid fa-user-group" aria-hidden="true" title="Einladung"></i><span class="visually-hidden">Einladung</span>{% endif %}
+                        {% if event.subscription_name %}<i class="fa-solid fa-rss" aria-hidden="true" title="Abonniert: {{ event.subscription_name }}"></i><span class="visually-hidden">Abonniert: {{ event.subscription_name }}</span>{% endif %}
+                        {% if not event.time %}<i class="fa-solid {{ event.icon }}" aria-hidden="true"></i>{% endif %}
+                    </span>
                     {% if event.can_delete %}
                     <span class="event-row-actions">
                         <button class="icon-button" type="button" aria-label="Termin bearbeiten" {% include 'app/partials/calendar_event_edit_data.html' %}><i class="fa-solid fa-pen" aria-hidden="true"></i></button>

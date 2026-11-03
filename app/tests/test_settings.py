@@ -1029,7 +1029,7 @@ class SettingsProfileTests(TestCase):
 
         self.assertContains(response, "Zahnarzttermin")
         self.assertContains(response, "tone-sand")
-        self.assertContains(response, "<small>Sonstiges</small>", html=False)
+        self.assertContains(response, "<span>Sonstiges</span>", html=False)
 
     def test_calendar_event_with_attendee_creates_invitation_visible_to_invitee(self):
         organizer = User.objects.create_user(
