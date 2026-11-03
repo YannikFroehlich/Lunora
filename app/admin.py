@@ -51,6 +51,7 @@ class SystemSettingsAdmin(admin.ModelAdmin):
         "calendar_event_creation_enabled",
         "calendar_reminders_enabled",
         "calendar_feed_enabled",
+        "calendar_subscriptions_enabled",
         "messages_enabled",
         "notes_enabled",
         "vacation_planner_enabled",

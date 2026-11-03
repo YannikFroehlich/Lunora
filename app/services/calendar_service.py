@@ -175,7 +175,7 @@ def move_calendar_event(user, event_id, *, target_date, start_minute=None, end_m
     bottom edge dragged on the time grid). A series occurrence moves alone, like "Nur dieser Termin".
     Returns the event, or None when it isn't the user's or a stretched end wouldn't follow the start.
     """
-    event = CalendarEvent.objects.filter(user=user, pk=event_id).first()
+    event = CalendarEvent.objects.filter(user=user, pk=event_id, subscription=None).first()
     if event is None:
         return None
     user_timezone = get_user_zoneinfo(user)
@@ -214,11 +214,13 @@ def disable_calendar_feed(profile):
 
 
 def calendar_feed_events(user, *, now=None):
-    """Own events plus invitations the user accepted, from FEED_LOOKBACK_DAYS ago onwards."""
+    """Own events plus invitations the user accepted, from FEED_LOOKBACK_DAYS ago onwards. Events of
+    subscribed calendars stay out: subscribing to both would show them twice, or loop."""
     current_time = now or timezone.now()
     accepted = Q(attendees__user=user, attendees__status=CalendarEventAttendee.STATUS_ACCEPTED)
     return (
         CalendarEvent.objects.filter(Q(user=user) | accepted)
+        .filter(subscription=None)
         .filter(end_at__gte=current_time - timedelta(days=FEED_LOOKBACK_DAYS))
         .select_related("user", "user__profile")
         .distinct()

@@ -446,9 +446,18 @@
   pointer-events: none;
 }
 
-.color-dot.is-active {
+.color-dot.is-active,
+.calendar-subscription-form .color-dot:has(input:checked) {
   outline: 3px solid color-mix(in srgb, var(--dot-color) 70%, #ffffff);
   outline-offset: 3px;
+}
+
+.calendar-subscription-form .color-dot {
+  --dot-color: var(--tone);
+}
+
+.calendar-subscription-form .color-dot:has(input:focus-visible) {
+  box-shadow: var(--focus-ring);
 }
 
 .softness-slider,
@@ -779,6 +788,56 @@
 
 .calendar-input-pill input:focus-visible {
   box-shadow: none;
+}
+
+.calendar-subscriptions-title {
+  margin-top: 28px;
+}
+
+.calendar-subscription-list {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.calendar-subscription {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--surface-control);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-sm);
+}
+
+.calendar-subscription-dot {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  background: var(--tone);
+  border-radius: 50%;
+}
+
+.calendar-subscription-copy {
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 2px;
+}
+
+.calendar-subscription-copy small {
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+}
+
+.calendar-subscription-copy .calendar-subscription-error {
+  color: var(--color-danger);
+}
+
+.calendar-subscription-form .color-row {
+  margin-top: 8px;
 }
 
 .calendar-form-actions {

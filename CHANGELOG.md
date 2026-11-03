@@ -6,6 +6,13 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Subscribe to external calendars: under Einstellungen → Kalender, paste the secret iCal address
+  of a private Google, Outlook or iCloud calendar (https or webcal), pick a name and color, and
+  its events show up read-only in every calendar view and in "Nächste Termine" on the dashboard.
+  Lunora refreshes them about every 30 minutes (or on "Jetzt aktualisieren"), with series and
+  time zones, from half a year back to a bit over a year ahead. The address is never shown again,
+  exported or logged, and subscribed events stay out of Lunora's own subscription link. The admin
+  feature flag "Externe Kalender" switches it off.
 - Time report by month: "Woche | Monat" on the Zeiterfassung page switches to a monthly view with
   one bar per calendar week and a CSV per month. Both views also sum the time per task list and per
   label (a task with several labels counts for each), and the Monday summary e-mail now lists last

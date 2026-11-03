@@ -16,6 +16,7 @@ from app.models import (
     CalendarEvent,
     CalendarEventAttendee,
     CalendarReminder,
+    CalendarSubscription,
     ChatMessage,
     ChatPoll,
     ChatPollOption,
@@ -44,6 +45,7 @@ from app.services.calendar_service import (
     series_scope_events,
     sync_event_reminders,
 )
+from app.services.calendar_subscriptions import MAX_SUBSCRIPTIONS, SubscriptionError, normalize_url
 from app.services.chat import SCHEDULE_MAX_AHEAD, SCHEDULE_MIN_LEAD
 from app.services.chat_files import CHAT_VOICE_MAX_SECONDS, validate_chat_upload
 from app.services.image_uploads import PROFILE_IMAGE_ACCEPT, validate_profile_image_file
@@ -136,6 +138,7 @@ class SystemSettingsForm(forms.ModelForm):
             "calendar_event_creation_enabled",
             "calendar_reminders_enabled",
             "calendar_feed_enabled",
+            "calendar_subscriptions_enabled",
             "messages_enabled",
             "notes_enabled",
             "vacation_planner_enabled",
@@ -150,6 +153,7 @@ class SystemSettingsForm(forms.ModelForm):
             "calendar_event_creation_enabled": "Kalender: eigene Termine erstellen",
             "calendar_reminders_enabled": "Kalender: Erinnerungen",
             "calendar_feed_enabled": "Kalender: Abo-Link für Google & Co.",
+            "calendar_subscriptions_enabled": "Kalender: externe Kalender per iCal-Adresse abonnieren",
             "messages_enabled": "Nachrichten",
             "notes_enabled": "Notizen",
             "vacation_planner_enabled": "Urlaubsplaner",
@@ -164,6 +168,7 @@ class SystemSettingsForm(forms.ModelForm):
             "calendar_event_creation_enabled": forms.CheckboxInput(),
             "calendar_reminders_enabled": forms.CheckboxInput(),
             "calendar_feed_enabled": forms.CheckboxInput(),
+            "calendar_subscriptions_enabled": forms.CheckboxInput(),
             "messages_enabled": forms.CheckboxInput(),
             "notes_enabled": forms.CheckboxInput(),
             "vacation_planner_enabled": forms.CheckboxInput(),
@@ -946,6 +951,46 @@ class TaskListForm(forms.ModelForm):
         # The tasks page also renders the label form, which has a "name" field too.
         kwargs.setdefault("auto_id", "id_list_%s")
         super().__init__(*args, **kwargs)
+
+
+class CalendarSubscriptionForm(forms.ModelForm):
+    class Meta:
+        model = CalendarSubscription
+        fields = ["name", "url", "color"]
+        labels = {"name": "Name", "url": "Geheime iCal-Adresse", "color": "Farbe"}
+        widgets = {
+            "name": forms.TextInput(attrs={"placeholder": "z. B. Privat", "autocomplete": "off"}),
+            "url": forms.TextInput(
+                attrs={
+                    "placeholder": "https://… oder webcal://…",
+                    "inputmode": "url",
+                    "autocomplete": "off",
+                    "spellcheck": "false",
+                }
+            ),
+        }
+
+    def __init__(self, *args, user, **kwargs):
+        # The settings page has other forms with a "name" field.
+        kwargs.setdefault("auto_id", "id_subscription_%s")
+        super().__init__(*args, **kwargs)
+        self.user = user
+
+    def clean_url(self):
+        try:
+            return normalize_url(self.cleaned_data["url"])
+        except SubscriptionError as error:
+            raise forms.ValidationError(str(error)) from None
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if CalendarSubscription.objects.filter(user=self.user).count() >= MAX_SUBSCRIPTIONS:
+            raise forms.ValidationError(f"Du kannst höchstens {MAX_SUBSCRIPTIONS} Kalender abonnieren.")
+        return cleaned_data
+
+    def save(self, commit=True):
+        self.instance.user = self.user
+        return super().save(commit=commit)
 
 
 class BookmarkForm(forms.ModelForm):

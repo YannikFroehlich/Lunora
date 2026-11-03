@@ -25,6 +25,7 @@
                     <small>
                         {{ event.category }}
                         {% if event.is_invited %}· <i class="fa-solid fa-user-group" aria-hidden="true"></i> Einladung{% endif %}
+                        {% if event.subscription_name %}· <i class="fa-solid fa-rss" aria-hidden="true"></i> Abonniert{% endif %}
                         {% if event.recurrence_id %}· <i class="fa-solid fa-repeat" aria-hidden="true"></i><span class="visually-hidden">Wiederkehrend</span>{% endif %}
                         {% if event.has_reminder %}· <i class="fa-regular fa-bell event-reminder-icon" aria-hidden="true"></i><span class="visually-hidden">Mit Erinnerung</span>{% endif %}
                     </small>
