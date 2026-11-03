@@ -1051,6 +1051,7 @@ def _calendar_event_manage_fields(event, user):
         "can_delete": can_manage,
         "location": event.location,
         "location_link": location_link(event.location),
+        "has_reminder": event.reminder_minutes is not None,
     }
     if can_manage:
         event_start = localtime_for_user(event.start_at, user)
@@ -1066,6 +1067,7 @@ def _calendar_event_manage_fields(event, user):
                 "edit_is_all_day": event.is_all_day,
                 "edit_category": event.category,
                 "edit_location": event.location,
+                "edit_reminder_minutes": "" if event.reminder_minutes is None else event.reminder_minutes,
                 "edit_attendee_ids": ",".join(
                     str(user_id) for user_id in event.attendees.values_list("user_id", flat=True)
                 ),
@@ -1114,7 +1116,8 @@ def _pending_invitation_items(user):
 
 
 def _calendar_reminder_items(user, now):
-    reminders = CalendarReminder.objects.filter(user=user).order_by(
+    # Reminders created for events ("15 Minuten vorher") belong to the event, not this list.
+    reminders = CalendarReminder.objects.filter(user=user, event__isnull=True).order_by(
         "is_done",
         F("due_at").asc(nulls_last=True),
         "-created_at",

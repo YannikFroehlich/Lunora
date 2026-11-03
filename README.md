@@ -160,6 +160,7 @@ Wichtige Variablen:
 - `DJANGO_SERVER_EMAIL`: Absenderadresse für diese Fehlerbenachrichtigungen
 - `CLOUDFLARE_TURNSTILE_REQUIRED` und die `CLOUDFLARE_TURNSTILE_*`-Variablen: serverseitig validierter Bot-Schutz für die öffentliche Registrierung
 - `LUNORA_AUTOMATION_INTERVAL_SECONDS`: Intervall des dauerhaft laufenden Automatikprozesses
+- `LUNORA_HEALTH_REQUIRE_AUTOMATIONS`: ob `/healthz/` mit `503` antwortet, wenn der Automatikprozess seit drei Intervallen (mindestens fünf Minuten) keinen Durchlauf abgeschlossen hat; standardmäßig an, sobald `DJANGO_DEBUG=false` ist
 - `LUNORA_WEEKLY_SUMMARY_HOUR`: lokale Montagstunde, ab der ein Wochenbericht versendet wird
 - `WEB_PUSH_VAPID_PUBLIC_KEY`: öffentlicher URL-safe-Base64-Schlüssel für Browser-Abonnements
 - `WEB_PUSH_VAPID_PRIVATE_KEY`: geheimer VAPID-Schlüssel oder Pfad zu einer PEM-Datei außerhalb des Repositorys

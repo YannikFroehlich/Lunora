@@ -463,6 +463,19 @@
       return;
     }
 
+    if (action === "forward") {
+      const dialog = document.getElementById("message-forward-dialog");
+      if (dialog) {
+        dialog.querySelector("[data-forward-message-id]").value = bubble.dataset.messageId;
+        const preview = dialog.querySelector("[data-forward-preview]");
+        if (preview) preview.textContent = bubble.dataset.preview || "";
+        forwardReturnFocus = bubble;
+        dialog.showModal();
+        dialog.querySelector("input[name='target_conversation_id']:checked")?.focus();
+      }
+      return;
+    }
+
     if (action === "prefill") {
       // tasks.js / calendar.js put the text into their quick-add field, where a date can be added.
       try {
@@ -478,6 +491,16 @@
     }
 
     submitMessageAction(bubble.dataset.messageId, action, button.dataset.emoji || "");
+  });
+
+  let forwardReturnFocus = null;
+  const forwardDialog = document.getElementById("message-forward-dialog");
+  forwardDialog?.querySelectorAll("[data-forward-close]").forEach((button) => {
+    button.addEventListener("click", () => forwardDialog.close());
+  });
+  forwardDialog?.addEventListener("close", () => {
+    forwardReturnFocus?.focus();
+    forwardReturnFocus = null;
   });
 
   document.addEventListener("click", (event) => {

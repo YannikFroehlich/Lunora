@@ -6,6 +6,16 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Forward chat messages: "Weiterleiten" in a message's menu sends it, including an image, file or
+  voice message, to another of your conversations. It arrives as "Weitergeleitet" from you, without
+  naming who wrote the original.
+- Event reminders: an event can remind you "Zum Beginn", 5/15/30 minutes, 1–2 hours, 1–2 days or a
+  week before it starts. The reminder reaches you and everyone who accepted the invitation, through
+  the notification center, e-mail, Web Push and the browser, with the event's time, place and a link
+  to its day. Moving or editing the event moves the reminder along; events with a reminder show a
+  bell in the lists.
+- Health check for monitoring: `/healthz/` answers 200 while the database, the cache and the
+  background automations are working and 503 otherwise, with only a status word per check.
 - Accessibility pass over all pages (checked with axe-core in light and dark mode, including open
   dialogs, and by keyboard): every form field now has a label for screen readers, labels no longer
   point at a field of another form on the same page, the notes editor, its checklist boxes and the

@@ -144,7 +144,7 @@
                 <div class="timeline-row">
                     <time>{{ event.time }}</time>
                     <span class="timeline-dot tone-{{ event.tone }}"></span>
-                    <strong>{{ event.title }}</strong>
+                    <strong>{{ event.title }}{% if event.has_reminder %} <i class="fa-regular fa-bell event-reminder-icon" aria-hidden="true" title="Mit Erinnerung"></i><span class="visually-hidden">, mit Erinnerung</span>{% endif %}</strong>
                     {% include 'app/partials/calendar_location_link.html' with item=event %}
                     {% if event.recurrence_id %}<i class="fa-solid fa-repeat" title="Wiederkehrender Termin"></i>{% endif %}
                     {% if event.is_invited %}<i class="fa-solid fa-user-group" title="Einladung"></i>{% endif %}
@@ -194,7 +194,7 @@
                 <div class="upcoming-row tone-{{ event.tone }}">
                     <span class="upcoming-dot" aria-hidden="true"></span>
                     <span>{{ event.date }}</span>
-                    <strong>{% if event.url %}<a href="{{ event.url }}">{{ event.title }}</a>{% else %}{{ event.title }}{% endif %}</strong>
+                    <strong>{% if event.url %}<a href="{{ event.url }}">{{ event.title }}</a>{% else %}{{ event.title }}{% endif %}{% if event.has_reminder %} <i class="fa-regular fa-bell event-reminder-icon" aria-hidden="true" title="Mit Erinnerung"></i><span class="visually-hidden">, mit Erinnerung</span>{% endif %}</strong>
                     <small>{{ event.category }}</small>
                     {% include 'app/partials/calendar_location_link.html' with item=event %}
                     {% if event.recurrence_id %}<i class="fa-solid fa-repeat" title="Wiederkehrender Termin"></i>{% endif %}
@@ -432,6 +432,14 @@
                 {{ event_form.location.errors }}
             </div>
 
+            {% if calendar_reminders_enabled %}
+            <label class="event-form-field is-wide" for="{{ event_form.reminder_minutes.id_for_label }}">
+                <span>{{ event_form.reminder_minutes.label }} <small>für dich und alle, die zusagen</small></span>
+                {{ event_form.reminder_minutes }}
+                {{ event_form.reminder_minutes.errors }}
+            </label>
+            {% endif %}
+
             <fieldset class="event-form-field event-attendees-field is-wide" data-availability-url="{% url 'calendar_availability' %}">
                 <legend>{{ event_form.attendees.label }}</legend>
                 <div class="recipient-checkbox-list">{{ event_form.attendees }}</div>
@@ -518,6 +526,14 @@
                 <a class="event-location-link" href="#" target="_blank" rel="noopener noreferrer" data-location-link hidden></a>
                 {{ edit_form.location.errors }}
             </div>
+
+            {% if calendar_reminders_enabled %}
+            <label class="event-form-field is-wide" for="{{ edit_form.reminder_minutes.id_for_label }}">
+                <span>{{ edit_form.reminder_minutes.label }} <small>für dich und alle, die zusagen</small></span>
+                {{ edit_form.reminder_minutes }}
+                {{ edit_form.reminder_minutes.errors }}
+            </label>
+            {% endif %}
 
             <fieldset class="event-form-field event-attendees-field is-wide" data-availability-url="{% url 'calendar_availability' %}">
                 <legend>{{ edit_form.attendees.label }}</legend>

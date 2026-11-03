@@ -1761,3 +1761,11 @@ button.week-event:hover .week-event-resize::after {
     grid-template-columns: 1fr;
   }
 }
+
+.event-reminder-icon,
+.timeline-row .event-reminder-icon,
+.upcoming-row .event-reminder-icon {
+  margin-left: 4px;
+  color: var(--color-accent-strong);
+  font-size: var(--text-2xs);
+}

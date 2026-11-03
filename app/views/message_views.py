@@ -5,6 +5,7 @@ from urllib.parse import urlencode
 from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
+from django.core.files.base import ContentFile
 from django.db.models import Count, Max, Q
 from django.http import FileResponse, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
@@ -166,6 +167,37 @@ def messages(request, conversation_id=None):
 
             return redirect("messages_detail", conversation_id=selected_conversation.id)
 
+        elif form_name == "message_forward":
+            source_conversation = _get_user_conversation(
+                request.user, request.POST.get("conversation_id") or conversation_id
+            )
+            if not source_conversation:
+                django_messages.error(request, "Diese Unterhaltung wurde nicht gefunden.")
+                return redirect("messages")
+            message = (
+                source_conversation.messages.filter(pk=request.POST.get("message_id"), is_deleted=False)
+                .select_related("attachment")
+                .first()
+            )
+            target = _get_user_conversation(request.user, request.POST.get("target_conversation_id"))
+            if not message or not target or target.pk == source_conversation.pk:
+                django_messages.error(request, "Die Nachricht konnte nicht weitergeleitet werden.")
+                return redirect("messages_detail", conversation_id=source_conversation.id)
+            target_member = _get_conversation_member(target, request.user)
+            if (target_member and target_member.is_blocked) or _conversation_blocked_for_sender(
+                target, request.user
+            ):
+                django_messages.error(request, "In diese Unterhaltung kann derzeit nicht geschrieben werden.")
+                return redirect("messages_detail", conversation_id=source_conversation.id)
+            forwarded = _forward_chat_message(message, target, request.user)
+            target.updated_at = forwarded.created_at
+            target.save(update_fields=["updated_at"])
+            target.mark_read_for(request.user)
+            django_messages.success(
+                request, f"Nachricht an „{target.display_title_for(request.user)}“ weitergeleitet."
+            )
+            return redirect("messages_detail", conversation_id=target.id)
+
         elif form_name == "member_action":
             selected_conversation = _get_user_conversation(
                 request.user,
@@ -284,6 +316,10 @@ def messages(request, conversation_id=None):
         "current_member_state": current_member_state,
         "available_recipients": available_recipients,
     }
+    # The forward dialog lives outside the live-updated partials, so only the full page needs this.
+    context["forward_targets"] = (
+        _forward_targets(request.user, selected_conversation) if selected_conversation else []
+    )
     return render(request, "app/messages.html", context)
 
 
@@ -784,6 +820,7 @@ def _build_message_items(conversation, user, messages):
                 "display_body": message.display_body,
                 "is_deleted": message.is_deleted,
                 "is_pinned": message.is_pinned,
+                "is_forwarded": message.is_forwarded and not message.is_deleted,
                 "can_delete": message.sender_id == user.id and not message.is_deleted,
                 "can_react": not message.is_deleted,
                 "read_receipt": _message_read_receipt(message, conversation, user)
@@ -924,6 +961,42 @@ def _create_chat_attachment(message, user, upload, duration_seconds=None):
         duration_seconds=duration_seconds if is_audio else None,
         file=upload,
     )
+
+
+def _forward_chat_message(message, target, user):
+    """Copy a message (body and attachment, no reply quote) into ``target`` as ``user``'s own."""
+    forwarded = ChatMessage.objects.create(
+        conversation=target, sender=user, body=message.body, is_forwarded=True
+    )
+    attachment = getattr(message, "attachment", None)
+    if attachment:
+        # A real copy, so deleting either message never removes the other one's file.
+        with attachment.file.open("rb") as handle:
+            content = ContentFile(handle.read(), name=attachment.original_name)
+        ChatMessageAttachment.objects.create(
+            message=forwarded,
+            uploaded_by=user,
+            kind=attachment.kind,
+            original_name=attachment.original_name,
+            content_type=attachment.content_type,
+            size=attachment.size,
+            duration_seconds=attachment.duration_seconds,
+            file=content,
+        )
+    return forwarded
+
+
+def _forward_targets(user, current_conversation):
+    """Conversations a message can be forwarded to: visible ones the user can write in."""
+    targets = []
+    for conversation in Conversation.visible_for(user).order_by("-updated_at"):
+        if conversation.pk == current_conversation.pk:
+            continue
+        member = next((row for row in conversation.member_rows.all() if row.user_id == user.id), None)
+        if (member and member.is_blocked) or _conversation_blocked_for_sender(conversation, user):
+            continue
+        targets.append({"id": conversation.pk, "title": conversation.display_title_for(user)})
+    return targets
 
 
 def _format_duration(seconds):

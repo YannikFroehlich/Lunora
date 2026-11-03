@@ -34,11 +34,13 @@ from app.models import (
 from app.services.calendar_service import (
     AVAILABILITY_MAX_SPAN,
     AVAILABILITY_MAX_USERS,
+    EVENT_REMINDER_CHOICES,
     SERIES_SCOPE_CHOICES,
     SERIES_SCOPE_FOLLOWING,
     SERIES_SCOPE_THIS,
     expand_manual_recurrence,
     series_scope_events,
+    sync_event_reminders,
 )
 from app.services.chat_files import CHAT_VOICE_MAX_SECONDS, validate_chat_upload
 from app.services.image_uploads import PROFILE_IMAGE_ACCEPT, validate_profile_image_file
@@ -1033,6 +1035,13 @@ class _CalendarEventDateTimeForm(forms.Form):
         widget=forms.CheckboxSelectMultiple,
         required=False,
     )
+    reminder_minutes = forms.TypedChoiceField(
+        label="Erinnerung",
+        choices=EVENT_REMINDER_CHOICES,
+        coerce=int,
+        empty_value=None,
+        required=False,
+    )
 
     def __init__(self, *args, user=None, **kwargs):
         self.user = user
@@ -1175,12 +1184,14 @@ class CalendarEventForm(_CalendarEventDateTimeForm):
                     start_at=occurrence_start,
                     end_at=occurrence_start + duration,
                     is_all_day=self.cleaned_data["is_all_day"],
+                    reminder_minutes=self.cleaned_data.get("reminder_minutes"),
                     recurrence_id=recurrence_id,
                     recurrence_rule="" if repeat == "none" else repeat,
                 )
                 for occurrence_start in occurrence_starts
             ]
         )
+        sync_event_reminders(events)
 
         attendees = self.cleaned_data.get("attendees")
         if attendees:
@@ -1311,6 +1322,9 @@ class CalendarEventEditForm(_CalendarEventDateTimeForm):
                     "category": instance.category,
                     "location": instance.location,
                     "attendees": list(instance.attendees.values_list("user_id", flat=True)),
+                    "reminder_minutes": ""
+                    if instance.reminder_minutes is None
+                    else str(instance.reminder_minutes),
                 }
             )
 
@@ -1356,6 +1370,7 @@ class CalendarEventEditForm(_CalendarEventDateTimeForm):
             target.category = self.cleaned_data["category"]
             target.location = self.cleaned_data["location"]
             target.is_all_day = self.cleaned_data["is_all_day"]
+            target.reminder_minutes = self.cleaned_data.get("reminder_minutes")
             target.recurrence_id = recurrence_id
             target.updated_at = now
         CalendarEvent.objects.bulk_update(
@@ -1367,6 +1382,7 @@ class CalendarEventEditForm(_CalendarEventDateTimeForm):
                 "start_at",
                 "end_at",
                 "is_all_day",
+                "reminder_minutes",
                 "recurrence_id",
                 "updated_at",
             ],
@@ -1394,4 +1410,6 @@ class CalendarEventEditForm(_CalendarEventDateTimeForm):
 
             materialize_event_invitation_notifications(invitation_rows)
 
+        # After the attendee rows: removed invitees lose their reminder, the rest move with the event.
+        sync_event_reminders(targets)
         return event

@@ -11,7 +11,8 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.safestring import mark_safe
-from django.views.decorators.http import require_http_methods, require_POST
+from django.views.decorators.cache import never_cache
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from app.forms import (
     AppearanceForm,
@@ -29,6 +30,7 @@ from app.services.calendar_service import disable_calendar_feed, reset_calendar_
 from app.services.dashboard import normalize_dashboard_layout, validate_dashboard_layout
 from app.services.data_export import export_filename, write_user_export
 from app.services.data_import import import_files
+from app.services.health import health_report
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.user_preferences import format_user_datetime
 from app.services.user_sessions import (
@@ -367,4 +369,16 @@ def data_export(request):
         archive, as_attachment=True, filename=export_filename(request.user), content_type="application/zip"
     )
     response["Cache-Control"] = "private, no-store"
+    return response
+
+
+@never_cache
+@require_GET
+def healthz(request):
+    """Public health check: 200 when everything required is fine, 503 otherwise (status words only)."""
+    healthy, checks = health_report()
+    response = JsonResponse(
+        {"status": "ok" if healthy else "error", "checks": checks}, status=200 if healthy else 503
+    )
+    response["X-Robots-Tag"] = "noindex"
     return response

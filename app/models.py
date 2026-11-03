@@ -18,6 +18,22 @@ from app.services.note_search import refresh_note_search_vectors
 from app.services.uml_content import empty_uml_document
 
 
+class AutomationHeartbeat(models.Model):
+    """Singleton row (pk 1) the ``run_automations`` process touches after every pass, read by /healthz/.
+
+    Kept in the database rather than the cache, because the local-memory cache isn't shared between
+    the web and automation processes in development."""
+
+    finished_at = models.DateTimeField()
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Automatik zuletzt {self.finished_at:%Y-%m-%d %H:%M}"
+
+
 class SystemSettings(models.Model):
     normal_login_enabled = models.BooleanField(default=True)
     calendar_event_creation_enabled = models.BooleanField(default=True)
@@ -358,6 +374,9 @@ class ChatMessage(models.Model):
         null=True,
         related_name="replies",
     )
+    # Sent with "Weiterleiten" from another conversation; the original sender is not recorded, so
+    # forwarding never reveals who wrote it to people outside that conversation.
+    is_forwarded = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     edited_at = models.DateTimeField(blank=True, null=True)
 
@@ -471,6 +490,9 @@ class CalendarEvent(models.Model):
     is_all_day = models.BooleanField(default=False)
     # UID of the .ics VEVENT this was imported from, so importing the same file twice skips it.
     import_uid = models.CharField(max_length=255, blank=True, default="", db_index=True)
+    # Minutes before the start at which the owner and everyone who accepted get reminded (None = off).
+    # Kept in sync as CalendarReminder rows by calendar_service.sync_event_reminders.
+    reminder_minutes = models.PositiveIntegerField(blank=True, null=True)
     recurrence_id = models.UUIDField(null=True, blank=True, db_index=True)
     recurrence_rule = models.CharField(
         max_length=10,
@@ -533,6 +555,11 @@ class CalendarReminder(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="calendar_reminders"
     )
+    # Set for the automatic reminders of an event ("15 Minuten vorher"); those stay out of the
+    # hand-made reminder list and are managed through the event alone.
+    event = models.ForeignKey(
+        "CalendarEvent", on_delete=models.CASCADE, blank=True, null=True, related_name="reminders"
+    )
     title = models.CharField(max_length=180)
     due_at = models.DateTimeField(blank=True, null=True)
     is_done = models.BooleanField(default=False)
@@ -543,6 +570,13 @@ class CalendarReminder(models.Model):
 
     class Meta:
         ordering = ["is_done", "-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["event", "user"],
+                condition=models.Q(event__isnull=False),
+                name="unique_event_reminder_per_user",
+            ),
+        ]
 
     def __str__(self):
         return self.title

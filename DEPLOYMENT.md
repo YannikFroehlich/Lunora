@@ -207,9 +207,17 @@ systemctl is-enabled lunora-auto-deploy.timer
 curl --fail --silent --show-error --output /dev/null --write-out '%{http_code}\n' \
   --header 'Host: lunora.yfserver.de' --header 'X-Forwarded-Proto: https' \
   http://127.0.0.1:8090/login/
+curl --fail --silent --show-error --header 'Host: lunora.yfserver.de' http://127.0.0.1:8090/healthz/
 sudo systemctl start lunora-backup.service
 sudo journalctl -u lunora-backup.service --no-pager -n 50
 ```
+
+`/healthz/` braucht keine Anmeldung und antwortet mit `200` und `{"status": "ok", "checks": {…}}`,
+solange Datenbank, Cache (Redis) und die Automatik laufen; sonst mit `503` und `"error"`,
+`"stale"` (der `lunora-automations`-Dienst hat seit drei Intervallen, mindestens fünf Minuten,
+keinen Durchlauf abgeschlossen) oder `"unknown"` (noch nie gelaufen) beim betroffenen Check.
+Details stehen nur im Journal von `lunora-web`. Ein externer Uptime-Monitor kann
+`https://lunora.yfserver.de/healthz/` abfragen.
 
 Extern müssen `https://lunora.yfserver.de/login/`, Registrierung, Passwort-Reset,
 Profilbild, privater Notizanhang, E-Mail-Versand, Web Push bei geschlossenem Tab und ein Neustart des Servers getestet

@@ -6,7 +6,13 @@ from urllib.parse import quote, urlparse
 from django.db.models import Q
 from django.utils import timezone
 
-from app.models import CalendarEvent, CalendarEventAttendee, VacationPeriod
+from app.models import (
+    CalendarEvent,
+    CalendarEventAttendee,
+    CalendarReminder,
+    UserNotification,
+    VacationPeriod,
+)
 from app.services.system_settings import feature_enabled
 from app.services.user_preferences import get_user_zoneinfo, localtime_for_user
 
@@ -55,6 +61,83 @@ def expand_manual_recurrence(start_at, frequency, until):
             break
         occurrences.append(current)
     return occurrences
+
+
+EVENT_REMINDER_CHOICES = [
+    ("", "Keine"),
+    ("0", "Zum Beginn"),
+    ("5", "5 Minuten vorher"),
+    ("15", "15 Minuten vorher"),
+    ("30", "30 Minuten vorher"),
+    ("60", "1 Stunde vorher"),
+    ("120", "2 Stunden vorher"),
+    ("1440", "1 Tag vorher"),
+    ("2880", "2 Tage vorher"),
+    ("10080", "1 Woche vorher"),
+]
+EVENT_REMINDER_MINUTES = {int(value) for value, _label in EVENT_REMINDER_CHOICES if value}
+
+
+def sync_event_reminders(events, *, now=None):
+    """Keep one CalendarReminder per event and person (owner plus accepted invitees) at
+    ``start - reminder_minutes``, so the existing reminder delivery (inbox, e-mail, Web Push,
+    browser) handles events too.
+
+    A reminder whose time moves is re-armed: its notified-at columns are cleared and its inbox row
+    goes, so it fires again at the new time. Events that already started are left alone, so an edit
+    after the fact doesn't take back a reminder that was delivered.
+    """
+    current_time = now or timezone.now()
+    events = [event for event in events if event.pk and event.start_at > current_time]
+    if not events:
+        return
+    event_ids = [event.pk for event in events]
+    existing = {
+        (reminder.event_id, reminder.user_id): reminder
+        for reminder in CalendarReminder.objects.filter(event_id__in=event_ids)
+    }
+    accepted = {}
+    for event_id, user_id in CalendarEventAttendee.objects.filter(
+        event_id__in=event_ids, status=CalendarEventAttendee.STATUS_ACCEPTED
+    ).values_list("event_id", "user_id"):
+        accepted.setdefault(event_id, set()).add(user_id)
+
+    wanted = {}
+    for event in events:
+        if event.reminder_minutes is None:
+            continue
+        due_at = event.start_at - timedelta(minutes=event.reminder_minutes)
+        for user_id in {event.user_id, *accepted.get(event.pk, set())}:
+            wanted[(event.pk, user_id)] = (event, due_at)
+
+    stale = [reminder.pk for key, reminder in existing.items() if key not in wanted]
+    rearmed = []
+    for key, (event, due_at) in wanted.items():
+        reminder = existing.get(key)
+        if reminder is None:
+            CalendarReminder.objects.create(
+                user_id=key[1], event=event, title=event.title[:180], due_at=due_at
+            )
+            continue
+        changed = []
+        if reminder.title != event.title[:180]:
+            reminder.title = event.title[:180]
+            changed.append("title")
+        if reminder.due_at != due_at:
+            reminder.due_at = due_at
+            reminder.is_done = False
+            reminder.email_notified_at = None
+            reminder.desktop_notified_at = None
+            changed += ["due_at", "is_done", "email_notified_at", "desktop_notified_at"]
+            rearmed.append(reminder.pk)
+        if changed:
+            reminder.save(update_fields=[*changed, "updated_at"])
+    if stale or rearmed:
+        UserNotification.objects.filter(
+            source_key__in=[f"calendar-reminder:{pk}" for pk in [*stale, *rearmed]]
+        ).delete()
+    if stale:
+        CalendarReminder.objects.filter(pk__in=stale).delete()
 
 
 SERIES_SCOPE_THIS = "this"
@@ -113,6 +196,7 @@ def move_calendar_event(user, event_id, *, target_date, start_minute=None, end_m
         event.start_at = new_start.replace(tzinfo=user_timezone)
         event.end_at = (new_start + (end - start)).replace(tzinfo=user_timezone)
     event.save(update_fields=["start_at", "end_at", "updated_at"])
+    sync_event_reminders([event])
     return event
 
 

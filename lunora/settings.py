@@ -247,6 +247,8 @@ LOGIN_REDIRECT_URL = "/home/"
 LOGOUT_REDIRECT_URL = "/login/"
 
 SECURE_SSL_REDIRECT = env_bool("DJANGO_SECURE_SSL_REDIRECT", not DEBUG)
+# Monitors on the host itself call /healthz/ over plain HTTP (127.0.0.1:8090 via Nginx).
+SECURE_REDIRECT_EXEMPT = [r"^healthz/$"]
 SESSION_COOKIE_SECURE = env_bool("DJANGO_SESSION_COOKIE_SECURE", not DEBUG)
 CSRF_COOKIE_SECURE = env_bool("DJANGO_CSRF_COOKIE_SECURE", not DEBUG)
 SECURE_HSTS_SECONDS = env_int("DJANGO_SECURE_HSTS_SECONDS", 31536000 if not DEBUG else 0)
@@ -369,6 +371,9 @@ LOGGING = {
 }
 
 LUNORA_AUTOMATION_INTERVAL_SECONDS = env_int("LUNORA_AUTOMATION_INTERVAL_SECONDS", 60)
+# /healthz/ reports 503 while the run_automations loop hasn't finished a pass recently; off in
+# development, where the loop usually isn't running.
+LUNORA_HEALTH_REQUIRE_AUTOMATIONS = env_bool("LUNORA_HEALTH_REQUIRE_AUTOMATIONS", not DEBUG)
 LUNORA_WEEKLY_SUMMARY_HOUR = env_int("LUNORA_WEEKLY_SUMMARY_HOUR", 8)
 
 WEB_PUSH_VAPID_PUBLIC_KEY = os.getenv("WEB_PUSH_VAPID_PUBLIC_KEY", "").strip()

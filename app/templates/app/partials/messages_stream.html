@@ -22,6 +22,7 @@
         {% if item.side == 'in' %}<span class="avatar small" title="{{ item.sender_name }}">{% if item.sender_avatar_url %}<img src="{{ item.sender_avatar_url }}" alt="Profilbild von {{ item.sender_name }}">{% else %}{{ item.sender_avatar }}{% endif %}</span>{% endif %}
         <div class="bubble-content">
             {% if selected_conversation.is_group and item.side == 'in' %}<strong class="bubble-sender">{{ item.sender_name }}</strong>{% endif %}
+            {% if item.is_forwarded %}<span class="forwarded-label"><i class="fa-solid fa-share" aria-hidden="true"></i> Weitergeleitet</span>{% endif %}
             {% if item.reply_preview %}
             <a class="reply-quote" href="#message-{{ item.reply_preview.message_id }}" data-reply-jump="{{ item.reply_preview.message_id }}">
                 <strong>{{ item.reply_preview.sender_name }}</strong>

@@ -12,9 +12,11 @@ from django.utils import timezone
 from app.models import (
     CalendarEvent,
     CalendarEventAttendee,
+    CalendarReminder,
     Profile,
     SystemSettings,
     Task,
+    UserNotification,
     VacationPeriod,
     VacationYear,
 )
@@ -940,3 +942,177 @@ class CalendarLocationAvailabilityYearTests(TestCase):
         self.assertEqual(response.context["calendar_year"]["year"], timezone.localdate().year)
         response = self.client.get("/calendar/?view=year&year=99999")
         self.assertEqual(response.context["calendar_year"]["year"], timezone.localdate().year)
+
+
+class CalendarEventReminderTests(TestCase):
+    def setUp(self):
+        self.berlin = ZoneInfo("Europe/Berlin")
+        self.mira = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
+        self.lukas = User.objects.create_user(
+            username="lukas@example.com", email="lukas@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=self.mira, display_name="Mira", timezone_name="Europe/Berlin")
+        Profile.objects.create(user=self.lukas, display_name="Lukas", timezone_name="Europe/Berlin")
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+    def create_event(self, **extra):
+        data = {
+            "form_name": "calendar_event_add",
+            "title": "Zahnarzt",
+            "event_date": "2099-03-10",
+            "start_time": "10:00",
+            "end_time": "11:00",
+            "category": "appointment",
+            "reminder_minutes": "15",
+            **extra,
+        }
+        response = self.client.post("/calendar/?view=month&year=2099&month=3", data)
+        self.assertEqual(response.status_code, 302)
+        return CalendarEvent.objects.filter(title=data["title"]).order_by("start_at")
+
+    def test_creating_an_event_creates_its_reminder(self):
+        event = self.create_event().get()
+
+        self.assertEqual(event.reminder_minutes, 15)
+        reminder = CalendarReminder.objects.get(event=event)
+        self.assertEqual(reminder.user, self.mira)
+        self.assertEqual(reminder.due_at, datetime(2099, 3, 10, 9, 45, tzinfo=self.berlin))
+        self.assertEqual(reminder.title, "Zahnarzt")
+
+        # Event reminders stay out of the hand-made reminder list.
+        response = self.client.get("/calendar/?view=month&year=2099&month=3")
+        self.assertEqual(response.context["reminders"], [])
+        self.assertContains(response, 'data-edit-reminder="15"')
+
+    def test_no_reminder_by_default_and_for_a_series_one_per_occurrence(self):
+        self.assertFalse(
+            CalendarReminder.objects.filter(event__in=self.create_event(reminder_minutes="")).exists()
+        )
+
+        events = list(
+            self.create_event(
+                title="Training", repeat="WEEKLY", repeat_until="2099-03-24", reminder_minutes="60"
+            )
+        )
+        self.assertEqual(len(events), 3)
+        self.assertEqual(CalendarReminder.objects.filter(event__in=events).count(), 3)
+
+    def test_invalid_reminder_value_is_rejected(self):
+        response = self.client.post(
+            "/calendar/",
+            {
+                "form_name": "calendar_event_add",
+                "title": "Komisch",
+                "event_date": "2099-03-10",
+                "start_time": "10:00",
+                "reminder_minutes": "7",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(CalendarEvent.objects.filter(title="Komisch").exists())
+
+    def test_moving_rearms_and_removing_deletes_the_reminder(self):
+        from app.services.calendar_service import move_calendar_event
+
+        event = self.create_event().get()
+        reminder = CalendarReminder.objects.get(event=event)
+        reminder.email_notified_at = timezone.now()
+        reminder.save(update_fields=["email_notified_at"])
+        UserNotification.objects.create(
+            recipient=self.mira,
+            kind="calendar_reminder",
+            title="x",
+            source_key=f"calendar-reminder:{reminder.pk}",
+        )
+
+        move_calendar_event(self.mira, event.pk, target_date=date(2099, 3, 12))
+        reminder.refresh_from_db()
+        self.assertEqual(reminder.due_at, datetime(2099, 3, 12, 9, 45, tzinfo=self.berlin))
+        self.assertIsNone(reminder.email_notified_at)
+        self.assertFalse(
+            UserNotification.objects.filter(source_key=f"calendar-reminder:{reminder.pk}").exists()
+        )
+
+        response = self.client.post(
+            "/calendar/",
+            {
+                "form_name": "calendar_event_edit",
+                "event_id": event.pk,
+                "title": "Zahnarzt",
+                "event_date": "2099-03-12",
+                "start_time": "10:00",
+                "end_time": "11:00",
+                "category": "appointment",
+                "reminder_minutes": "",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(CalendarReminder.objects.filter(event=event).exists())
+
+    def test_accepting_an_invitation_adds_a_reminder_and_declining_removes_it(self):
+        event = self.create_event(attendees=[self.lukas.pk]).get()
+        self.assertFalse(CalendarReminder.objects.filter(event=event, user=self.lukas).exists())
+        attendee = CalendarEventAttendee.objects.get(event=event, user=self.lukas)
+
+        self.client.logout()
+        self.client.login(username="lukas@example.com", password="secret-12345")
+        self.client.post(
+            "/calendar/", {"form_name": "event_rsvp", "attendee_id": attendee.pk, "status": "accepted"}
+        )
+        self.assertTrue(CalendarReminder.objects.filter(event=event, user=self.lukas).exists())
+
+        self.client.post(
+            "/calendar/", {"form_name": "event_rsvp", "attendee_id": attendee.pk, "status": "declined"}
+        )
+        self.assertFalse(CalendarReminder.objects.filter(event=event, user=self.lukas).exists())
+        self.assertTrue(CalendarReminder.objects.filter(event=event, user=self.mira).exists())
+
+    def test_due_event_reminder_is_delivered_with_event_texts(self):
+        from django.core import mail
+
+        from app.services.notifications import (
+            claim_due_desktop_reminders,
+            materialize_due_user_notifications,
+            send_due_reminder_emails,
+        )
+
+        event = self.create_event(location="Hauptstraße 5").get()
+        due = datetime(2099, 3, 10, 9, 50, tzinfo=self.berlin)
+        self.mira.profile.notify_email = True
+        self.mira.profile.notify_desktop = True
+        self.mira.profile.save()
+
+        materialize_due_user_notifications(now=due)
+        notification = UserNotification.objects.get(recipient=self.mira, kind="calendar_reminder")
+        self.assertEqual(notification.title, "Termin: Zahnarzt")
+        self.assertIn("Beginnt 10.03.2099", notification.body)
+        self.assertIn("Hauptstraße 5", notification.body)
+        self.assertEqual(notification.url, "/calendar/?view=day&date=2099-03-10")
+
+        self.assertEqual(send_due_reminder_emails(now=due)["sent"], 1)
+        self.assertEqual(mail.outbox[-1].subject, "Lunora: Zahnarzt")
+        self.assertEqual(send_due_reminder_emails(now=due)["sent"], 0)
+
+        claimed = claim_due_desktop_reminders(self.mira, now=due)
+        self.assertEqual(claimed[0]["title"], "Termin: Zahnarzt")
+        self.assertEqual(claimed[0]["url"], "/calendar/?view=day&date=2099-03-10")
+        self.assertEqual(claim_due_desktop_reminders(self.mira, now=due), [])
+        self.assertEqual(CalendarReminder.objects.filter(event=event).count(), 1)
+
+    def test_past_events_keep_their_delivered_reminder(self):
+        from app.services.calendar_service import sync_event_reminders
+
+        start = timezone.now() - timedelta(hours=1)
+        event = CalendarEvent.objects.create(
+            user=self.mira,
+            title="Vorbei",
+            start_at=start,
+            end_at=start + timedelta(hours=1),
+            reminder_minutes=15,
+        )
+        reminder = CalendarReminder.objects.create(user=self.mira, event=event, title="Vorbei", due_at=start)
+        event.reminder_minutes = None
+        sync_event_reminders([event])
+        self.assertTrue(CalendarReminder.objects.filter(pk=reminder.pk).exists())

@@ -10,6 +10,7 @@ urlpatterns = [
     path("", RedirectView.as_view(url="/home/", permanent=False)),
     path("service-worker.js", view.service_worker, name="service_worker"),
     path("offline/", view.offline, name="offline"),
+    path("healthz/", view.healthz, name="healthz"),
     path("login/", login_view, name="login"),
     path("login/zwei-faktor/", view.login_two_factor, name="login_two_factor"),
     path("accounts/login/", login_view, name="accounts_login"),
