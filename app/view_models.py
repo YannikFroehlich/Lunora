@@ -1241,6 +1241,7 @@ def _upcoming_calendar_events(user, now):
     items = [
         {
             "date": format_user_date(event.start_at, user),
+            "time": "Ganztägig" if event.is_all_day else format_user_time(event.start_at, user),
             "title": event.title,
             "category": _calendar_event_category(event),
             "icon": "fa-calendar-day",
@@ -1255,7 +1256,17 @@ def _upcoming_calendar_events(user, now):
         item["url"] = item["detail_url"]
     for item in _upcoming_vacation_items(user, now, 6):
         items.append({**item, "category": f"Urlaub bis {item['end_date']}", "icon": "fa-umbrella-beach"})
-    return _soonest(items, 6)
+    items = _soonest(items, 6)
+    for item in items:
+        # A running vacation sorts (and shows) as today.
+        day = item["sort_key"].date()
+        item["badge"] = {
+            "weekday": get_user_weekday_name(day)[:2],
+            "day": day.day,
+            "month": get_user_month_name(day)[:3],
+            "is_today": day == now.date(),
+        }
+    return items
 
 
 def _pending_invitation_items(user):

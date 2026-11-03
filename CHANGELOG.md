@@ -6,6 +6,9 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- "Nächste Termine" on the calendar page is easier to scan: each entry has a date tile (today's
+  is highlighted), the title on one line and its time, category and location below, with the
+  series, invitation and subscription icons kept on the right instead of wrapping.
 - Subscribe to external calendars: under Einstellungen → Kalender, paste the secret iCal address
   of a private Google, Outlook or iCloud calendar (https or webcal), pick a name and color, and
   its events show up read-only in every calendar view and in "Nächste Termine" on the dashboard.
