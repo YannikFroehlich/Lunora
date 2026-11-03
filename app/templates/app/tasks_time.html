@@ -12,7 +12,7 @@
     <header class="page-hero">
         <div class="task-hero-copy">
             <h1>Zeiterfassung</h1>
-            <p>Wie viel Zeit du diese Woche in deine Aufgaben gesteckt hast. Die Zeiten sieht nur du.</p>
+            <p>Wie viel Zeit du pro Woche oder Monat in deine Aufgaben gesteckt hast. Die Zeiten sieht nur du.</p>
         </div>
         <span class="task-hero-icon" aria-hidden="true">
             <i class="fa-regular fa-clock"></i>
@@ -22,25 +22,29 @@
     <div class="time-layout">
         <section class="glass-panel time-panel" aria-labelledby="time-week-title">
             <div class="time-toolbar">
-                <a class="icon-button" href="?week={{ report.previous_value }}" aria-label="Vorherige Woche"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></a>
+                <a class="icon-button" href="?{{ report.period }}={{ report.previous_value }}" aria-label="{% if report.is_week %}Vorherige Woche{% else %}Vorheriger Monat{% endif %}"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></a>
                 <h2 id="time-week-title">{{ report.label }}</h2>
-                <a class="icon-button" href="?week={{ report.next_value }}" aria-label="Nächste Woche"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></a>
+                <a class="icon-button" href="?{{ report.period }}={{ report.next_value }}" aria-label="{% if report.is_week %}Nächste Woche{% else %}Nächster Monat{% endif %}"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></a>
                 <span class="toolbar-spacer"></span>
-                {% if not report.is_current %}<a class="ghost-button" href="{% url 'task_time_report' %}">Diese Woche</a>{% endif %}
-                <a class="ghost-button" href="?week={{ report.week_value }}&amp;format=csv"><i class="fa-solid fa-file-csv" aria-hidden="true"></i> CSV</a>
+                <nav class="task-layout-switch" aria-label="Zeitraum">
+                    <a href="?week={{ report.week_value }}"{% if report.is_week %} aria-current="page"{% endif %}>Woche</a>
+                    <a href="?month={{ report.month_value }}"{% if not report.is_week %} aria-current="page"{% endif %}>Monat</a>
+                </nav>
+                {% if not report.is_current %}<a class="ghost-button" href="?{{ report.period }}=">{% if report.is_week %}Diese Woche{% else %}Dieser Monat{% endif %}</a>{% endif %}
+                <a class="ghost-button" href="?{{ report.period }}={{ report.value }}&amp;format=csv"><i class="fa-solid fa-file-csv" aria-hidden="true"></i> CSV</a>
                 <a class="ghost-button" href="{% url 'tasks' %}"><i class="fa-solid fa-list-check" aria-hidden="true"></i> Aufgaben</a>
             </div>
 
             {% include "app/partials/task_running_timer.html" %}
 
-            <p class="time-total"><strong>{{ report.total_label }}</strong> <span>in dieser Woche</span></p>
+            <p class="time-total"><strong>{{ report.total_label }}</strong> <span>{% if report.is_week %}in dieser Woche{% else %}in diesem Monat{% endif %}</span></p>
 
-            <ol class="time-days" aria-label="Zeit pro Tag">
-                {% for day in report.days %}
+            <ol class="time-days{% if not report.is_week %} is-weeks{% endif %}" aria-label="{% if report.is_week %}Zeit pro Tag{% else %}Zeit pro Kalenderwoche{% endif %}">
+                {% for bucket in report.buckets %}
                 <li>
-                    <span class="time-day-name">{{ day.weekday|slice:":2" }}<span class="visually-hidden">{{ day.weekday|slice:"2:" }}, {{ day.date_label }}</span></span>
-                    <span class="time-bar" aria-hidden="true"><span style="--time-share: {{ day.percent }}%"></span></span>
-                    <span class="time-day-value">{{ day.label }}</span>
+                    <span class="time-day-name"><span aria-hidden="true">{{ bucket.short }}</span><span class="visually-hidden">{{ bucket.long }}</span></span>
+                    <span class="time-bar" aria-hidden="true"><span style="--time-share: {{ bucket.percent }}%"></span></span>
+                    <span class="time-day-value">{{ bucket.label }}</span>
                 </li>
                 {% endfor %}
             </ol>
@@ -55,8 +59,17 @@
                 </li>
                 {% endfor %}
             </ul>
+            {% if report.lists %}
+            <h3>Nach Liste</h3>
+            {% include "app/partials/task_time_groups.html" with groups=report.lists %}
+            {% endif %}
+            {% if report.labels %}
+            <h3>Nach Label</h3>
+            <p class="time-empty">Aufgaben mit mehreren Labels zählen bei jedem mit.</p>
+            {% include "app/partials/task_time_groups.html" with groups=report.labels %}
+            {% endif %}
             {% else %}
-            <p class="time-empty">In dieser Woche wurde noch keine Zeit erfasst. Starte einen Timer mit <i class="fa-solid fa-play" aria-hidden="true"></i><span class="visually-hidden">dem Play-Knopf</span> an einer Aufgabe oder trage Zeit nach.</p>
+            <p class="time-empty">{% if report.is_week %}In dieser Woche{% else %}In diesem Monat{% endif %} wurde noch keine Zeit erfasst. Starte einen Timer mit <i class="fa-solid fa-play" aria-hidden="true"></i><span class="visually-hidden">dem Play-Knopf</span> an einer Aufgabe oder trage Zeit nach.</p>
             {% endif %}
         </section>
 
@@ -97,7 +110,7 @@
                     {% endfor %}
                 </ul>
                 {% else %}
-                <p class="time-empty">Keine Einträge in dieser Woche.</p>
+                <p class="time-empty">Keine Einträge {% if report.is_week %}in dieser Woche{% else %}in diesem Monat{% endif %}.</p>
                 {% endif %}
             </section>
         </div>

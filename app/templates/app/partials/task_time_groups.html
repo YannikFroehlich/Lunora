@@ -1,0 +1,8 @@
+<ul class="time-tasks">
+    {% for group in groups %}
+    <li>
+        <span class="time-task-copy"><strong>{{ group.name }}</strong><small>{{ group.percent }} %</small></span>
+        <span class="time-day-value">{{ group.label }}</span>
+    </li>
+    {% endfor %}
+</ul>

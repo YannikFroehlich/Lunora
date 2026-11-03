@@ -34,6 +34,8 @@ from app.services.notification_preferences import (
     notification_channel_enabled,
     notification_preference_map,
 )
+from app.services.system_settings import feature_enabled
+from app.services.time_tracking import time_report
 from app.services.user_preferences import format_user_date, format_user_datetime, localtime_for_user
 from app.services.weather_service import get_weather_alert_for_location, weather_location_to_dict
 
@@ -1117,6 +1119,14 @@ def _weekly_summary_text(user, current_time):
             lines.append(f"- {reminder.title} ({due_label})")
     else:
         lines.append("- Keine offenen Erinnerungen")
+
+    if feature_enabled("tasks"):
+        local_today = localtime_for_user(current_time, user).date()
+        last_week = local_today - timedelta(days=local_today.weekday() + 7)
+        report = time_report(user, "week", last_week, now=current_time)
+        if report["total_seconds"]:
+            lines.extend(["", f"Erfasste Zeit letzte Woche: {report['total_label']}"])
+            lines.extend(f"- {task['title']} ({task['label']})" for task in report["tasks"][:3])
 
     lines.extend(
         [

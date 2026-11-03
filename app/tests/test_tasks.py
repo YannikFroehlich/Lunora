@@ -1240,7 +1240,7 @@ class TaskTimeTrackingTests(TestCase):
         self.assertEqual(report["total_label"], "1 h 00 min")
         self.assertEqual([task["title"] for task in report["tasks"]], ["Bericht schreiben", "Folien"])
         self.assertEqual(report["tasks"][0]["percent"], 75)
-        self.assertEqual(sum(day["seconds"] for day in report["days"]), 3600)
+        self.assertEqual(sum(day["seconds"] for day in report["buckets"]), 3600)
         self.assertEqual(week_start_for(week, self.user), today - timedelta(days=today.weekday()))
 
         csv = self.client.get("/tasks/time/", {"week": week, "format": "csv"})
@@ -1249,6 +1249,76 @@ class TaskTimeTrackingTests(TestCase):
         self.assertIn("Datum;Zeit;Aufgabe;Dauer", content)
         self.assertIn("Bericht schreiben;45 min", content)
         self.assertIn("Summe;;;1 h 00 min", content)
+
+    def track(self, task, start, minutes):
+        from app.models import TaskTimeEntry
+
+        return TaskTimeEntry.objects.create(
+            task=task, user=self.user, started_at=start, ended_at=start + timedelta(minutes=minutes)
+        )
+
+    def test_monthly_report_sums_per_week_and_downloads_as_csv(self):
+        from app.services.time_tracking import time_report
+
+        berlin = ZoneInfo("Europe/Berlin")
+        self.track(self.task, datetime(2026, 10, 31, 10, 0, tzinfo=berlin), 60)  # previous month
+        self.track(self.task, datetime(2026, 11, 1, 23, 30, tzinfo=berlin), 30)  # Sunday, KW 44
+        self.track(self.second, datetime(2026, 11, 2, 9, 0, tzinfo=berlin), 90)  # Monday, KW 45
+
+        report = time_report(
+            self.user, "month", datetime(2026, 11, 1).date(), now=datetime(2026, 11, 20, tzinfo=berlin)
+        )
+
+        self.assertEqual(report["label"], "November 2026")
+        self.assertEqual((report["previous_value"], report["next_value"]), ("2026-10", "2026-12"))
+        self.assertEqual(report["total_label"], "2 h 00 min")
+        self.assertEqual(
+            [(bucket["short"], bucket["seconds"]) for bucket in report["buckets"]],
+            [("KW 44", 1800), ("KW 45", 5400), ("KW 46", 0), ("KW 47", 0), ("KW 48", 0), ("KW 49", 0)],
+        )
+        self.assertEqual(report["week_value"], "2026-W47")
+
+        response = self.client.get("/tasks/time/", {"month": "2026-11"})
+        self.assertContains(response, "November 2026")
+        self.assertContains(response, 'href="?month=2026-11" aria-current="page"')
+        csv = self.client.get("/tasks/time/", {"month": "2026-11", "format": "csv"})
+        self.assertIn("lunora-zeiten-2026-11.csv", csv["Content-Disposition"])
+        self.assertIn("Summe;;;2 h 00 min", csv.content.decode("utf-8-sig"))
+
+    def test_report_groups_by_list_and_label_only_when_that_splits_the_time(self):
+        from app.models import TaskLabel, TaskList
+        from app.services.time_tracking import time_report
+
+        today = timezone.localtime(timezone.now(), ZoneInfo("Europe/Berlin")).date()
+        week_start = today - timedelta(days=today.weekday())
+        start = timezone.now() - timedelta(hours=3)
+        self.track(self.task, start, 60)
+        self.track(self.second, start + timedelta(hours=1), 30)
+
+        report = time_report(self.user, "week", week_start)
+        self.assertEqual((report["lists"], report["labels"]), ([], []))
+
+        work = TaskList.objects.create(owner=self.user, name="Arbeit")
+        urgent = TaskLabel.objects.create(owner=self.user, name="dringend")
+        client = TaskLabel.objects.create(owner=self.user, name="Kunde")
+        self.task.task_list = work
+        self.task.save(update_fields=["task_list"])
+        self.task.labels.set([urgent, client])
+        self.second.labels.set([urgent])
+
+        report = time_report(self.user, "week", week_start)
+
+        self.assertEqual(
+            [(row["name"], row["label"], row["percent"]) for row in report["lists"]],
+            [("Arbeit", "1 h 00 min", 67), ("Eingang", "30 min", 33)],
+        )
+        self.assertEqual(
+            [(row["name"], row["label"]) for row in report["labels"]],
+            [("dringend", "1 h 30 min"), ("Kunde", "1 h 00 min")],
+        )
+        response = self.client.get("/tasks/time/")
+        self.assertContains(response, "Nach Liste")
+        self.assertContains(response, "Nach Label")
 
     def test_manual_entries_are_validated(self):
         future = (timezone.localdate() + timedelta(days=2)).isoformat()
