@@ -100,6 +100,22 @@
     focusPlannerArea(trigger.dataset.vacationFocus);
   });
 
+  // Links from the calendar name the clicked day (?day=YYYY-MM-DD): flash it for three seconds, then drop
+  // the parameter so a reload or a later month switch doesn't flash it again.
+  const pageParams = new URLSearchParams(location.search);
+  const flashDate = pageParams.get("day");
+  if (flashDate) {
+    const flashed = document.querySelector(
+      `[data-vacation-calendar] .calendar-day[data-date="${CSS.escape(flashDate)}"]`,
+    );
+    if (flashed) {
+      flashed.classList.add("is-flashed");
+      setTimeout(() => flashed.classList.remove("is-flashed"), 3000);
+    }
+    pageParams.delete("day");
+    history.replaceState(null, "", `${location.pathname}?${pageParams}${location.hash}`);
+  }
+
   // Month navigation within the same year only swaps the calendar instead of reloading the page;
   // a different year changes every panel, so that link navigates normally (its #anchor keeps the scroll spot).
   async function showMonth(url) {

@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Clicking a holiday or vacation on the calendar page opens the vacation planner with that day
+  highlighted for three seconds.
 - The calendar page no longer shows the month statistics panel (event count, free and active
   days, weekly bars) below the calendar, and the calendar and sidebar no longer stretch to each
   other's height, so there are no large empty areas anymore.
