@@ -799,6 +799,25 @@ button:disabled,
   -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 
+/* While a modal dialog is open the page behind it doesn't scroll (wheel, touch or keys); the dialog
+   keeps scrolling itself. Non-modal dialogs (dialog.show()) don't match :modal and leave the page
+   alone. On a page that scrolls, scrollbar-gutter keeps the room of the scrollbar that goes away, so
+   nothing shifts sideways; base.js sets data-page-scrolls, because a page without a scrollbar would
+   otherwise get a new gap instead. */
+html:has(dialog:modal) {
+  overflow: hidden;
+}
+
+html[data-page-scrolls]:has(dialog:modal) {
+  scrollbar-gutter: stable;
+}
+
+/* Scrolling past the end of a dialog's own content stops there instead of moving the page. */
+dialog,
+dialog * {
+  overscroll-behavior: contain;
+}
+
 /* Modal dialogs share one backdrop and an opaque card so content behind never bleeds through. */
 dialog::backdrop {
   background: rgba(31, 25, 19, 0.46);

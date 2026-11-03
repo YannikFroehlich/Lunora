@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- While a dialog is open (new event, task, forwarding, command palette, …) the page behind it no
+  longer scrolls with the mouse wheel or touch; only the dialog itself scrolls.
 - Forward chat messages: "Weiterleiten" in a message's menu sends it, including an image, file or
   voice message, to another of your conversations. It arrives as "Weitergeleitet" from you, without
   naming who wrote the original.

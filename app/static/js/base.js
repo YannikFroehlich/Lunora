@@ -596,3 +596,18 @@ function rememberRecentSection() {
 }
 
 rememberRecentSection();
+
+// base.css locks the page while a modal dialog is open. Only a page that actually scrolls keeps its
+// scrollbar's room then (scrollbar-gutter), so neither scrolling nor short pages shift sideways.
+function trackPageOverflow() {
+  const root = document.documentElement;
+  const update = () => {
+    if (root.matches(":has(dialog:modal)")) return;
+    root.toggleAttribute("data-page-scrolls", root.scrollHeight > root.clientHeight);
+  };
+  update();
+  window.addEventListener("resize", update);
+  if ("ResizeObserver" in window) new ResizeObserver(update).observe(document.body);
+}
+
+trackPageOverflow();
