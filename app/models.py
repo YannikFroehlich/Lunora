@@ -797,6 +797,7 @@ class Task(models.Model):
         ("MONTHLY", "Monatlich"),
         ("YEARLY", "Jährlich"),
     ]
+    RECURRENCE_MAX_INTERVAL = 99
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="tasks")
     task_list = models.ForeignKey(
@@ -820,6 +821,11 @@ class Task(models.Model):
     recurrence_rule = models.CharField(
         max_length=10, choices=RECURRENCE_CHOICES, default=RECURRENCE_NONE, blank=True
     )
+    # Every n-th day/week/month/year of recurrence_rule.
+    recurrence_interval = models.PositiveSmallIntegerField(default=1)
+    # WEEKLY only: comma-separated date.weekday() numbers ("0,3" = Monday and Thursday); empty
+    # means the weekday of the due date.
+    recurrence_weekdays = models.CharField(max_length=13, blank=True, default="")
     labels = models.ManyToManyField(TaskLabel, blank=True, related_name="tasks")
     position = models.PositiveIntegerField(default=0)
     is_done = models.BooleanField(default=False)

@@ -6,6 +6,9 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Recurring tasks can repeat every n days, weeks, months or years ("alle 2 Wochen"), and weekly
+  tasks on chosen weekdays ("Mo und Do"). The next due date now keeps its local time of day across
+  daylight-saving changes.
 - The calendar page's category legend is replaced by a "Kalender" panel listing your subscribed
   calendars; open one to change its name, color and icon (e.g. a cake for birthdays), refresh or
   remove it. Its events show that icon.

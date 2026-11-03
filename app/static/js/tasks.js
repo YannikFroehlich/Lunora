@@ -334,6 +334,22 @@
     });
   }
 
+  // "Alle n Tage/Wochen/…" only makes sense with a rule, the weekday choice only for weekly tasks.
+  const RECURRENCE_UNITS = { DAILY: "Tage", WEEKLY: "Wochen", MONTHLY: "Monate", YEARLY: "Jahre" };
+  const syncRecurrenceFields = (form) => {
+    const rule = form.querySelector("select[name='recurrence_rule']")?.value || "none";
+    const intervalField = form.querySelector("[data-recurrence-interval]");
+    const weekdaysField = form.querySelector("[data-recurrence-weekdays]");
+    const unit = form.querySelector("[data-recurrence-unit]");
+    if (intervalField) intervalField.hidden = !RECURRENCE_UNITS[rule];
+    if (weekdaysField) weekdaysField.hidden = rule !== "WEEKLY";
+    if (unit) unit.textContent = RECURRENCE_UNITS[rule] || "";
+  };
+  document.querySelectorAll("select[name='recurrence_rule']").forEach((select) => {
+    syncRecurrenceFields(select.form);
+    select.addEventListener("change", () => syncRecurrenceFields(select.form));
+  });
+
   const editDialog = document.querySelector("[data-task-edit-dialog]");
 
   if (editDialog) {
@@ -344,6 +360,8 @@
     const listSelect = editForm?.querySelector("select[name='task_list']");
     const prioritySelect = editForm?.querySelector("select[name='priority']");
     const recurrenceSelect = editForm?.querySelector("select[name='recurrence_rule']");
+    const intervalInput = editForm?.querySelector("input[name='recurrence_interval']");
+    const weekdayInputs = editForm?.querySelectorAll("input[name='recurrence_weekdays']") || [];
     const parentInput = editForm?.querySelector("input[name='parent']");
     const assigneeSelect = editForm?.querySelector("select[name='assignee']");
     const labelInputs = editForm?.querySelectorAll("input[name='labels']") || [];
@@ -357,6 +375,12 @@
       if (listSelect) listSelect.value = data.list || "";
       if (prioritySelect) prioritySelect.value = data.priority || "none";
       if (recurrenceSelect) recurrenceSelect.value = data.recurrence || "none";
+      if (intervalInput) intervalInput.value = data.interval || "1";
+      const weekdays = (data.weekdays || "").split(",").filter(Boolean);
+      weekdayInputs.forEach((input) => {
+        input.checked = weekdays.includes(input.value);
+      });
+      syncRecurrenceFields(editForm);
       if (parentInput) parentInput.value = data.parent || "";
       if (assigneeSelect) assigneeSelect.value = data.assignee || "";
 
@@ -388,6 +412,8 @@
           list: button.dataset.editList,
           priority: button.dataset.editPriority,
           recurrence: button.dataset.editRecurrence,
+          interval: button.dataset.editInterval,
+          weekdays: button.dataset.editWeekdays,
           labels: button.dataset.editLabels,
           parent: button.dataset.editParent,
           assignee: button.dataset.editAssignee,

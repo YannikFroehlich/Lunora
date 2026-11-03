@@ -48,6 +48,7 @@ from app.services.calendar_service import (
 from app.services.calendar_subscriptions import MAX_SUBSCRIPTIONS, SubscriptionError, normalize_url
 from app.services.chat import SCHEDULE_MAX_AHEAD, SCHEDULE_MIN_LEAD
 from app.services.chat_files import CHAT_VOICE_MAX_SECONDS, validate_chat_upload
+from app.services.habits import WEEKDAY_SHORT
 from app.services.image_uploads import PROFILE_IMAGE_ACCEPT, validate_profile_image_file
 from app.services.notes import display_name
 from app.services.notification_preferences import CATEGORY_DEFINITIONS
@@ -835,6 +836,16 @@ class TaskForm(forms.ModelForm):
     recurrence_rule = forms.ChoiceField(
         label="Wiederholung", choices=Task.RECURRENCE_CHOICES, required=False, initial=Task.RECURRENCE_NONE
     )
+    # Optional so the inline "add subtask" quick form, which leaves these out, still validates.
+    recurrence_interval = forms.IntegerField(
+        label="Alle", required=False, min_value=1, max_value=Task.RECURRENCE_MAX_INTERVAL, initial=1
+    )
+    recurrence_weekdays = forms.MultipleChoiceField(
+        label="An Wochentagen",
+        choices=[(str(day), label) for day, label in enumerate(WEEKDAY_SHORT)],
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+    )
 
     class Meta:
         model = Task
@@ -846,6 +857,8 @@ class TaskForm(forms.ModelForm):
             "priority",
             "labels",
             "recurrence_rule",
+            "recurrence_interval",
+            "recurrence_weekdays",
             "assignee",
         ]
         labels = {"title": "Neue Aufgabe"}
@@ -878,9 +891,18 @@ class TaskForm(forms.ModelForm):
             self.fields["shared_with"].label_from_instance = display_name
         if self.instance.pk and not self.is_bound:
             self.initial["shared_with"] = list(self.instance.shares.values_list("user_id", flat=True))
+            self.initial["recurrence_weekdays"] = self.instance.recurrence_weekdays.split(",")
+
+    def clean_recurrence_interval(self):
+        return self.cleaned_data.get("recurrence_interval") or 1
 
     def clean(self):
         cleaned_data = super().clean()
+        # Weekdays only mean something for weekly tasks; stored sorted as "0,3".
+        weekdays = cleaned_data.get("recurrence_weekdays") or []
+        if cleaned_data.get("recurrence_rule") != "WEEKLY":
+            weekdays = []
+        cleaned_data["recurrence_weekdays"] = ",".join(sorted(weekdays))
         if cleaned_data.get("parent") and cleaned_data.get("assignee"):
             # Subtasks follow their parent's assignee instead of having their own.
             self.add_error("assignee", "Nur Hauptaufgaben können zugewiesen werden.")
