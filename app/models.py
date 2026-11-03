@@ -377,6 +377,11 @@ class ChatMessage(models.Model):
     # Sent with "Weiterleiten" from another conversation; the original sender is not recorded, so
     # forwarding never reveals who wrote it to people outside that conversation.
     is_forwarded = models.BooleanField(default=False)
+    # Group members named with "@Name" (resolved server-side by app.services.chat); they get an
+    # inbox notification even while the conversation is muted.
+    mentioned_users = models.ManyToManyField(
+        settings.AUTH_USER_MODEL, blank=True, related_name="chat_mentions"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     edited_at = models.DateTimeField(blank=True, null=True)
 
@@ -423,6 +428,87 @@ class ChatMessageReaction(models.Model):
 
     def __str__(self):
         return f"{self.emoji} von {self.user}"
+
+
+class ChatPoll(models.Model):
+    """A poll in a group chat; its message carries the question as body for previews and search."""
+
+    MAX_OPTIONS = 10
+    MIN_OPTIONS = 2
+
+    message = models.OneToOneField(ChatMessage, on_delete=models.CASCADE, related_name="poll")
+    question = models.CharField(max_length=300)
+    allows_multiple = models.BooleanField(default=False)
+    closed_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    @property
+    def is_closed(self):
+        return self.closed_at is not None
+
+    def __str__(self):
+        return self.question
+
+
+class ChatPollOption(models.Model):
+    poll = models.ForeignKey(ChatPoll, on_delete=models.CASCADE, related_name="options")
+    text = models.CharField(max_length=120)
+    position = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["position", "id"]
+
+    def __str__(self):
+        return self.text
+
+
+class ChatPollVote(models.Model):
+    poll = models.ForeignKey(ChatPoll, on_delete=models.CASCADE, related_name="votes")
+    option = models.ForeignKey(ChatPollOption, on_delete=models.CASCADE, related_name="votes")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="chat_poll_votes"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["option", "user"], name="unique_chat_poll_vote"),
+        ]
+        indexes = [models.Index(fields=["poll", "user"], name="app_chatpollvote_poll_user")]
+
+    def __str__(self):
+        return f"{self.user} → {self.option}"
+
+
+class ScheduledChatMessage(models.Model):
+    """A text message waiting for ``send_at``; it becomes a normal ChatMessage when delivered."""
+
+    conversation = models.ForeignKey(
+        Conversation, on_delete=models.CASCADE, related_name="scheduled_messages"
+    )
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="scheduled_chat_messages"
+    )
+    body = models.TextField(max_length=4000)
+    reply_to = models.ForeignKey(
+        ChatMessage, on_delete=models.SET_NULL, blank=True, null=True, related_name="+"
+    )
+    send_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["send_at", "id"]
+        indexes = [
+            models.Index(fields=["send_at"], name="app_scheduledchat_send_at"),
+            models.Index(fields=["conversation", "send_at"], name="app_scheduledchat_conv"),
+        ]
+
+    def __str__(self):
+        return self.body[:80]
 
 
 class ChatMessageAttachment(models.Model):
@@ -921,6 +1007,7 @@ class UserNotification(models.Model):
     KIND_TASK_COMMENT = "task_comment"
     KIND_TASK_RETURNED = "task_returned"
     KIND_TASK_SHARE = "task_share"
+    KIND_CHAT_MENTION = "chat_mention"
     KIND_CHOICES = [
         (KIND_CALENDAR_REMINDER, "Kalendererinnerung"),
         (KIND_TASK_DUE, "Fällige Aufgabe"),
@@ -935,6 +1022,7 @@ class UserNotification(models.Model):
         (KIND_TASK_COMMENT, "Aufgabenkommentar"),
         (KIND_TASK_RETURNED, "Zurückgegebene Aufgabe"),
         (KIND_TASK_SHARE, "Geteilte Aufgabe"),
+        (KIND_CHAT_MENTION, "Chat-Erwähnung"),
     ]
 
     recipient = models.ForeignKey(
@@ -987,12 +1075,14 @@ class NotificationPreference(models.Model):
     CATEGORY_NOTES = "notes"
     CATEGORY_WEATHER = "weather"
     CATEGORY_TOOLS = "tools"
+    CATEGORY_MESSAGES = "messages"
     CATEGORY_CHOICES = [
         (CATEGORY_CALENDAR, "Kalender"),
         (CATEGORY_TASKS, "Aufgaben"),
         (CATEGORY_NOTES, "Notizen"),
         (CATEGORY_WEATHER, "Wetter"),
         (CATEGORY_TOOLS, "Werkzeuge"),
+        (CATEGORY_MESSAGES, "Nachrichten"),
     ]
 
     user = models.ForeignKey(

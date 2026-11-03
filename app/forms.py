@@ -17,6 +17,8 @@ from app.models import (
     CalendarEventAttendee,
     CalendarReminder,
     ChatMessage,
+    ChatPoll,
+    ChatPollOption,
     CustomHoliday,
     Habit,
     HolidayOverride,
@@ -42,6 +44,7 @@ from app.services.calendar_service import (
     series_scope_events,
     sync_event_reminders,
 )
+from app.services.chat import SCHEDULE_MAX_AHEAD, SCHEDULE_MIN_LEAD
 from app.services.chat_files import CHAT_VOICE_MAX_SECONDS, validate_chat_upload
 from app.services.image_uploads import PROFILE_IMAGE_ACCEPT, validate_profile_image_file
 from app.services.notes import display_name
@@ -604,6 +607,12 @@ class NotificationCategoryPreferencesForm(forms.Form):
 class MessageForm(forms.ModelForm):
     attachment = forms.FileField(label="Anhang", required=False)
     voice_duration = forms.IntegerField(required=False, min_value=0, max_value=CHAT_VOICE_MAX_SECONDS)
+    # "Später senden": local wall-clock time of the sender (the request runs in their timezone).
+    send_at = forms.DateTimeField(
+        label="Senden am",
+        required=False,
+        input_formats=["%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M"],
+    )
 
     class Meta:
         model = ChatMessage
@@ -637,6 +646,58 @@ class MessageForm(forms.ModelForm):
         cleaned_data = super().clean()
         if not cleaned_data.get("body") and not cleaned_data.get("attachment"):
             raise forms.ValidationError("Bitte gib eine Nachricht ein oder füge einen Anhang hinzu.")
+        send_at = cleaned_data.get("send_at")
+        if send_at:
+            now = timezone.now()
+            if cleaned_data.get("attachment"):
+                self.add_error("send_at", "Nur Textnachrichten können geplant werden, keine Anhänge.")
+            elif not cleaned_data.get("body"):
+                self.add_error("send_at", "Bitte gib die Nachricht ein, die später gesendet werden soll.")
+            elif send_at < now + SCHEDULE_MIN_LEAD:
+                self.add_error(
+                    "send_at", "Der Sendezeitpunkt muss mindestens eine Minute in der Zukunft liegen."
+                )
+            elif send_at > now + SCHEDULE_MAX_AHEAD:
+                self.add_error("send_at", "Nachrichten lassen sich höchstens ein Jahr im Voraus planen.")
+        return cleaned_data
+
+
+class ChatPollForm(forms.Form):
+    question = forms.CharField(
+        label="Frage",
+        max_length=ChatPoll._meta.get_field("question").max_length,
+        widget=forms.TextInput(attrs={"placeholder": "Was möchtest du fragen?", "autocomplete": "off"}),
+    )
+    allows_multiple = forms.BooleanField(label="Mehrere Antworten erlauben", required=False)
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("auto_id", "id_poll_%s")
+        super().__init__(*args, **kwargs)
+
+    def clean_question(self):
+        return self.cleaned_data["question"].strip()
+
+    def clean(self):
+        cleaned_data = super().clean()
+        raw_options = self.data.getlist("option") if hasattr(self.data, "getlist") else []
+        max_length = ChatPollOption._meta.get_field("text").max_length
+        options = []
+        seen = set()
+        for raw_option in raw_options:
+            text = " ".join(str(raw_option).split())
+            if not text:
+                continue
+            if len(text) > max_length:
+                raise forms.ValidationError(f"Eine Antwort darf höchstens {max_length} Zeichen lang sein.")
+            if text.casefold() in seen:
+                continue
+            seen.add(text.casefold())
+            options.append(text)
+        if len(options) < ChatPoll.MIN_OPTIONS:
+            raise forms.ValidationError("Gib mindestens zwei verschiedene Antworten an.")
+        if len(options) > ChatPoll.MAX_OPTIONS:
+            raise forms.ValidationError(f"Eine Umfrage hat höchstens {ChatPoll.MAX_OPTIONS} Antworten.")
+        cleaned_data["options"] = options
         return cleaned_data
 
 

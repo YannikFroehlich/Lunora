@@ -34,7 +34,7 @@
         </span>
         <time>{{ item.time }}</time>
         {% if item.unread %}
-        <span class="unread-badge">{{ item.unread }}</span>
+        <span class="unread-badge{% if item.has_unread_mention %} has-mention{% endif %}">{% if item.has_unread_mention %}<span aria-hidden="true">@ </span><span class="visually-hidden">Du wurdest erwähnt, </span>{% endif %}{{ item.unread }}</span>
         {% endif %}
     </a>
     {% empty %}

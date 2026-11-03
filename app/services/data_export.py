@@ -19,6 +19,7 @@ from app.models import (
     Note,
     NoteFolder,
     NoteTemplate,
+    ScheduledChatMessage,
     Task,
     TaskLabel,
     TaskList,
@@ -39,7 +40,7 @@ Dieses Archiv enthält alle Daten, die du in Lunora angelegt hast:
 - notizen/anhaenge/: Dateien, die an deine Notizen angehängt sind
 - aufgaben.json: Aufgaben, Listen und Labels
 - kalender.json: deine Termine und Erinnerungen
-- nachrichten.json, nachrichten/anhaenge/: Nachrichten und Dateien, die du gesendet hast
+- nachrichten.json, nachrichten/anhaenge/: Nachrichten (auch geplante und Umfragen) und Dateien, die du gesendet hast
 - vokabeln.json: Vokabellisten mit Lernfortschritt
 - uml/*.json: UML-Diagramme (lassen sich im Editor wieder importieren)
 - urlaub.json: Urlaubsjahre, Urlaube und eigene Feiertage
@@ -247,8 +248,8 @@ def _calendar(user):
 def _messages(user, archive):
     messages = (
         ChatMessage.objects.filter(sender=user, is_deleted=False)
-        .select_related("conversation")
-        .prefetch_related("conversation__member_rows__user__profile")
+        .select_related("conversation", "poll")
+        .prefetch_related("conversation__member_rows__user__profile", "poll__options__votes")
         .order_by("created_at", "id")
     )
     attachment_paths = {
@@ -265,9 +266,33 @@ def _messages(user, archive):
             "forwarded": message.is_forwarded,
             "created_at": message.created_at,
             "attachment": attachment_paths.get(message.pk),
+            "poll": _poll_export(message),
         }
         for message in messages
+    ] + [
+        {
+            "conversation_id": scheduled.conversation_id,
+            "conversation": scheduled.conversation.display_title_for(user),
+            "body": scheduled.body,
+            "scheduled_for": scheduled.send_at,
+            "created_at": scheduled.created_at,
+        }
+        for scheduled in ScheduledChatMessage.objects.filter(sender=user)
+        .select_related("conversation")
+        .prefetch_related("conversation__member_rows__user__profile")
     ]
+
+
+def _poll_export(message):
+    poll = getattr(message, "poll", None)
+    if poll is None:
+        return None
+    return {
+        "question": poll.question,
+        "allows_multiple": poll.allows_multiple,
+        "closed_at": poll.closed_at,
+        "options": [{"text": option.text, "votes": len(option.votes.all())} for option in poll.options.all()],
+    }
 
 
 def _vocabulary(user):

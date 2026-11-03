@@ -1,0 +1,23 @@
+{% if scheduled_items %}
+<section class="scheduled-messages" aria-labelledby="scheduled-messages-title">
+    <h3 id="scheduled-messages-title"><i class="fa-regular fa-clock" aria-hidden="true"></i> Geplant ({{ scheduled_items|length }})</h3>
+    <ul>
+        {% for scheduled in scheduled_items %}
+        <li>
+            <span class="scheduled-copy">
+                <time>{{ scheduled.send_at_label }}</time>
+                <span>{{ scheduled.body|truncatechars:140 }}</span>
+            </span>
+            <form method="post" action="{% url 'messages_detail' selected_conversation.id %}">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="scheduled_action">
+                <input type="hidden" name="conversation_id" value="{{ selected_conversation.id }}">
+                <input type="hidden" name="scheduled_id" value="{{ scheduled.id }}">
+                <button class="icon-button" type="submit" name="action" value="send_now" aria-label="Jetzt senden: {{ scheduled.body|truncatechars:40 }}" title="Jetzt senden"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i></button>
+                <button class="icon-button is-danger" type="submit" name="action" value="cancel" aria-label="Löschen: {{ scheduled.body|truncatechars:40 }}" title="Löschen"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
+            </form>
+        </li>
+        {% endfor %}
+    </ul>
+</section>
+{% endif %}

@@ -210,6 +210,11 @@
         overview.outerHTML = data.overview_html;
       }
 
+      const scheduledRegion = document.getElementById("scheduled-messages-region");
+      if (scheduledRegion && liveHtmlChanged("scheduled", data.scheduled_messages_html)) {
+        scheduledRegion.innerHTML = data.scheduled_messages_html;
+      }
+
       const pinnedRegion = document.getElementById("pinned-messages-region");
       if (pinnedRegion && liveHtmlChanged("pinned", data.pinned_messages_html)) {
         pinnedRegion.innerHTML = data.pinned_messages_html;
@@ -286,6 +291,259 @@
     });
   });
 
+  // "+" menu in the compose bar: polls (group chats) and "Später senden".
+  const composeMoreMenu = () => document.getElementById("compose-more-menu");
+
+  const setComposeMoreOpen = (open) => {
+    const menu = composeMoreMenu();
+    const button = document.getElementById("compose-more-button");
+    if (!menu || !button) {
+      return;
+    }
+    menu.hidden = !open;
+    button.setAttribute("aria-expanded", String(open));
+    if (open) {
+      menu.querySelector("button")?.focus();
+    }
+  };
+
+  const setScheduleActive = (active) => {
+    const strip = document.getElementById("compose-schedule-strip");
+    const input = document.getElementById("compose-send-at");
+    const sendButton = document.querySelector(".compose-bar .send-button");
+    if (!strip || !input) {
+      return;
+    }
+    strip.hidden = !active;
+    input.disabled = !active;
+    if (active) {
+      // The suggestion comes from the server in the profile timezone the field is read in.
+      if (!input.value) {
+        input.value = input.dataset.default || "";
+      }
+      input.focus();
+    } else {
+      input.value = "";
+    }
+    if (sendButton) {
+      sendButton.setAttribute("aria-label", active ? "Planen" : "Senden");
+      sendButton.querySelector("i")?.classList.toggle("fa-paper-plane", !active);
+      sendButton.querySelector("i")?.classList.toggle("fa-clock", active);
+    }
+  };
+
+  const pollDialog = document.getElementById("poll-create-dialog");
+  const POLL_MAX_OPTIONS = 10;
+
+  const openPollDialog = () => {
+    if (!pollDialog) {
+      return;
+    }
+    pollDialog.showModal();
+    pollDialog.querySelector("input[name='question']")?.focus();
+  };
+
+  pollDialog?.querySelectorAll("[data-poll-close]").forEach((button) => {
+    button.addEventListener("click", () => pollDialog.close());
+  });
+  pollDialog?.addEventListener("close", () => document.getElementById("compose-more-button")?.focus());
+  pollDialog?.querySelector("[data-poll-add-option]")?.addEventListener("click", (event) => {
+    const fields = pollDialog.querySelector("[data-poll-options]");
+    const count = fields.querySelectorAll("input[name='option']").length;
+    if (count >= POLL_MAX_OPTIONS) {
+      return;
+    }
+    const input = document.createElement("input");
+    input.type = "text";
+    input.name = "option";
+    input.maxLength = 120;
+    input.autocomplete = "off";
+    input.placeholder = `Antwort ${count + 1}`;
+    input.setAttribute("aria-label", `Antwort ${count + 1}`);
+    fields.appendChild(input);
+    input.focus();
+    event.currentTarget.hidden = count + 1 >= POLL_MAX_OPTIONS;
+  });
+
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("#compose-more-button")) {
+      setComposeMoreOpen(composeMoreMenu()?.hidden ?? false);
+      return;
+    }
+    const composeAction = event.target.closest("[data-compose-action]");
+    if (composeAction) {
+      setComposeMoreOpen(false);
+      if (composeAction.dataset.composeAction === "poll") {
+        openPollDialog();
+      } else if (composeAction.dataset.composeAction === "schedule") {
+        setScheduleActive(true);
+      }
+      return;
+    }
+    if (event.target.closest("#cancel-schedule-button")) {
+      setScheduleActive(false);
+      document.querySelector(".compose-bar textarea")?.focus();
+      return;
+    }
+    const menu = composeMoreMenu();
+    if (menu && !menu.hidden && !event.target.closest(".compose-more")) {
+      setComposeMoreOpen(false);
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    const menu = composeMoreMenu();
+    if (!menu || menu.hidden || !event.target.closest?.(".compose-more")) {
+      return;
+    }
+    const items = [...menu.querySelectorAll("button")];
+    const index = items.indexOf(document.activeElement);
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      setComposeMoreOpen(false);
+      document.getElementById("compose-more-button")?.focus();
+    } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      items[(index + step + items.length) % items.length]?.focus();
+    }
+  });
+
+  // @ suggestions for group members while typing in the compose field.
+  const mentionCandidates = (() => {
+    try {
+      return JSON.parse(document.getElementById("chat-mention-candidates")?.textContent || "[]");
+    } catch {
+      return [];
+    }
+  })();
+  const mentionState = { matches: [], active: 0, start: -1 };
+
+  const mentionList = () => document.getElementById("mention-suggestions");
+
+  const hideMentions = () => {
+    const list = mentionList();
+    const textarea = document.querySelector(".compose-bar textarea");
+    mentionState.matches = [];
+    mentionState.start = -1;
+    if (list) {
+      list.hidden = true;
+      list.replaceChildren();
+    }
+    if (textarea) {
+      textarea.setAttribute("aria-expanded", "false");
+      textarea.removeAttribute("aria-activedescendant");
+    }
+  };
+
+  const renderMentions = () => {
+    const list = mentionList();
+    const textarea = document.querySelector(".compose-bar textarea");
+    if (!list || !textarea) {
+      return;
+    }
+    list.replaceChildren(
+      ...mentionState.matches.map((candidate, index) => {
+        const option = document.createElement("button");
+        option.type = "button";
+        option.id = `mention-option-${index}`;
+        option.setAttribute("role", "option");
+        option.setAttribute("aria-selected", String(index === mentionState.active));
+        option.dataset.mentionIndex = String(index);
+        option.textContent = candidate.id === 0 ? "@alle – ganze Gruppe" : `@${candidate.name}`;
+        return option;
+      }),
+    );
+    list.hidden = false;
+    textarea.setAttribute("aria-controls", "mention-suggestions");
+    textarea.setAttribute("aria-expanded", "true");
+    textarea.setAttribute("aria-activedescendant", `mention-option-${mentionState.active}`);
+  };
+
+  const updateMentions = (textarea) => {
+    if (!mentionCandidates.length) {
+      return;
+    }
+    const before = textarea.value.slice(0, textarea.selectionStart);
+    const match = before.match(/(^|[^\p{L}\p{N}_@])@([^@\n]{0,40})$/u);
+    if (!match) {
+      hideMentions();
+      return;
+    }
+    const query = match[2].toLocaleLowerCase();
+    const matches = mentionCandidates.filter((candidate) => candidate.name.toLocaleLowerCase().startsWith(query));
+    if (!matches.length) {
+      hideMentions();
+      return;
+    }
+    mentionState.matches = matches.slice(0, 8);
+    mentionState.active = 0;
+    mentionState.start = before.length - match[2].length - 1;
+    renderMentions();
+  };
+
+  const insertMention = (index) => {
+    const textarea = document.querySelector(".compose-bar textarea");
+    const candidate = mentionState.matches[index];
+    if (!textarea || !candidate || mentionState.start < 0) {
+      return;
+    }
+    const insert = `@${candidate.name} `;
+    const after = textarea.value.slice(textarea.selectionStart);
+    textarea.value = textarea.value.slice(0, mentionState.start) + insert + after;
+    const caret = mentionState.start + insert.length;
+    textarea.setSelectionRange(caret, caret);
+    hideMentions();
+    textarea.focus();
+  };
+
+  document.addEventListener("input", (event) => {
+    if (event.target.matches?.(".compose-bar textarea")) {
+      updateMentions(event.target);
+    }
+  });
+
+  // Capture phase, so Enter picks a suggestion before the compose field's own Enter-to-send runs.
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if (!mentionState.matches.length || !event.target.matches?.(".compose-bar textarea")) {
+        return;
+      }
+      const count = mentionState.matches.length;
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        mentionState.active = (mentionState.active + (event.key === "ArrowDown" ? 1 : -1) + count) % count;
+        renderMentions();
+      } else if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab") {
+        insertMention(mentionState.active);
+      } else if (event.key === "Escape") {
+        hideMentions();
+      } else {
+        return;
+      }
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    },
+    true,
+  );
+
+  document.addEventListener("mousedown", (event) => {
+    if (event.target.closest?.("[data-mention-index]")) {
+      // Keep the caret in the compose field while a suggestion is clicked.
+      event.preventDefault();
+    }
+  });
+
+  document.addEventListener("click", (event) => {
+    const option = event.target.closest?.("[data-mention-index]");
+    if (option) {
+      insertMention(Number(option.dataset.mentionIndex));
+    } else if (mentionState.matches.length && !event.target.closest?.(".compose-bar textarea")) {
+      hideMentions();
+    }
+  });
+
   const actionForm = document.getElementById("message-action-form");
   const contextMenu = document.getElementById("message-context-menu");
 
@@ -310,6 +568,7 @@
   const pinButton = contextMenu.querySelector('[data-menu-action="pin"]');
   const pinLabel = contextMenu.querySelector("[data-menu-pin-label]");
   const replyButton = contextMenu.querySelector('[data-menu-action="reply"]');
+  const forwardButton = contextMenu.querySelector('[data-menu-action="forward"]');
   const reactionGroup = contextMenu.querySelector("[data-context-reactions]");
   let activeBubble = null;
 
@@ -407,6 +666,10 @@
 
     if (replyButton) {
       replyButton.hidden = bubble.dataset.canReply !== "true";
+    }
+
+    if (forwardButton) {
+      forwardButton.hidden = bubble.dataset.canForward !== "true";
     }
 
     placeContextMenu(point || event);

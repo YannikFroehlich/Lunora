@@ -14,19 +14,42 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import content_disposition_header
 
-from app.forms import ConversationStartForm, MessageForm
+from app.forms import ChatPollForm, ConversationStartForm, MessageForm
 from app.models import (
     ChatMessage,
     ChatMessageAttachment,
     ChatMessageReaction,
+    ChatPoll,
+    ChatPollVote,
     Conversation,
     ConversationMember,
+    ScheduledChatMessage,
+)
+from app.services.chat import (
+    apply_mentions,
+    can_send,
+    cancel_scheduled_message,
+    close_poll,
+    create_poll,
+    delete_poll,
+    forget_mentions,
+    mark_conversation_mentions_read,
+    mention_candidates,
+    poll_item,
+    poll_prefetch,
+    render_message_body,
+    schedule_bounds,
+    schedule_message,
+    scheduled_message_items,
+    send_due_scheduled_messages,
+    send_scheduled_message_now,
+    toggle_poll_vote,
 )
 from app.services.chat_files import audio_content_type, infer_attachment_kind
 from app.services.message_queries import (
     current_members_by_conversation,
     last_messages_by_conversation,
-    unread_counts_by_conversation,
+    unread_state_by_conversation,
 )
 from app.services.note_search import build_snippet, parse_search_query
 from app.services.system_settings import disabled_feature_response, feature_enabled
@@ -76,14 +99,32 @@ def messages(request, conversation_id=None):
                 django_messages.error(request, "Diese Nachricht konnte nicht gesendet werden.")
                 return redirect("messages_detail", conversation_id=selected_conversation.id)
             if message_form.is_valid():
+                reply_to = None
+                reply_to_id = _coerce_positive_int(request.POST.get("reply_to_id"))
+                if reply_to_id:
+                    reply_to = selected_conversation.messages.filter(pk=reply_to_id, is_deleted=False).first()
+                send_at = message_form.cleaned_data.get("send_at")
+                if send_at:
+                    try:
+                        schedule_message(
+                            selected_conversation,
+                            request.user,
+                            message_form.cleaned_data["body"],
+                            send_at,
+                            reply_to=reply_to,
+                        )
+                    except ValueError as error:
+                        django_messages.error(request, str(error))
+                    else:
+                        django_messages.success(
+                            request,
+                            f"Nachricht für {format_user_datetime(send_at, request.user)} geplant.",
+                        )
+                    return redirect("messages_detail", conversation_id=selected_conversation.id)
                 message = message_form.save(commit=False)
                 message.conversation = selected_conversation
                 message.sender = request.user
-                reply_to_id = _coerce_positive_int(request.POST.get("reply_to_id"))
-                if reply_to_id:
-                    message.reply_to = selected_conversation.messages.filter(
-                        pk=reply_to_id, is_deleted=False
-                    ).first()
+                message.reply_to = reply_to
                 message.save()
                 upload = message_form.cleaned_data.get("attachment")
                 if upload:
@@ -92,6 +133,7 @@ def messages(request, conversation_id=None):
                     )
                 selected_conversation.updated_at = message.created_at
                 selected_conversation.save(update_fields=["updated_at"])
+                apply_mentions(message)
                 selected_conversation.mark_read_for(request.user)
                 return redirect("messages_detail", conversation_id=selected_conversation.id)
 
@@ -138,6 +180,7 @@ def messages(request, conversation_id=None):
                     )
                     selected_conversation.updated_at = message.created_at
                     selected_conversation.save(update_fields=["updated_at"])
+                    apply_mentions(message)
                 elif body:
                     django_messages.error(request, "Diese Nachricht konnte nicht gesendet werden.")
                 selected_conversation.mark_read_for(request.user)
@@ -180,7 +223,8 @@ def messages(request, conversation_id=None):
                 .first()
             )
             target = _get_user_conversation(request.user, request.POST.get("target_conversation_id"))
-            if not message or not target or target.pk == source_conversation.pk:
+            is_poll = bool(message and ChatPoll.objects.filter(message=message).exists())
+            if not message or is_poll or not target or target.pk == source_conversation.pk:
                 django_messages.error(request, "Die Nachricht konnte nicht weitergeleitet werden.")
                 return redirect("messages_detail", conversation_id=source_conversation.id)
             target_member = _get_conversation_member(target, request.user)
@@ -197,6 +241,17 @@ def messages(request, conversation_id=None):
                 request, f"Nachricht an „{target.display_title_for(request.user)}“ weitergeleitet."
             )
             return redirect("messages_detail", conversation_id=target.id)
+
+        elif form_name in {"poll_create", "poll_vote", "poll_close", "scheduled_action"}:
+            selected_conversation = _get_user_conversation(
+                request.user,
+                request.POST.get("conversation_id") or conversation_id,
+            )
+            if not selected_conversation:
+                django_messages.error(request, "Diese Unterhaltung wurde nicht gefunden.")
+                return redirect("messages")
+            _handle_chat_tool_post(request, form_name, selected_conversation)
+            return redirect("messages_detail", conversation_id=selected_conversation.id)
 
         elif form_name == "member_action":
             selected_conversation = _get_user_conversation(
@@ -221,6 +276,9 @@ def messages(request, conversation_id=None):
             if action == "leave_group" and selected_conversation.is_group:
                 ConversationMember.objects.filter(
                     conversation=selected_conversation, user=request.user
+                ).delete()
+                ScheduledChatMessage.objects.filter(
+                    conversation=selected_conversation, sender=request.user
                 ).delete()
                 return redirect("messages")
 
@@ -251,7 +309,9 @@ def messages(request, conversation_id=None):
     all_conversations = list(Conversation.visible_for(request.user))
 
     if selected_conversation and request.method == "GET" and conversation_id:
+        send_due_scheduled_messages(conversation=selected_conversation)
         selected_conversation.mark_read_for(request.user)
+        mark_conversation_mentions_read(selected_conversation, request.user)
         selected_conversation = _get_user_conversation(request.user, selected_conversation.id)
         all_conversations = list(Conversation.visible_for(request.user))
 
@@ -316,10 +376,16 @@ def messages(request, conversation_id=None):
         "current_member_state": current_member_state,
         "available_recipients": available_recipients,
     }
-    # The forward dialog lives outside the live-updated partials, so only the full page needs this.
+    context["scheduled_items"] = scheduled_message_items(selected_conversation, request.user)
+    context["schedule_bounds"] = schedule_bounds(request.user)
+    # The forward and poll dialogs and the @ suggestions live outside the live-updated partials,
+    # so only the full page needs these.
     context["forward_targets"] = (
         _forward_targets(request.user, selected_conversation) if selected_conversation else []
     )
+    context["poll_form"] = ChatPollForm()
+    context["poll_option_slots"] = range(1, 5)
+    context["mention_candidates"] = mention_candidates(selected_conversation, request.user)
     return render(request, "app/messages.html", context)
 
 
@@ -336,6 +402,7 @@ def messages_live_updates(request, conversation_id=None):
         return JsonResponse({"ok": False, "error": "Diese Unterhaltung wurde nicht gefunden."}, status=404)
 
     if selected_conversation:
+        send_due_scheduled_messages(conversation=selected_conversation)
         selected_conversation.mark_read_for(request.user)
         selected_conversation = _get_user_conversation(request.user, selected_conversation.id)
 
@@ -343,6 +410,8 @@ def messages_live_updates(request, conversation_id=None):
     fingerprint = _live_updates_fingerprint(request, typing_label)
     if request.GET.get("fp") == fingerprint:
         return JsonResponse({"ok": True, "unchanged": True, "fingerprint": fingerprint})
+    if selected_conversation:
+        mark_conversation_mentions_read(selected_conversation, request.user)
 
     all_conversations = list(Conversation.visible_for(request.user))
     query = request.GET.get("q", "").strip()
@@ -393,6 +462,8 @@ def messages_live_updates(request, conversation_id=None):
                 "current_member_state": _build_current_member_state(
                     current_member, request.user, selected_conversation
                 ),
+                "scheduled_items": scheduled_message_items(selected_conversation, request.user),
+                "schedule_bounds": schedule_bounds(request.user),
             }
         )
         current_member_state = context["current_member_state"]
@@ -407,6 +478,9 @@ def messages_live_updates(request, conversation_id=None):
                 ),
                 "compose_html": render_to_string(
                     "app/partials/messages_compose.html", context, request=request
+                ),
+                "scheduled_messages_html": render_to_string(
+                    "app/partials/messages_scheduled.html", context, request=request
                 ),
                 "compose_blocked": bool(
                     current_member_state["is_blocked"] or current_member_state["blocked_by_recipient"]
@@ -480,6 +554,58 @@ def chat_attachment_download(request, file_id, disposition):
     return response
 
 
+def _handle_chat_tool_post(request, form_name, conversation):
+    """Poll and scheduled-message POST branches of ``messages()``; feedback goes to the flash."""
+    user = request.user
+    if form_name == "poll_create":
+        form = ChatPollForm(request.POST)
+        if not conversation.is_group:
+            django_messages.error(request, "Umfragen gibt es nur in Gruppenchats.")
+        elif not can_send(conversation, user):
+            django_messages.error(request, "In diese Unterhaltung kann derzeit nicht geschrieben werden.")
+        elif not form.is_valid():
+            errors = [error for field_errors in form.errors.values() for error in field_errors]
+            django_messages.error(
+                request, errors[0] if errors else "Die Umfrage konnte nicht erstellt werden."
+            )
+        else:
+            create_poll(
+                conversation,
+                user,
+                form.cleaned_data["question"],
+                form.cleaned_data["options"],
+                allows_multiple=form.cleaned_data["allows_multiple"],
+            )
+            conversation.mark_read_for(user)
+        return
+
+    if form_name in {"poll_vote", "poll_close"}:
+        poll = (
+            ChatPoll.objects.select_related("message")
+            .filter(pk=_coerce_positive_int(request.POST.get("poll_id")), message__conversation=conversation)
+            .first()
+        )
+        if poll is None:
+            django_messages.error(request, "Diese Umfrage wurde nicht gefunden.")
+        elif form_name == "poll_close":
+            close_poll(poll, user)
+        elif not can_send(conversation, user):
+            django_messages.error(request, "In dieser Unterhaltung kannst du derzeit nicht abstimmen.")
+        elif not toggle_poll_vote(poll, user, _coerce_positive_int(request.POST.get("option_id"))):
+            django_messages.error(request, "Diese Umfrage ist beendet.")
+        return
+
+    scheduled_id = _coerce_positive_int(request.POST.get("scheduled_id"))
+    action = request.POST.get("action")
+    if action == "send_now":
+        if send_scheduled_message_now(conversation, user, scheduled_id) is None:
+            django_messages.error(request, "Die geplante Nachricht konnte nicht gesendet werden.")
+        else:
+            conversation.mark_read_for(user)
+    elif action == "cancel" and cancel_scheduled_message(conversation, user, scheduled_id):
+        django_messages.success(request, "Geplante Nachricht gelöscht.")
+
+
 def _requested_byte_range(request, size):
     """Parse a single ``bytes=start-end`` range; ``None`` serves the whole file."""
     header = request.headers.get("Range", "")
@@ -538,6 +664,17 @@ def _live_updates_fingerprint(request, typing_label):
     reaction_state = ChatMessageReaction.objects.filter(
         message__conversation_id__in=conversation_ids
     ).aggregate(count=Count("id"), last_id=Max("id"))
+    poll_state = (
+        ChatPollVote.objects.filter(poll__message__conversation_id__in=conversation_ids).aggregate(
+            count=Count("id"), last_id=Max("id")
+        ),
+        ChatPoll.objects.filter(message__conversation_id__in=conversation_ids).aggregate(
+            closed=Count("id", filter=Q(closed_at__isnull=False))
+        ),
+    )
+    scheduled_state = ScheduledChatMessage.objects.filter(sender=request.user).aggregate(
+        count=Count("id"), last_id=Max("id")
+    )
     member_state = list(
         ConversationMember.objects.filter(conversation_id__in=conversation_ids)
         .order_by("id")
@@ -552,7 +689,17 @@ def _live_updates_fingerprint(request, typing_label):
     # expiry, "Heute"/"Gestern" labels) at ~60s; track them explicitly if that ever matters.
     minute = timezone.now().replace(second=0, microsecond=0)
     raw = repr(
-        (message_state, reaction_state, member_state, conversation_state, params, typing_label, minute)
+        (
+            message_state,
+            reaction_state,
+            poll_state,
+            scheduled_state,
+            member_state,
+            conversation_state,
+            params,
+            typing_label,
+            minute,
+        )
     )
     return hashlib.sha256(raw.encode()).hexdigest()[:32]
 
@@ -628,7 +775,7 @@ def _build_inbox_items(conversations, user):
     items = []
     current_members = current_members_by_conversation(conversations, user)
     last_messages = last_messages_by_conversation(conversations)
-    unread_counts = unread_counts_by_conversation(conversations, user, current_members)
+    unread_state = unread_state_by_conversation(conversations, user, current_members)
 
     for conversation in conversations:
         last_message = last_messages.get(conversation.id)
@@ -642,7 +789,8 @@ def _build_inbox_items(conversations, user):
                 "avatar_url": _conversation_avatar_url_for(conversation, user),
                 "preview": _conversation_preview(last_message, user),
                 "time": _conversation_time_label(last_message.created_at, user) if last_message else "Neu",
-                "unread": unread_counts.get(conversation.id, 0),
+                "unread": unread_state.get(conversation.id, (0, False))[0],
+                "has_unread_mention": unread_state.get(conversation.id, (0, False))[1],
                 "is_group": conversation.is_group,
                 "is_muted": bool(member and member.is_muted),
                 "is_blocked": bool(member and member.is_blocked),
@@ -775,9 +923,13 @@ def _paginated_conversation_messages(conversation, before_id=None):
         "reply_to__sender",
         "reply_to__sender__profile",
         "reply_to__attachment",
+        "reply_to__poll",
+        "poll",
     ).prefetch_related(
         "reactions__user",
         "reactions__user__profile",
+        "mentioned_users__profile",
+        *poll_prefetch(),
     )
     before_id = _coerce_positive_int(before_id)
     if before_id:
@@ -818,11 +970,16 @@ def _build_message_items(conversation, user, messages):
                 "sender_avatar": Conversation.initials_for_user(message.sender),
                 "sender_avatar_url": _profile_image_url_for_user(message.sender),
                 "display_body": message.display_body,
+                "body_html": render_message_body(message, user),
+                "poll": poll_item(message, user),
+                "is_mentioned": not message.is_deleted
+                and any(mentioned.pk == user.id for mentioned in message.mentioned_users.all()),
                 "is_deleted": message.is_deleted,
                 "is_pinned": message.is_pinned,
                 "is_forwarded": message.is_forwarded and not message.is_deleted,
                 "can_delete": message.sender_id == user.id and not message.is_deleted,
                 "can_react": not message.is_deleted,
+                "can_forward": not message.is_deleted and getattr(message, "poll", None) is None,
                 "read_receipt": _message_read_receipt(message, conversation, user)
                 if message.sender_id == user.id
                 else "",
@@ -891,6 +1048,7 @@ def _build_pinned_message_items(conversation, user):
             "pinned_by",
             "pinned_by__profile",
             "attachment",
+            "poll",
         )
         .order_by("-pinned_at", "-id")[:5]
     )
@@ -940,6 +1098,9 @@ def _delete_chat_message_for_user(message, user):
     message.pinned_at = None
     message.pinned_by = None
     message.reactions.all().delete()
+    delete_poll(message)
+    forget_mentions(message)
+    message.mentioned_users.clear()
     message.save(update_fields=["body", "is_deleted", "deleted_at", "is_pinned", "pinned_at", "pinned_by"])
 
 
@@ -1111,6 +1272,8 @@ def _conversation_preview(last_message, user):
 def _message_preview_text(message):
     if message.is_deleted:
         return message.display_body
+    if getattr(message, "poll", None) is not None:
+        return f"📊 Umfrage: {message.body}"
     if message.body:
         return message.body
     attachment = getattr(message, "attachment", None)
