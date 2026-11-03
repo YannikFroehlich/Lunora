@@ -39,6 +39,7 @@ class SystemSettings(models.Model):
     calendar_event_creation_enabled = models.BooleanField(default=True)
     calendar_reminders_enabled = models.BooleanField(default=True)
     calendar_feed_enabled = models.BooleanField(default=True)
+    calendar_subscriptions_enabled = models.BooleanField(default=True)
     messages_enabled = models.BooleanField(default=True)
     notes_enabled = models.BooleanField(default=True)
     vacation_planner_enabled = models.BooleanField(default=True)
@@ -575,6 +576,10 @@ class CalendarEvent(models.Model):
     start_at = models.DateTimeField()
     end_at = models.DateTimeField()
     is_all_day = models.BooleanField(default=False)
+    # Set on read-only mirrors of an external calendar; such rows are replaced on every sync.
+    subscription = models.ForeignKey(
+        "CalendarSubscription", on_delete=models.CASCADE, blank=True, null=True, related_name="events"
+    )
     # UID of the .ics VEVENT this was imported from, so importing the same file twice skips it.
     import_uid = models.CharField(max_length=255, blank=True, default="", db_index=True)
     # Minutes before the start at which the owner and everyone who accepted get reminded (None = off).
@@ -694,6 +699,31 @@ TASK_COLOR_CHOICES = [
     ("sand", "Sand"),
     ("violet", "Violett"),
 ]
+
+
+class CalendarSubscription(models.Model):
+    """An external iCal calendar mirrored read-only into its owner's calendar
+    (app.services.calendar_subscriptions)."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="calendar_subscriptions"
+    )
+    name = models.CharField(max_length=80)
+    # A secret address (Google, iCloud, Outlook) reads the whole calendar, so this is a credential
+    # like Profile.calendar_feed_token: never log, export or render it, not even to its owner.
+    url = models.CharField(max_length=2000)
+    color = models.CharField(max_length=12, choices=TASK_COLOR_CHOICES, default="blue")
+    last_attempt_at = models.DateTimeField(blank=True, null=True)
+    last_synced_at = models.DateTimeField(blank=True, null=True)
+    last_error = models.CharField(max_length=255, blank=True)
+    event_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name", "id"]
+
+    def __str__(self):
+        return self.name
 
 
 class TaskList(models.Model):

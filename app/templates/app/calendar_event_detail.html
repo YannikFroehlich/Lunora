@@ -21,12 +21,16 @@
         <section class="glass-panel event-detail-panel tone-{{ tone }}" aria-labelledby="event-detail-title">
             <div class="event-detail-head">
                 <h2 id="event-detail-title"><span class="event-detail-dot" aria-hidden="true"></span> {{ category }}</h2>
-                <a class="ghost-button" href="{{ day_url }}"><i class="fa-solid fa-calendar-day" aria-hidden="true"></i> Im Kalender{% if is_owner %} bearbeiten{% endif %}</a>
+                <a class="ghost-button" href="{{ day_url }}"><i class="fa-solid fa-calendar-day" aria-hidden="true"></i> Im Kalender{% if is_owner and not is_subscribed %} bearbeiten{% endif %}</a>
             </div>
             <dl class="event-detail-facts">
                 <div><dt>Wann</dt><dd>{{ when }}</dd></div>
                 {% if location %}<div><dt>Wo</dt><dd>{% if location_link %}<a href="{{ location_link.url }}" target="_blank" rel="noopener noreferrer">{% if location_link.is_online %}Online{% else %}{{ location }}{% endif %}<span class="visually-hidden"> – {{ location_link.label }} (neues Fenster)</span></a>{% else %}{{ location }}{% endif %}</dd></div>{% endif %}
+                {% if is_subscribed %}
+                <div><dt>Kalender</dt><dd><i class="fa-solid fa-rss" aria-hidden="true"></i> Abonniert – nur lesbar, Änderungen im Ursprungskalender</dd></div>
+                {% else %}
                 <div><dt>Organisiert von</dt><dd>{% if is_owner %}dir{% else %}{{ organizer_name }}{% endif %}</dd></div>
+                {% endif %}
                 {% if is_series or has_reminder %}
                 <div><dt>Außerdem</dt><dd>{% if is_series %}<i class="fa-solid fa-repeat" aria-hidden="true"></i> Wiederkehrend{% endif %}{% if is_series and has_reminder %} · {% endif %}{% if has_reminder %}<i class="fa-regular fa-bell" aria-hidden="true"></i> Mit Erinnerung{% endif %}</dd></div>
                 {% endif %}

@@ -17,6 +17,7 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 from app.forms import (
     AppearanceForm,
     BookmarkForm,
+    CalendarSubscriptionForm,
     NotificationCategoryPreferencesForm,
     NotificationPreferencesForm,
     ProfileForm,
@@ -27,6 +28,7 @@ from app.models import AuditLogEntry, Bookmark, Profile
 from app.services import audit_log, two_factor
 from app.services.accounts import account_deletion_blocked_reason, delete_account
 from app.services.calendar_service import disable_calendar_feed, reset_calendar_feed_token
+from app.services.calendar_subscriptions import can_refresh, sync_subscription
 from app.services.dashboard import normalize_dashboard_layout, validate_dashboard_layout
 from app.services.data_export import export_filename, write_user_export
 from app.services.data_import import import_files
@@ -175,6 +177,7 @@ def settings(request):
     return_to = get_safe_settings_return_url(request)
     form_name = request.POST.get("form_name") if request.method == "POST" else ""
     calendar_feed_enabled = feature_enabled("calendar_feed")
+    subscriptions_enabled = feature_enabled("calendar_subscriptions")
     profile_form = ProfileForm(instance=profile)
     appearance_form = AppearanceForm(instance=profile)
     region_form = RegionPreferencesForm(instance=profile)
@@ -223,6 +226,11 @@ def settings(request):
             disable_calendar_feed(profile)
             audit_log.record(AuditLogEntry.ACTION_CALENDAR_FEED, request, summary="Abo-Link deaktiviert")
             django_messages.success(request, "Abo-Link deaktiviert.")
+        return redirect(_settings_section_url("calendar", return_to))
+    elif form_name.startswith("calendar_subscription_"):
+        if not subscriptions_enabled:
+            return disabled_feature_response(request, "calendar_subscriptions")
+        _handle_calendar_subscription_form(request, form_name)
         return redirect(_settings_section_url("calendar", return_to))
     elif form_name == "notifications":
         notification_form = NotificationPreferencesForm(request.POST, instance=profile)
@@ -311,6 +319,25 @@ def settings(request):
             "weather_form": weather_form,
             "return_to": return_to,
             "calendar_feed_enabled": calendar_feed_enabled,
+            "calendar_subscriptions_enabled": subscriptions_enabled,
+            "calendar_subscription_form": CalendarSubscriptionForm(user=request.user),
+            "calendar_subscriptions": [
+                {
+                    "id": subscription.pk,
+                    "name": subscription.name,
+                    "color": subscription.color,
+                    "event_count": subscription.event_count,
+                    "last_synced": (
+                        format_user_datetime(subscription.last_synced_at, request.user)
+                        if subscription.last_synced_at
+                        else ""
+                    ),
+                    "last_error": subscription.last_error,
+                }
+                for subscription in request.user.calendar_subscriptions.all()
+            ]
+            if subscriptions_enabled
+            else [],
             "two_factor_enabled": bool(profile.totp_enabled_at),
             "two_factor_recovery_remaining": len(profile.totp_recovery_codes),
             "two_factor_setup_secret": setup_secret,
@@ -336,6 +363,43 @@ def settings(request):
 
 TWO_FACTOR_SETUP_SESSION_KEY = "two_factor_setup_secret"
 TWO_FACTOR_NEW_CODES_SESSION_KEY = "two_factor_new_codes"
+
+
+def _handle_calendar_subscription_form(request, form_name):
+    """Add, refresh or remove an external calendar; adding and refreshing fetch it right away."""
+    if form_name == "calendar_subscription_add":
+        form = CalendarSubscriptionForm(request.POST, user=request.user)
+        if not form.is_valid():
+            django_messages.error(
+                request, " ".join(error for errors in form.errors.values() for error in errors)
+            )
+            return
+        _sync_with_message(request, form.save())
+        return
+    subscription = request.user.calendar_subscriptions.filter(
+        pk=request.POST.get("subscription_id") or 0
+    ).first()
+    if subscription is None:
+        return
+    if form_name == "calendar_subscription_delete":
+        subscription.delete()
+        django_messages.success(request, f"„{subscription.name}“ wird nicht mehr abonniert.")
+    elif form_name == "calendar_subscription_refresh":
+        if can_refresh(subscription):
+            _sync_with_message(request, subscription)
+        else:
+            django_messages.info(request, f"„{subscription.name}“ wurde gerade erst aktualisiert.")
+
+
+def _sync_with_message(request, subscription):
+    if sync_subscription(subscription):
+        django_messages.success(
+            request, f"„{subscription.name}“ aktualisiert: {subscription.event_count} Termin(e)."
+        )
+    else:
+        django_messages.error(
+            request, f"„{subscription.name}“ konnte nicht geladen werden: {subscription.last_error}"
+        )
 
 
 def _handle_two_factor_form(request, profile, form_name):

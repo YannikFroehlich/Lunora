@@ -193,6 +193,77 @@
                     </button>
                 </form>
                 {% endif %}
+
+                {% if calendar_subscriptions_enabled %}
+                <div class="panel-title calendar-subscriptions-title">
+                    <i class="fa-solid fa-calendar-plus" aria-hidden="true"></i>
+                    <h2>Externe Kalender</h2>
+                </div>
+                <p class="panel-description">Zeige deinen privaten Google-, Outlook- oder iCloud-Kalender in Lunora an. Seine Termine sind hier nur lesbar und werden etwa alle 30 Minuten aktualisiert.</p>
+                {% if calendar_subscriptions %}
+                <ul class="calendar-subscription-list">
+                    {% for subscription in calendar_subscriptions %}
+                    <li class="calendar-subscription tone-{{ subscription.color }}">
+                        <span class="calendar-subscription-dot" aria-hidden="true"></span>
+                        <span class="calendar-subscription-copy">
+                            <strong>{{ subscription.name }}</strong>
+                            <small>{% if subscription.last_synced %}{{ subscription.event_count }} Termin(e) · aktualisiert {{ subscription.last_synced }}{% else %}Noch nicht geladen{% endif %}</small>
+                            {% if subscription.last_error %}<small class="calendar-subscription-error"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> {{ subscription.last_error }}</small>{% endif %}
+                        </span>
+                        <form method="post">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_name" value="calendar_subscription_refresh">
+                            <input type="hidden" name="subscription_id" value="{{ subscription.id }}">
+                            <input type="hidden" name="return_to" value="{{ return_to }}">
+                            <button class="icon-button" type="submit" aria-label="„{{ subscription.name }}“ jetzt aktualisieren" title="Jetzt aktualisieren"><i class="fa-solid fa-rotate" aria-hidden="true"></i></button>
+                        </form>
+                        <form method="post" data-confirm="„{{ subscription.name }}“ nicht mehr abonnieren? Seine Termine verschwinden aus Lunora.">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_name" value="calendar_subscription_delete">
+                            <input type="hidden" name="subscription_id" value="{{ subscription.id }}">
+                            <input type="hidden" name="return_to" value="{{ return_to }}">
+                            <button class="icon-button danger-button" type="submit" aria-label="„{{ subscription.name }}“ entfernen" title="Entfernen"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
+                        </form>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+                <form class="calendar-subscription-form" method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="calendar_subscription_add">
+                    <input type="hidden" name="return_to" value="{{ return_to }}">
+                    <label class="settings-calendar-form" for="{{ calendar_subscription_form.name.id_for_label }}">
+                        <span class="field-label">{{ calendar_subscription_form.name.label }}</span>
+                        <span class="calendar-input-pill">
+                            <i class="fa-solid fa-tag" aria-hidden="true"></i>
+                            {{ calendar_subscription_form.name }}
+                        </span>
+                    </label>
+                    <label class="settings-calendar-form" for="{{ calendar_subscription_form.url.id_for_label }}">
+                        <span class="field-label">{{ calendar_subscription_form.url.label }}</span>
+                        <span class="calendar-input-pill">
+                            <i class="fa-solid fa-link" aria-hidden="true"></i>
+                            {{ calendar_subscription_form.url }}
+                        </span>
+                    </label>
+                    <span class="field-label" id="calendar-subscription-color-label">Farbe</span>
+                    <div class="color-row" role="radiogroup" aria-labelledby="calendar-subscription-color-label">
+                        {% for value, label in calendar_subscription_form.fields.color.choices %}
+                        <label class="color-dot tone-{{ value }}" aria-label="Farbe {{ label }}" title="{{ label }}">
+                            <input type="radio" name="color" value="{{ value }}" {% if forloop.first %}checked{% endif %}>
+                        </label>
+                        {% endfor %}
+                    </div>
+                    <div class="calendar-form-actions">
+                        <button class="primary-button" type="submit">
+                            <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                            Kalender abonnieren
+                        </button>
+                    </div>
+                    <small class="field-hint">Google Kalender: Einstellungen → Kalender auswählen → „Privatadresse im iCal-Format“. Outlook: Einstellungen → Kalender → Freigegebene Kalender → „Kalender veröffentlichen“ (ICS-Link). iCloud: Kalender teilen → „Öffentlicher Kalender“.</small>
+                    <small class="field-hint">Die Adresse wirkt wie ein Passwort: Lunora nutzt sie nur zum Abrufen und zeigt sie nicht wieder an.</small>
+                </form>
+                {% endif %}
             </section>
 
             <section id="settings-panel-notifications" class="glass-panel notifications-panel" role="tabpanel" aria-labelledby="settings-tab-notifications" data-settings-panel="notifications">

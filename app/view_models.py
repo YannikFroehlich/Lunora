@@ -544,8 +544,12 @@ def _display_name(user):
 
 
 def _calendar_visible_events_query(user):
-    """Events the user owns plus events they were invited to."""
-    return CalendarEvent.objects.filter(Q(user=user) | Q(attendees__user=user)).distinct()
+    """Events the user owns plus events they were invited to; subscribed calendars only while that
+    feature is on."""
+    events = CalendarEvent.objects.filter(Q(user=user) | Q(attendees__user=user))
+    if not feature_enabled("calendar_subscriptions"):
+        events = events.filter(subscription=None)
+    return events.select_related("subscription").distinct()
 
 
 def _dashboard_upcoming_events(user, now):
@@ -847,7 +851,7 @@ def _calendar_agenda(user, start, now, events_by_date, tasks_by_date, markers):
                         "label": event.title,
                         "tone": _calendar_event_tone(event),
                         "time": _agenda_time_label(event, day, user),
-                        "category": event.get_category_display(),
+                        "category": _calendar_event_category(event),
                         "is_invited": event.user_id != user.id,
                         "day_url": f"{reverse('calendar')}?view=day&date={day.isoformat()}",
                         **_calendar_event_manage_fields(event, user),
@@ -893,6 +897,7 @@ def _calendar_year_grid(user, year, now, tasks_enabled):
     events = (
         _calendar_visible_events_query(user)
         .filter(start_at__lt=range_end, end_at__gt=range_start)
+        .select_related(None)
         .only("id", "start_at", "end_at", "is_all_day")
     )
     events_by_date = _group_calendar_events_by_date(events, first_day, last_day + timedelta(days=1), user)
@@ -1122,14 +1127,23 @@ def _calendar_event_time_label(event, user):
 
 
 def _calendar_event_tone(event):
+    if event.subscription_id:
+        return event.subscription.color
     return CalendarEvent.CATEGORY_TONES.get(event.category, "sand")
 
 
+def _calendar_event_category(event):
+    """The category label, or for a subscribed calendar's event that calendar's name."""
+    return event.subscription.name if event.subscription_id else event.get_category_display()
+
+
 def _calendar_event_manage_fields(event, user):
-    can_manage = event.user_id == user.id
+    # Events of a subscribed calendar are read-only mirrors; the next sync would undo any change.
+    can_manage = event.user_id == user.id and not event.subscription_id
     fields = {
         "event_id": event.id,
         "detail_url": reverse("calendar_event_detail", args=[event.id]),
+        "subscription_name": event.subscription.name if event.subscription_id else "",
         "recurrence_id": event.recurrence_id,
         "can_delete": can_manage,
         "location": event.location,
@@ -1185,7 +1199,8 @@ def get_calendar_event_detail_context(event, user):
         "active_page": "calendar",
         "event": event,
         "title": event.title,
-        "category": event.get_category_display(),
+        "category": _calendar_event_category(event),
+        "is_subscribed": bool(event.subscription_id),
         "tone": _calendar_event_tone(event),
         "when": f"{get_user_weekday_name(start, user)}, {when}",
         "location": event.location,
@@ -1227,7 +1242,7 @@ def _upcoming_calendar_events(user, now):
         {
             "date": format_user_date(event.start_at, user),
             "title": event.title,
-            "category": event.get_category_display(),
+            "category": _calendar_event_category(event),
             "icon": "fa-calendar-day",
             "tone": _calendar_event_tone(event),
             "is_invited": event.user_id != user.id,

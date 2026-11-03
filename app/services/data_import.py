@@ -409,13 +409,17 @@ def _ics_duration(value):
     return -duration if match.group("sign") == "-" else duration
 
 
-def _ics_occurrences(rule, start_at):
+def _ics_occurrences(rule, start_at, window=None):
     """Expand an RRULE from start_at into the series' start datetimes, or None for a rule this
     importer can't read (then only the first date is imported).
 
     Handles FREQ, INTERVAL, COUNT, UNTIL, BYDAY (with ordinals such as 2MO or -1FR in monthly and
     yearly rules), BYMONTHDAY and BYMONTH. DTSTART is always the first occurrence, and every
     occurrence keeps start_at's wall-clock time, so a series stays at 9:00 across DST changes.
+
+    With a ``window`` (start, end), as for subscribed calendars, the series runs up to the window's
+    end instead of RECURRENCE_HORIZON_DAYS past DTSTART, and without COUNT the periods before the
+    window are skipped, so a weekly series begun years ago still reaches today.
     """
     parts = dict(part.split("=", 1) for part in rule.upper().split(";") if "=" in part)
     frequency = parts.get("FREQ")
@@ -441,7 +445,7 @@ def _ics_occurrences(rule, start_at):
     if frequency == "YEARLY" and by_day and not months:
         return None
 
-    until = start_at + timedelta(days=RECURRENCE_HORIZON_DAYS)
+    until = window[1] if window else start_at + timedelta(days=RECURRENCE_HORIZON_DAYS)
     if "UNTIL" in parts:
         parsed = _ics_datetime(parts["UNTIL"], {}, start_at.tzinfo)
         if parsed:
@@ -453,7 +457,11 @@ def _ics_occurrences(rule, start_at):
     limit = min(count, MANUAL_RECURRENCE_MAX_INSTANCES)
     start_date = start_at.date()
     occurrences = [start_at]
-    for period in range(MAX_RECURRENCE_PERIODS):
+    first_period = 0
+    if window and "COUNT" not in parts:
+        # One period early, since the elapsed count below is only exact for daily rules.
+        first_period = max(0, _elapsed_periods(frequency, start_date, window[0].date()) // interval - 1)
+    for period in range(first_period, first_period + MAX_RECURRENCE_PERIODS):
         period_start, days = _rule_period_days(
             frequency, start_date, period * interval, by_day, month_days, months
         )
@@ -467,6 +475,17 @@ def _ics_occurrences(rule, start_at):
                 return occurrences
             occurrences.append(occurrence)
     return occurrences[:limit]
+
+
+def _elapsed_periods(frequency, start_date, day):
+    """Roughly how many days, weeks, months or years lie between start_date and day."""
+    if frequency == "DAILY":
+        return (day - start_date).days
+    if frequency == "WEEKLY":
+        return (day - start_date).days // 7
+    if frequency == "MONTHLY":
+        return (day.year - start_date.year) * 12 + day.month - start_date.month
+    return day.year - start_date.year
 
 
 def _rule_period_days(frequency, start_date, step, by_day, month_days, months):
@@ -610,10 +629,22 @@ def _ics_event_row(user, event, start, recurrence_id, frequency):
 
 def import_ics_events(user, text):
     """Create the file's events for user. Returns counts: created, duplicates, skipped, simplified."""
+    # Events of subscribed calendars are mirrors that get replaced, so they don't block an import.
+    known_uids = CalendarEvent.objects.filter(user=user, subscription=None).exclude(import_uid="")
+    rows, counts = ics_event_rows(user, text, skip_uids=known_uids.values_list("import_uid", flat=True))
+    CalendarEvent.objects.bulk_create(rows)
+    return counts
+
+
+def ics_event_rows(user, text, *, skip_uids=(), window=None, limit=None):
+    """Unsaved CalendarEvent rows for an iCalendar text's events, plus counts (created, duplicates,
+    skipped, simplified). Events whose UID is in skip_uids or came earlier in the text are duplicates.
+
+    With a ``window`` (start, end) only occurrences overlapping it are kept; ``limit`` stops after
+    that many rows, so a hostile calendar can't expand into millions of them.
+    """
     default_zone = get_user_zoneinfo(user)
-    known_uids = set(
-        CalendarEvent.objects.filter(user=user).exclude(import_uid="").values_list("import_uid", flat=True)
-    )
+    known_uids = set(skip_uids)
     counts = {"created": 0, "duplicates": 0, "skipped": 0, "simplified": 0}
     events = []
     overrides = {}
@@ -635,7 +666,7 @@ def import_ics_events(user, text):
         starts = [event["start_at"]]
         frequency = ""
         if event["rrule"]:
-            occurrences = _ics_occurrences(event["rrule"], event["start_at"])
+            occurrences = _ics_occurrences(event["rrule"], event["start_at"], window)
             if occurrences is None:
                 counts["simplified"] += 1
             else:
@@ -644,6 +675,12 @@ def import_ics_events(user, text):
         replaced = event["exdates"] | {override["recurrence_of"] for override in series_overrides}
         starts = [start for start in starts if start not in replaced]
         moved = [override for override in series_overrides if not override["cancelled"]]
+        if window:
+            duration = event["end_at"] - event["start_at"]
+            starts = [start for start in starts if start < window[1] and start + duration >= window[0]]
+            moved = [item for item in moved if item["start_at"] < window[1] and item["end_at"] >= window[0]]
+            if not starts and not moved:
+                continue
         if not starts and not moved:
             counts["skipped"] += 1
             continue
@@ -654,10 +691,12 @@ def import_ics_events(user, text):
             for moved_event in moved
         )
         counts["created"] += 1
+        if limit is not None and len(rows) >= limit:
+            del rows[limit:]
+            break
     # Changed occurrences whose series isn't in the file have nothing to replace.
     counts["skipped"] += sum(len(series_overrides) for series_overrides in overrides.values())
-    CalendarEvent.objects.bulk_create(rows)
-    return counts
+    return rows, counts
 
 
 # ---- Upload dispatch -------------------------------------------------------------------------------
