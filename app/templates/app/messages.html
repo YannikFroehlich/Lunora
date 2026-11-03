@@ -165,7 +165,40 @@
             </dialog>
             {% endif %}
 
+            {% if selected_conversation.is_group %}
+            <dialog class="forward-dialog poll-dialog" id="poll-create-dialog" aria-labelledby="poll-create-title">
+                <form class="glass-panel forward-dialog-card" method="post" action="{% url 'messages_detail' selected_conversation.id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="poll_create">
+                    <input type="hidden" name="conversation_id" value="{{ selected_conversation.id }}">
+                    <header class="forward-dialog-header">
+                        <h2 id="poll-create-title">Umfrage erstellen</h2>
+                        <button class="icon-button" type="button" data-poll-close aria-label="Dialog schließen"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                    </header>
+                    <label class="poll-field">
+                        {{ poll_form.question.label }}
+                        {{ poll_form.question }}
+                    </label>
+                    <fieldset class="poll-option-fields" data-poll-options>
+                        <legend>Antworten</legend>
+                        {% for slot in poll_option_slots %}
+                        <input type="text" name="option" maxlength="120" autocomplete="off" aria-label="Antwort {{ slot }}" placeholder="Antwort {{ slot }}"{% if slot <= 2 %} required{% endif %}>
+                        {% endfor %}
+                    </fieldset>
+                    <button class="ghost-button poll-add-option" type="button" data-poll-add-option><i class="fa-solid fa-plus" aria-hidden="true"></i> Antwort hinzufügen</button>
+                    <label class="poll-multiple">{{ poll_form.allows_multiple }} {{ poll_form.allows_multiple.label }}</label>
+                    <div class="forward-dialog-actions">
+                        <button class="ghost-button" type="button" data-poll-close>Abbrechen</button>
+                        <button class="primary-button" type="submit"><i class="fa-solid fa-square-poll-horizontal" aria-hidden="true"></i> Umfrage senden</button>
+                    </div>
+                </form>
+            </dialog>
+            {% endif %}
+            {% if mention_candidates %}{{ mention_candidates|json_script:"chat-mention-candidates" }}{% endif %}
+
             <div class="typing-indicator" id="typing-indicator" aria-live="polite"></div>
+
+            <div id="scheduled-messages-region">{% include "app/partials/messages_scheduled.html" %}</div>
 
             <div id="message-compose-region" data-compose-blocked="{% if current_member_state.is_blocked or current_member_state.blocked_by_recipient %}true{% else %}false{% endif %}">
                 {% include "app/partials/messages_compose.html" %}

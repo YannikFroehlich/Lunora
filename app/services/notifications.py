@@ -55,6 +55,7 @@ NOTIFICATION_PRESENTATION = {
     UserNotification.KIND_TASK_COMMENT: ("fa-comment", "Aufgabe", "task"),
     UserNotification.KIND_TASK_RETURNED: ("fa-rotate-left", "Aufgabe", "task"),
     UserNotification.KIND_TASK_SHARE: ("fa-user-group", "Aufgabe", "task"),
+    UserNotification.KIND_CHAT_MENTION: ("fa-at", "Chat", "message"),
 }
 
 
@@ -346,6 +347,49 @@ def materialize_task_comment_notification(comment):
                 "source_key": f"task-comment:{comment.pk}",
             }
             for recipient_id in recipients
+        ]
+    )
+
+
+def materialize_chat_mention_notifications(message):
+    """Tell the users a chat message mentions about it, regardless of whether they muted the chat.
+
+    Created when the message is sent (not backfilled). Members who blocked the conversation are
+    skipped; all copies share one source key, so deleting the message removes every copy.
+    """
+    from django.urls import reverse
+
+    from app.models import Conversation, ConversationMember
+    from app.services.chat import mention_source_key
+
+    recipient_ids = set(message.mentioned_users.values_list("pk", flat=True)) - {message.sender_id}
+    if not recipient_ids:
+        return 0
+    conversation = Conversation.objects.prefetch_related("member_rows__user__profile").get(
+        pk=message.conversation_id
+    )
+    recipients = [
+        member.user
+        for member in ConversationMember.objects.filter(
+            conversation=conversation, user_id__in=recipient_ids, is_blocked=False, user__is_active=True
+        ).select_related("user")
+    ]
+    detail_url = reverse("messages_detail", args=[conversation.pk])
+    return _create_missing_user_notifications(
+        [
+            {
+                "recipient_id": recipient.pk,
+                "actor_id": message.sender_id,
+                "kind": UserNotification.KIND_CHAT_MENTION,
+                "title": (
+                    f"{_display_name(message.sender)} hat dich in „{conversation.display_title_for(recipient)}“ "
+                    "erwähnt"
+                ),
+                "body": message.body[:300],
+                "url": f"{detail_url}?around={message.pk}#hit-{message.pk}",
+                "source_key": mention_source_key(message),
+            }
+            for recipient in recipients
         ]
     )
 
@@ -935,6 +979,7 @@ def send_pending_user_notification_emails(
     include_weather=True,
     include_task_assignments=True,
     include_habit_reminders=True,
+    include_chat_mentions=True,
 ):
     """Send inbox-backed e-mails for notification types without a source delivery column."""
     current_time = now or timezone.now()
@@ -954,6 +999,8 @@ def send_pending_user_notification_emails(
         ]
     if include_habit_reminders:
         kinds.append(UserNotification.KIND_HABIT_REMINDER)
+    if include_chat_mentions:
+        kinds.append(UserNotification.KIND_CHAT_MENTION)
     if not kinds:
         return {"sent": 0, "failed": 0, "disabled": True}
 

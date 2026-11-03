@@ -6,6 +6,17 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Polls in group chats: "+" → "Umfrage erstellen" asks a question with 2–10 answers (optionally
+  several per person). Everyone taps an answer to vote or to take the vote back, sees the counts
+  and who voted, and the creator can end the poll.
+- Send chat messages later: "+" → "Später senden" picks a date and time (up to a year ahead, in your
+  own timezone). Planned messages are listed above the input field only for you, where they can be
+  sent right away or deleted; they go out on time through the background automations, or as soon
+  as the chat is open.
+- @-mentions in group chats: typing "@" suggests the members (and "@alle" for everyone). Mentioned
+  people see their name highlighted, an "@" next to the chat's unread count, and get a notification
+  in the notification center, by e-mail and Web Push even while they muted the chat. The new
+  "Nachrichten" row in the notification settings turns these channels off.
 - While a dialog is open (new event, task, forwarding, command palette, …) the page behind it no
   longer scrolls with the mouse wheel or touch; only the dialog itself scrolls.
 - Forward chat messages: "Weiterleiten" in a message's menu sends it, including an image, file or

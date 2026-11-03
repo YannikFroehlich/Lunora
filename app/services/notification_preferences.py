@@ -38,6 +38,12 @@ CATEGORY_DEFINITIONS = (
         "icon": "fa-cloud-bolt",
     },
     {
+        "key": NotificationPreference.CATEGORY_MESSAGES,
+        "label": "Nachrichten",
+        "hint": "Erwähnungen in Gruppenchats, auch wenn sie stummgeschaltet sind",
+        "icon": "fa-comments",
+    },
+    {
         "key": NotificationPreference.CATEGORY_TOOLS,
         "label": "Werkzeuge",
         "hint": "Vokabelfreigaben und Gewohnheiten",
@@ -59,6 +65,7 @@ KIND_TO_CATEGORY = {
     UserNotification.KIND_WEATHER_ALERT: NotificationPreference.CATEGORY_WEATHER,
     UserNotification.KIND_VOCABULARY_SHARE: NotificationPreference.CATEGORY_TOOLS,
     UserNotification.KIND_HABIT_REMINDER: NotificationPreference.CATEGORY_TOOLS,
+    UserNotification.KIND_CHAT_MENTION: NotificationPreference.CATEGORY_MESSAGES,
 }
 
 

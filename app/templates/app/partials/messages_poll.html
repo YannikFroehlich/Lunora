@@ -1,0 +1,33 @@
+<div class="chat-poll{% if poll.is_closed %} is-closed{% endif %}" role="group" aria-labelledby="poll-question-{{ poll.id }}">
+    <p class="chat-poll-kicker"><i class="fa-solid fa-square-poll-horizontal" aria-hidden="true"></i> Umfrage · {% if poll.allows_multiple %}Mehrere Antworten möglich{% else %}Eine Antwort{% endif %}</p>
+    <strong class="chat-poll-question" id="poll-question-{{ poll.id }}">{{ poll.question }}</strong>
+    <form class="chat-poll-options" method="post" action="{% url 'messages_detail' selected_conversation.id %}">
+        {% csrf_token %}
+        <input type="hidden" name="form_name" value="poll_vote">
+        <input type="hidden" name="conversation_id" value="{{ selected_conversation.id }}">
+        <input type="hidden" name="poll_id" value="{{ poll.id }}">
+        {% for option in poll.options %}
+        <button class="chat-poll-option{% if option.is_own %} is-own{% endif %}" type="submit" name="option_id" value="{{ option.id }}"
+                style="--poll-share: {{ option.percent }}%"
+                aria-pressed="{% if option.is_own %}true{% else %}false{% endif %}"
+                {% if poll.is_closed %}disabled{% endif %}
+                {% if option.voter_names %}title="{{ option.voter_names }}"{% endif %}>
+            <span class="chat-poll-check" aria-hidden="true"><i class="fa-solid {% if option.is_own %}fa-circle-check{% else %}fa-circle{% endif %}"></i></span>
+            <span class="chat-poll-text">{{ option.text }}</span>
+            <span class="chat-poll-count">{{ option.count }}<span class="visually-hidden"> Stimme{% if option.count != 1 %}n{% endif %}, {{ option.percent }} %</span></span>
+        </button>
+        {% endfor %}
+    </form>
+    <div class="chat-poll-footer">
+        <small>{{ poll.voter_count }} Person{% if poll.voter_count != 1 %}en{% endif %} abgestimmt{% if poll.is_closed %} · Beendet{% endif %}</small>
+        {% if poll.can_close %}
+        <form method="post" action="{% url 'messages_detail' selected_conversation.id %}" data-confirm="Umfrage beenden? Danach kann niemand mehr abstimmen.">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="poll_close">
+            <input type="hidden" name="conversation_id" value="{{ selected_conversation.id }}">
+            <input type="hidden" name="poll_id" value="{{ poll.id }}">
+            <button class="chat-poll-close" type="submit">Umfrage beenden</button>
+        </form>
+        {% endif %}
+    </div>
+</div>

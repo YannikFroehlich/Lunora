@@ -1,6 +1,7 @@
 from datetime import timedelta
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -11,9 +12,12 @@ from app.models import (
     ChatMessage,
     ChatMessageAttachment,
     ChatMessageReaction,
+    ChatPoll,
     Conversation,
     ConversationMember,
     Profile,
+    ScheduledChatMessage,
+    UserNotification,
 )
 from app.tests.helpers import PNG_1X1_BYTES
 from app.views.message_views import _build_inbox_items
@@ -1093,3 +1097,474 @@ class MessageForwardTests(TestCase):
         titles = [target["title"] for target in page.context["forward_targets"]]
         self.assertCountEqual(titles, ["Anna", "Team"])
         self.assertContains(page, 'data-menu-action="forward"')
+
+
+class ChatToolsTestMixin:
+    def setUp(self):
+        self.mira, self.lukas, self.anna = (
+            User.objects.create_user(
+                username=f"{name}@example.com", email=f"{name}@example.com", password="secret-12345"
+            )
+            for name in ("mira", "lukas", "anna")
+        )
+        for user, name in ((self.mira, "Mira"), (self.lukas, "Lukas"), (self.anna, "Anna Berg")):
+            Profile.objects.create(user=user, display_name=name, timezone_name="Europe/Berlin")
+        self.group = Conversation.objects.create(created_by=self.mira, title="Team", is_group=True)
+        for user in (self.mira, self.lukas, self.anna):
+            ConversationMember.objects.create(conversation=self.group, user=user)
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+    def send(self, body, conversation=None, follow=False, **extra):
+        conversation = conversation or self.group
+        return self.client.post(
+            f"/messages/{conversation.id}/",
+            {"form_name": "message", "conversation_id": conversation.id, "body": body, **extra},
+            follow=follow,
+        )
+
+    def direct(self, *users):
+        conversation = Conversation.objects.create(created_by=users[0])
+        for user in users:
+            ConversationMember.objects.create(conversation=conversation, user=user)
+        return conversation
+
+
+class ChatMentionTests(ChatToolsTestMixin, TestCase):
+    def test_mention_stores_user_and_creates_inbox_notification(self):
+        self.send("@Lukas hast du morgen Zeit?")
+
+        message = ChatMessage.objects.get()
+        self.assertEqual(list(message.mentioned_users.all()), [self.lukas])
+        notification = UserNotification.objects.get(kind=UserNotification.KIND_CHAT_MENTION)
+        self.assertEqual(notification.recipient, self.lukas)
+        self.assertEqual(notification.actor, self.mira)
+        self.assertEqual(notification.title, "Mira hat dich in „Team“ erwähnt")
+        self.assertEqual(notification.url, f"/messages/{self.group.id}/?around={message.id}#hit-{message.id}")
+
+    def test_longest_display_name_wins_and_word_boundaries_count(self):
+        Profile.objects.filter(user=self.lukas).update(display_name="Anna")
+
+        self.send("Frage an @Anna Berg, nicht an mail@Anna oder @Annabell")
+
+        self.assertEqual(list(ChatMessage.objects.get().mentioned_users.all()), [self.anna])
+
+    def test_mention_all_notifies_every_other_member(self):
+        self.send("@alle Treffen um 10")
+
+        recipients = set(
+            UserNotification.objects.filter(kind=UserNotification.KIND_CHAT_MENTION).values_list(
+                "recipient_id", flat=True
+            )
+        )
+        self.assertEqual(recipients, {self.lukas.id, self.anna.id})
+
+    def test_muted_member_still_gets_mention_but_blocked_member_does_not(self):
+        ConversationMember.objects.filter(conversation=self.group, user=self.lukas).update(
+            muted_until=timezone.now() + timedelta(days=7)
+        )
+        ConversationMember.objects.filter(conversation=self.group, user=self.anna).update(is_blocked=True)
+
+        self.send("@Lukas und @Anna Berg, bitte schauen")
+
+        self.assertEqual(
+            list(UserNotification.objects.values_list("recipient_id", flat=True)),
+            [self.lukas.id],
+        )
+
+    def test_direct_chats_have_no_mentions(self):
+        direct = self.direct(self.mira, self.lukas)
+
+        self.send("@Lukas hallo", conversation=direct)
+
+        self.assertFalse(ChatMessage.objects.get().mentioned_users.exists())
+        self.assertFalse(UserNotification.objects.exists())
+
+    def test_rendered_mentions_are_highlighted_and_escaped(self):
+        self.send("<b>@Lukas</b> schau mal")
+        self.client.login(username="lukas@example.com", password="secret-12345")
+
+        response = self.client.get(f"/messages/{self.group.id}/")
+
+        self.assertContains(response, '&lt;b&gt;<span class="chat-mention is-self">@Lukas</span>&lt;/b&gt;')
+        self.assertContains(response, "is-mentioned")
+        self.assertNotContains(response, "<b>@Lukas</b>")
+
+    def test_contact_list_marks_unread_mention_until_conversation_is_opened(self):
+        self.send("@Lukas kurze Frage")
+        self.client.login(username="lukas@example.com", password="secret-12345")
+
+        overview = self.client.get("/messages/")
+        self.assertContains(overview, "unread-badge has-mention")
+        self.assertContains(overview, "Du wurdest erwähnt")
+
+        self.client.get(f"/messages/{self.group.id}/")
+
+        self.assertIsNotNone(UserNotification.objects.get(recipient=self.lukas).read_at)
+        self.assertNotContains(self.client.get("/messages/"), "unread-badge has-mention")
+
+    def test_deleting_a_message_removes_its_mention_notifications(self):
+        self.send("@alle bitte ignorieren")
+        message = ChatMessage.objects.get()
+
+        self.client.post(
+            f"/messages/{self.group.id}/",
+            {
+                "form_name": "message_action",
+                "conversation_id": self.group.id,
+                "message_id": message.id,
+                "action": "delete",
+            },
+        )
+
+        self.assertFalse(UserNotification.objects.exists())
+        self.assertFalse(message.mentioned_users.exists())
+
+    def test_mention_is_mailed_through_inbox_email_delivery(self):
+        from django.core import mail
+
+        from app.services.notifications import send_pending_user_notification_emails
+
+        Profile.objects.filter(user=self.lukas).update(notify_email=True)
+        self.send("@Lukas Mail-Test")
+
+        result = send_pending_user_notification_emails()
+
+        self.assertEqual(result["sent"], 1)
+        self.assertEqual(mail.outbox[0].to, ["lukas@example.com"])
+        self.assertIn("Mail-Test", mail.outbox[0].body)
+
+    def test_messages_category_preference_can_turn_off_mention_emails(self):
+        from django.core import mail
+
+        from app.models import NotificationPreference
+        from app.services.notifications import send_pending_user_notification_emails
+
+        Profile.objects.filter(user=self.lukas).update(notify_email=True)
+        NotificationPreference.objects.create(
+            user=self.lukas, category=NotificationPreference.CATEGORY_MESSAGES, email_enabled=False
+        )
+        self.send("@Lukas ohne Mail")
+
+        send_pending_user_notification_emails()
+
+        self.assertEqual(mail.outbox, [])
+
+    def test_group_page_offers_mention_candidates(self):
+        response = self.client.get(f"/messages/{self.group.id}/")
+
+        self.assertEqual(
+            [candidate["name"] for candidate in response.context["mention_candidates"]],
+            ["Anna Berg", "Lukas", "alle"],
+        )
+        self.assertContains(response, 'id="chat-mention-candidates"')
+
+
+class ChatPollTests(ChatToolsTestMixin, TestCase):
+    def create_poll(
+        self, question="Pizza oder Pasta?", options=("Pizza", "Pasta"), conversation=None, **extra
+    ):
+        conversation = conversation or self.group
+        return self.client.post(
+            f"/messages/{conversation.id}/",
+            {
+                "form_name": "poll_create",
+                "conversation_id": conversation.id,
+                "question": question,
+                "option": list(options),
+                **extra,
+            },
+        )
+
+    def vote(self, poll, option):
+        return self.client.post(
+            f"/messages/{self.group.id}/",
+            {
+                "form_name": "poll_vote",
+                "conversation_id": self.group.id,
+                "poll_id": poll.id,
+                "option_id": option.id,
+            },
+        )
+
+    def test_creating_a_poll_posts_a_message_with_options(self):
+        response = self.create_poll(options=["Pizza", " pizza ", "Pasta", ""])
+
+        self.assertRedirects(response, f"/messages/{self.group.id}/")
+        poll = ChatPoll.objects.get()
+        self.assertEqual(poll.message.body, "Pizza oder Pasta?")
+        self.assertEqual(poll.message.sender, self.mira)
+        self.assertEqual(list(poll.options.values_list("text", flat=True)), ["Pizza", "Pasta"])
+        self.assertFalse(poll.allows_multiple)
+
+    def test_poll_needs_two_distinct_options(self):
+        self.create_poll(options=["Pizza", "pizza"], follow=True)
+
+        self.assertFalse(ChatPoll.objects.exists())
+        self.assertFalse(ChatMessage.objects.exists())
+
+    def test_poll_validation_error_is_shown(self):
+        response = self.client.post(
+            f"/messages/{self.group.id}/",
+            {
+                "form_name": "poll_create",
+                "conversation_id": self.group.id,
+                "question": "Ja?",
+                "option": ["Ja"],
+            },
+            follow=True,
+        )
+
+        self.assertContains(response, "Gib mindestens zwei verschiedene Antworten an.")
+
+    def test_polls_only_exist_in_group_chats(self):
+        direct = self.direct(self.mira, self.lukas)
+
+        self.create_poll(conversation=direct)
+
+        self.assertFalse(ChatPoll.objects.exists())
+
+    def test_single_choice_vote_moves_and_retracts(self):
+        self.create_poll()
+        poll = ChatPoll.objects.get()
+        pizza, pasta = poll.options.all()
+
+        self.vote(poll, pizza)
+        self.vote(poll, pasta)
+        self.assertEqual(list(poll.votes.values_list("option_id", flat=True)), [pasta.id])
+
+        self.vote(poll, pasta)
+        self.assertFalse(poll.votes.exists())
+
+    def test_multiple_choice_poll_keeps_several_votes(self):
+        self.create_poll(allows_multiple="on")
+        poll = ChatPoll.objects.get()
+        pizza, pasta = poll.options.all()
+
+        self.vote(poll, pizza)
+        self.vote(poll, pasta)
+
+        self.assertEqual(poll.votes.count(), 2)
+
+    def test_only_the_creator_closes_and_closed_polls_take_no_votes(self):
+        self.create_poll()
+        poll = ChatPoll.objects.get()
+        close = {"form_name": "poll_close", "conversation_id": self.group.id, "poll_id": poll.id}
+
+        self.client.login(username="lukas@example.com", password="secret-12345")
+        self.client.post(f"/messages/{self.group.id}/", close)
+        poll.refresh_from_db()
+        self.assertFalse(poll.is_closed)
+
+        self.client.login(username="mira@example.com", password="secret-12345")
+        self.client.post(f"/messages/{self.group.id}/", close)
+        poll.refresh_from_db()
+        self.assertTrue(poll.is_closed)
+
+        response = self.vote(poll, poll.options.first())
+        self.assertFalse(poll.votes.exists())
+        self.assertRedirects(response, f"/messages/{self.group.id}/")
+
+    def test_non_members_cannot_vote(self):
+        self.create_poll()
+        poll = ChatPoll.objects.get()
+        outsider = User.objects.create_user(
+            username="ben@example.com", email="ben@example.com", password="x-12345"
+        )
+        self.client.force_login(outsider)
+
+        self.vote(poll, poll.options.first())
+
+        self.assertFalse(poll.votes.exists())
+
+    def test_poll_renders_results_and_preview(self):
+        self.create_poll()
+        poll = ChatPoll.objects.get()
+        self.vote(poll, poll.options.first())
+
+        response = self.client.get(f"/messages/{self.group.id}/")
+
+        self.assertContains(response, 'class="chat-poll"')
+        self.assertContains(response, 'aria-pressed="true"')
+        self.assertContains(response, "--poll-share: 100%")
+        self.assertContains(response, "1 Person abgestimmt")
+        self.assertContains(response, "Umfrage beenden")
+        self.assertContains(response, "📊 Umfrage: Pizza oder Pasta?")
+        self.assertContains(response, 'data-can-forward="false"')
+
+    def test_polls_cannot_be_forwarded(self):
+        self.create_poll()
+        poll = ChatPoll.objects.get()
+        target = self.direct(self.mira, self.anna)
+
+        self.client.post(
+            f"/messages/{self.group.id}/",
+            {
+                "form_name": "message_forward",
+                "conversation_id": self.group.id,
+                "message_id": poll.message_id,
+                "target_conversation_id": target.id,
+            },
+        )
+
+        self.assertFalse(target.messages.exists())
+
+    def test_deleting_the_message_removes_the_poll(self):
+        self.create_poll()
+        poll = ChatPoll.objects.get()
+
+        self.client.post(
+            f"/messages/{self.group.id}/",
+            {
+                "form_name": "message_action",
+                "conversation_id": self.group.id,
+                "message_id": poll.message_id,
+                "action": "delete",
+            },
+        )
+
+        self.assertFalse(ChatPoll.objects.exists())
+
+    def test_vote_changes_the_live_update_fingerprint(self):
+        self.create_poll()
+        poll = ChatPoll.objects.get()
+        url = f"/messages/{self.group.id}/live/"
+        first = self.client.get(url).json()["fingerprint"]
+
+        self.vote(poll, poll.options.first())
+
+        self.assertNotEqual(self.client.get(url, {"fp": first}).json().get("fingerprint"), first)
+
+
+class ScheduledChatMessageTests(ChatToolsTestMixin, TestCase):
+    def setUp(self):
+        super().setUp()
+        berlin = ZoneInfo("Europe/Berlin")
+        # Two days ahead, in the sender's own timezone, as the datetime-local field sends it.
+        self.at = (timezone.now() + timedelta(days=2)).astimezone(berlin).replace(second=0, microsecond=0)
+        self.at_value = self.at.strftime("%Y-%m-%dT%H:%M")
+        self.later_value = (self.at + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M")
+
+    def test_send_at_schedules_instead_of_sending(self):
+        response = self.send("Gute Reise!", send_at=self.at_value, follow=True)
+
+        scheduled = ScheduledChatMessage.objects.get()
+        self.assertEqual(scheduled.body, "Gute Reise!")
+        self.assertEqual(scheduled.sender, self.mira)
+        # Read in the sender's timezone (Europe/Berlin), not UTC.
+        self.assertEqual(scheduled.send_at, self.at)
+        self.assertFalse(ChatMessage.objects.exists())
+        self.assertContains(response, "Nachricht für")
+        self.assertContains(response, "Geplant (1)")
+
+    def test_past_times_and_attachments_are_rejected(self):
+        past = (timezone.localtime() - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M")
+        response = self.send("Zu spät", send_at=past)
+        self.assertContains(response, "mindestens eine Minute in der Zukunft")
+
+        upload = SimpleUploadedFile("bild.png", PNG_1X1_BYTES, content_type="image/png")
+        response = self.send("Mit Bild", send_at=self.at_value, attachment=upload)
+        self.assertContains(response, "Nur Textnachrichten können geplant werden")
+
+        self.assertFalse(ScheduledChatMessage.objects.exists())
+        self.assertFalse(ChatMessage.objects.exists())
+
+    def test_due_messages_are_delivered_once_with_mentions(self):
+        from app.services.chat import send_due_scheduled_messages
+
+        self.send("@Lukas Erinnerung", send_at=self.at_value)
+        later = self.at + timedelta(minutes=1)
+
+        self.assertEqual(send_due_scheduled_messages(now=later), {"sent": 1, "skipped": 0})
+        self.assertEqual(send_due_scheduled_messages(now=later), {"sent": 0, "skipped": 0})
+
+        message = ChatMessage.objects.get()
+        self.assertEqual(message.body, "@Lukas Erinnerung")
+        self.assertEqual(list(message.mentioned_users.all()), [self.lukas])
+        self.assertFalse(ScheduledChatMessage.objects.exists())
+
+    def test_messages_not_yet_due_stay_scheduled(self):
+        from app.services.chat import send_due_scheduled_messages
+
+        self.send("Später", send_at=self.at_value)
+
+        self.assertEqual(send_due_scheduled_messages()["sent"], 0)
+        self.assertTrue(ScheduledChatMessage.objects.exists())
+
+    def test_sender_who_cannot_write_anymore_loses_the_message(self):
+        from app.services.chat import send_due_scheduled_messages
+
+        direct = self.direct(self.mira, self.lukas)
+        ScheduledChatMessage.objects.create(
+            conversation=direct, sender=self.mira, body="Hallo", send_at=timezone.now() - timedelta(minutes=1)
+        )
+        ConversationMember.objects.filter(conversation=direct, user=self.lukas).update(is_blocked=True)
+
+        self.assertEqual(send_due_scheduled_messages(), {"sent": 0, "skipped": 1})
+        self.assertFalse(ChatMessage.objects.exists())
+        self.assertFalse(ScheduledChatMessage.objects.exists())
+
+    def test_leaving_a_group_drops_own_scheduled_messages(self):
+        self.send("Später", send_at=self.at_value)
+
+        self.client.post(
+            f"/messages/{self.group.id}/",
+            {"form_name": "member_action", "conversation_id": self.group.id, "action": "leave_group"},
+        )
+
+        self.assertFalse(ScheduledChatMessage.objects.exists())
+
+    def test_opening_the_chat_delivers_its_due_messages(self):
+        ScheduledChatMessage.objects.create(
+            conversation=self.group,
+            sender=self.lukas,
+            body="Fällig",
+            send_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        response = self.client.get(f"/messages/{self.group.id}/")
+
+        self.assertContains(response, "Fällig")
+        self.assertEqual(ChatMessage.objects.get().sender, self.lukas)
+
+    def test_send_now_and_cancel_only_touch_own_messages(self):
+        self.send("Eins", send_at=self.at_value)
+        self.send("Zwei", send_at=self.later_value)
+        first, second = ScheduledChatMessage.objects.all()
+        action = {"form_name": "scheduled_action", "conversation_id": self.group.id}
+
+        self.client.login(username="lukas@example.com", password="secret-12345")
+        self.client.post(
+            f"/messages/{self.group.id}/", {**action, "scheduled_id": first.id, "action": "cancel"}
+        )
+        self.assertEqual(ScheduledChatMessage.objects.count(), 2)
+
+        self.client.login(username="mira@example.com", password="secret-12345")
+        self.client.post(
+            f"/messages/{self.group.id}/", {**action, "scheduled_id": first.id, "action": "send_now"}
+        )
+        self.client.post(
+            f"/messages/{self.group.id}/", {**action, "scheduled_id": second.id, "action": "cancel"}
+        )
+
+        self.assertEqual(list(ChatMessage.objects.values_list("body", flat=True)), ["Eins"])
+        self.assertFalse(ScheduledChatMessage.objects.exists())
+
+    def test_scheduled_list_is_private_to_the_sender(self):
+        self.send("Geheim geplant", send_at=self.at_value)
+        self.client.login(username="lukas@example.com", password="secret-12345")
+
+        response = self.client.get(f"/messages/{self.group.id}/")
+
+        self.assertNotContains(response, "Geheim geplant")
+
+    def test_scheduled_tasks_deliver_due_messages(self):
+        from app.services.scheduled_tasks import run_scheduled_tasks
+
+        ScheduledChatMessage.objects.create(
+            conversation=self.group, sender=self.mira, body="Automatisch", send_at=timezone.now()
+        )
+
+        result = run_scheduled_tasks()
+
+        self.assertEqual(result["scheduled_messages"]["sent"], 1)
+        self.assertTrue(ChatMessage.objects.filter(body="Automatisch").exists())

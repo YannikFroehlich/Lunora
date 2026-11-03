@@ -1,5 +1,6 @@
 from django.utils import timezone
 
+from app.services.chat import send_due_scheduled_messages
 from app.services.notifications import (
     materialize_due_habit_reminders,
     send_due_reminder_emails,
@@ -43,6 +44,10 @@ def run_scheduled_tasks(*, now=None):
         habit_reminder_result = {"created": materialize_due_habit_reminders(now=current_time)}
     else:
         habit_reminder_result = {"created": 0, "disabled": True}
+    if feature_enabled("messages"):
+        scheduled_message_result = send_due_scheduled_messages(now=current_time)
+    else:
+        scheduled_message_result = {"sent": 0, "skipped": 0, "disabled": True}
     notification_email_result = send_pending_user_notification_emails(
         now=current_time,
         include_note_shares=feature_enabled("notes"),
@@ -50,6 +55,7 @@ def run_scheduled_tasks(*, now=None):
         include_weather=feature_enabled("weather"),
         include_task_assignments=feature_enabled("tasks"),
         include_habit_reminders=feature_enabled("tools"),
+        include_chat_mentions=feature_enabled("messages"),
     )
     web_push_result = send_pending_web_push_notifications(now=current_time)
     return {
@@ -60,6 +66,7 @@ def run_scheduled_tasks(*, now=None):
         "weekly_summaries": weekly_result,
         "weather_push_alerts": weather_push_result,
         "habit_reminders": habit_reminder_result,
+        "scheduled_messages": scheduled_message_result,
         "notification_emails": notification_email_result,
         "web_push": web_push_result,
     }

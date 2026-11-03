@@ -27,7 +27,13 @@
     <button type="button" class="ghost-button" data-voice-cancel><i class="fa-solid fa-xmark" aria-hidden="true"></i> Verwerfen</button>
     <button type="button" class="voice-send-button" data-voice-stop><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Senden</button>
 </div>
-<form class="compose-bar" method="post" action="{% url 'messages_detail' selected_conversation.id %}" enctype="multipart/form-data">
+<div class="schedule-strip" id="compose-schedule-strip" {% if not message_form.send_at.errors %}hidden{% endif %}>
+    <label for="compose-send-at"><i class="fa-regular fa-clock" aria-hidden="true"></i> Senden am</label>
+    <input type="datetime-local" name="send_at" id="compose-send-at" form="compose-form" step="60" min="{{ schedule_bounds.min }}" max="{{ schedule_bounds.max }}" data-default="{{ schedule_bounds.default }}" value="{{ message_form.send_at.value|default_if_none:'' }}" {% if not message_form.send_at.errors %}disabled{% endif %}>
+    <button type="button" id="cancel-schedule-button" aria-label="Planen abbrechen"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+</div>
+<div class="mention-suggestions" id="mention-suggestions" role="listbox" aria-label="Erwähnen" hidden></div>
+<form class="compose-bar" id="compose-form" method="post" action="{% url 'messages_detail' selected_conversation.id %}" enctype="multipart/form-data">
     {% csrf_token %}
     <input type="hidden" name="form_name" value="message">
     <input type="hidden" name="conversation_id" value="{{ selected_conversation.id }}">
@@ -37,11 +43,21 @@
         <i class="fa-solid fa-paperclip" aria-hidden="true"></i>
         <input type="file" name="attachment" id="compose-attachment-input" class="visually-hidden" aria-label="Datei anhängen">
     </label>
+    <div class="compose-more">
+        <button class="compose-more-button" type="button" id="compose-more-button" aria-label="Weitere Optionen" aria-haspopup="menu" aria-expanded="false" aria-controls="compose-more-menu" title="Weitere Optionen"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
+        <div class="compose-more-menu" id="compose-more-menu" role="menu" aria-label="Weitere Optionen" hidden>
+            {% if selected_conversation.is_group %}
+            <button type="button" role="menuitem" data-compose-action="poll"><i class="fa-solid fa-square-poll-horizontal" aria-hidden="true"></i> Umfrage erstellen</button>
+            {% endif %}
+            <button type="button" role="menuitem" data-compose-action="schedule"><i class="fa-regular fa-clock" aria-hidden="true"></i> Später senden</button>
+        </div>
+    </div>
     {{ message_form.body }}
     <button class="voice-button" type="button" id="compose-voice-button" aria-label="Sprachnachricht aufnehmen" title="Sprachnachricht aufnehmen" hidden><i class="fa-solid fa-microphone" aria-hidden="true"></i></button>
     <button class="send-button" type="submit" aria-label="Senden"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i></button>
 </form>
 {% if message_form.body.errors %}<small class="compose-error">{{ message_form.body.errors|striptags }}</small>{% endif %}
 {% if message_form.voice_duration.errors %}<small class="compose-error">{{ message_form.voice_duration.errors|striptags }}</small>{% endif %}
+{% if message_form.send_at.errors %}<small class="compose-error">{{ message_form.send_at.errors|striptags }}</small>{% endif %}
 {% if message_form.attachment.errors %}<small class="compose-error">{{ message_form.attachment.errors|striptags }}</small>{% endif %}
 {% endif %}

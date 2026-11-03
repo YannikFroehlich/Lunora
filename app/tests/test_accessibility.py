@@ -18,12 +18,14 @@ from app.models import (
     Habit,
     Note,
     Profile,
+    ScheduledChatMessage,
     SystemSettings,
     Task,
     UmlDiagram,
     VocabularyCard,
     VocabularyList,
 )
+from app.services.chat import create_poll
 from app.services.uml_content import empty_uml_document
 
 UNNAMED_INPUT_TYPES = {"hidden", "submit", "button", "reset", "image"}
@@ -105,6 +107,15 @@ class PageAccessibilityMarkupTests(TestCase):
         ConversationMember.objects.create(conversation=self.conversation, user=self.mira)
         ConversationMember.objects.create(conversation=self.conversation, user=self.lukas)
         self.conversation.messages.create(sender=self.lukas, body="Hallo")
+        # A group chat with a poll and a scheduled message renders the poll dialog, the "+" menu
+        # and the scheduled list on top of the direct chat's controls.
+        self.group = Conversation.objects.create(created_by=self.mira, title="Team", is_group=True)
+        ConversationMember.objects.create(conversation=self.group, user=self.mira)
+        ConversationMember.objects.create(conversation=self.group, user=self.lukas)
+        create_poll(self.group, self.lukas, "Pizza oder Pasta?", ["Pizza", "Pasta"])
+        ScheduledChatMessage.objects.create(
+            conversation=self.group, sender=self.mira, body="Später", send_at="2099-03-10T10:00:00+01:00"
+        )
         Task.objects.create(user=self.mira, title="Bericht")
         CalendarEvent.objects.create(
             user=self.mira,
@@ -131,6 +142,7 @@ class PageAccessibilityMarkupTests(TestCase):
             f"/notes/{self.note.pk}/",
             "/messages/",
             f"/messages/{self.conversation.pk}/",
+            f"/messages/{self.group.pk}/",
             "/weather/",
             "/settings/",
             "/notifications/",

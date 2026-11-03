@@ -7,7 +7,7 @@
 
 {% for item in message_items %}
     {% if item.date_label %}<div class="chat-date">{{ item.date_label }}</div>{% endif %}
-    <article id="message-{{ item.message.id }}" class="bubble is-{{ item.side }}{% if item.is_deleted %} is-deleted{% endif %}{% if item.is_pinned %} is-pinned{% endif %}"
+    <article id="message-{{ item.message.id }}" class="bubble is-{{ item.side }}{% if item.is_deleted %} is-deleted{% endif %}{% if item.is_pinned %} is-pinned{% endif %}{% if item.is_mentioned %} is-mentioned{% endif %}"
              tabindex="{% if item.can_delete or item.can_react %}0{% else %}-1{% endif %}"
              aria-label="Nachricht von {{ item.sender_name }} um {{ item.time }}"
              {% if item.can_delete or item.can_react %}aria-describedby="message-actions-hint"{% endif %}
@@ -17,6 +17,7 @@
              data-is-pinned="{% if item.is_pinned %}true{% else %}false{% endif %}"
              data-is-deleted="{% if item.is_deleted %}true{% else %}false{% endif %}"
              data-can-reply="{% if not item.is_deleted %}true{% else %}false{% endif %}"
+             data-can-forward="{% if item.can_forward %}true{% else %}false{% endif %}"
              data-sender-name="{{ item.sender_name }}"
              data-preview="{{ item.preview_text }}">
         {% if item.side == 'in' %}<span class="avatar small" title="{{ item.sender_name }}">{% if item.sender_avatar_url %}<img src="{{ item.sender_avatar_url }}" alt="Profilbild von {{ item.sender_name }}">{% else %}{{ item.sender_avatar }}{% endif %}</span>{% endif %}
@@ -50,7 +51,9 @@
                 {% endif %}
             </div>
             {% endif %}
-            {% if item.display_body %}<p class="{% if item.is_deleted %}deleted-message{% endif %}">{{ item.display_body|linebreaksbr }}</p>{% endif %}
+            {% if item.poll %}
+            {% include "app/partials/messages_poll.html" with poll=item.poll %}
+            {% elif item.display_body %}<p class="{% if item.is_deleted %}deleted-message{% endif %}">{{ item.body_html }}</p>{% endif %}
             <span class="bubble-meta">
                 {% if item.is_pinned %}<span class="pin-indicator"><i class="fa-solid fa-thumbtack"></i></span>{% endif %}
                 <time>{{ item.time }}</time>
