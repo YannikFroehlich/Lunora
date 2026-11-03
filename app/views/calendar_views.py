@@ -1,7 +1,7 @@
 from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
 from django.http import Http404, HttpResponse, JsonResponse
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 
@@ -16,15 +16,18 @@ from app.forms import (
 from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, Profile
 from app.services.calendar_service import (
     SERIES_SCOPE_THIS,
+    add_event_comment,
     attendee_availability,
     build_calendar_feed,
+    can_view_event,
+    delete_event_comment,
     move_calendar_event,
     series_scope_events,
     sync_event_reminders,
 )
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.user_preferences import format_user_date, format_user_time
-from app.view_models import get_calendar_context
+from app.view_models import get_calendar_context, get_calendar_event_detail_context
 
 
 @login_required
@@ -116,19 +119,7 @@ def calendar(request):
         return redirect(request.get_full_path())
 
     if request.method == "POST" and request.POST.get("form_name") == "event_rsvp":
-        status = request.POST.get("status")
-        if status in {CalendarEventAttendee.STATUS_ACCEPTED, CalendarEventAttendee.STATUS_DECLINED}:
-            attendee = (
-                CalendarEventAttendee.objects.filter(pk=request.POST.get("attendee_id"), user=request.user)
-                .select_related("event")
-                .first()
-            )
-            if attendee is not None:
-                attendee.status = status
-                attendee.responded_at = timezone.now()
-                attendee.save(update_fields=["status", "responded_at"])
-                # Accepting adds the event's reminder for this person, declining removes it.
-                sync_event_reminders([attendee.event])
+        _respond_to_invitation(request)
         return redirect(request.get_full_path())
 
     if request.method == "POST" and request.POST.get("form_name") == "reminder_add":
@@ -188,6 +179,62 @@ def calendar(request):
         }
     )
     return render(request, "app/calendar.html", context)
+
+
+def _respond_to_invitation(request):
+    """Accept or decline the requesting user's own invitation (``attendee_id``)."""
+    status = request.POST.get("status")
+    if status not in {CalendarEventAttendee.STATUS_ACCEPTED, CalendarEventAttendee.STATUS_DECLINED}:
+        return
+    attendee = (
+        CalendarEventAttendee.objects.filter(pk=request.POST.get("attendee_id"), user=request.user)
+        .select_related("event")
+        .first()
+    )
+    if attendee is not None:
+        attendee.status = status
+        attendee.responded_at = timezone.now()
+        attendee.save(update_fields=["status", "responded_at"])
+        # Accepting adds the event's reminder for this person, declining removes it.
+        sync_event_reminders([attendee.event])
+
+
+@login_required
+def calendar_event_detail(request, event_id):
+    """One event with its invitees and comments; for the organizer and everyone invited."""
+    event = get_object_or_404(CalendarEvent.objects.select_related("user__profile"), pk=event_id)
+    if not can_view_event(event, request.user):
+        raise Http404
+    comments_enabled = feature_enabled("calendar_event_creation")
+    comment_error = ""
+    if request.method == "POST":
+        form_name = request.POST.get("form_name")
+        if form_name == "event_rsvp":
+            _respond_to_invitation(request)
+            return redirect(request.get_full_path())
+        if form_name in {"event_comment", "event_comment_delete"} and not comments_enabled:
+            return disabled_feature_response(request, "calendar_event_creation")
+        if form_name == "event_comment":
+            try:
+                comment = add_event_comment(event, request.user, request.POST.get("body"))
+            except ValueError as error:
+                comment_error = str(error)
+            else:
+                return redirect(f"{request.path}#comment-{comment.pk}")
+        elif form_name == "event_comment_delete":
+            if delete_event_comment(event, request.user, request.POST.get("comment_id")):
+                django_messages.success(request, "Kommentar gelöscht.")
+            return redirect(request.path)
+
+    context = get_calendar_event_detail_context(event, request.user)
+    context.update(
+        {
+            "comments_enabled": comments_enabled,
+            "comment_error": comment_error,
+            "comment_draft": request.POST.get("body", "") if comment_error else "",
+        }
+    )
+    return render(request, "app/calendar_event_detail.html", context)
 
 
 def _calendar_view(request):

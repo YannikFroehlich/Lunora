@@ -1,9 +1,18 @@
 from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
+from django.http import HttpResponse
 from django.shortcuts import redirect, render
+from django.utils.http import content_disposition_header
 
-from app.forms import TaskForm, TaskLabelForm, TaskListForm, TaskRescheduleForm, TaskTemplateUseForm
+from app.forms import (
+    TaskForm,
+    TaskLabelForm,
+    TaskListForm,
+    TaskRescheduleForm,
+    TaskTemplateUseForm,
+    TaskTimeEntryForm,
+)
 from app.models import Task, TaskLabel, TaskList
 from app.services.notes import display_name
 from app.services.notifications import (
@@ -35,6 +44,18 @@ from app.services.tasks import (
     save_task_template,
     set_task_status,
     toggle_task,
+    visible_tasks,
+)
+from app.services.time_tracking import (
+    add_manual_entry,
+    annotate_task_items,
+    delete_entry,
+    running_timer_context,
+    stop_timer,
+    toggle_timer,
+    week_report,
+    week_report_csv,
+    week_start_for,
 )
 from app.services.user_preferences import format_user_datetime
 from app.views.navigation import local_return_to
@@ -66,6 +87,20 @@ def tasks(request):
             materialize_task_share_notifications(task_form.save_shares(task))
             django_messages.success(request, _created_message(task, task_form.quick_add_result, request.user))
             return redirect(request.get_full_path())
+    elif form_name == "task_timer":
+        task = visible_tasks(request.user).filter(pk=_positive_int(request.POST.get("task_id"))).first()
+        if task is None:
+            django_messages.error(request, "Diese Aufgabe wurde nicht gefunden.")
+        else:
+            try:
+                result = toggle_timer(request.user, task)
+            except ValueError as error:
+                django_messages.error(request, str(error))
+            else:
+                django_messages.success(
+                    request, f"Timer für „{task.title}“ {'gestartet' if result == 'started' else 'gestoppt'}."
+                )
+        return redirect(local_return_to(request) or request.get_full_path())
     elif form_name == "task_toggle":
         toggle_task(request.user, request.POST.get("task_id"), request.POST.get("is_done") == "on")
         return redirect(local_return_to(request) or request.get_full_path())
@@ -260,6 +295,8 @@ def tasks(request):
 
     sort = request.GET.get("sort")
     context = get_tasks_context(request.user, sort=sort)
+    annotate_task_items(context["tasks"], request.user)
+    context["running_timer"] = running_timer_context(request.user)
     context["sort"] = sort
     context["task_form"] = task_form
     context["task_list_form"] = TaskListForm()
@@ -270,6 +307,65 @@ def tasks(request):
     context["edit_form"].fields["title"].widget.attrs["placeholder"] = "Titel der Aufgabe"
     context["editing_task_id"] = editing_task_id
     return render(request, "app/tasks.html", context)
+
+
+@login_required
+def task_time_report(request):
+    """Weekly time report of the signed-in user, with manual entries and CSV download."""
+    if not feature_enabled("tasks"):
+        return disabled_feature_response(request, "tasks")
+
+    entry_form = TaskTimeEntryForm(user=request.user)
+    if request.method == "POST":
+        form_name = request.POST.get("form_name")
+        if form_name == "time_entry_add":
+            entry_form = TaskTimeEntryForm(request.POST, user=request.user)
+            if entry_form.is_valid():
+                try:
+                    add_manual_entry(
+                        request.user,
+                        entry_form.cleaned_data["task"],
+                        entry_form.cleaned_data["day"],
+                        entry_form.cleaned_data["minutes"],
+                    )
+                except ValueError as error:
+                    entry_form.add_error(None, str(error))
+                else:
+                    django_messages.success(request, "Zeit nachgetragen.")
+                    return redirect(request.get_full_path())
+        elif form_name == "time_entry_delete":
+            if delete_entry(request.user, _positive_int(request.POST.get("entry_id"))):
+                django_messages.success(request, "Eintrag gelöscht.")
+            return redirect(request.get_full_path())
+        elif form_name == "timer_stop":
+            stop_timer(request.user)
+            return redirect(request.get_full_path())
+
+    report = week_report(request.user, week_start_for(request.GET.get("week"), request.user))
+    if request.GET.get("format") == "csv":
+        response = HttpResponse(week_report_csv(report), content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = content_disposition_header(
+            True, f"lunora-zeiten-{report['week_value']}.csv"
+        )
+        return response
+    return render(
+        request,
+        "app/tasks_time.html",
+        {
+            "active_page": "tasks",
+            "report": report,
+            "entry_form": entry_form,
+            "running_timer": running_timer_context(request.user),
+        },
+    )
+
+
+def _positive_int(value):
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return max(value, 0)
 
 
 def _created_message(task, quick_add_result, user):

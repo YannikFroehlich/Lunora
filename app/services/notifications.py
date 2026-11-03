@@ -56,6 +56,7 @@ NOTIFICATION_PRESENTATION = {
     UserNotification.KIND_TASK_RETURNED: ("fa-rotate-left", "Aufgabe", "task"),
     UserNotification.KIND_TASK_SHARE: ("fa-user-group", "Aufgabe", "task"),
     UserNotification.KIND_CHAT_MENTION: ("fa-at", "Chat", "message"),
+    UserNotification.KIND_EVENT_COMMENT: ("fa-comments", "Termin", "calendar"),
 }
 
 
@@ -390,6 +391,34 @@ def materialize_chat_mention_notifications(message):
                 "source_key": mention_source_key(message),
             }
             for recipient in recipients
+        ]
+    )
+
+
+def materialize_event_comment_notification(comment):
+    """Tell the organizer and the invitees who haven't declined about a new comment on an event.
+
+    Written when the comment is made (not backfilled); all copies share one source key, so deleting
+    the comment removes every copy.
+    """
+    from django.urls import reverse
+
+    from app.services.calendar_service import event_comment_recipient_ids
+
+    event = comment.event
+    recipients = sorted(event_comment_recipient_ids(event) - {comment.author_id})
+    return _create_missing_user_notifications(
+        [
+            {
+                "recipient_id": recipient_id,
+                "actor_id": comment.author_id,
+                "kind": UserNotification.KIND_EVENT_COMMENT,
+                "title": f"{_display_name(comment.author)} hat „{event.title}“ kommentiert",
+                "body": comment.body[:300],
+                "url": f"{reverse('calendar_event_detail', args=[event.pk])}#comment-{comment.pk}",
+                "source_key": f"event-comment:{comment.pk}",
+            }
+            for recipient_id in recipients
         ]
     )
 
@@ -980,6 +1009,7 @@ def send_pending_user_notification_emails(
     include_task_assignments=True,
     include_habit_reminders=True,
     include_chat_mentions=True,
+    include_event_comments=True,
 ):
     """Send inbox-backed e-mails for notification types without a source delivery column."""
     current_time = now or timezone.now()
@@ -1001,6 +1031,8 @@ def send_pending_user_notification_emails(
         kinds.append(UserNotification.KIND_HABIT_REMINDER)
     if include_chat_mentions:
         kinds.append(UserNotification.KIND_CHAT_MENTION)
+    if include_event_comments:
+        kinds.append(UserNotification.KIND_EVENT_COMMENT)
     if not kinds:
         return {"sent": 0, "failed": 0, "disabled": True}
 

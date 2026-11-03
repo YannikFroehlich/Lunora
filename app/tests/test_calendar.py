@@ -1211,3 +1211,165 @@ class CalendarAgendaViewTests(TestCase):
         option = next(item for item in response.context["calendar_view_options"] if item["key"] == "agenda")
         self.assertEqual(option["url"], "/calendar/?view=agenda&date=2099-03-11")
         self.assertEqual(option["label"], "Agenda")
+
+
+class CalendarMidnightEventTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=self.user, display_name="Mira", timezone_name="Europe/Berlin")
+        self.client.login(username="mira@example.com", password="secret-12345")
+        start = datetime(2099, 3, 10, 22, 0, tzinfo=ZoneInfo("Europe/Berlin"))
+        CalendarEvent.objects.create(
+            user=self.user, title="Abend", start_at=start, end_at=start + timedelta(hours=2)
+        )
+
+    def test_month_grid_shows_an_event_ending_at_midnight_on_its_day_only(self):
+        rows = self.client.get("/calendar/?view=month&year=2099&month=3").context["calendar_rows"]
+
+        days = {
+            day["date_input"]: [event["label"] for event in day["events"]] for week in rows for day in week
+        }
+        self.assertEqual(days["2099-03-10"], ["Abend"])
+        self.assertEqual(days["2099-03-11"], [])
+
+    def test_year_view_counts_it_once(self):
+        months = self.client.get("/calendar/?view=year&year=2099").context["calendar_year"]["months"]
+        march = next(month for month in months if month["label"].startswith("März"))
+        levels = {day["number"]: day["level"] for week in march["weeks"] for day in week if day}
+
+        self.assertGreater(levels[10], 0)
+        self.assertEqual(levels[11], 0)
+
+
+class CalendarEventCommentTests(TestCase):
+    def setUp(self):
+        self.mira, self.lukas, self.anna, self.ben = (
+            User.objects.create_user(
+                username=f"{name}@example.com", email=f"{name}@example.com", password="pw-12345"
+            )
+            for name in ("mira", "lukas", "anna", "ben")
+        )
+        for user, name in (
+            (self.mira, "Mira"),
+            (self.lukas, "Lukas"),
+            (self.anna, "Anna"),
+            (self.ben, "Ben"),
+        ):
+            Profile.objects.create(user=user, display_name=name, timezone_name="Europe/Berlin")
+        start = datetime(2099, 3, 10, 19, 0, tzinfo=ZoneInfo("Europe/Berlin"))
+        self.event = CalendarEvent.objects.create(
+            user=self.mira,
+            title="Teamessen",
+            start_at=start,
+            end_at=start + timedelta(hours=2),
+            location="Pizzeria",
+        )
+        CalendarEventAttendee.objects.create(event=self.event, user=self.lukas, invited_by=self.mira)
+        CalendarEventAttendee.objects.create(
+            event=self.event,
+            user=self.anna,
+            invited_by=self.mira,
+            status=CalendarEventAttendee.STATUS_DECLINED,
+        )
+        self.url = f"/calendar/events/{self.event.id}/"
+
+    def comment(self, user, body):
+        self.client.force_login(user)
+        return self.client.post(self.url, {"form_name": "event_comment", "body": body})
+
+    def test_detail_page_shows_event_and_invitees_to_participants_only(self):
+        self.client.force_login(self.lukas)
+        response = self.client.get(self.url)
+        self.assertContains(response, "Teamessen")
+        self.assertContains(response, "Pizzeria")
+        self.assertContains(response, "Organisiert von")
+        self.assertContains(response, "Abgesagt")
+        self.assertEqual(response.context["own_attendee"]["status"], CalendarEventAttendee.STATUS_INVITED)
+
+        self.client.force_login(self.ben)
+        self.assertEqual(self.client.get(self.url).status_code, 404)
+
+    def test_comment_notifies_organizer_and_open_invitees_but_not_decliners(self):
+        response = self.comment(self.lukas, "Ich bringe Nachtisch mit.")
+
+        comment = self.event.comments.get()
+        self.assertRedirects(response, f"{self.url}#comment-{comment.id}", fetch_redirect_response=False)
+        notifications = UserNotification.objects.filter(kind=UserNotification.KIND_EVENT_COMMENT)
+        self.assertEqual(list(notifications.values_list("recipient_id", flat=True)), [self.mira.id])
+        self.assertEqual(notifications.get().title, "Lukas hat „Teamessen“ kommentiert")
+        self.assertEqual(notifications.get().url, f"{self.url}#comment-{comment.id}")
+
+        self.comment(self.mira, "Super!")
+        self.assertEqual(
+            set(notifications.filter(actor=self.mira).values_list("recipient_id", flat=True)), {self.lukas.id}
+        )
+
+    def test_declined_invitees_may_still_comment(self):
+        self.comment(self.anna, "Leider nicht, viel Spaß!")
+
+        self.assertEqual(self.event.comments.get().author, self.anna)
+
+    def test_outsiders_and_empty_comments_are_rejected(self):
+        self.client.force_login(self.ben)
+        self.assertEqual(
+            self.client.post(self.url, {"form_name": "event_comment", "body": "Hallo"}).status_code, 404
+        )
+
+        response = self.comment(self.lukas, "   ")
+        self.assertContains(response, "Bitte schreibe einen Kommentar.")
+        self.assertFalse(self.event.comments.exists())
+
+    def test_events_without_invitees_have_no_comments(self):
+        start = datetime(2099, 3, 11, 9, 0, tzinfo=ZoneInfo("Europe/Berlin"))
+        solo = CalendarEvent.objects.create(user=self.mira, title="Allein", start_at=start, end_at=start)
+        self.client.force_login(self.mira)
+
+        response = self.client.post(
+            f"/calendar/events/{solo.id}/", {"form_name": "event_comment", "body": "Hallo"}
+        )
+
+        self.assertContains(response, "Kommentare gibt es nur bei Terminen mit Eingeladenen.")
+
+    def test_authors_delete_their_own_comments_and_notifications(self):
+        self.comment(self.lukas, "Doch später")
+        comment = self.event.comments.get()
+
+        self.client.force_login(self.mira)
+        self.client.post(self.url, {"form_name": "event_comment_delete", "comment_id": comment.id})
+        self.assertTrue(self.event.comments.exists())
+
+        self.client.force_login(self.lukas)
+        self.client.post(self.url, {"form_name": "event_comment_delete", "comment_id": comment.id})
+        self.assertFalse(self.event.comments.exists())
+        self.assertFalse(UserNotification.objects.filter(kind=UserNotification.KIND_EVENT_COMMENT).exists())
+
+    def test_rsvp_works_on_the_detail_page(self):
+        self.client.force_login(self.lukas)
+        attendee = self.event.attendees.get(user=self.lukas)
+
+        self.client.post(
+            self.url, {"form_name": "event_rsvp", "attendee_id": attendee.id, "status": "accepted"}
+        )
+
+        attendee.refresh_from_db()
+        self.assertEqual(attendee.status, CalendarEventAttendee.STATUS_ACCEPTED)
+
+    def test_calendar_links_to_the_detail_page(self):
+        self.client.force_login(self.lukas)
+
+        response = self.client.get("/calendar/?view=month&year=2099&month=3")
+
+        self.assertContains(response, f'href="{self.url}"')
+
+    def test_comment_mail_goes_out_through_inbox_delivery(self):
+        from django.core import mail
+
+        from app.services.notifications import send_pending_user_notification_emails
+
+        Profile.objects.filter(user=self.mira).update(notify_email=True)
+        self.comment(self.lukas, "Tisch ist reserviert")
+
+        self.assertEqual(send_pending_user_notification_emails()["sent"], 1)
+        self.assertEqual(mail.outbox[0].to, ["mira@example.com"])

@@ -8,7 +8,7 @@ from .auth_views import (
     login_two_factor,
     register,
 )
-from .calendar_views import calendar, calendar_availability, calendar_feed
+from .calendar_views import calendar, calendar_availability, calendar_event_detail, calendar_feed
 from .core_views import dashboard_bookmarks, dashboard_layout_update, data_export, healthz, home, settings
 from .message_views import chat_attachment_download, chat_typing_ping, messages, messages_live_updates
 from .note_views import (
@@ -54,7 +54,7 @@ from .notification_views import (
 )
 from .pwa_views import offline, service_worker
 from .search_views import global_search
-from .tasks_views import tasks
+from .tasks_views import task_time_report, tasks
 from .tools_views import focus_timer, habits, tools, uml_diagram_api, uml_diagram_editor, uml_diagrams
 from .vacation_planner_views import (
     custom_holiday_delete,
@@ -79,6 +79,7 @@ from .weather_views import dashboard_weather, weather, weather_map_tile, weather
 __all__ = [
     "calendar",
     "calendar_availability",
+    "calendar_event_detail",
     "calendar_feed",
     "administration",
     "healthz",
@@ -130,6 +131,7 @@ __all__ = [
     "note_tree_move_api",
     "global_search",
     "tasks",
+    "task_time_report",
     "tools",
     "habits",
     "focus_timer",

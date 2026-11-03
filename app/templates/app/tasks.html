@@ -168,7 +168,9 @@
         <section class="glass-panel task-panel">
             <div class="panel-title task-panel-title">
                 <h2>Aufgaben</h2>
+                <a class="ghost-button task-time-link" href="{% url 'task_time_report' %}"><i class="fa-regular fa-clock" aria-hidden="true"></i> Zeiterfassung</a>
             </div>
+            {% include "app/partials/task_running_timer.html" %}
 
             <form id="task-add-form" class="task-add-form" method="post">
                 {% csrf_token %}
@@ -373,6 +375,7 @@
                         <small>
                             <i class="fa-regular fa-calendar" aria-hidden="true"></i>
                             {{ item.due_label }}
+                            {% if item.time_label %}<span class="task-time-total" title="Von dir erfasste Zeit"><i class="fa-regular fa-clock" aria-hidden="true"></i> {{ item.time_label }}</span>{% endif %}
                         </small>
                         {% if item.task_list_name or item.labels or item.assignee_name or item.owner_name or item.shared_names %}
                         <span class="task-chips">
@@ -406,6 +409,8 @@
                         <span>{{ item.open_subtask_count }}/{{ item.subtask_count }}</span>
                     </button>
                     {% endif %}
+
+                    {% include "app/partials/task_timer_button.html" with entry=item %}
 
                     {% if item.is_own %}
                     <button class="task-edit-button task-template-button" type="submit" name="form_name" value="task_template_save" aria-label="Als Vorlage speichern" title="Als Vorlage speichern">
@@ -539,6 +544,7 @@
                         <small>
                             <i class="fa-regular fa-calendar" aria-hidden="true"></i>
                             {{ child.due_label }}
+                            {% if child.time_label %}<span class="task-time-total" title="Von dir erfasste Zeit"><i class="fa-regular fa-clock" aria-hidden="true"></i> {{ child.time_label }}</span>{% endif %}
                         </small>
                     </div>
 
@@ -547,6 +553,8 @@
                     {% endif %}
 
                     <span class="task-status is-{{ child.status_tone }}">{{ child.status_label }}</span>
+
+                    {% include "app/partials/task_timer_button.html" with entry=child %}
 
                     {% if child.is_own %}
                     <button type="button" class="task-edit-button" data-task-edit-open
@@ -700,4 +708,5 @@
 
 {% block page_js %}
 <script src="{% versioned_static 'js/tasks.js' %}"></script>
+<script src="{% versioned_static 'js/task_timer.js' %}"></script>
 {% endblock %}

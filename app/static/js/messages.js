@@ -230,16 +230,26 @@
       }
 
       const messageStream = document.getElementById("message-stream");
-      if (messageStream && liveHtmlChanged("stream", data.message_stream_html)) {
+      // Swapping the stream (and the scroll it causes) would close an open message menu, so the
+      // update waits; clearing the fingerprint makes the next poll deliver the full state again.
+      const menuOpen = document.getElementById("message-context-menu")?.hidden === false;
+      if (messageStream && menuOpen && typeof data.message_stream_html === "string") {
+        liveFingerprint = "";
+      } else if (messageStream && liveHtmlChanged("stream", data.message_stream_html)) {
         const shouldScrollDown = isNearBottom(messageStream);
         const previousHeight = messageStream.scrollHeight;
         const previousTop = messageStream.scrollTop;
+        const focusedId = messageStream.contains(document.activeElement) ? document.activeElement.id : "";
         messageStream.innerHTML = data.message_stream_html;
 
         if (shouldScrollDown) {
           messageStream.scrollTop = messageStream.scrollHeight;
         } else {
           messageStream.scrollTop = previousTop + (messageStream.scrollHeight - previousHeight);
+        }
+        // Keyboard users keep their place on the message they had focused.
+        if (focusedId) {
+          document.getElementById(focusedId)?.focus({ preventScroll: true });
         }
       }
     } catch (_error) {

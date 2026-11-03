@@ -759,7 +759,7 @@
   position: relative;
   min-height: 58px;
   display: grid;
-  grid-template-columns: 26px minmax(0, 1fr) 22px auto auto 42px 42px 48px;
+  grid-template-columns: 26px minmax(0, 1fr) 22px auto auto 42px 42px 42px 48px;
   align-items: center;
   gap: 11px;
   width: 100%;
@@ -800,14 +800,17 @@
 .task-subtask-toggle {
   grid-column: 5;
 }
-.task-edit-button {
-  grid-column: 7;
-}
-.task-edit-button.task-template-button {
+.task-timer-button {
   grid-column: 6;
 }
-.task-delete-button {
+.task-edit-button {
   grid-column: 8;
+}
+.task-edit-button.task-template-button {
+  grid-column: 7;
+}
+.task-delete-button {
+  grid-column: 9;
 }
 
 .task-row .task-drag-handle {
@@ -1704,6 +1707,13 @@
     min-height: 32px;
   }
 
+  .task-timer-button {
+    grid-column: 3;
+    grid-row: 4;
+    width: 42px;
+    min-height: 32px;
+  }
+
   .task-empty-state {
     align-items: flex-start;
   }
@@ -1735,5 +1745,282 @@
 
   .task-layout {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Time tracking: play/stop in each row, the running banner and the weekly report page. */
+.task-timer-button {
+  width: 42px;
+  height: 100%;
+  min-height: 56px;
+  display: grid;
+  place-items: center;
+  color: var(--color-accent-strong);
+  background: var(--surface-control);
+  border: 0;
+  border-left: 1px solid var(--glass-border-soft);
+  cursor: pointer;
+}
+
+.task-timer-button:hover {
+  background: var(--surface-selected);
+}
+
+.task-timer-button.is-running {
+  color: var(--color-on-accent);
+  background: var(--color-accent);
+}
+
+.task-time-total {
+  margin-left: 8px;
+  color: var(--color-accent-strong);
+  font-weight: 700;
+}
+
+.task-time-link {
+  margin-left: auto;
+}
+
+.task-running-timer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--color-accent) 14%, var(--surface-control));
+  border: 1px solid color-mix(in srgb, var(--color-accent) 45%, transparent);
+  border-radius: var(--radius-sm);
+}
+
+.task-running-dot {
+  width: 10px;
+  height: 10px;
+  background: var(--color-danger);
+  border-radius: 50%;
+  animation: task-running-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes task-running-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task-running-dot {
+    animation: none;
+  }
+}
+
+.task-running-copy {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.task-running-copy strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-running-copy small {
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+}
+
+.task-running-copy time {
+  color: var(--color-heading);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.task-running-timer form {
+  margin: 0;
+}
+
+.time-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  gap: 22px;
+  margin-top: 20px;
+}
+
+.time-side {
+  display: grid;
+  align-content: start;
+  gap: 22px;
+}
+
+.time-panel {
+  padding: 24px 26px;
+}
+
+.time-panel h2 {
+  margin: 0 0 14px;
+  font-size: var(--text-lg);
+}
+
+.time-panel h3 {
+  margin: 22px 0 10px;
+  font-size: var(--text-base);
+}
+
+.time-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.time-toolbar h2 {
+  margin: 0;
+}
+
+.time-toolbar .toolbar-spacer {
+  flex: 1;
+}
+
+.time-total {
+  margin: 0 0 14px;
+}
+
+.time-total strong {
+  color: var(--color-heading);
+  font-size: var(--text-3xl);
+}
+
+.time-total span {
+  color: var(--color-muted);
+}
+
+.time-days,
+.time-tasks,
+.time-entries {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.time-days li {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 92px;
+  align-items: center;
+  gap: 10px;
+}
+
+.time-day-name {
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.time-bar {
+  height: 12px;
+  overflow: hidden;
+  background: var(--surface-control);
+  border-radius: var(--radius-pill);
+}
+
+.time-bar span {
+  display: block;
+  width: var(--time-share, 0%);
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: var(--radius-pill);
+}
+
+.time-day-value {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.time-tasks li,
+.time-entries li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--surface-control);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-sm);
+}
+
+.time-entries li.is-running {
+  border-color: var(--color-accent-strong);
+}
+
+.time-entries form {
+  margin: 0;
+}
+
+.time-task-copy {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.time-task-copy strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.time-task-copy small,
+.time-empty {
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+}
+
+.time-add-form {
+  display: grid;
+  gap: 10px;
+}
+
+.time-add-form label {
+  display: grid;
+  gap: 4px;
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.time-add-form select,
+.time-add-form input {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 11px;
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 400;
+  background: var(--surface-control-hover);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-xs);
+}
+
+.time-add-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px;
+  gap: 10px;
+}
+
+@media (max-width: 900px) {
+  .time-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .time-panel {
+    padding: 18px 16px;
+  }
+
+  .time-days li {
+    grid-template-columns: 28px minmax(0, 1fr) 80px;
   }
 }

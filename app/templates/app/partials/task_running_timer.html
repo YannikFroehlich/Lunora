@@ -1,0 +1,16 @@
+{% if running_timer %}
+<div class="task-running-timer" role="status" data-running-timer data-started-at="{{ running_timer.started_iso }}" data-elapsed="{{ running_timer.elapsed_seconds }}">
+    <span class="task-running-dot" aria-hidden="true"></span>
+    <span class="task-running-copy">
+        <strong>{{ running_timer.title }}</strong>
+        <small>läuft seit {{ running_timer.started_label }} · <time data-running-elapsed>0:00:00</time></small>
+    </span>
+    <form method="post" action="{% url 'tasks' %}">
+        {% csrf_token %}
+        <input type="hidden" name="form_name" value="task_timer">
+        <input type="hidden" name="task_id" value="{{ running_timer.task_id }}">
+        <input type="hidden" name="return_to" value="{{ request.get_full_path }}">
+        <button class="ghost-button" type="submit"><i class="fa-solid fa-stop" aria-hidden="true"></i> Stoppen</button>
+    </form>
+</div>
+{% endif %}

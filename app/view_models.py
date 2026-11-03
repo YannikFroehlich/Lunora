@@ -12,6 +12,7 @@ from app.models import (
     CalendarEvent,
     CalendarEventAttendee,
     CalendarReminder,
+    Conversation,
     Habit,
     Note,
     NoteShare,
@@ -822,13 +823,7 @@ def _calendar_agenda(user, start, now, events_by_date, tasks_by_date, markers):
     days = []
     for offset in range(CALENDAR_AGENDA_DAYS):
         day = start + timedelta(days=offset)
-        # A timed event ending exactly at midnight doesn't continue into the next day.
-        day_events = [
-            event
-            for event in events_by_date.get(day, [])
-            if event.is_all_day
-            or localtime_for_user(event.end_at - timedelta(microseconds=1), user).date() >= day
-        ]
+        day_events = events_by_date.get(day, [])
         day_tasks = tasks_by_date.get(day, [])
         day_markers = markers.get(day, [])
         if not (day_events or day_tasks or day_markers):
@@ -1106,6 +1101,11 @@ def _group_calendar_events_by_date(events, visible_start, visible_end, user):
         end_date = event_end.date()
         if event.is_all_day:
             end_date = (event_end - timedelta(seconds=1)).date()
+        elif event.end_at > event.start_at:
+            # A timed event ending exactly at midnight doesn't continue into the next day.
+            end_date = max(
+                start_date, localtime_for_user(event.end_at - timedelta(microseconds=1), user).date()
+            )
         end_date = min(end_date, visible_end - timedelta(days=1))
 
         current = start_date
@@ -1129,6 +1129,7 @@ def _calendar_event_manage_fields(event, user):
     can_manage = event.user_id == user.id
     fields = {
         "event_id": event.id,
+        "detail_url": reverse("calendar_event_detail", args=[event.id]),
         "recurrence_id": event.recurrence_id,
         "can_delete": can_manage,
         "location": event.location,
@@ -1158,6 +1159,68 @@ def _calendar_event_manage_fields(event, user):
     return fields
 
 
+def get_calendar_event_detail_context(event, user):
+    """The event detail page: when and where, who is invited with their answers, and the comments."""
+    start = localtime_for_user(event.start_at, user)
+    end = localtime_for_user(event.end_at, user)
+    last_date = event_last_date(event, start, end)
+    if event.is_all_day:
+        when = format_user_date(start, user)
+        if last_date and last_date != start.date():
+            when = f"{when} – {format_user_date(last_date, user)}"
+        when = f"{when} · ganztägig"
+    elif start.date() == (end - timedelta(microseconds=1)).date() or end == start:
+        when = (
+            f"{format_user_date(start, user)}, {format_user_time(start, user)}–{format_user_time(end, user)}"
+        )
+    else:
+        when = (
+            f"{format_user_date(start, user)}, {format_user_time(start, user)} – "
+            f"{format_user_date(end, user)}, {format_user_time(end, user)}"
+        )
+    attendees = list(event.attendees.select_related("user__profile").order_by("created_at", "id"))
+    own_attendee = next((row for row in attendees if row.user_id == user.pk), None)
+    comments = event.comments.select_related("author__profile")
+    return {
+        "active_page": "calendar",
+        "event": event,
+        "title": event.title,
+        "category": event.get_category_display(),
+        "tone": _calendar_event_tone(event),
+        "when": f"{get_user_weekday_name(start, user)}, {when}",
+        "location": event.location,
+        "location_link": location_link(event.location),
+        "has_reminder": event.reminder_minutes is not None,
+        "is_series": bool(event.recurrence_id),
+        "is_owner": event.user_id == user.pk,
+        "organizer_name": _display_name(event.user),
+        "day_url": f"{reverse('calendar')}?view=day&date={start.date().isoformat()}",
+        "attendees": [
+            {
+                "name": _display_name(row.user),
+                "status": row.status,
+                "status_label": row.get_status_display(),
+                "is_self": row.user_id == user.pk,
+            }
+            for row in attendees
+        ],
+        "own_attendee": {"id": own_attendee.pk, "status": own_attendee.status} if own_attendee else None,
+        "can_comment": bool(attendees),
+        "comments": [
+            {
+                "id": comment.pk,
+                "author_name": _display_name(comment.author),
+                "initials": Conversation.initials_for_user(comment.author),
+                "body": comment.body,
+                "created_label": format_user_datetime(comment.created_at, user),
+                "created_iso": comment.created_at.isoformat(),
+                "is_own": comment.author_id == user.pk,
+            }
+            for comment in comments
+        ],
+    }
+
+
 def _upcoming_calendar_events(user, now):
     events = _calendar_visible_events_query(user).filter(end_at__gte=now).order_by("start_at")[:6]
     items = [
@@ -1173,6 +1236,8 @@ def _upcoming_calendar_events(user, now):
         }
         for event in events
     ]
+    for item in items:
+        item["url"] = item["detail_url"]
     for item in _upcoming_vacation_items(user, now, 6):
         items.append({**item, "category": f"Urlaub bis {item['end_date']}", "icon": "fa-umbrella-beach"})
     return _soonest(items, 6)
@@ -1188,6 +1253,7 @@ def _pending_invitation_items(user):
         {
             "attendee_id": row.id,
             "event_title": row.event.title,
+            "detail_url": reverse("calendar_event_detail", args=[row.event_id]),
             "organizer_name": _display_name(row.event.user),
             "when": format_user_datetime(row.event.start_at, user),
             "location": row.event.location,

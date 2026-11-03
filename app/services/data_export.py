@@ -12,6 +12,7 @@ from django.utils.text import slugify
 from app.models import (
     Bookmark,
     CalendarEvent,
+    CalendarEventComment,
     CalendarReminder,
     ChatMessage,
     ChatMessageAttachment,
@@ -24,6 +25,7 @@ from app.models import (
     TaskLabel,
     TaskList,
     TaskTemplate,
+    TaskTimeEntry,
     UmlDiagram,
     VacationPeriod,
     VacationYear,
@@ -38,8 +40,8 @@ Dieses Archiv enthält alle Daten, die du in Lunora angelegt hast:
 - konto.json: Konto- und Profileinstellungen
 - notizen.json, notizen/*.md: Notizen (Original-Dokument und Markdown), Ordner, Vorlagen
 - notizen/anhaenge/: Dateien, die an deine Notizen angehängt sind
-- aufgaben.json: Aufgaben, Listen und Labels
-- kalender.json: deine Termine und Erinnerungen
+- aufgaben.json: Aufgaben, Listen, Labels und deine erfasste Zeit
+- kalender.json: deine Termine, Erinnerungen und Kommentare an Terminen
 - nachrichten.json, nachrichten/anhaenge/: Nachrichten (auch geplante und Umfragen) und Dateien, die du gesendet hast
 - vokabeln.json: Vokabellisten mit Lernfortschritt
 - uml/*.json: UML-Diagramme (lassen sich im Editor wieder importieren)
@@ -212,6 +214,17 @@ def _tasks(user):
             }
             for task in tasks
         ],
+        # Own tracked time, also on tasks of others (shared or assigned).
+        "time_entries": [
+            {
+                "task_id": entry.task_id,
+                "task": entry.task.title,
+                "started_at": entry.started_at,
+                "ended_at": entry.ended_at,
+                "seconds": entry.duration_seconds(),
+            }
+            for entry in TaskTimeEntry.objects.filter(user=user).select_related("task").order_by("started_at")
+        ],
         "templates": [
             {
                 "title": template.title,
@@ -242,6 +255,10 @@ def _calendar(user):
         "reminders": list(
             CalendarReminder.objects.filter(user=user).values("title", "due_at", "is_done", "created_at")
         ),
+        "comments": [
+            {"event": comment.event.title, "body": comment.body, "created_at": comment.created_at}
+            for comment in CalendarEventComment.objects.filter(author=user).select_related("event")
+        ],
     }
 
 

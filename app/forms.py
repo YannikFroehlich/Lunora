@@ -51,6 +51,7 @@ from app.services.notes import display_name
 from app.services.notification_preferences import CATEGORY_DEFINITIONS
 from app.services.quick_add import parse_quick_add
 from app.services.tasks import DEFAULT_DUE_TIME, update_task_shares
+from app.services.time_tracking import MANUAL_ENTRY_MAX_MINUTES, trackable_tasks
 from app.services.user_preferences import get_user_zoneinfo, localtime_for_user
 
 LOGIN_ATTEMPT_LIMIT = 5
@@ -1275,6 +1276,30 @@ class TaskTemplateUseForm(forms.Form):
 
     template_id = forms.IntegerField()
     due_at = forms.DateTimeField(required=False, input_formats=["%Y-%m-%dT%H:%M"])
+
+
+class TaskTimeEntryForm(forms.Form):
+    """ "Zeit nachtragen": minutes on one of the user's visible tasks for a past day or today."""
+
+    task = forms.ModelChoiceField(label="Aufgabe", queryset=Task.objects.none())
+    day = forms.DateField(label="Tag", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+    minutes = forms.IntegerField(
+        label="Minuten",
+        min_value=1,
+        max_value=MANUAL_ENTRY_MAX_MINUTES,
+        widget=forms.NumberInput(attrs={"inputmode": "numeric", "placeholder": "z. B. 45"}),
+    )
+
+    def __init__(self, *args, user, **kwargs):
+        kwargs.setdefault("auto_id", "id_time_%s")
+        super().__init__(*args, **kwargs)
+        tasks = trackable_tasks(user)
+        self.fields["task"].queryset = Task.objects.filter(pk__in=[task.pk for task in tasks])
+        self.fields["task"].choices = [("", "Aufgabe wählen …")] + [
+            (task.pk, f"{task.title}{' (erledigt)' if task.is_done else ''}") for task in tasks
+        ]
+        if not self.is_bound:
+            self.initial.setdefault("day", localtime_for_user(profile_or_user=user).date())
 
 
 class CalendarQuickAddForm(forms.Form):

@@ -1124,3 +1124,170 @@ class TaskBoardAndShareTests(TestCase):
         exported = next(row for row in _tasks(self.mira)["tasks"] if row["id"] == task.pk)
         self.assertEqual(exported["shared_with"], ["lukas@example.com"])
         self.assertFalse(exported["is_in_progress"])
+
+
+class TaskTimeTrackingTests(TestCase):
+    def setUp(self):
+        from app.models import Profile
+
+        self.user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="pw-12345"
+        )
+        self.other = User.objects.create_user(
+            username="lukas@example.com", email="lukas@example.com", password="pw-12345"
+        )
+        Profile.objects.create(user=self.user, display_name="Mira", timezone_name="Europe/Berlin")
+        Profile.objects.create(user=self.other, display_name="Lukas", timezone_name="Europe/Berlin")
+        self.task = Task.objects.create(user=self.user, title="Bericht schreiben")
+        self.second = Task.objects.create(user=self.user, title="Folien")
+        self.client.login(username="mira@example.com", password="pw-12345")
+
+    def timer(self, task):
+        return self.client.post("/tasks/", {"form_name": "task_timer", "task_id": task.id}, follow=True)
+
+    def test_timer_starts_and_stops_from_the_task_row(self):
+        from app.models import TaskTimeEntry
+
+        response = self.timer(self.task)
+        self.assertContains(response, "Timer für „Bericht schreiben“ gestartet.")
+        self.assertContains(response, "data-running-timer")
+        self.assertContains(response, 'class="task-timer-button is-running"')
+        entry = TaskTimeEntry.objects.get()
+        self.assertTrue(entry.is_running)
+
+        TaskTimeEntry.objects.filter(pk=entry.pk).update(started_at=timezone.now() - timedelta(minutes=25))
+        response = self.timer(self.task)
+
+        entry.refresh_from_db()
+        self.assertFalse(entry.is_running)
+        self.assertContains(response, "25 min")
+        self.assertNotContains(response, "data-running-timer")
+
+    def test_starting_another_task_stops_the_running_one(self):
+        from app.models import TaskTimeEntry
+        from app.services.time_tracking import start_timer
+
+        start = timezone.now() - timedelta(hours=1)
+        start_timer(self.user, self.task, now=start)
+        start_timer(self.user, self.second, now=start + timedelta(minutes=30))
+
+        first, second = TaskTimeEntry.objects.order_by("started_at")
+        self.assertEqual(first.duration_seconds(), 30 * 60)
+        self.assertTrue(second.is_running)
+        self.assertEqual(TaskTimeEntry.objects.filter(ended_at__isnull=True).count(), 1)
+
+    def test_a_timer_started_by_mistake_is_dropped(self):
+        from app.models import TaskTimeEntry
+
+        self.timer(self.task)
+        self.timer(self.task)
+
+        self.assertFalse(TaskTimeEntry.objects.exists())
+
+    def test_finishing_the_task_stops_its_timer(self):
+        from app.models import TaskTimeEntry
+        from app.services.time_tracking import start_timer
+
+        start_timer(self.user, self.task, now=timezone.now() - timedelta(minutes=10))
+        toggle_task(self.user, self.task.id, True)
+
+        self.assertFalse(TaskTimeEntry.objects.get().is_running)
+
+    def test_only_visible_open_tasks_can_be_tracked(self):
+        from app.models import TaskTimeEntry
+
+        foreign = Task.objects.create(user=self.other, title="Fremd")
+        done = Task.objects.create(user=self.user, title="Fertig", is_done=True)
+
+        self.timer(foreign)
+        response = self.timer(done)
+
+        self.assertContains(response, "Für erledigte Aufgaben läuft kein Timer.")
+        self.assertFalse(TaskTimeEntry.objects.exists())
+
+    def test_shared_tasks_can_be_tracked_and_times_stay_private(self):
+        from app.models import TaskShare
+        from app.services.time_tracking import add_manual_entry
+
+        TaskShare.objects.create(task=self.task, user=self.other)
+        add_manual_entry(self.other, self.task, timezone.localdate(), 90)
+
+        response = self.client.get("/tasks/")
+
+        item = next(item for item in response.context["tasks"] if item["task"] == self.task)
+        self.assertEqual(item["time_label"], "")
+        self.client.force_login(self.other)
+        item = next(item for item in self.client.get("/tasks/").context["tasks"] if item["task"] == self.task)
+        self.assertEqual(item["time_label"], "1 h 30 min")
+
+    def test_weekly_report_with_manual_entries_and_csv(self):
+        from app.services.time_tracking import week_start_for
+
+        today = timezone.localtime(timezone.now(), ZoneInfo("Europe/Berlin")).date()
+        week = "{}-W{:02d}".format(*today.isocalendar()[:2])
+        self.client.post(
+            "/tasks/time/",
+            {"form_name": "time_entry_add", "task": self.task.id, "day": today.isoformat(), "minutes": 45},
+        )
+        self.client.post(
+            "/tasks/time/",
+            {"form_name": "time_entry_add", "task": self.second.id, "day": today.isoformat(), "minutes": 15},
+        )
+
+        response = self.client.get("/tasks/time/", {"week": week})
+
+        report = response.context["report"]
+        self.assertEqual(report["total_label"], "1 h 00 min")
+        self.assertEqual([task["title"] for task in report["tasks"]], ["Bericht schreiben", "Folien"])
+        self.assertEqual(report["tasks"][0]["percent"], 75)
+        self.assertEqual(sum(day["seconds"] for day in report["days"]), 3600)
+        self.assertEqual(week_start_for(week, self.user), today - timedelta(days=today.weekday()))
+
+        csv = self.client.get("/tasks/time/", {"week": week, "format": "csv"})
+        self.assertEqual(csv["Content-Type"], "text/csv; charset=utf-8")
+        content = csv.content.decode("utf-8-sig")
+        self.assertIn("Datum;Zeit;Aufgabe;Dauer", content)
+        self.assertIn("Bericht schreiben;45 min", content)
+        self.assertIn("Summe;;;1 h 00 min", content)
+
+    def test_manual_entries_are_validated(self):
+        future = (timezone.localdate() + timedelta(days=2)).isoformat()
+
+        response = self.client.post(
+            "/tasks/time/",
+            {"form_name": "time_entry_add", "task": self.task.id, "day": future, "minutes": 30},
+        )
+        self.assertContains(response, "nicht für die Zukunft")
+
+        response = self.client.post(
+            "/tasks/time/",
+            {"form_name": "time_entry_add", "task": self.task.id, "day": timezone.localdate(), "minutes": 0},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(self.task.time_entries.exists())
+
+    def test_entries_can_only_be_deleted_by_their_owner(self):
+        from app.services.time_tracking import add_manual_entry
+
+        entry = add_manual_entry(self.user, self.task, timezone.localdate(), 30)
+        self.client.force_login(self.other)
+        self.client.post("/tasks/time/", {"form_name": "time_entry_delete", "entry_id": entry.id})
+        self.assertTrue(self.task.time_entries.exists())
+
+        self.client.force_login(self.user)
+        self.client.post("/tasks/time/", {"form_name": "time_entry_delete", "entry_id": entry.id})
+        self.assertFalse(self.task.time_entries.exists())
+
+    def test_format_duration(self):
+        from app.services.time_tracking import format_duration
+
+        self.assertEqual(
+            [format_duration(seconds) for seconds in (30, 60, 59 * 60, 3600, 3725)],
+            ["< 1 min", "1 min", "59 min", "1 h 00 min", "1 h 02 min"],
+        )
+
+    def test_manual_entry_form_defaults_to_today_as_iso_date(self):
+        response = self.client.get("/tasks/time/")
+
+        today = timezone.localtime(timezone.now(), ZoneInfo("Europe/Berlin")).date().isoformat()
+        self.assertContains(response, f'value="{today}"')

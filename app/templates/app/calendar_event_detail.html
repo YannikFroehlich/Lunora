@@ -1,0 +1,100 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}{{ title }} | Kalender | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/calendar.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell calendar-shell event-detail-shell">
+    <header class="page-hero">
+        <div>
+            <h1>{{ title }}</h1>
+            <p>{{ when }}</p>
+        </div>
+        <i class="hero-branch fa-regular fa-calendar" aria-hidden="true"></i>
+    </header>
+
+    <div class="event-detail-layout">
+        <section class="glass-panel event-detail-panel tone-{{ tone }}" aria-labelledby="event-detail-title">
+            <div class="event-detail-head">
+                <h2 id="event-detail-title"><span class="event-detail-dot" aria-hidden="true"></span> {{ category }}</h2>
+                <a class="ghost-button" href="{{ day_url }}"><i class="fa-solid fa-calendar-day" aria-hidden="true"></i> Im Kalender{% if is_owner %} bearbeiten{% endif %}</a>
+            </div>
+            <dl class="event-detail-facts">
+                <div><dt>Wann</dt><dd>{{ when }}</dd></div>
+                {% if location %}<div><dt>Wo</dt><dd>{% if location_link %}<a href="{{ location_link.url }}" target="_blank" rel="noopener noreferrer">{% if location_link.is_online %}Online{% else %}{{ location }}{% endif %}<span class="visually-hidden"> – {{ location_link.label }} (neues Fenster)</span></a>{% else %}{{ location }}{% endif %}</dd></div>{% endif %}
+                <div><dt>Organisiert von</dt><dd>{% if is_owner %}dir{% else %}{{ organizer_name }}{% endif %}</dd></div>
+                {% if is_series or has_reminder %}
+                <div><dt>Außerdem</dt><dd>{% if is_series %}<i class="fa-solid fa-repeat" aria-hidden="true"></i> Wiederkehrend{% endif %}{% if is_series and has_reminder %} · {% endif %}{% if has_reminder %}<i class="fa-regular fa-bell" aria-hidden="true"></i> Mit Erinnerung{% endif %}</dd></div>
+                {% endif %}
+            </dl>
+
+            {% if own_attendee %}
+            <form class="event-detail-rsvp" method="post">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="event_rsvp">
+                <input type="hidden" name="attendee_id" value="{{ own_attendee.id }}">
+                <span>Deine Antwort:</span>
+                <button class="ghost-button{% if own_attendee.status == 'accepted' %} is-active{% endif %}" type="submit" name="status" value="accepted" aria-pressed="{% if own_attendee.status == 'accepted' %}true{% else %}false{% endif %}"><i class="fa-solid fa-check" aria-hidden="true"></i> Zusagen</button>
+                <button class="ghost-button{% if own_attendee.status == 'declined' %} is-active{% endif %}" type="submit" name="status" value="declined" aria-pressed="{% if own_attendee.status == 'declined' %}true{% else %}false{% endif %}"><i class="fa-solid fa-xmark" aria-hidden="true"></i> Absagen</button>
+            </form>
+            {% endif %}
+
+            {% if attendees %}
+            <h3>Eingeladen ({{ attendees|length }})</h3>
+            <ul class="event-detail-attendees">
+                {% for attendee in attendees %}
+                <li><strong>{{ attendee.name }}{% if attendee.is_self %} (du){% endif %}</strong><span class="event-rsvp-badge is-{{ attendee.status }}">{{ attendee.status_label }}</span></li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        </section>
+
+        <section class="glass-panel event-detail-panel" id="comments" aria-labelledby="event-comments-title">
+            <h2 id="event-comments-title"><i class="fa-regular fa-comments" aria-hidden="true"></i> Kommentare{% if comments %} ({{ comments|length }}){% endif %}</h2>
+            {% if not can_comment %}
+            {% if comment_error %}<p class="form-error" role="alert">{{ comment_error }}</p>{% endif %}
+            <p class="event-detail-muted">Kommentare gibt es bei Terminen, zu denen jemand eingeladen ist. Lade im Kalender Personen ein, um euch hier abzusprechen.</p>
+            {% else %}
+            {% if comments %}
+            <ol class="event-comments">
+                {% for comment in comments %}
+                <li class="event-comment{% if comment.is_own %} is-own{% endif %}" id="comment-{{ comment.id }}">
+                    <span class="avatar small" aria-hidden="true">{{ comment.initials }}</span>
+                    <div>
+                        <p class="event-comment-meta"><strong>{{ comment.author_name }}</strong> <time datetime="{{ comment.created_iso }}">{{ comment.created_label }}</time></p>
+                        <p>{{ comment.body|linebreaksbr }}</p>
+                    </div>
+                    {% if comment.is_own and comments_enabled %}
+                    <form method="post" data-confirm="Kommentar löschen?">
+                        {% csrf_token %}
+                        <input type="hidden" name="form_name" value="event_comment_delete">
+                        <input type="hidden" name="comment_id" value="{{ comment.id }}">
+                        <button class="icon-button" type="submit" aria-label="Eigenen Kommentar vom {{ comment.created_label }} löschen"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
+                    </form>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ol>
+            {% else %}
+            <p class="event-detail-muted">Noch keine Kommentare. Frag zum Beispiel, wer etwas mitbringt.</p>
+            {% endif %}
+            {% if comments_enabled %}
+            <form class="event-comment-form" method="post">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="event_comment">
+                <label for="event-comment-body" class="visually-hidden">Kommentar</label>
+                <textarea id="event-comment-body" name="body" rows="3" maxlength="2000" placeholder="Kommentar schreiben …" required>{{ comment_draft }}</textarea>
+                {% if comment_error %}<small class="form-error">{{ comment_error }}</small>{% endif %}
+                <p class="event-detail-muted">Die anderen Teilnehmenden werden benachrichtigt, außer wer abgesagt hat.</p>
+                <button class="primary-button" type="submit"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Kommentieren</button>
+            </form>
+            {% endif %}
+            {% endif %}
+        </section>
+    </div>
+</section>
+{% endblock %}

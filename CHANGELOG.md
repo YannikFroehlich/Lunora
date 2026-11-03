@@ -6,6 +6,19 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Time tracking for tasks: a play/stop button on every open task starts a timer (starting another
+  one stops the first, finishing the task stops it too), a banner shows what's running, and each
+  task shows the time you tracked on it. "Zeiterfassung" (`/tasks/time/`) shows the week per day
+  and per task, lets you add forgotten time and delete entries, and downloads the week as CSV.
+  Tracked time is private, also on shared or assigned tasks.
+- Comments on events: every event with invitees has a detail page (linked from the agenda, the
+  lists, invitations, invited events in the month view and the edit dialog) with when and where,
+  everyone's answer, accepting/declining, and a comment thread. New comments notify the organizer
+  and invitees who haven't declined, in the notification center, by e-mail and Web Push.
+- Fixed: the message menu in a chat no longer closes by itself when a new message arrives while it
+  is open, and keyboard focus stays on the focused message during live updates.
+- Fixed: an event ending exactly at midnight no longer also shows on the next day in the month and
+  year views.
 - Edit chat messages: "Bearbeiten" in the menu of your own message (up to 24 hours after sending,
   not for forwarded messages or polls) puts the text back into the input field; Enter saves,
   Escape cancels. Edited messages say "bearbeitet", and changed @-mentions notify newly named

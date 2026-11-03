@@ -53,7 +53,7 @@
             {% endif %}
 
             {% if calendar_agenda %}
-            <p class="calendar-hint">Die nächsten {{ calendar_agenda.day_count }} Tage als Liste; Tage ohne Einträge werden übersprungen. Ein Titel öffnet die Tagesansicht.</p>
+            <p class="calendar-hint">Die nächsten {{ calendar_agenda.day_count }} Tage als Liste; Tage ohne Einträge werden übersprungen. Ein Titel öffnet Details und Kommentare.</p>
             {% include 'app/partials/calendar_agenda.html' %}
             {% elif calendar_year %}
             <p class="calendar-hint">Ein Tag öffnet die Tagesansicht, ein Monatsname die Monatsansicht. Je kräftiger ein Tag gefärbt ist, desto mehr Termine und Aufgaben liegen darauf.</p>
@@ -94,7 +94,7 @@
                         {% if event.can_delete %}
                         <button type="button" class="event-chip tone-{{ event.tone }}" title="{{ event.time }} · {{ event.label }} (bearbeiten oder verschieben)" {% include 'app/partials/calendar_event_edit_data.html' %} {% include 'app/partials/calendar_event_move_data.html' %}>{{ event.label }}</button>
                         {% else %}
-                        <span class="event-chip tone-{{ event.tone }} {% if event.is_invited %}is-invited{% endif %}" title="{{ event.time }} · {{ event.label }}">{% if event.is_invited %}<i class="fa-solid fa-user-group" aria-hidden="true"></i>{% endif %}{{ event.label }}</span>
+                        <a class="event-chip tone-{{ event.tone }} {% if event.is_invited %}is-invited{% endif %}" href="{{ event.detail_url }}" title="{{ event.time }} · {{ event.label }} (Details)">{% if event.is_invited %}<i class="fa-solid fa-user-group" aria-hidden="true"></i>{% endif %}{{ event.label }}</a>
                         {% endif %}
                         {% endfor %}
                         {% for task in day.tasks %}
@@ -147,7 +147,7 @@
                 <div class="timeline-row">
                     <time>{{ event.time }}</time>
                     <span class="timeline-dot tone-{{ event.tone }}"></span>
-                    <strong>{{ event.title }}{% if event.has_reminder %} <i class="fa-regular fa-bell event-reminder-icon" aria-hidden="true" title="Mit Erinnerung"></i><span class="visually-hidden">, mit Erinnerung</span>{% endif %}</strong>
+                    <strong><a href="{{ event.detail_url }}">{{ event.title }}</a>{% if event.has_reminder %} <i class="fa-regular fa-bell event-reminder-icon" aria-hidden="true" title="Mit Erinnerung"></i><span class="visually-hidden">, mit Erinnerung</span>{% endif %}</strong>
                     {% include 'app/partials/calendar_location_link.html' with item=event %}
                     {% if event.recurrence_id %}<i class="fa-solid fa-repeat" title="Wiederkehrender Termin"></i>{% endif %}
                     {% if event.is_invited %}<i class="fa-solid fa-user-group" title="Einladung"></i>{% endif %}
@@ -252,7 +252,7 @@
                 {% for invitation in pending_invitations %}
                 <div class="invitation-row">
                     <span>
-                        <strong>{{ invitation.event_title }}</strong>
+                        <strong><a href="{{ invitation.detail_url }}">{{ invitation.event_title }}</a></strong>
                         <small>{{ invitation.organizer_name }} · {{ invitation.when }}</small>
                         {% include 'app/partials/calendar_location_link.html' with item=invitation %}
                     </span>
@@ -558,6 +558,7 @@
                     <i class="fa-solid fa-trash" aria-hidden="true"></i>
                     Löschen
                 </button>
+                <a class="ghost-button" href="#" data-event-detail-link hidden><i class="fa-regular fa-comments" aria-hidden="true"></i> Details &amp; Kommentare</a>
                 <button class="ghost-button" type="button" data-event-edit-dialog-close>Abbrechen</button>
                 <button class="primary-button" type="submit">
                     <i class="fa-solid fa-check" aria-hidden="true"></i>
