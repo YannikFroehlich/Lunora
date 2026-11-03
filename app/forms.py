@@ -993,6 +993,14 @@ class CalendarSubscriptionForm(forms.ModelForm):
         return super().save(commit=commit)
 
 
+class CalendarSubscriptionStyleForm(forms.ModelForm):
+    """Name, color and icon of an existing subscription, edited from the calendar page."""
+
+    class Meta:
+        model = CalendarSubscription
+        fields = ["name", "color", "icon"]
+
+
 class BookmarkForm(forms.ModelForm):
     url = forms.URLField(
         label="Adresse",

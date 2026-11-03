@@ -946,7 +946,7 @@ class SettingsProfileTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, "mira-secret-token")
 
-    def test_calendar_page_shows_categories_and_no_import_controls(self):
+    def test_calendar_page_shows_calendars_panel_and_no_import_controls(self):
         user = User.objects.create_user(
             username="mira@example.com", email="mira@example.com", password="secret-12345"
         )
@@ -956,9 +956,8 @@ class SettingsProfileTests(TestCase):
         response = self.client.get("/calendar/")
 
         self.assertEqual(response.status_code, 200)
-        for label in ("Termin", "Meeting", "Deadline", "Privat", "Sonstiges"):
-            with self.subTest(label=label):
-                self.assertContains(response, f"<strong>{label}</strong>")
+        self.assertContains(response, "Abonnierte Kalender")
+        self.assertContains(response, "Abonniere deinen Google-, Outlook- oder iCloud-Kalender")
         self.assertContains(response, "/settings/?next=/calendar/#settings-calendar")
         self.assertNotContains(response, "calendar_sync_all")
         self.assertNotContains(response, "Kalender verbinden")

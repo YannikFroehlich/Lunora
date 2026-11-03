@@ -94,7 +94,7 @@
                         {% if event.can_delete %}
                         <button type="button" class="event-chip tone-{{ event.tone }}" title="{{ event.time }} · {{ event.label }} (bearbeiten oder verschieben)" {% include 'app/partials/calendar_event_edit_data.html' %} {% include 'app/partials/calendar_event_move_data.html' %}>{{ event.label }}</button>
                         {% else %}
-                        <a class="event-chip tone-{{ event.tone }} {% if event.is_invited %}is-invited{% endif %}" href="{{ event.detail_url }}" title="{{ event.time }} · {{ event.label }}{% if event.subscription_name %} · {{ event.subscription_name }}{% endif %} (Details)">{% if event.is_invited %}<i class="fa-solid fa-user-group" aria-hidden="true"></i>{% elif event.subscription_name %}<i class="fa-solid fa-rss" aria-hidden="true"></i>{% endif %}{{ event.label }}</a>
+                        <a class="event-chip tone-{{ event.tone }} {% if event.is_invited %}is-invited{% endif %}" href="{{ event.detail_url }}" title="{{ event.time }} · {{ event.label }}{% if event.subscription_name %} · {{ event.subscription_name }}{% endif %} (Details)">{% if event.is_invited %}<i class="fa-solid fa-user-group" aria-hidden="true"></i>{% elif event.subscription_name %}<i class="fa-solid {{ event.subscription_icon }}" aria-hidden="true"></i>{% endif %}{{ event.label }}</a>
                         {% endif %}
                         {% endfor %}
                         {% for task in day.tasks %}
@@ -118,24 +118,77 @@
         </section>
 
         <div class="side-stack">
-            <section class="glass-panel calendar-filter-panel">
+            {% if calendar_subscriptions_enabled or calendar_feed_enabled %}
+            <section class="glass-panel calendar-sources-panel" aria-labelledby="calendar-sources-title">
                 <div class="panel-title panel-title-between">
-                    <div><h2>Kategorien</h2><p>Farben im Kalender</p></div>
-                    {% if calendar_feed_enabled %}
-                    <a class="icon-button" href="{% url 'settings' %}?next={{ request.get_full_path|urlencode }}#settings-calendar" aria-label="Kalender abonnieren" title="Kalender abonnieren">
-                        <i class="fa-solid fa-rss"></i>
-                    </a>
-                    {% endif %}
+                    <div><h2 id="calendar-sources-title">Kalender</h2><p>{% if calendar_subscriptions_enabled %}Abonnierte Kalender{% else %}Deinen Kalender teilen{% endif %}</p></div>
+                    <div class="calendar-sources-actions">
+                        {% if calendar_subscriptions_enabled %}
+                        <a class="icon-button" href="{% url 'settings' %}?next={{ request.get_full_path|urlencode }}#settings-calendar" aria-label="Kalender abonnieren" title="Kalender abonnieren">
+                            <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                        </a>
+                        {% endif %}
+                        {% if calendar_feed_enabled %}
+                        <a class="icon-button" href="{% url 'settings' %}?next={{ request.get_full_path|urlencode }}#settings-calendar" aria-label="Eigenen Kalender als Feed teilen" title="Eigenen Kalender als Feed teilen">
+                            <i class="fa-solid fa-rss" aria-hidden="true"></i>
+                        </a>
+                        {% endif %}
+                    </div>
                 </div>
-                <ul class="calendar-category-legend">
-                    {% for category in calendar_categories %}
-                    <li class="calendar-category-row tone-{{ category.tone }}">
-                        <span class="calendar-category-dot" aria-hidden="true"></span>
-                        <strong>{{ category.label }}</strong>
+                {% if calendar_subscriptions %}
+                <ul class="calendar-source-list">
+                    {% for source in calendar_subscriptions %}
+                    <li class="calendar-source tone-{{ source.color }}">
+                        <details>
+                            <summary>
+                                <span class="calendar-source-icon" aria-hidden="true"><i class="fa-solid {{ source.icon }}"></i></span>
+                                <span class="calendar-source-copy">
+                                    <strong>{{ source.name }}</strong>
+                                    {% if source.last_error %}<small class="calendar-source-error"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> {{ source.last_error }}</small>
+                                    {% elif source.last_synced %}<small>{{ source.event_count }} Termin(e) · aktualisiert {{ source.last_synced }}</small>
+                                    {% else %}<small>Noch nicht geladen</small>{% endif %}
+                                </span>
+                                <i class="fa-solid fa-pen calendar-source-toggle" aria-hidden="true"></i>
+                                <span class="visually-hidden">bearbeiten</span>
+                            </summary>
+                            <form class="calendar-source-form" method="post">
+                                {% csrf_token %}
+                                <input type="hidden" name="form_name" value="calendar_subscription_style">
+                                <input type="hidden" name="subscription_id" value="{{ source.id }}">
+                                <label class="field-label" for="calendar-source-{{ source.id }}-name">Name</label>
+                                <input class="calendar-source-name" id="calendar-source-{{ source.id }}-name" type="text" name="name" value="{{ source.name }}" maxlength="80" required autocomplete="off">
+                                <span class="field-label" id="calendar-source-{{ source.id }}-color">Farbe</span>
+                                <div class="calendar-source-choices" role="radiogroup" aria-labelledby="calendar-source-{{ source.id }}-color">
+                                    {% for value, label in subscription_color_choices %}
+                                    <label class="calendar-source-swatch tone-{{ value }}" title="{{ label }}">
+                                        <input type="radio" name="color" value="{{ value }}" aria-label="Farbe {{ label }}" {% if value == source.color %}checked{% endif %}>
+                                    </label>
+                                    {% endfor %}
+                                </div>
+                                <span class="field-label" id="calendar-source-{{ source.id }}-icon">Symbol</span>
+                                <div class="calendar-source-choices" role="radiogroup" aria-labelledby="calendar-source-{{ source.id }}-icon">
+                                    {% for value, label in subscription_icon_choices %}
+                                    <label class="calendar-source-icon-choice" title="{{ label }}">
+                                        <input type="radio" name="icon" value="{{ value }}" aria-label="Symbol {{ label }}" {% if value == source.icon %}checked{% endif %}>
+                                        <i class="fa-solid {{ value }}" aria-hidden="true"></i>
+                                    </label>
+                                    {% endfor %}
+                                </div>
+                                <div class="calendar-source-buttons">
+                                    <button class="primary-button" type="submit">Speichern</button>
+                                    <button class="icon-button" type="submit" name="form_name" value="calendar_subscription_refresh" formnovalidate aria-label="„{{ source.name }}“ jetzt aktualisieren" title="Jetzt aktualisieren"><i class="fa-solid fa-rotate" aria-hidden="true"></i></button>
+                                    <button class="icon-button danger-button" type="submit" name="form_name" value="calendar_subscription_delete" formnovalidate data-confirm="„{{ source.name }}“ nicht mehr abonnieren? Seine Termine verschwinden aus Lunora." aria-label="„{{ source.name }}“ entfernen" title="Entfernen"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
+                                </div>
+                            </form>
+                        </details>
                     </li>
                     {% endfor %}
                 </ul>
+                {% elif calendar_subscriptions_enabled %}
+                <p class="calendar-sources-empty">Abonniere deinen Google-, Outlook- oder iCloud-Kalender, damit seine Termine hier erscheinen. <a href="{% url 'settings' %}?next={{ request.get_full_path|urlencode }}#settings-calendar">Kalender abonnieren</a></p>
+                {% endif %}
             </section>
+            {% endif %}
 
             <section class="glass-panel today-events">
                 <div class="panel-title panel-title-between">
@@ -144,15 +197,21 @@
                 </div>
                 {% if today_events %}
                 {% for event in today_events %}
-                <div class="timeline-row">
-                    <time>{{ event.time }}</time>
-                    <span class="timeline-dot tone-{{ event.tone }}"></span>
-                    <strong><a href="{{ event.detail_url }}">{{ event.title }}</a>{% if event.has_reminder %} <i class="fa-regular fa-bell event-reminder-icon" aria-hidden="true" title="Mit Erinnerung"></i><span class="visually-hidden">, mit Erinnerung</span>{% endif %}</strong>
-                    {% include 'app/partials/calendar_location_link.html' with item=event %}
-                    {% if event.recurrence_id %}<i class="fa-solid fa-repeat" title="Wiederkehrender Termin"></i>{% endif %}
-                    {% if event.is_invited %}<i class="fa-solid fa-user-group" title="Einladung"></i>{% endif %}
-                    {% if event.subscription_name %}<i class="fa-solid fa-rss" title="Abonniert: {{ event.subscription_name }}"></i>{% endif %}
-                    <i class="fa-solid {{ event.icon }}"></i>
+                <div class="upcoming-row today-row tone-{{ event.tone }}">
+                    <time class="today-time">{{ event.time }}</time>
+                    <div class="upcoming-body">
+                        <strong><a href="{{ event.detail_url }}">{{ event.title }}</a>{% if event.has_reminder %} <i class="fa-regular fa-bell event-reminder-icon" aria-hidden="true" title="Mit Erinnerung"></i><span class="visually-hidden">, mit Erinnerung</span>{% endif %}</strong>
+                        <span class="upcoming-meta">
+                            <span class="upcoming-dot" aria-hidden="true"></span>
+                            <span>{{ event.category }}</span>
+                            {% include 'app/partials/calendar_location_link.html' with item=event %}
+                        </span>
+                    </div>
+                    <span class="upcoming-icons">
+                        {% if event.recurrence_id %}<i class="fa-solid fa-repeat" aria-hidden="true" title="Wiederkehrender Termin"></i><span class="visually-hidden">Wiederkehrend</span>{% endif %}
+                        {% if event.is_invited %}<i class="fa-solid fa-user-group" aria-hidden="true" title="Einladung"></i><span class="visually-hidden">Einladung</span>{% endif %}
+                        {% if event.subscription_name %}<i class="fa-solid {{ event.subscription_icon }}" aria-hidden="true" title="Abonniert: {{ event.subscription_name }}"></i><span class="visually-hidden">Abonniert: {{ event.subscription_name }}</span>{% endif %}
+                    </span>
                     {% if event.can_delete %}
                     <span class="event-row-actions">
                         <button class="icon-button" type="button" aria-label="Termin bearbeiten" {% include 'app/partials/calendar_event_edit_data.html' %}><i class="fa-solid fa-pen" aria-hidden="true"></i></button>
@@ -213,7 +272,7 @@
                     <span class="upcoming-icons">
                         {% if event.recurrence_id %}<i class="fa-solid fa-repeat" aria-hidden="true" title="Wiederkehrender Termin"></i><span class="visually-hidden">Wiederkehrend</span>{% endif %}
                         {% if event.is_invited %}<i class="fa-solid fa-user-group" aria-hidden="true" title="Einladung"></i><span class="visually-hidden">Einladung</span>{% endif %}
-                        {% if event.subscription_name %}<i class="fa-solid fa-rss" aria-hidden="true" title="Abonniert: {{ event.subscription_name }}"></i><span class="visually-hidden">Abonniert: {{ event.subscription_name }}</span>{% endif %}
+                        {% if event.subscription_name %}<i class="fa-solid {{ event.subscription_icon }}" aria-hidden="true" title="Abonniert: {{ event.subscription_name }}"></i><span class="visually-hidden">Abonniert: {{ event.subscription_name }}</span>{% endif %}
                         {% if not event.time %}<i class="fa-solid {{ event.icon }}" aria-hidden="true"></i>{% endif %}
                     </span>
                     {% if event.can_delete %}

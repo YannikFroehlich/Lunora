@@ -8,10 +8,12 @@ from django.utils import timezone
 
 from app.forms import BookmarkForm, event_last_date
 from app.models import (
+    TASK_COLOR_CHOICES,
     Bookmark,
     CalendarEvent,
     CalendarEventAttendee,
     CalendarReminder,
+    CalendarSubscription,
     Conversation,
     Habit,
     Note,
@@ -715,7 +717,7 @@ def get_calendar_context(user, *, year=None, month=None, view=None, day=None):
         {
             "time": _calendar_event_time_label(event, user),
             "title": event.title,
-            "icon": "fa-calendar-day",
+            "category": _calendar_event_category(event),
             "tone": _calendar_event_tone(event),
             "is_invited": event.user_id != user.id,
             **_calendar_event_manage_fields(event, user),
@@ -724,6 +726,7 @@ def get_calendar_context(user, *, year=None, month=None, view=None, day=None):
     ]
     upcoming_events = _upcoming_calendar_events(user, now)
     calendar_reminders_enabled = feature_enabled("calendar_reminders")
+    subscriptions_enabled = feature_enabled("calendar_subscriptions")
     reminder_items = _calendar_reminder_items(user, now) if calendar_reminders_enabled else []
     due_tasks = dashboard_today_tasks(user, now, limit=8) if tasks_enabled else []
     prev_month = _shift_month(year, month, -1)
@@ -799,10 +802,10 @@ def get_calendar_context(user, *, year=None, month=None, view=None, day=None):
         "calendar_reminders_enabled": calendar_reminders_enabled,
         "calendar_event_creation_enabled": feature_enabled("calendar_event_creation"),
         "calendar_feed_enabled": feature_enabled("calendar_feed"),
-        "calendar_categories": [
-            {"label": label, "tone": CalendarEvent.CATEGORY_TONES[key]}
-            for key, label in CalendarEvent.CATEGORY_CHOICES
-        ],
+        "calendar_subscriptions_enabled": subscriptions_enabled,
+        "calendar_subscriptions": calendar_subscription_items(user) if subscriptions_enabled else [],
+        "subscription_color_choices": TASK_COLOR_CHOICES,
+        "subscription_icon_choices": CalendarSubscription.ICON_CHOICES,
         "tasks_enabled": tasks_enabled,
         "due_tasks": due_tasks,
     }
@@ -1130,6 +1133,7 @@ def _calendar_event_manage_fields(event, user):
         "event_id": event.id,
         "detail_url": reverse("calendar_event_detail", args=[event.id]),
         "subscription_name": event.subscription.name if event.subscription_id else "",
+        "subscription_icon": event.subscription.icon if event.subscription_id else "",
         "recurrence_id": event.recurrence_id,
         "can_delete": can_manage,
         "location": event.location,
@@ -1331,3 +1335,21 @@ def _shift_month(year, month, direction):
     if shifted_month > 12:
         return year + 1, 1
     return year, shifted_month
+
+
+def calendar_subscription_items(user):
+    """The user's subscriptions for the settings page and the calendar's panel (never the URL)."""
+    return [
+        {
+            "id": subscription.pk,
+            "name": subscription.name,
+            "color": subscription.color,
+            "icon": subscription.icon,
+            "event_count": subscription.event_count,
+            "last_synced": format_user_datetime(subscription.last_synced_at, user)
+            if subscription.last_synced_at
+            else "",
+            "last_error": subscription.last_error,
+        }
+        for subscription in user.calendar_subscriptions.all()
+    ]

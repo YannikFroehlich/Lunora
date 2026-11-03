@@ -321,3 +321,47 @@ class CalendarSubscriptionViewTests(TestCase):
         self.assertEqual(self.client.get(f"/calendar/events/{event.pk}/").status_code, 404)
         blocked = self.client.post("/settings/", {"form_name": "calendar_subscription_add", "name": "X"})
         self.assertEqual(blocked.status_code, 503)
+
+    def test_calendar_panel_restyles_a_subscription_and_events_use_its_icon(self):
+        self.add()
+        subscription = CalendarSubscription.objects.get(user=self.user)
+        other = User.objects.create_user(username="ole@example.com", email="ole@example.com", password="x")
+        foreign = CalendarSubscription.objects.create(user=other, name="Fremd", url=SECRET_URL)
+
+        page = self.client.get("/calendar/?view=month")
+        self.assertContains(page, "Abonnierte Kalender")
+        self.assertNotContains(page, "Farben im Kalender")
+        self.assertNotContains(page, "secret-token")
+
+        style = {"form_name": "calendar_subscription_style", "name": "Familie", "color": "green"}
+        response = self.client.post(
+            "/calendar/?view=month",
+            {**style, "subscription_id": subscription.pk, "icon": "fa-cake-candles"},
+        )
+        self.assertRedirects(response, "/calendar/?view=month", fetch_redirect_response=False)
+        subscription.refresh_from_db()
+        self.assertEqual(
+            (subscription.name, subscription.color, subscription.icon),
+            ("Familie", "green", "fa-cake-candles"),
+        )
+        upcoming = next(
+            item
+            for item in self.client.get("/calendar/?view=month").context["upcoming_events"]
+            if item["title"] == "Abendessen"
+        )
+        self.assertEqual(upcoming["subscription_icon"], "fa-cake-candles")
+
+        # Only allowlisted icons, and only the user's own subscriptions.
+        self.client.post("/calendar/", {**style, "subscription_id": subscription.pk, "icon": "fa-x onclick"})
+        self.client.post("/calendar/", {**style, "subscription_id": foreign.pk, "icon": "fa-star"})
+        subscription.refresh_from_db()
+        foreign.refresh_from_db()
+        self.assertEqual(subscription.icon, "fa-cake-candles")
+        self.assertEqual((foreign.name, foreign.icon), ("Fremd", "fa-rss"))
+
+        SystemSettings.objects.update_or_create(pk=1, defaults={"calendar_subscriptions_enabled": False})
+        blocked = self.client.post(
+            "/calendar/", {**style, "subscription_id": subscription.pk, "icon": "fa-star"}
+        )
+        self.assertEqual(blocked.status_code, 503)
+        self.assertNotContains(self.client.get("/calendar/?view=month"), "Abonnierte Kalender")
