@@ -259,7 +259,7 @@ def _calendar(user):
         ),
         # The address stays out: it is a credential that reads the external calendar.
         "subscriptions": list(
-            CalendarSubscription.objects.filter(user=user).values("name", "color", "created_at")
+            CalendarSubscription.objects.filter(user=user).values("name", "color", "icon", "created_at")
         ),
         "comments": [
             {"event": comment.event.title, "body": comment.body, "created_at": comment.created_at}

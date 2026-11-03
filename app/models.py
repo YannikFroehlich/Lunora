@@ -705,6 +705,23 @@ class CalendarSubscription(models.Model):
     """An external iCal calendar mirrored read-only into its owner's calendar
     (app.services.calendar_subscriptions)."""
 
+    # Font Awesome solid icons; the value is rendered as a class, so keep it an allowlist.
+    ICON_CHOICES = [
+        ("fa-rss", "Abo"),
+        ("fa-calendar", "Kalender"),
+        ("fa-cake-candles", "Geburtstage"),
+        ("fa-briefcase", "Arbeit"),
+        ("fa-house", "Zuhause"),
+        ("fa-users", "Familie"),
+        ("fa-graduation-cap", "Lernen"),
+        ("fa-futbol", "Sport"),
+        ("fa-music", "Musik"),
+        ("fa-plane", "Reisen"),
+        ("fa-utensils", "Essen"),
+        ("fa-heart", "Herz"),
+        ("fa-star", "Stern"),
+    ]
+
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="calendar_subscriptions"
     )
@@ -713,6 +730,7 @@ class CalendarSubscription(models.Model):
     # like Profile.calendar_feed_token: never log, export or render it, not even to its owner.
     url = models.CharField(max_length=2000)
     color = models.CharField(max_length=12, choices=TASK_COLOR_CHOICES, default="blue")
+    icon = models.CharField(max_length=32, choices=ICON_CHOICES, default="fa-rss")
     last_attempt_at = models.DateTimeField(blank=True, null=True)
     last_synced_at = models.DateTimeField(blank=True, null=True)
     last_error = models.CharField(max_length=255, blank=True)
