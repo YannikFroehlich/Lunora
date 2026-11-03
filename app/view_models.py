@@ -722,18 +722,9 @@ def get_calendar_context(user, *, year=None, month=None, view=None, day=None):
         for event in events_by_date.get(now.date(), [])
     ]
     upcoming_events = _upcoming_calendar_events(user, now)
-    month_events = [
-        event
-        for event in events
-        if localtime_for_user(event.start_at, user).date().year == year
-        and localtime_for_user(event.start_at, user).date().month == month
-    ]
-    days_in_month = [month_date.replace(day=day) for day in range(1, calendar.monthrange(year, month)[1] + 1)]
-    busy_days = {localtime_for_user(event.start_at, user).date() for event in month_events}
     calendar_reminders_enabled = feature_enabled("calendar_reminders")
     reminder_items = _calendar_reminder_items(user, now) if calendar_reminders_enabled else []
     due_tasks = dashboard_today_tasks(user, now, limit=8) if tasks_enabled else []
-    chart_bars = _calendar_chart_bars(month_events, year, month, user)
     prev_month = _shift_month(year, month, -1)
     next_month = _shift_month(year, month, 1)
     month_label = f"{get_user_month_name(month_date, user)} {year}"
@@ -802,12 +793,6 @@ def get_calendar_context(user, *, year=None, month=None, view=None, day=None):
         "upcoming_events": upcoming_events,
         "prev_month": {"year": prev_month[0], "month": prev_month[1]},
         "next_month": {"year": next_month[0], "month": next_month[1]},
-        "month_stats": {
-            "events": len(month_events),
-            "free_days": len(days_in_month) - len(busy_days),
-            "synced_days": len(busy_days),
-            "chart_bars": chart_bars,
-        },
         "reminders": reminder_items,
         "pending_invitations": _pending_invitation_items(user),
         "calendar_reminders_enabled": calendar_reminders_enabled,
@@ -1345,24 +1330,3 @@ def _shift_month(year, month, direction):
     if shifted_month > 12:
         return year + 1, 1
     return year, shifted_month
-
-
-def _calendar_chart_bars(events, year, month, user):
-    weeks = calendar.Calendar(firstweekday=0).monthdatescalendar(year, month)
-    counts = []
-    for week in weeks:
-        week_dates = {day for day in week if day.month == month}
-        count = sum(1 for event in events if localtime_for_user(event.start_at, user).date() in week_dates)
-        counts.append(count)
-
-    max_count = max(counts, default=0)
-    if max_count == 0:
-        return [{"height": 18, "count": 0} for _count in counts]
-
-    return [
-        {
-            "height": 18 + round((count / max_count) * 48),
-            "count": count,
-        }
-        for count in counts
-    ]

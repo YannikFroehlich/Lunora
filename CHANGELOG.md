@@ -6,6 +6,9 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- The calendar page no longer shows the month statistics panel (event count, free and active
+  days, weekly bars) below the calendar, and the calendar and sidebar no longer stretch to each
+  other's height, so there are no large empty areas anymore.
 - "Nächste Termine" on the calendar page is easier to scan: each entry has a date tile (today's
   is highlighted), the title on one line and its time, category and location below, with the
   series, invitation and subscription icons kept on the right instead of wrapping.
