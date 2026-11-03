@@ -50,11 +50,12 @@ from app.services.time_tracking import (
     add_manual_entry,
     annotate_task_items,
     delete_entry,
+    month_start_for,
     running_timer_context,
     stop_timer,
+    time_report,
+    time_report_csv,
     toggle_timer,
-    week_report,
-    week_report_csv,
     week_start_for,
 )
 from app.services.user_preferences import format_user_datetime
@@ -311,7 +312,7 @@ def tasks(request):
 
 @login_required
 def task_time_report(request):
-    """Weekly time report of the signed-in user, with manual entries and CSV download."""
+    """Weekly (``?week=``) or monthly (``?month=``) time report, with manual entries and CSV download."""
     if not feature_enabled("tasks"):
         return disabled_feature_response(request, "tasks")
 
@@ -341,11 +342,14 @@ def task_time_report(request):
             stop_timer(request.user)
             return redirect(request.get_full_path())
 
-    report = week_report(request.user, week_start_for(request.GET.get("week"), request.user))
+    if "month" in request.GET:
+        report = time_report(request.user, "month", month_start_for(request.GET["month"], request.user))
+    else:
+        report = time_report(request.user, "week", week_start_for(request.GET.get("week"), request.user))
     if request.GET.get("format") == "csv":
-        response = HttpResponse(week_report_csv(report), content_type="text/csv; charset=utf-8")
+        response = HttpResponse(time_report_csv(report), content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = content_disposition_header(
-            True, f"lunora-zeiten-{report['week_value']}.csv"
+            True, f"lunora-zeiten-{report['value']}.csv"
         )
         return response
     return render(

@@ -203,6 +203,20 @@ class ScheduledAutomationTests(TestCase):
             WeeklySummaryDelivery.objects.filter(user=self.user, week_start=monday.date()).exists()
         )
 
+    def test_weekly_summary_lists_last_weeks_tracked_time(self):
+        from app.models import TaskTimeEntry
+
+        monday = timezone.make_aware(datetime(2026, 8, 10, 9, 0), ZoneInfo("Europe/Berlin"))
+        task = Task.objects.create(user=self.user, title="Angebot schreiben")
+        for start, minutes in ((monday - timedelta(days=3), 50), (monday - timedelta(days=8), 30)):
+            TaskTimeEntry.objects.create(
+                task=task, user=self.user, started_at=start, ended_at=start + timedelta(minutes=minutes)
+            )
+
+        send_weekly_summaries(now=monday)
+
+        self.assertIn("Erfasste Zeit letzte Woche: 50 min\n- Angebot schreiben (50 min)", mail.outbox[0].body)
+
     def test_automation_command_runs_one_cycle_by_default(self):
         result = {
             "reminder_emails": {"sent": 1, "failed": 0},

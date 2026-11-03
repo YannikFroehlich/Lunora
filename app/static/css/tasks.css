@@ -1390,7 +1390,7 @@
   background: var(--surface-control);
 }
 
-/* List / board switch in the toolbar. */
+/* List / board switch in the toolbar (also the week / month links of the time report). */
 .task-layout-switch {
   display: inline-flex;
   gap: 3px;
@@ -1400,7 +1400,8 @@
   border-radius: var(--radius-xs);
 }
 
-.task-layout-switch button {
+.task-layout-switch button,
+.task-layout-switch a {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1412,10 +1413,12 @@
   background: transparent;
   border: 0;
   border-radius: var(--radius-xs);
+  text-decoration: none;
   cursor: pointer;
 }
 
-.task-layout-switch button[aria-pressed="true"] {
+.task-layout-switch button[aria-pressed="true"],
+.task-layout-switch a[aria-current="page"] {
   color: var(--color-heading);
   background: var(--surface-selected);
 }
@@ -1911,6 +1914,10 @@
   grid-template-columns: 32px minmax(0, 1fr) 92px;
   align-items: center;
   gap: 10px;
+}
+
+.time-days.is-weeks li {
+  grid-template-columns: 52px minmax(0, 1fr) 92px;
 }
 
 .time-day-name {

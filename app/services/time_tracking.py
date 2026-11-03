@@ -1,4 +1,4 @@
-"""Time tracking for tasks: one running timer per user, finished spans, manual entries, a weekly report.
+"""Time tracking for tasks: one running timer per user, finished spans, manual entries, a weekly/monthly report.
 
 Entries are private to the user who tracked them, also on shared or assigned tasks; every function
 here filters on ``user``. A task can only be tracked when it is in ``visible_tasks(user)``.
@@ -16,6 +16,7 @@ from app.services.tasks import visible_tasks
 from app.services.user_preferences import (
     format_user_date,
     format_user_time,
+    get_user_month_name,
     get_user_weekday_name,
     get_user_zoneinfo,
     localtime_for_user,
@@ -161,48 +162,130 @@ def week_start_for(value, user):
     return today - timedelta(days=today.weekday())
 
 
-def week_report(user, week_start, *, now=None):
-    """Per day and per task totals for one week, plus its entries (newest first)."""
+def month_start_for(value, user):
+    """First day of the month in ``value`` ("2026-11") or of today's month."""
+    if value:
+        try:
+            year, month = value.split("-")
+            return date(int(year), int(month), 1)
+        except ValueError:
+            pass
+    return localtime_for_user(profile_or_user=user).date().replace(day=1)
+
+
+def _week_value(day):
+    return "{}-W{:02d}".format(*day.isocalendar()[:2])
+
+
+def _month_value(day):
+    return f"{day.year}-{day.month:02d}"
+
+
+def _next_month(day):
+    return (day.replace(day=28) + timedelta(days=4)).replace(day=1)
+
+
+def _group_rows(seconds_by_group, total):
+    """``{(key, name): seconds}`` as rows sorted by time, with their share of ``total``."""
+    return [
+        {
+            "name": name,
+            "seconds": seconds,
+            "label": format_duration(seconds),
+            "percent": round(100 * seconds / total) if total else 0,
+        }
+        for (_key, name), seconds in sorted(seconds_by_group.items(), key=lambda item: item[1], reverse=True)
+    ]
+
+
+def time_report(user, period, start, *, now=None):
+    """Totals for one ``period`` ("week" or "month") starting at ``start``, plus its entries (newest first).
+
+    A week has one bar per day, a month one per ISO week (clipped to the month). ``lists`` and ``labels``
+    stay empty when they would not split anything: all time in one list, or no tracked task has a label.
+    """
     current_time = now or timezone.now()
     user_timezone = get_user_zoneinfo(user)
-    range_start = timezone.make_aware(datetime.combine(week_start, time.min), user_timezone)
-    range_end = timezone.make_aware(datetime.combine(week_start + timedelta(days=7), time.min), user_timezone)
+    end = start + timedelta(days=7) if period == "week" else _next_month(start)
+    range_start = timezone.make_aware(datetime.combine(start, time.min), user_timezone)
+    range_end = timezone.make_aware(datetime.combine(end, time.min), user_timezone)
     entries = list(
         TaskTimeEntry.objects.filter(user=user, started_at__gte=range_start, started_at__lt=range_end)
         .select_related("task", "task__task_list")
+        .prefetch_related("task__labels")
         .order_by("-started_at", "-id")
     )
-    day_seconds = {week_start + timedelta(days=offset): 0 for offset in range(7)}
+
+    bucket_days = {}
+    for offset in range((end - start).days):
+        day = start + timedelta(days=offset)
+        key = day if period == "week" else day - timedelta(days=day.weekday())
+        bucket_days.setdefault(key, []).append(day)
+    bucket_of = {day: key for key, days in bucket_days.items() for day in days}
+    bucket_seconds = dict.fromkeys(bucket_days, 0)
     task_seconds = {}
+    list_seconds = {}
+    label_seconds = {}
     for entry in entries:
         seconds = entry.duration_seconds(current_time)
-        day_seconds[localtime_for_user(entry.started_at, user).date()] += seconds
-        task_seconds.setdefault(entry.task, 0)
-        task_seconds[entry.task] += seconds
-    total = sum(day_seconds.values())
-    busiest = max(day_seconds.values()) or 1
-    iso_year, iso_week, _weekday = week_start.isocalendar()
-    previous_start = week_start - timedelta(days=7)
-    next_start = week_start + timedelta(days=7)
+        task = entry.task
+        bucket_seconds[bucket_of[localtime_for_user(entry.started_at, user).date()]] += seconds
+        task_seconds[task] = task_seconds.get(task, 0) + seconds
+        list_key = (task.task_list_id, task.task_list.name if task.task_list else "Eingang")
+        list_seconds[list_key] = list_seconds.get(list_key, 0) + seconds
+        # A task with several labels counts for each of them.
+        for label_key in [(label.pk, label.name) for label in task.labels.all()] or [(None, "Ohne Label")]:
+            label_seconds[label_key] = label_seconds.get(label_key, 0) + seconds
+    total = sum(bucket_seconds.values())
+    busiest = max(bucket_seconds.values()) or 1
+
+    def bucket_row(key, seconds):
+        if period == "week":
+            weekday = get_user_weekday_name(key, user)
+            short, long = weekday[:2], f"{weekday}, {format_user_date(key, user)}"
+        else:
+            short = f"KW {key.isocalendar()[1]}"
+            first, last = bucket_days[key][0], bucket_days[key][-1]
+            long = format_user_date(first, user)
+            if last != first:
+                long += f" – {format_user_date(last, user)}"
+        return {
+            "short": short,
+            "long": long,
+            "seconds": seconds,
+            "label": format_duration(seconds) if seconds else "–",
+            "percent": round(100 * seconds / busiest),
+        }
+
+    local_today = localtime_for_user(current_time, user).date()
+    is_current = start <= local_today < end
+    if period == "week":
+        previous_start = start - timedelta(days=7)
+        value, previous_value, next_value = _week_value(start), _week_value(previous_start), _week_value(end)
+        last_day = format_user_date(end - timedelta(days=1), user)
+        label = f"KW {start.isocalendar()[1]} · {format_user_date(start, user)} – {last_day}"
+    else:
+        previous_start = (start - timedelta(days=1)).replace(day=1)
+        value, previous_value, next_value = (
+            _month_value(start),
+            _month_value(previous_start),
+            _month_value(end),
+        )
+        label = f"{get_user_month_name(start, user)} {start.year}"
     return {
-        "week_value": f"{iso_year}-W{iso_week:02d}",
-        "label": f"KW {iso_week} · {format_user_date(week_start, user)} – "
-        f"{format_user_date(week_start + timedelta(days=6), user)}",
-        "previous_value": "{}-W{:02d}".format(*previous_start.isocalendar()[:2]),
-        "next_value": "{}-W{:02d}".format(*next_start.isocalendar()[:2]),
-        "is_current": week_start <= localtime_for_user(current_time, user).date() < next_start,
+        "period": period,
+        "is_week": period == "week",
+        "value": value,
+        "label": label,
+        "previous_value": previous_value,
+        "next_value": next_value,
+        "is_current": is_current,
+        # Targets of the week/month switch: this week's month, or the month's current/first week.
+        "week_value": value if period == "week" else _week_value(local_today if is_current else start),
+        "month_value": value if period == "month" else _month_value(start),
         "total_seconds": total,
         "total_label": format_duration(total) if total else "0 min",
-        "days": [
-            {
-                "weekday": get_user_weekday_name(day, user),
-                "date_label": format_user_date(day, user),
-                "seconds": seconds,
-                "label": format_duration(seconds) if seconds else "–",
-                "percent": round(100 * seconds / busiest),
-            }
-            for day, seconds in day_seconds.items()
-        ],
+        "buckets": [bucket_row(key, seconds) for key, seconds in bucket_seconds.items()],
         "tasks": [
             {
                 "title": task.title,
@@ -213,6 +296,8 @@ def week_report(user, week_start, *, now=None):
             }
             for task, seconds in sorted(task_seconds.items(), key=lambda item: item[1], reverse=True)
         ],
+        "lists": _group_rows(list_seconds, total) if len(list_seconds) > 1 else [],
+        "labels": _group_rows(label_seconds, total) if any(key for key, _name in label_seconds) else [],
         "entries": [
             {
                 "id": entry.pk,
@@ -228,8 +313,8 @@ def week_report(user, week_start, *, now=None):
     }
 
 
-def week_report_csv(report):
-    """The week's entries as semicolon-separated CSV (opens directly in German Excel)."""
+def time_report_csv(report):
+    """The period's entries as semicolon-separated CSV (opens directly in German Excel)."""
     buffer = io.StringIO()
     writer = csv.writer(buffer, delimiter=";")
     writer.writerow(["Datum", "Zeit", "Aufgabe", "Dauer"])

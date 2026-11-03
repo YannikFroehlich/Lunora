@@ -6,6 +6,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Time report by month: "Woche | Monat" on the Zeiterfassung page switches to a monthly view with
+  one bar per calendar week and a CSV per month. Both views also sum the time per task list and per
+  label (a task with several labels counts for each), and the Monday summary e-mail now lists last
+  week's tracked time with the three biggest tasks.
 - Time tracking for tasks: a play/stop button on every open task starts a timer (starting another
   one stops the first, finishing the task stops it too), a banner shows what's running, and each
   task shows the time you tracked on it. "Zeiterfassung" (`/tasks/time/`) shows the week per day
