@@ -354,17 +354,6 @@
             </section>
             {% endif %}
         </div>
-
-        <section class="glass-panel month-stats">
-            <article><i class="fa-regular fa-calendar"></i><strong>{{ month_stats.events }}</strong><span>Termine</span><small>in {{ month_label }}</small></article>
-            <article><i class="fa-regular fa-sun"></i><strong>{{ month_stats.free_days }}</strong><span>Freie Tage</span><small>ohne Termine</small></article>
-            <article><i class="fa-regular fa-circle-check"></i><strong>{{ month_stats.synced_days }}</strong><span>Aktive Tage</span><small>mit Terminen</small></article>
-            <article class="mini-chart">
-                {% for bar in month_stats.chart_bars %}
-                <span style="--bar-height: {{ bar.height }}px" title="{{ bar.count }} Termine"></span>
-                {% endfor %}
-            </article>
-        </section>
     </div>
 </section>
 
