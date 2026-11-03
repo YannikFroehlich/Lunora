@@ -15,8 +15,8 @@ from django.shortcuts import redirect, render
 from django.urls import reverse_lazy
 
 from app.forms import LOGIN_ATTEMPT_LIMIT, LOGIN_ATTEMPT_LOCKOUT_SECONDS, EmailLoginForm, RegistrationForm
-from app.models import Profile
-from app.services import two_factor
+from app.models import AuditLogEntry, Profile
+from app.services import audit_log, two_factor
 from app.services.system_settings import normal_user_login_enabled, user_can_login
 from app.services.turnstile import verify_registration_token
 
@@ -84,6 +84,9 @@ def login_two_factor(request):
                 login(request, profile.user, backend=pending["backend"])
                 return redirect(pending["next"])
             cache.set(attempts_key, cache.get(attempts_key, 0) + 1, LOGIN_ATTEMPT_LOCKOUT_SECONDS)
+            audit_log.record(
+                AuditLogEntry.ACTION_TWO_FACTOR_FAILED, request, actor=profile.user if profile else None
+            )
             error = "Der Code ist ungültig oder wurde bereits verwendet."
 
     return render(request, "app/login_two_factor.html", {"error": error})
@@ -109,6 +112,11 @@ class LunoraPasswordResetConfirmView(PasswordResetConfirmView):
     template_name = "app/password_reset_confirm.html"
     success_url = reverse_lazy("password_reset_complete")
 
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        audit_log.record(AuditLogEntry.ACTION_PASSWORD_RESET, self.request, actor=form.user)
+        return response
+
 
 class LunoraPasswordResetCompleteView(PasswordResetCompleteView):
     template_name = "app/password_reset_complete.html"
@@ -132,6 +140,7 @@ def register(request):
             )
         if form_is_valid and turnstile_is_valid:
             user = form.save()
+            audit_log.record(AuditLogEntry.ACTION_REGISTER, request, actor=user)
             login(request, user)
             return redirect("home")
     else:

@@ -6,6 +6,17 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Edit chat messages: "Bearbeiten" in the menu of your own message (up to 24 hours after sending,
+  not for forwarded messages or polls) puts the text back into the input field; Enter saves,
+  Escape cancels. Edited messages say "bearbeitet", and changed @-mentions notify newly named
+  people and withdraw the notification from those no longer named.
+- Calendar agenda view: "Agenda" lists the next four weeks as a list of days with events, tasks,
+  holidays and vacations, skipping empty days. Times show where multi-day events start and end,
+  own events open the edit dialog, and tasks can be ticked off right there.
+- Audit log on the administration page: logins and failed logins, logouts, registrations, password
+  resets, 2FA changes, signed-out devices, calendar feed links, data exports, account deletions,
+  changed switches and "Alle anderen ausloggen", with account, time and IP address, filterable and
+  kept for 180 days. Failed logins for unknown accounts don't store what was typed.
 - Polls in group chats: "+" → "Umfrage erstellen" asks a question with 2–10 answers (optionally
   several per person). Everyone taps an answer to vote or to take the vote back, sees the counts
   and who voted, and the creator can end the poll.

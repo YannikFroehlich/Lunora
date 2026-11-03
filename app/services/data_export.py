@@ -265,6 +265,7 @@ def _messages(user, archive):
             "body": message.body,
             "forwarded": message.is_forwarded,
             "created_at": message.created_at,
+            "edited_at": message.edited_at,
             "attachment": attachment_paths.get(message.pk),
             "poll": _poll_export(message),
         }

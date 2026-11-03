@@ -1,16 +1,20 @@
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.core import mail
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 
+from app.forms import SystemSettingsForm
 from app.models import (
+    AuditLogEntry,
     CalendarEvent,
     CalendarReminder,
     Profile,
     SystemSettings,
 )
+from app.services import audit_log
 
 
 class AdministrationFeatureFlagTests(TestCase):
@@ -221,3 +225,144 @@ class AdministrationFeatureFlagTests(TestCase):
         self.assertEqual(admin_client.get("/administration/").status_code, 200)
         self.assertRedirects(user_client.get("/home/"), "/login/?next=/home/")
         self.assertRedirects(other_admin_client.get("/administration/"), "/login/?next=/administration/")
+
+
+class AuditLogTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(
+            username="admin@example.com", email="admin@example.com", password="secret-12345"
+        )
+        self.user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=self.admin, display_name="Admin")
+        self.profile = Profile.objects.create(user=self.user, display_name="Mira")
+
+    def entries(self, action=None):
+        entries = AuditLogEntry.objects.order_by("created_at", "id")
+        return entries.filter(action=action) if action else entries
+
+    def test_login_logout_and_failed_logins_are_recorded(self):
+        self.client.post("/login/", {"username": "mira@example.com", "password": "falsch"})
+        self.client.post("/login/", {"username": "niemand@example.com", "password": "falsch"})
+        self.client.post("/login/", {"username": "mira@example.com", "password": "secret-12345"})
+        self.client.post("/logout/")
+
+        failed_known, failed_unknown = self.entries(AuditLogEntry.ACTION_LOGIN_FAILED)
+        self.assertEqual(failed_known.actor, self.user)
+        self.assertIsNone(failed_unknown.actor)
+        self.assertEqual(failed_unknown.summary, "Unbekanntes Konto")
+        # The typed identifier of an unknown account is never stored.
+        self.assertFalse(AuditLogEntry.objects.filter(actor_label__contains="niemand").exists())
+        login = self.entries(AuditLogEntry.ACTION_LOGIN).get()
+        self.assertEqual(
+            (login.actor, login.actor_label, login.ip_address), (self.user, "mira@example.com", "127.0.0.1")
+        )
+        self.assertTrue(self.entries(AuditLogEntry.ACTION_LOGOUT).filter(actor=self.user).exists())
+
+    @override_settings(LUNORA_CLIENT_IP_HEADER="CF-Connecting-IP")
+    def test_client_ip_header_is_used_when_configured(self):
+        self.client.post(
+            "/login/",
+            {"username": "mira@example.com", "password": "secret-12345"},
+            HTTP_CF_CONNECTING_IP="203.0.113.7",
+        )
+
+        self.assertEqual(self.entries(AuditLogEntry.ACTION_LOGIN).get().ip_address, "203.0.113.7")
+
+    def test_invalid_ip_values_are_dropped(self):
+        from django.test import RequestFactory
+
+        from app.services.audit_log import client_ip
+
+        request = RequestFactory().get("/", REMOTE_ADDR="kein-ip")
+
+        self.assertIsNone(client_ip(request))
+
+    def test_security_settings_changes_are_recorded(self):
+        from app.services import two_factor
+
+        self.client.force_login(self.user)
+        self.client.post("/settings/", {"form_name": "two_factor_setup"})
+        secret = self.client.session["two_factor_setup_secret"]
+        self.client.post(
+            "/settings/",
+            {
+                "form_name": "two_factor_enable",
+                "code": two_factor.totp_code(secret, two_factor.current_step()),
+            },
+        )
+        self.client.post("/settings/", {"form_name": "two_factor_recovery_codes", "password": "secret-12345"})
+        self.client.post("/settings/", {"form_name": "two_factor_disable", "password": "secret-12345"})
+        self.client.post("/settings/", {"form_name": "session_revoke_others"})
+        self.client.get("/settings/export/").close()
+
+        self.assertEqual(
+            list(self.entries().exclude(action=AuditLogEntry.ACTION_LOGIN).values_list("action", flat=True)),
+            [
+                AuditLogEntry.ACTION_TWO_FACTOR_ENABLED,
+                AuditLogEntry.ACTION_RECOVERY_CODES,
+                AuditLogEntry.ACTION_TWO_FACTOR_DISABLED,
+                AuditLogEntry.ACTION_SESSIONS_REVOKED,
+                AuditLogEntry.ACTION_DATA_EXPORT,
+            ],
+        )
+        self.assertTrue(self.entries().filter(actor=self.user).exists())
+
+    def test_account_deletion_keeps_the_label(self):
+        self.client.force_login(self.user)
+
+        self.client.post("/settings/", {"form_name": "account_delete", "password": "secret-12345"})
+
+        entry = self.entries(AuditLogEntry.ACTION_ACCOUNT_DELETED).get()
+        self.assertIsNone(entry.actor)
+        self.assertEqual(entry.actor_label, "mira@example.com")
+        self.assertFalse(self.entries(AuditLogEntry.ACTION_LOGOUT).exists())
+
+    def test_admin_actions_are_recorded_with_changed_switches(self):
+        self.client.force_login(self.admin)
+        current = SystemSettingsForm(instance=SystemSettings.objects.get_or_create(pk=1)[0]).initial
+        data = {name: "on" for name, value in current.items() if value is True}
+        data.pop("weather_enabled", None)
+
+        self.client.post("/administration/", {"form_name": "system_settings", **data})
+        self.client.post("/administration/", {"form_name": "system_settings", **data})
+        self.client.post("/administration/", {"form_name": "force_logout_all"})
+
+        changed = self.entries(AuditLogEntry.ACTION_SETTINGS_CHANGED).get()
+        self.assertEqual(changed.summary, "Wetter: aus")
+        self.assertEqual(changed.actor, self.admin)
+        self.assertTrue(self.entries(AuditLogEntry.ACTION_FORCE_LOGOUT).exists())
+
+    def test_administration_page_lists_and_filters_entries(self):
+        audit_log.record(AuditLogEntry.ACTION_LOGIN, actor=self.user)
+        audit_log.record(AuditLogEntry.ACTION_LOGIN_FAILED, actor=self.user, summary="")
+        self.client.force_login(self.admin)
+
+        response = self.client.get("/administration/")
+        self.assertContains(response, "Audit-Log")
+        self.assertContains(response, "Fehlgeschlagene Anmeldung")
+        self.assertContains(response, 'class="is-warning"')
+
+        warnings = self.client.get("/administration/", {"audit": "warnings"}).context["audit_log"]
+        self.assertEqual([item["action"] for item in warnings["items"]], [AuditLogEntry.ACTION_LOGIN_FAILED])
+
+    def test_only_superusers_see_the_audit_log(self):
+        self.client.force_login(self.user)
+
+        self.assertEqual(self.client.get("/administration/").status_code, 403)
+
+    def test_old_entries_are_purged_by_the_automations(self):
+        from app.services.scheduled_tasks import run_scheduled_tasks
+
+        old = audit_log.record(AuditLogEntry.ACTION_LOGIN, actor=self.user)
+        AuditLogEntry.objects.filter(pk=old.pk).update(created_at=timezone.now() - timedelta(days=181))
+        audit_log.record(AuditLogEntry.ACTION_LOGIN, actor=self.user)
+
+        self.assertEqual(run_scheduled_tasks()["audit_log"], {"purged": 1})
+        self.assertEqual(AuditLogEntry.objects.count(), 1)
+
+    def test_a_failing_write_does_not_break_the_request(self):
+        with patch("app.services.audit_log.AuditLogEntry.objects.create", side_effect=RuntimeError("db")):
+            with self.assertLogs("app.services.audit_log", level="ERROR"):
+                self.assertIsNone(audit_log.record(AuditLogEntry.ACTION_LOGIN, actor=self.user))

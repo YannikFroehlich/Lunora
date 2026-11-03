@@ -1,0 +1,69 @@
+{% if calendar_agenda.days %}
+<ol class="calendar-agenda" aria-label="Agenda">
+    {% for day in calendar_agenda.days %}
+    <li class="agenda-day{% if day.today %} is-today{% endif %}" data-date="{{ day.date_input }}">
+        <header class="agenda-day-head">
+            <h3><span>{{ day.weekday }}</span> {{ day.date_label }}{% if day.today %} <small class="agenda-today-badge">Heute</small>{% endif %}</h3>
+            {% if calendar_event_creation_enabled %}
+            <button class="icon-button" type="button" data-event-date="{{ day.date_input }}" aria-label="Termin am {{ day.date_label }} anlegen" title="Termin anlegen"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
+            {% endif %}
+        </header>
+        {% if day.markers %}
+        <div class="day-markers">
+            {% for marker in day.markers %}
+            <a class="day-marker tone-{{ marker.tone }}" href="{{ marker.url }}" title="{{ marker.label }} – im Urlaubsplaner öffnen">{{ marker.label }}</a>
+            {% endfor %}
+        </div>
+        {% endif %}
+        <ul class="agenda-items">
+            {% for event in day.events %}
+            <li class="agenda-item tone-{{ event.tone }}{% if event.is_invited %} is-invited{% endif %}">
+                <time class="agenda-time">{{ event.time }}</time>
+                <span class="agenda-dot" aria-hidden="true"></span>
+                <span class="agenda-copy">
+                    <a class="agenda-title" href="{{ event.day_url }}">{{ event.label }}</a>
+                    <small>
+                        {{ event.category }}
+                        {% if event.is_invited %}· <i class="fa-solid fa-user-group" aria-hidden="true"></i> Einladung{% endif %}
+                        {% if event.recurrence_id %}· <i class="fa-solid fa-repeat" aria-hidden="true"></i><span class="visually-hidden">Wiederkehrend</span>{% endif %}
+                        {% if event.has_reminder %}· <i class="fa-regular fa-bell event-reminder-icon" aria-hidden="true"></i><span class="visually-hidden">Mit Erinnerung</span>{% endif %}
+                    </small>
+                    {% include 'app/partials/calendar_location_link.html' with item=event %}
+                </span>
+                {% if event.can_delete %}
+                <button class="icon-button" type="button" aria-label="Termin „{{ event.label }}“ bearbeiten" {% include 'app/partials/calendar_event_edit_data.html' %}><i class="fa-solid fa-pen" aria-hidden="true"></i></button>
+                {% endif %}
+            </li>
+            {% endfor %}
+            {% for task in day.tasks %}
+            <li class="agenda-item is-task">
+                <time class="agenda-time">{{ task.time }}</time>
+                <form class="agenda-task" method="post" action="{% url 'tasks' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="task_toggle">
+                    <input type="hidden" name="task_id" value="{{ task.id }}">
+                    <input type="hidden" name="return_to" value="{{ request.get_full_path }}">
+                    <input type="checkbox" name="is_done" onchange="this.form.submit()" aria-label="Aufgabe „{{ task.label }}“ erledigen">
+                </form>
+                <span class="agenda-copy">
+                    <span class="agenda-title">{{ task.label }}</span>
+                    <small>Aufgabe{% if task.owner_name %} · zugewiesen von {{ task.owner_name }}{% endif %}</small>
+                </span>
+            </li>
+            {% endfor %}
+        </ul>
+    </li>
+    {% endfor %}
+</ol>
+{% else %}
+<div class="empty-state-card">
+    <i class="fa-regular fa-calendar-check" aria-hidden="true"></i>
+    <div>
+        <strong>Nichts geplant</strong>
+        <p>In diesen {{ calendar_agenda.day_count }} Tagen stehen keine Termine, Aufgaben oder Feiertage an.</p>
+        {% if calendar_event_creation_enabled %}
+        <button class="ghost-button" type="button" data-event-dialog-open><i class="fa-solid fa-plus" aria-hidden="true"></i> Termin anlegen</button>
+        {% endif %}
+    </div>
+</div>
+{% endif %}

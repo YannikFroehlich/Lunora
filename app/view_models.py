@@ -58,6 +58,8 @@ from app.services.vocabulary import due_filter
 
 # Calendar views: the month grid plus time-grid views showing this many days side by side.
 CALENDAR_TIME_GRID_DAYS = {"week": 7, "three_days": 3, "day": 1}
+# The agenda lists this many days from its anchor day, skipping days without entries.
+CALENDAR_AGENDA_DAYS = 28
 # Years the year view accepts in the URL.
 CALENDAR_YEAR_RANGE = (1900, 2200)
 # Time grid: the shortest height an event gets, and where the grid starts scrolled for ranges
@@ -601,7 +603,8 @@ def _upcoming_vacation_items(user, now, limit):
 def get_calendar_context(user, *, year=None, month=None, view=None, day=None):
     user_timezone = get_user_zoneinfo(user)
     now = localtime_for_user(profile_or_user=user)
-    view = view if view in CALENDAR_TIME_GRID_DAYS or view == "year" else "month"
+    view = view if view in CALENDAR_TIME_GRID_DAYS or view in {"year", "agenda"} else "month"
+    view_days = CALENDAR_AGENDA_DAYS if view == "agenda" else CALENDAR_TIME_GRID_DAYS.get(view)
     anchor = None
     grid_start = None
     if view == "year":
@@ -614,8 +617,8 @@ def get_calendar_context(user, *, year=None, month=None, view=None, day=None):
             year = now.year
         month = now.month if year == now.year else 1
     elif view != "month":
-        # Time-grid views are anchored on a day (the week view on any day of its week); the stats
-        # below then belong to that day's month, and the queried range covers both.
+        # Time-grid views and the agenda are anchored on a day (the week view on any day of its
+        # week); the stats below then belong to that day's month, and the queried range covers both.
         try:
             anchor = date.fromisoformat(day) if day else now.date()
         except (TypeError, ValueError):
@@ -637,7 +640,7 @@ def get_calendar_context(user, *, year=None, month=None, view=None, day=None):
     visible_end = weeks[-1][-1] + timedelta(days=1)
     if grid_start is not None:
         visible_start = min(visible_start, grid_start)
-        visible_end = max(visible_end, grid_start + timedelta(days=CALENDAR_TIME_GRID_DAYS[view]))
+        visible_end = max(visible_end, grid_start + timedelta(days=view_days))
     range_start = timezone.make_aware(datetime.combine(visible_start, time.min), user_timezone)
     range_end = timezone.make_aware(datetime.combine(visible_end, time.min), user_timezone)
     events = list(
@@ -732,7 +735,14 @@ def get_calendar_context(user, *, year=None, month=None, view=None, day=None):
     calendar_url = reverse("calendar")
     time_grid = None
     year_grid = None
-    if view == "year":
+    agenda = None
+    if view == "agenda":
+        agenda = _calendar_agenda(user, anchor, now, events_by_date, tasks_by_date, markers)
+        period_label = "Agenda"
+        step = timedelta(days=CALENDAR_AGENDA_DAYS)
+        prev_url = f"{calendar_url}?view=agenda&date={(anchor - step).isoformat()}"
+        next_url = f"{calendar_url}?view=agenda&date={(anchor + step).isoformat()}"
+    elif view == "year":
         year_grid = _calendar_year_grid(user, year, now, tasks_enabled)
         period_label = str(year)
         prev_url = f"{calendar_url}?view=year&year={year - 1}"
@@ -776,6 +786,7 @@ def get_calendar_context(user, *, year=None, month=None, view=None, day=None):
         "calendar_rows": rows,
         "calendar_grid": time_grid,
         "calendar_year": year_grid,
+        "calendar_agenda": agenda,
         "period_label": period_label,
         "prev_url": prev_url,
         "next_url": next_url,
@@ -804,6 +815,77 @@ def get_calendar_context(user, *, year=None, month=None, view=None, day=None):
         "tasks_enabled": tasks_enabled,
         "due_tasks": due_tasks,
     }
+
+
+def _calendar_agenda(user, start, now, events_by_date, tasks_by_date, markers):
+    """The agenda: the days from ``start`` that have events, tasks or planner markers, in order."""
+    days = []
+    for offset in range(CALENDAR_AGENDA_DAYS):
+        day = start + timedelta(days=offset)
+        # A timed event ending exactly at midnight doesn't continue into the next day.
+        day_events = [
+            event
+            for event in events_by_date.get(day, [])
+            if event.is_all_day
+            or localtime_for_user(event.end_at - timedelta(microseconds=1), user).date() >= day
+        ]
+        day_tasks = tasks_by_date.get(day, [])
+        day_markers = markers.get(day, [])
+        if not (day_events or day_tasks or day_markers):
+            continue
+        days.append(
+            {
+                "date_input": day.isoformat(),
+                "weekday": get_user_weekday_name(day, user),
+                "date_label": format_user_date(day, user),
+                "today": day == now.date(),
+                "markers": [
+                    {
+                        "label": marker["label"],
+                        "tone": "red" if marker["kind"] == "holiday" else "green",
+                        "url": _vacation_calendar_url(day),
+                    }
+                    for marker in day_markers
+                ],
+                "events": [
+                    {
+                        "label": event.title,
+                        "tone": _calendar_event_tone(event),
+                        "time": _agenda_time_label(event, day, user),
+                        "category": event.get_category_display(),
+                        "is_invited": event.user_id != user.id,
+                        "day_url": f"{reverse('calendar')}?view=day&date={day.isoformat()}",
+                        **_calendar_event_manage_fields(event, user),
+                    }
+                    for event in day_events
+                ],
+                "tasks": [_calendar_task_item(task, user) for task in day_tasks],
+            }
+        )
+    last_day = start + timedelta(days=CALENDAR_AGENDA_DAYS - 1)
+    return {
+        "days": days,
+        "label": f"{format_user_date(start, user)} – {format_user_date(last_day, user)}",
+        "day_count": CALENDAR_AGENDA_DAYS,
+    }
+
+
+def _agenda_time_label(event, day, user):
+    """Time of an event on one agenda day; multi-day events say where they start or end."""
+    if event.is_all_day:
+        return "Ganztägig"
+    start = localtime_for_user(event.start_at, user)
+    # An event ending exactly at midnight belongs to the day before.
+    end = localtime_for_user(event.end_at - timedelta(microseconds=1), user)
+    starts_today = start.date() == day
+    ends_today = end.date() == day
+    if starts_today and ends_today:
+        return f"{format_user_time(event.start_at, user)}–{format_user_time(event.end_at, user)}"
+    if starts_today:
+        return f"ab {format_user_time(event.start_at, user)}"
+    if ends_today:
+        return f"bis {format_user_time(event.end_at, user)}"
+    return "Ganztägig"
 
 
 def _calendar_year_grid(user, year, now, tasks_enabled):

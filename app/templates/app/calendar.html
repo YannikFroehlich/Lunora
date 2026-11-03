@@ -20,9 +20,9 @@
     <div class="calendar-layout">
         <section class="glass-panel month-panel" aria-labelledby="calendar-month-title">
             <div class="month-toolbar">
-                <a class="icon-button" href="{{ prev_url }}" aria-label="{% if calendar_view == 'year' %}Vorheriges Jahr{% elif calendar_view == 'week' %}Vorherige Woche{% elif calendar_view == 'three_days' %}Vorherige drei Tage{% elif calendar_view == 'day' %}Vorheriger Tag{% else %}Vorheriger Monat{% endif %}"><i class="fa-solid fa-chevron-left"></i></a>
-                <h2 id="calendar-month-title">{{ period_label }}{% if calendar_grid %} <small>{{ calendar_grid.range_label }}</small>{% endif %}</h2>
-                <a class="icon-button" href="{{ next_url }}" aria-label="{% if calendar_view == 'year' %}Nächstes Jahr{% elif calendar_view == 'week' %}Nächste Woche{% elif calendar_view == 'three_days' %}Nächste drei Tage{% elif calendar_view == 'day' %}Nächster Tag{% else %}Nächster Monat{% endif %}"><i class="fa-solid fa-chevron-right"></i></a>
+                <a class="icon-button" href="{{ prev_url }}" aria-label="{% if calendar_view == 'year' %}Vorheriges Jahr{% elif calendar_view == 'agenda' %}Vorherige vier Wochen{% elif calendar_view == 'week' %}Vorherige Woche{% elif calendar_view == 'three_days' %}Vorherige drei Tage{% elif calendar_view == 'day' %}Vorheriger Tag{% else %}Vorheriger Monat{% endif %}"><i class="fa-solid fa-chevron-left"></i></a>
+                <h2 id="calendar-month-title">{{ period_label }}{% if calendar_grid %} <small>{{ calendar_grid.range_label }}</small>{% elif calendar_agenda %} <small>{{ calendar_agenda.label }}</small>{% endif %}</h2>
+                <a class="icon-button" href="{{ next_url }}" aria-label="{% if calendar_view == 'year' %}Nächstes Jahr{% elif calendar_view == 'agenda' %}Nächste vier Wochen{% elif calendar_view == 'week' %}Nächste Woche{% elif calendar_view == 'three_days' %}Nächste drei Tage{% elif calendar_view == 'day' %}Nächster Tag{% else %}Nächster Monat{% endif %}"><i class="fa-solid fa-chevron-right"></i></a>
                 <span class="toolbar-spacer"></span>
                 <nav class="calendar-view-switch" aria-label="Ansicht">
                     {% for option in calendar_view_options %}
@@ -52,7 +52,10 @@
             </form>
             {% endif %}
 
-            {% if calendar_year %}
+            {% if calendar_agenda %}
+            <p class="calendar-hint">Die nächsten {{ calendar_agenda.day_count }} Tage als Liste; Tage ohne Einträge werden übersprungen. Ein Titel öffnet die Tagesansicht.</p>
+            {% include 'app/partials/calendar_agenda.html' %}
+            {% elif calendar_year %}
             <p class="calendar-hint">Ein Tag öffnet die Tagesansicht, ein Monatsname die Monatsansicht. Je kräftiger ein Tag gefärbt ist, desto mehr Termine und Aufgaben liegen darauf.</p>
             {% include 'app/partials/calendar_year.html' %}
             {% elif calendar_grid %}

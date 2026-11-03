@@ -569,10 +569,12 @@
   const pinLabel = contextMenu.querySelector("[data-menu-pin-label]");
   const replyButton = contextMenu.querySelector('[data-menu-action="reply"]');
   const forwardButton = contextMenu.querySelector('[data-menu-action="forward"]');
+  const editButton = contextMenu.querySelector('[data-menu-action="edit"]');
   const reactionGroup = contextMenu.querySelector("[data-context-reactions]");
   let activeBubble = null;
 
   const startReplyTo = (bubble) => {
+    cancelEdit();
     const strip = document.getElementById("reply-preview-strip");
     const replyToInput = document.getElementById("compose-reply-to-id");
     if (!strip || !replyToInput) {
@@ -586,6 +588,66 @@
 
     document.querySelector(".compose-bar textarea")?.focus();
   };
+
+  // Editing reuses the compose field: the form posts "message_edit" with the message id instead.
+  let editDraft = "";
+  let editReturnFocus = null;
+
+  const isEditing = () => document.getElementById("compose-form-name")?.value === "message_edit";
+
+  const startEdit = (bubble) => {
+    const strip = document.getElementById("edit-preview-strip");
+    const formName = document.getElementById("compose-form-name");
+    const idInput = document.getElementById("compose-edit-message-id");
+    const textarea = document.querySelector(".compose-bar textarea");
+    if (!strip || !formName || !idInput || !textarea) {
+      return;
+    }
+    cancelReply();
+    setScheduleActive(false);
+    if (!isEditing()) {
+      editDraft = textarea.value;
+    }
+    formName.value = "message_edit";
+    idInput.disabled = false;
+    idInput.value = bubble.dataset.messageId;
+    textarea.value = bubble.dataset.editBody || "";
+    strip.hidden = false;
+    textarea.closest(".compose-bar")?.classList.add("is-editing");
+    editReturnFocus = bubble;
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+  };
+
+  const cancelEdit = () => {
+    const strip = document.getElementById("edit-preview-strip");
+    const formName = document.getElementById("compose-form-name");
+    const idInput = document.getElementById("compose-edit-message-id");
+    const textarea = document.querySelector(".compose-bar textarea");
+    if (!isEditing()) {
+      return;
+    }
+    formName.value = "message";
+    idInput.disabled = true;
+    idInput.value = "";
+    if (strip) {
+      strip.hidden = true;
+    }
+    if (textarea) {
+      textarea.value = editDraft;
+      textarea.closest(".compose-bar")?.classList.remove("is-editing");
+    }
+    editDraft = "";
+    editReturnFocus?.focus();
+    editReturnFocus = null;
+  };
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && isEditing() && event.target.matches?.(".compose-bar textarea")) {
+      event.preventDefault();
+      cancelEdit();
+    }
+  });
 
   const cancelReply = () => {
     const strip = document.getElementById("reply-preview-strip");
@@ -672,6 +734,10 @@
       forwardButton.hidden = bubble.dataset.canForward !== "true";
     }
 
+    if (editButton) {
+      editButton.hidden = bubble.dataset.canEdit !== "true";
+    }
+
     placeContextMenu(point || event);
     contextMenu.querySelector("button:not([hidden])")?.focus();
   };
@@ -726,6 +792,11 @@
       return;
     }
 
+    if (action === "edit") {
+      startEdit(bubble);
+      return;
+    }
+
     if (action === "forward") {
       const dialog = document.getElementById("message-forward-dialog");
       if (dialog) {
@@ -769,6 +840,11 @@
   document.addEventListener("click", (event) => {
     if (event.target.closest("#cancel-reply-button")) {
       cancelReply();
+      return;
+    }
+
+    if (event.target.closest("#cancel-edit-button")) {
+      cancelEdit();
       return;
     }
 

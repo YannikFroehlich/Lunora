@@ -405,6 +405,10 @@ if WEB_PUSH_VAPID_SUBJECT and not WEB_PUSH_VAPID_SUBJECT.startswith(("mailto:", 
 if env_bool("DJANGO_USE_X_FORWARDED_PROTO", False):
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 USE_X_FORWARDED_HOST = env_bool("DJANGO_USE_X_FORWARDED_HOST", False)
+# Header carrying the real client IP for the audit log when Lunora sits behind a trusted proxy,
+# e.g. "CF-Connecting-IP" behind Cloudflare. Empty: REMOTE_ADDR. Only set it when every request
+# passes that proxy, otherwise clients can fake their address.
+LUNORA_CLIENT_IP_HEADER = os.environ.get("LUNORA_CLIENT_IP_HEADER", "").strip()
 
 # Weather API settings are kept server-side so browser code never exposes keys.
 WEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY") or os.getenv("WEATHER_API_KEY", "")

@@ -18,6 +18,8 @@
              data-is-deleted="{% if item.is_deleted %}true{% else %}false{% endif %}"
              data-can-reply="{% if not item.is_deleted %}true{% else %}false{% endif %}"
              data-can-forward="{% if item.can_forward %}true{% else %}false{% endif %}"
+             data-can-edit="{% if item.can_edit %}true{% else %}false{% endif %}"
+             {% if item.can_edit %}data-edit-body="{{ item.message.body }}"{% endif %}
              data-sender-name="{{ item.sender_name }}"
              data-preview="{{ item.preview_text }}">
         {% if item.side == 'in' %}<span class="avatar small" title="{{ item.sender_name }}">{% if item.sender_avatar_url %}<img src="{{ item.sender_avatar_url }}" alt="Profilbild von {{ item.sender_name }}">{% else %}{{ item.sender_avatar }}{% endif %}</span>{% endif %}
@@ -56,6 +58,7 @@
             {% elif item.display_body %}<p class="{% if item.is_deleted %}deleted-message{% endif %}">{{ item.body_html }}</p>{% endif %}
             <span class="bubble-meta">
                 {% if item.is_pinned %}<span class="pin-indicator"><i class="fa-solid fa-thumbtack"></i></span>{% endif %}
+                {% if item.is_edited %}<span class="edited-label">bearbeitet</span>{% endif %}
                 <time>{{ item.time }}</time>
                 {% if item.read_receipt %}
                 <span class="read-receipt {% if item.read_receipt_is_read %}is-read{% endif %}" title="{{ item.read_receipt }}">
