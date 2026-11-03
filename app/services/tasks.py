@@ -39,15 +39,24 @@ def _add_months(value, months):
     return value.replace(year=year, month=month, day=day)
 
 
-def _step_recurrence(due_at, rule):
+def _step_recurrence(due_at, rule, interval=1, weekdays=""):
+    """The next due date of a recurring task, stepped in ``due_at``'s own (local) time zone so the
+    time of day survives DST changes."""
     if rule == "DAILY":
-        return due_at + timedelta(days=1)
+        return due_at + timedelta(days=interval)
     if rule == "WEEKLY":
-        return due_at + timedelta(weeks=1)
+        days = sorted(int(day) for day in weekdays.split(",") if day)
+        later = [day for day in days if day > due_at.weekday()]
+        if later:
+            return due_at + timedelta(days=later[0] - due_at.weekday())
+        if days:
+            # Past this week's last weekday: the first one of the week ``interval`` weeks on.
+            return due_at + timedelta(days=7 * interval - due_at.weekday() + days[0])
+        return due_at + timedelta(weeks=interval)
     if rule == "MONTHLY":
-        return _add_months(due_at, 1)
+        return _add_months(due_at, interval)
     if rule == "YEARLY":
-        return _add_months(due_at, 12)
+        return _add_months(due_at, 12 * interval)
     return due_at
 
 
@@ -112,16 +121,20 @@ def _apply_task_status(task, status, *, now=None):
 
     if is_done and task.recurrence_rule != Task.RECURRENCE_NONE:
         current_time = now or timezone.now()
-        base_due = task.due_at or current_time
+        base_due = (task.due_at or current_time).astimezone(get_user_zoneinfo(task.user))
         next_task = Task.objects.create(
             user=task.user,
             assignee=task.assignee,
             task_list=task.task_list,
             parent=task.parent,
             title=task.title,
-            due_at=_step_recurrence(base_due, task.recurrence_rule),
+            due_at=_step_recurrence(
+                base_due, task.recurrence_rule, task.recurrence_interval, task.recurrence_weekdays
+            ),
             priority=task.priority,
             recurrence_rule=task.recurrence_rule,
+            recurrence_interval=task.recurrence_interval,
+            recurrence_weekdays=task.recurrence_weekdays,
         )
         next_task.labels.set(task.labels.all())
         TaskShare.objects.bulk_create(

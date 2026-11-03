@@ -374,7 +374,8 @@
   font-weight: 600;
 }
 
-.task-add-more-field select {
+.task-add-more-field select,
+.task-add-more-field input[type="number"] {
   min-height: 36px;
   padding: 0 9px;
   color: var(--color-text);
@@ -1331,7 +1332,7 @@
   padding-top: 4px;
 }
 
-/* Share field (add form, edit dialog): a fieldset styled like the other option fields. */
+/* Checkbox fieldsets (sharing, weekdays; add form and edit dialog), styled like the other option fields. */
 .task-share-field {
   min-width: 0;
   margin: 0;
