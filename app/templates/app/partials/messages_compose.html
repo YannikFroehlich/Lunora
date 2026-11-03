@@ -16,6 +16,13 @@
     </div>
     <button type="button" id="cancel-reply-button" aria-label="Antwort abbrechen"><i class="fa-solid fa-xmark"></i></button>
 </div>
+<div class="reply-preview-strip edit-preview-strip" id="edit-preview-strip" hidden>
+    <div>
+        <strong><i class="fa-solid fa-pen" aria-hidden="true"></i> Nachricht bearbeiten</strong>
+        <span>Enter speichert, Escape bricht ab.</span>
+    </div>
+    <button type="button" id="cancel-edit-button" aria-label="Bearbeiten abbrechen"><i class="fa-solid fa-xmark"></i></button>
+</div>
 <div class="attachment-preview-chip" id="attachment-preview-chip" hidden>
     <i class="fa-solid fa-paperclip"></i>
     <span data-attachment-preview-name></span>
@@ -35,7 +42,8 @@
 <div class="mention-suggestions" id="mention-suggestions" role="listbox" aria-label="Erwähnen" hidden></div>
 <form class="compose-bar" id="compose-form" method="post" action="{% url 'messages_detail' selected_conversation.id %}" enctype="multipart/form-data">
     {% csrf_token %}
-    <input type="hidden" name="form_name" value="message">
+    <input type="hidden" name="form_name" value="message" id="compose-form-name">
+    <input type="hidden" name="message_id" id="compose-edit-message-id" value="" disabled>
     <input type="hidden" name="conversation_id" value="{{ selected_conversation.id }}">
     <input type="hidden" name="reply_to_id" id="compose-reply-to-id" value="">
     <input type="hidden" name="voice_duration" id="compose-voice-duration" value="">

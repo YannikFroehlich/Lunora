@@ -125,6 +125,7 @@ class Profile(models.Model):
         ("week", "Woche"),
         ("three_days", "3 Tage"),
         ("day", "Tag"),
+        ("agenda", "Agenda"),
     ]
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile")
     display_name = models.CharField(max_length=120)
@@ -991,6 +992,67 @@ class Bookmark(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class AuditLogEntry(models.Model):
+    """Security and administration events for the superuser-only audit log on /administration/.
+
+    ``actor_label`` keeps who it was after the account is gone; entries are purged after
+    ``app.services.audit_log.AUDIT_LOG_RETENTION``.
+    """
+
+    ACTION_LOGIN = "login"
+    ACTION_LOGIN_FAILED = "login_failed"
+    ACTION_TWO_FACTOR_FAILED = "two_factor_failed"
+    ACTION_LOGOUT = "logout"
+    ACTION_REGISTER = "register"
+    ACTION_PASSWORD_RESET = "password_reset"
+    ACTION_TWO_FACTOR_ENABLED = "two_factor_enabled"
+    ACTION_TWO_FACTOR_DISABLED = "two_factor_disabled"
+    ACTION_RECOVERY_CODES = "recovery_codes"
+    ACTION_SESSIONS_REVOKED = "sessions_revoked"
+    ACTION_CALENDAR_FEED = "calendar_feed"
+    ACTION_DATA_EXPORT = "data_export"
+    ACTION_ACCOUNT_DELETED = "account_deleted"
+    ACTION_SETTINGS_CHANGED = "settings_changed"
+    ACTION_FORCE_LOGOUT = "force_logout"
+    ACTION_CHOICES = [
+        (ACTION_LOGIN, "Anmeldung"),
+        (ACTION_LOGIN_FAILED, "Fehlgeschlagene Anmeldung"),
+        (ACTION_TWO_FACTOR_FAILED, "Falscher 2FA-Code"),
+        (ACTION_LOGOUT, "Abmeldung"),
+        (ACTION_REGISTER, "Registrierung"),
+        (ACTION_PASSWORD_RESET, "Passwort zurückgesetzt"),
+        (ACTION_TWO_FACTOR_ENABLED, "2FA aktiviert"),
+        (ACTION_TWO_FACTOR_DISABLED, "2FA deaktiviert"),
+        (ACTION_RECOVERY_CODES, "Neue Wiederherstellungscodes"),
+        (ACTION_SESSIONS_REVOKED, "Geräte abgemeldet"),
+        (ACTION_CALENDAR_FEED, "Kalender-Abo geändert"),
+        (ACTION_DATA_EXPORT, "Datenexport"),
+        (ACTION_ACCOUNT_DELETED, "Konto gelöscht"),
+        (ACTION_SETTINGS_CHANGED, "Systemeinstellungen geändert"),
+        (ACTION_FORCE_LOGOUT, "Alle Sitzungen beendet"),
+    ]
+
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="audit_log_entries",
+    )
+    actor_label = models.CharField(max_length=254, blank=True)
+    action = models.CharField(max_length=24, choices=ACTION_CHOICES)
+    summary = models.CharField(max_length=300, blank=True)
+    ip_address = models.GenericIPAddressField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [models.Index(fields=["action", "-created_at"], name="app_auditlog_action_idx")]
+
+    def __str__(self):
+        return f"{self.get_action_display()} · {self.actor_label}"
 
 
 class UserNotification(models.Model):

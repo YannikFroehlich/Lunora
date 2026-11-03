@@ -1,5 +1,6 @@
 from django.utils import timezone
 
+from app.services.audit_log import purge_old_entries
 from app.services.chat import send_due_scheduled_messages
 from app.services.notifications import (
     materialize_due_habit_reminders,
@@ -58,6 +59,7 @@ def run_scheduled_tasks(*, now=None):
         include_chat_mentions=feature_enabled("messages"),
     )
     web_push_result = send_pending_web_push_notifications(now=current_time)
+    audit_log_result = {"purged": purge_old_entries(now=current_time)}
     return {
         "reminder_emails": reminder_result,
         "event_invitation_emails": invitation_result,
@@ -69,4 +71,5 @@ def run_scheduled_tasks(*, now=None):
         "scheduled_messages": scheduled_message_result,
         "notification_emails": notification_email_result,
         "web_push": web_push_result,
+        "audit_log": audit_log_result,
     }

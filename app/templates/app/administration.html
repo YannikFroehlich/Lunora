@@ -83,5 +83,49 @@
             </section>
         </div>
     </div>
+
+    <section class="glass-panel admin-audit-panel" id="audit-log" aria-labelledby="audit-log-title">
+        <div class="admin-audit-head">
+            <div class="panel-title">
+                <i class="fa-solid fa-list-check" aria-hidden="true"></i>
+                <h2 id="audit-log-title">Audit-Log</h2>
+            </div>
+            <nav class="admin-audit-filters" aria-label="Audit-Log filtern">
+                {% for option in audit_log.filters %}
+                <a href="?audit={{ option.key }}#audit-log" {% if option.key == audit_log.filter %}class="is-active" aria-current="page"{% endif %}>{{ option.label }}</a>
+                {% endfor %}
+            </nav>
+        </div>
+        <p class="admin-muted">Anmeldungen, Sicherheitsänderungen und Administrationsaktionen der letzten {{ audit_log.retention_days }} Tage. Ältere Einträge werden automatisch gelöscht.</p>
+        {% if audit_log.items %}
+        <div class="admin-audit-table-wrap">
+            <table class="admin-audit-table">
+                <thead>
+                    <tr><th scope="col">Zeit</th><th scope="col">Ereignis</th><th scope="col">Konto</th><th scope="col">Details</th><th scope="col">IP-Adresse</th></tr>
+                </thead>
+                <tbody>
+                    {% for entry in audit_log.items %}
+                    <tr{% if entry.is_warning %} class="is-warning"{% endif %}>
+                        <td><time datetime="{{ entry.created_iso }}">{{ entry.created_label }}</time></td>
+                        <td>{% if entry.is_warning %}<i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> {% endif %}{{ entry.label }}</td>
+                        <td>{{ entry.actor }}{% if entry.actor_deleted %} <small>(gelöscht)</small>{% endif %}</td>
+                        <td>{{ entry.summary|default:"–" }}</td>
+                        <td><code>{{ entry.ip_address|default:"–" }}</code></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if audit_log.page.has_other_pages %}
+        <nav class="admin-audit-pages" aria-label="Seiten des Audit-Logs">
+            {% if audit_log.page.has_previous %}<a class="ghost-button" href="?audit={{ audit_log.filter }}&audit_page={{ audit_log.page.previous_page_number }}#audit-log"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i> Neuer</a>{% endif %}
+            <span>Seite {{ audit_log.page.number }} von {{ audit_log.page.paginator.num_pages }}</span>
+            {% if audit_log.page.has_next %}<a class="ghost-button" href="?audit={{ audit_log.filter }}&audit_page={{ audit_log.page.next_page_number }}#audit-log">Älter <i class="fa-solid fa-chevron-right" aria-hidden="true"></i></a>{% endif %}
+        </nav>
+        {% endif %}
+        {% else %}
+        <p class="admin-audit-empty">Keine Einträge für diesen Filter.</p>
+        {% endif %}
+    </section>
 </section>
 {% endblock %}

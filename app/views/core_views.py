@@ -23,8 +23,8 @@ from app.forms import (
     RegionPreferencesForm,
     WeatherPreferencesForm,
 )
-from app.models import Bookmark, Profile
-from app.services import two_factor
+from app.models import AuditLogEntry, Bookmark, Profile
+from app.services import audit_log, two_factor
 from app.services.accounts import account_deletion_blocked_reason, delete_account
 from app.services.calendar_service import disable_calendar_feed, reset_calendar_feed_token
 from app.services.dashboard import normalize_dashboard_layout, validate_dashboard_layout
@@ -208,6 +208,11 @@ def settings(request):
         if form_name == "calendar_feed_reset":
             had_link = bool(profile.calendar_feed_token)
             reset_calendar_feed_token(profile)
+            audit_log.record(
+                AuditLogEntry.ACTION_CALENDAR_FEED,
+                request,
+                summary="Abo-Link erneuert" if had_link else "Abo-Link erstellt",
+            )
             django_messages.success(
                 request,
                 "Neuer Abo-Link erstellt. Der alte Link funktioniert nicht mehr."
@@ -216,6 +221,7 @@ def settings(request):
             )
         else:
             disable_calendar_feed(profile)
+            audit_log.record(AuditLogEntry.ACTION_CALENDAR_FEED, request, summary="Abo-Link deaktiviert")
             django_messages.success(request, "Abo-Link deaktiviert.")
         return redirect(_settings_section_url("calendar", return_to))
     elif form_name == "notifications":
@@ -244,10 +250,14 @@ def settings(request):
         if session_id.isdigit() and revoke_session(
             request.user, int(session_id), current_key=request.session.session_key
         ):
+            audit_log.record(AuditLogEntry.ACTION_SESSIONS_REVOKED, request, summary="1 Gerät")
             django_messages.success(request, "Gerät abgemeldet.")
         return redirect(_settings_section_url("security", return_to))
     elif form_name == "session_revoke_others":
         count = revoke_other_sessions(request.user, current_key=request.session.session_key)
+        audit_log.record(
+            AuditLogEntry.ACTION_SESSIONS_REVOKED, request, summary=f"Alle anderen ({count} Sitzung(en))"
+        )
         django_messages.success(request, f"{count} andere Sitzung(en) abgemeldet.")
         return redirect(_settings_section_url("security", return_to))
     elif form_name == "data_import":
@@ -271,6 +281,7 @@ def settings(request):
         elif not request.user.check_password(request.POST.get("password", "")):
             django_messages.error(request, "Das Passwort ist falsch. Dein Konto wurde nicht gelöscht.")
         else:
+            audit_log.record(AuditLogEntry.ACTION_ACCOUNT_DELETED, request, summary="Selbst gelöscht")
             delete_account(request.user)
             logout(request)
             django_messages.success(request, "Dein Konto und alle zugehörigen Daten wurden gelöscht.")
@@ -344,6 +355,7 @@ def _handle_two_factor_form(request, profile, form_name):
             return
         session.pop(TWO_FACTOR_SETUP_SESSION_KEY, None)
         session[TWO_FACTOR_NEW_CODES_SESSION_KEY] = codes
+        audit_log.record(AuditLogEntry.ACTION_TWO_FACTOR_ENABLED, request)
         django_messages.success(request, "Zwei-Faktor-Anmeldung aktiviert.")
     elif form_name in {"two_factor_disable", "two_factor_recovery_codes"} and profile.totp_enabled_at:
         # Re-entering the password keeps someone at an unlocked, signed-in device from switching 2FA off.
@@ -351,9 +363,11 @@ def _handle_two_factor_form(request, profile, form_name):
             django_messages.error(request, "Das Passwort ist falsch.")
         elif form_name == "two_factor_disable":
             two_factor.disable(profile)
+            audit_log.record(AuditLogEntry.ACTION_TWO_FACTOR_DISABLED, request)
             django_messages.success(request, "Zwei-Faktor-Anmeldung deaktiviert.")
         else:
             session[TWO_FACTOR_NEW_CODES_SESSION_KEY] = two_factor.regenerate_recovery_codes(profile)
+            audit_log.record(AuditLogEntry.ACTION_RECOVERY_CODES, request)
             django_messages.success(
                 request, "Neue Wiederherstellungscodes erstellt. Die alten gelten nicht mehr."
             )
@@ -364,6 +378,7 @@ def data_export(request):
     # A temporary file keeps memory flat even when notes carry large attachments.
     archive = tempfile.TemporaryFile()
     write_user_export(request.user, archive)
+    audit_log.record(AuditLogEntry.ACTION_DATA_EXPORT, request)
     archive.seek(0)
     response = FileResponse(
         archive, as_attachment=True, filename=export_filename(request.user), content_type="application/zip"

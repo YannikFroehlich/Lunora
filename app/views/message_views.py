@@ -27,11 +27,13 @@ from app.models import (
 )
 from app.services.chat import (
     apply_mentions,
+    can_edit_message,
     can_send,
     cancel_scheduled_message,
     close_poll,
     create_poll,
     delete_poll,
+    edit_message,
     forget_mentions,
     mark_conversation_mentions_read,
     mention_candidates,
@@ -242,7 +244,7 @@ def messages(request, conversation_id=None):
             )
             return redirect("messages_detail", conversation_id=target.id)
 
-        elif form_name in {"poll_create", "poll_vote", "poll_close", "scheduled_action"}:
+        elif form_name in {"poll_create", "poll_vote", "poll_close", "scheduled_action", "message_edit"}:
             selected_conversation = _get_user_conversation(
                 request.user,
                 request.POST.get("conversation_id") or conversation_id,
@@ -557,6 +559,23 @@ def chat_attachment_download(request, file_id, disposition):
 def _handle_chat_tool_post(request, form_name, conversation):
     """Poll and scheduled-message POST branches of ``messages()``; feedback goes to the flash."""
     user = request.user
+    if form_name == "message_edit":
+        message = (
+            conversation.messages.filter(pk=_coerce_positive_int(request.POST.get("message_id")), sender=user)
+            .select_related("poll", "attachment")
+            .first()
+        )
+        if message is None:
+            django_messages.error(request, "Diese Nachricht wurde nicht gefunden.")
+        elif not can_send(conversation, user):
+            django_messages.error(request, "In diese Unterhaltung kann derzeit nicht geschrieben werden.")
+        else:
+            try:
+                edit_message(message, user, request.POST.get("body"))
+            except ValueError as error:
+                django_messages.error(request, str(error))
+        return
+
     if form_name == "poll_create":
         form = ChatPollForm(request.POST)
         if not conversation.is_group:
@@ -956,6 +975,7 @@ def _coerce_positive_int(value):
 def _build_message_items(conversation, user, messages):
     items = []
     last_date = None
+    now = timezone.now()
     for message in messages:
         message_date = localtime_for_user(message.created_at, user).date()
         items.append(
@@ -980,6 +1000,8 @@ def _build_message_items(conversation, user, messages):
                 "can_delete": message.sender_id == user.id and not message.is_deleted,
                 "can_react": not message.is_deleted,
                 "can_forward": not message.is_deleted and getattr(message, "poll", None) is None,
+                "can_edit": can_edit_message(message, user, now),
+                "is_edited": bool(message.edited_at) and not message.is_deleted,
                 "read_receipt": _message_read_receipt(message, conversation, user)
                 if message.sender_id == user.id
                 else "",

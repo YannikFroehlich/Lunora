@@ -1568,3 +1568,93 @@ class ScheduledChatMessageTests(ChatToolsTestMixin, TestCase):
 
         self.assertEqual(result["scheduled_messages"]["sent"], 1)
         self.assertTrue(ChatMessage.objects.filter(body="Automatisch").exists())
+
+
+class MessageEditTests(ChatToolsTestMixin, TestCase):
+    def edit(self, message, body):
+        return self.client.post(
+            f"/messages/{self.group.id}/",
+            {
+                "form_name": "message_edit",
+                "conversation_id": self.group.id,
+                "message_id": message.id,
+                "body": body,
+            },
+            follow=True,
+        )
+
+    def test_own_message_can_be_edited_and_shows_label(self):
+        message = ChatMessage.objects.create(conversation=self.group, sender=self.mira, body="Hallo Wlet")
+
+        response = self.edit(message, "  Hallo Welt  ")
+
+        message.refresh_from_db()
+        self.assertEqual(message.body, "Hallo Welt")
+        self.assertIsNotNone(message.edited_at)
+        self.assertContains(response, '<span class="edited-label">bearbeitet</span>', html=True)
+
+    def test_edit_data_is_only_offered_for_own_recent_text_messages(self):
+        own = ChatMessage.objects.create(conversation=self.group, sender=self.mira, body="Meins")
+        ChatMessage.objects.create(conversation=self.group, sender=self.lukas, body="Fremd")
+
+        response = self.client.get(f"/messages/{self.group.id}/")
+
+        items = {item["message"].body: item for item in response.context["message_items"]}
+        self.assertTrue(items["Meins"]["can_edit"])
+        self.assertFalse(items["Fremd"]["can_edit"])
+        self.assertContains(response, f'data-edit-body="{own.body}"')
+        self.assertContains(response, 'data-menu-action="edit"')
+
+    def test_foreign_old_forwarded_and_poll_messages_stay_unchanged(self):
+        from app.services.chat import create_poll
+
+        foreign = ChatMessage.objects.create(conversation=self.group, sender=self.lukas, body="Fremd")
+        old = ChatMessage.objects.create(conversation=self.group, sender=self.mira, body="Alt")
+        ChatMessage.objects.filter(pk=old.pk).update(created_at=timezone.now() - timedelta(hours=25))
+        forwarded = ChatMessage.objects.create(
+            conversation=self.group, sender=self.mira, body="Weiter", is_forwarded=True
+        )
+        poll = create_poll(self.group, self.mira, "Frage?", ["Ja", "Nein"])
+
+        self.edit(foreign, "geändert")
+        response = self.edit(old, "geändert")
+        self.edit(forwarded, "geändert")
+        self.edit(poll.message, "geändert")
+
+        self.assertContains(response, "kann nicht mehr bearbeitet werden")
+        self.assertFalse(ChatMessage.objects.filter(body="geändert").exists())
+
+    def test_empty_text_is_rejected(self):
+        message = ChatMessage.objects.create(conversation=self.group, sender=self.mira, body="Text")
+
+        response = self.edit(message, "   ")
+
+        message.refresh_from_db()
+        self.assertEqual(message.body, "Text")
+        self.assertContains(response, "darf nicht leer sein")
+
+    def test_editing_updates_mentions_and_their_notifications(self):
+        self.send("@Lukas schau mal")
+        message = ChatMessage.objects.get()
+
+        self.edit(message, "@Lukas und @Anna Berg, schaut mal")
+        notifications = UserNotification.objects.filter(kind=UserNotification.KIND_CHAT_MENTION)
+        self.assertEqual(
+            set(notifications.values_list("recipient_id", flat=True)), {self.lukas.id, self.anna.id}
+        )
+        self.assertEqual(notifications.get(recipient=self.lukas).body, "@Lukas und @Anna Berg, schaut mal")
+
+        self.edit(message, "@Anna Berg nur du")
+        self.assertEqual(list(notifications.values_list("recipient_id", flat=True)), [self.anna.id])
+        self.assertEqual(list(message.mentioned_users.all()), [self.anna])
+
+    def test_edit_changes_the_live_update_fingerprint(self):
+        message = ChatMessage.objects.create(conversation=self.group, sender=self.mira, body="Vorher")
+        url = f"/messages/{self.group.id}/live/"
+        first = self.client.get(url).json()["fingerprint"]
+
+        self.edit(message, "Nachher")
+
+        payload = self.client.get(url, {"fp": first}).json()
+        self.assertNotEqual(payload["fingerprint"], first)
+        self.assertIn("Nachher", payload["message_stream_html"])

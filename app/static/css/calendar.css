@@ -1183,7 +1183,7 @@ fieldset.event-form-field > legend {
 /* Month/week switch in the calendar toolbar. */
 .calendar-view-switch {
   display: inline-grid;
-  grid-template-columns: repeat(5, minmax(52px, 1fr));
+  grid-template-columns: repeat(6, minmax(52px, 1fr));
   gap: 4px;
   padding: 3px;
   background: var(--surface-control);
@@ -1752,7 +1752,13 @@ button.week-event:hover .week-event-resize::after {
   }
 
   .calendar-view-switch {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 2px;
+  }
+
+  .calendar-view-switch a {
+    padding: 6px 2px;
+    font-size: var(--text-xs);
   }
 }
 
@@ -1768,4 +1774,135 @@ button.week-event:hover .week-event-resize::after {
   margin-left: 4px;
   color: var(--color-accent-strong);
   font-size: var(--text-2xs);
+}
+
+/* Agenda: the coming days as a list, only days with entries. */
+.calendar-agenda {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agenda-day {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--surface-control);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-md);
+}
+
+.agenda-day.is-today {
+  border-color: var(--color-accent-strong);
+  box-shadow: inset 3px 0 0 var(--color-accent-strong);
+}
+
+.agenda-day-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.agenda-day-head h3 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+  color: var(--color-heading);
+  font-size: var(--text-base);
+}
+
+.agenda-day-head h3 span {
+  font-weight: 800;
+}
+
+.agenda-today-badge {
+  padding: 1px 8px;
+  color: var(--color-on-accent);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  background: var(--color-accent);
+  border-radius: var(--radius-pill);
+}
+
+.agenda-items {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agenda-item {
+  display: grid;
+  grid-template-columns: 92px 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.agenda-item:hover {
+  background: var(--surface-control-hover);
+}
+
+.agenda-time {
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.agenda-dot {
+  width: 10px;
+  height: 10px;
+  background: var(--tone, var(--color-accent));
+  border-radius: 50%;
+}
+
+.agenda-item.is-invited .agenda-dot {
+  background: transparent;
+  border: 2px solid var(--tone, var(--color-accent));
+}
+
+.agenda-task {
+  display: grid;
+  place-items: center;
+  margin: 0;
+}
+
+.agenda-copy {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.agenda-title {
+  overflow: hidden;
+  color: var(--color-text);
+  font-weight: 700;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+a.agenda-title:hover {
+  color: var(--color-accent-strong);
+  text-decoration: underline;
+}
+
+.agenda-copy small {
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+}
+
+@media (max-width: 560px) {
+  .agenda-item {
+    grid-template-columns: 64px 18px minmax(0, 1fr) auto;
+    gap: 8px;
+  }
 }

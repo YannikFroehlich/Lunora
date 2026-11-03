@@ -137,6 +137,7 @@ class PageAccessibilityMarkupTests(TestCase):
             "/calendar/?view=month&year=2099&month=3",
             "/calendar/?view=week&date=2099-03-10",
             "/calendar/?view=year&year=2099",
+            "/calendar/?view=agenda&date=2099-03-09",
             "/tasks/",
             "/notes/",
             f"/notes/{self.note.pk}/",

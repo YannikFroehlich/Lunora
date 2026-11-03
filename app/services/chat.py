@@ -31,6 +31,9 @@ MAX_SCHEDULED_MESSAGES = 50
 SCHEDULE_MIN_LEAD = timedelta(minutes=1)
 SCHEDULE_MAX_AHEAD = timedelta(days=365)
 SCHEDULED_DELIVERY_BATCH = 200
+# Own messages stay editable this long after sending.
+CHAT_EDIT_WINDOW = timedelta(hours=24)
+CHAT_MESSAGE_MAX_LENGTH = ChatMessage._meta.get_field("body").max_length
 
 
 # --- Sending -----------------------------------------------------------------------------------
@@ -137,6 +140,53 @@ def apply_mentions(message):
         return 0
     message.mentioned_users.set(user_ids)
     return materialize_chat_mention_notifications(message)
+
+
+def update_mentions(message):
+    """Re-resolve an edited message's mentions: new names are notified, removed ones lose their
+    notification, and the others get the new text."""
+    from app.services.notifications import materialize_chat_mention_notifications
+
+    previous = set(message.mentioned_users.values_list("pk", flat=True))
+    current = resolve_mentions(message.conversation, message.sender, message.body)
+    message.mentioned_users.set(current)
+    notifications = UserNotification.objects.filter(
+        kind=UserNotification.KIND_CHAT_MENTION, source_key=mention_source_key(message)
+    )
+    notifications.filter(recipient_id__in=previous - current).delete()
+    notifications.filter(recipient_id__in=previous & current).update(body=message.body[:300])
+    if current - previous:
+        return materialize_chat_mention_notifications(message)
+    return 0
+
+
+def can_edit_message(message, user, now=None):
+    """Own text messages, not deleted, forwarded or polls, within ``CHAT_EDIT_WINDOW``."""
+    return (
+        message.sender_id == user.pk
+        and not message.is_deleted
+        and not message.is_forwarded
+        and getattr(message, "poll", None) is None
+        and message.created_at >= (now or timezone.now()) - CHAT_EDIT_WINDOW
+    )
+
+
+def edit_message(message, user, body):
+    """Replace the text of an own message; raises ValueError with a German message otherwise."""
+    body = (body or "").strip()
+    if not can_edit_message(message, user):
+        raise ValueError("Diese Nachricht kann nicht mehr bearbeitet werden.")
+    if not body and getattr(message, "attachment", None) is None:
+        raise ValueError("Die Nachricht darf nicht leer sein.")
+    if len(body) > CHAT_MESSAGE_MAX_LENGTH:
+        raise ValueError(f"Eine Nachricht darf höchstens {CHAT_MESSAGE_MAX_LENGTH} Zeichen lang sein.")
+    if body == message.body:
+        return False
+    message.body = body
+    message.edited_at = timezone.now()
+    message.save(update_fields=["body", "edited_at"])
+    update_mentions(message)
+    return True
 
 
 def forget_mentions(message):

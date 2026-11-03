@@ -1116,3 +1116,98 @@ class CalendarEventReminderTests(TestCase):
         event.reminder_minutes = None
         sync_event_reminders([event])
         self.assertTrue(CalendarReminder.objects.filter(pk=reminder.pk).exists())
+
+
+class CalendarAgendaViewTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
+        self.lukas = User.objects.create_user(
+            username="lukas@example.com", email="lukas@example.com", password="secret-12345"
+        )
+        self.profile = Profile.objects.create(
+            user=self.user, display_name="Mira", timezone_name="Europe/Berlin"
+        )
+        Profile.objects.create(user=self.lukas, display_name="Lukas", timezone_name="Europe/Berlin")
+        self.client.login(username="mira@example.com", password="secret-12345")
+        self.berlin = ZoneInfo("Europe/Berlin")
+
+    def event(self, title, start, hours=1, user=None, **extra):
+        return CalendarEvent.objects.create(
+            user=user or self.user,
+            title=title,
+            start_at=start,
+            end_at=start + timedelta(hours=hours),
+            **extra,
+        )
+
+    def test_agenda_lists_only_days_with_entries_from_the_anchor(self):
+        self.event("Zahnarzt", datetime(2099, 3, 10, 9, 0, tzinfo=self.berlin), location="Hauptstraße 1")
+        self.event("Workshop", datetime(2099, 3, 20, 14, 0, tzinfo=self.berlin), hours=2)
+        self.event("Davor", datetime(2099, 3, 9, 9, 0, tzinfo=self.berlin))
+        self.event("Zu spät", datetime(2099, 4, 7, 9, 0, tzinfo=self.berlin))
+        Task.objects.create(
+            user=self.user, title="Bericht", due_at=datetime(2099, 3, 10, 17, 0, tzinfo=self.berlin)
+        )
+
+        response = self.client.get("/calendar/?view=agenda&date=2099-03-10")
+
+        agenda = response.context["calendar_agenda"]
+        self.assertEqual([day["date_input"] for day in agenda["days"]], ["2099-03-10", "2099-03-20"])
+        first = agenda["days"][0]
+        self.assertEqual(
+            [(item["label"], item["time"]) for item in first["events"]], [("Zahnarzt", "09:00–10:00")]
+        )
+        self.assertEqual([task["label"] for task in first["tasks"]], ["Bericht"])
+        self.assertTrue(first["events"][0]["can_delete"])
+        self.assertEqual(agenda["label"], "10.03.2099 – 06.04.2099")
+        self.assertEqual(response.context["prev_url"], "/calendar/?view=agenda&date=2099-02-10")
+        self.assertEqual(response.context["next_url"], "/calendar/?view=agenda&date=2099-04-07")
+        self.assertContains(response, 'class="calendar-agenda"')
+        self.assertContains(response, "Hauptstraße 1")
+        self.assertContains(response, "/calendar/?view=day&amp;date=2099-03-10")
+        self.assertContains(response, "Vorherige vier Wochen")
+
+    def test_multi_day_events_show_start_and_end_per_day(self):
+        self.event("Messe", datetime(2099, 3, 10, 18, 0, tzinfo=self.berlin), hours=48)
+
+        agenda = self.client.get("/calendar/?view=agenda&date=2099-03-10").context["calendar_agenda"]
+
+        self.assertEqual(
+            [(day["date_input"], day["events"][0]["time"]) for day in agenda["days"]],
+            [("2099-03-10", "ab 18:00"), ("2099-03-11", "Ganztägig"), ("2099-03-12", "bis 18:00")],
+        )
+
+    def test_event_ending_at_midnight_stays_on_its_day(self):
+        self.event("Abend", datetime(2099, 3, 10, 22, 0, tzinfo=self.berlin), hours=2)
+
+        agenda = self.client.get("/calendar/?view=agenda&date=2099-03-10").context["calendar_agenda"]
+
+        self.assertEqual([day["date_input"] for day in agenda["days"]], ["2099-03-10"])
+        self.assertEqual(agenda["days"][0]["events"][0]["time"], "22:00–00:00")
+
+    def test_invitations_are_marked_and_not_editable(self):
+        event = self.event("Teamessen", datetime(2099, 3, 12, 19, 0, tzinfo=self.berlin), user=self.lukas)
+        CalendarEventAttendee.objects.create(event=event, user=self.user, invited_by=self.lukas)
+
+        agenda = self.client.get("/calendar/?view=agenda&date=2099-03-10").context["calendar_agenda"]
+
+        item = agenda["days"][0]["events"][0]
+        self.assertTrue(item["is_invited"])
+        self.assertFalse(item["can_delete"])
+
+    def test_agenda_is_remembered_and_empty_range_says_so(self):
+        response = self.client.get("/calendar/?view=agenda&date=2099-03-10")
+
+        self.assertContains(response, "Nichts geplant")
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.calendar_view, "agenda")
+        self.assertEqual(self.client.get("/calendar/").context["calendar_view"], "agenda")
+
+    def test_view_switch_offers_the_agenda_on_the_current_anchor(self):
+        response = self.client.get("/calendar/?view=week&date=2099-03-11")
+
+        option = next(item for item in response.context["calendar_view_options"] if item["key"] == "agenda")
+        self.assertEqual(option["url"], "/calendar/?view=agenda&date=2099-03-11")
+        self.assertEqual(option["label"], "Agenda")

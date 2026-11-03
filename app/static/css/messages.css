@@ -2183,3 +2183,33 @@
     width: 40px;
   }
 }
+
+/* Flex instead of the fixed grid, so hidden tools (no microphone, edit mode) leave no gaps. */
+.compose-bar {
+  display: flex;
+}
+
+.compose-bar textarea {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.compose-bar > * {
+  flex-shrink: 0;
+}
+
+.compose-bar.is-editing .attach-button,
+.compose-bar.is-editing .compose-more,
+.compose-bar.is-editing .voice-button {
+  display: none;
+}
+
+.edit-preview-strip strong i {
+  margin-right: 4px;
+}
+
+.edited-label {
+  color: var(--color-muted);
+  font-size: var(--text-2xs);
+  font-style: italic;
+}
