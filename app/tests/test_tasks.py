@@ -501,7 +501,8 @@ class TaskTests(TestCase):
         self.assertFalse(Task.objects.filter(title="Kindaufgabe").exists())
 
     def test_completing_recurring_task_creates_next_occurrence(self):
-        due_at = timezone.now().replace(microsecond=0)
+        # A fixed date without a DST change in the following week.
+        due_at = datetime(2099, 1, 5, 9, 0, tzinfo=get_user_zoneinfo(self.user))
         task = Task.objects.create(
             user=self.user, title="Müll rausbringen", due_at=due_at, recurrence_rule="WEEKLY"
         )
@@ -518,6 +519,96 @@ class TaskTests(TestCase):
         self.assertEqual(next_task.due_at, due_at + timedelta(weeks=1))
         self.assertIsNone(next_task.email_notified_at)
         self.assertIsNone(next_task.desktop_notified_at)
+
+    def _complete_and_get_next(self, task):
+        toggle_task(self.user, task.id, True)
+        return Task.objects.get(user=self.user, title=task.title, is_done=False)
+
+    def test_weekly_recurrence_on_weekdays_steps_to_next_chosen_day(self):
+        self.profile.timezone_name = "Europe/Berlin"
+        self.profile.save()
+        berlin = ZoneInfo("Europe/Berlin")
+        task = Task.objects.create(
+            user=self.user,
+            title="Sport",
+            due_at=datetime(2026, 11, 2, 18, 0, tzinfo=berlin),  # Monday
+            recurrence_rule="WEEKLY",
+            recurrence_interval=2,
+            recurrence_weekdays="0,3",
+        )
+
+        thursday = self._complete_and_get_next(task)
+        self.assertEqual(thursday.due_at, datetime(2026, 11, 5, 18, 0, tzinfo=berlin))
+        self.assertEqual((thursday.recurrence_interval, thursday.recurrence_weekdays), (2, "0,3"))
+        # After the week's last chosen day, the next one is two weeks on.
+        monday = self._complete_and_get_next(thursday)
+        self.assertEqual(monday.due_at, datetime(2026, 11, 16, 18, 0, tzinfo=berlin))
+
+    def test_recurrence_interval_keeps_local_time_across_dst_change(self):
+        self.profile.timezone_name = "Europe/Berlin"
+        self.profile.save()
+        berlin = ZoneInfo("Europe/Berlin")
+        daily = Task.objects.create(
+            user=self.user,
+            title="Gießen",
+            due_at=datetime(2026, 10, 24, 8, 0, tzinfo=berlin),
+            recurrence_rule="DAILY",
+            recurrence_interval=3,
+        )
+        monthly = Task.objects.create(
+            user=self.user,
+            title="Miete",
+            due_at=datetime(2026, 1, 31, 8, 0, tzinfo=berlin),
+            recurrence_rule="MONTHLY",
+            recurrence_interval=2,
+        )
+
+        # DST ends on 25 October; the task stays at 08:00 local time.
+        self.assertEqual(
+            self._complete_and_get_next(daily).due_at, datetime(2026, 10, 27, 8, 0, tzinfo=berlin)
+        )
+        self.assertEqual(
+            self._complete_and_get_next(monthly).due_at, datetime(2026, 3, 31, 8, 0, tzinfo=berlin)
+        )
+
+    def test_task_add_stores_interval_and_weekdays_only_for_weekly_tasks(self):
+        self._login()
+
+        self.client.post(
+            "/tasks/",
+            {
+                "form_name": "task_add",
+                "title": "Sport",
+                "recurrence_rule": "WEEKLY",
+                "recurrence_interval": "2",
+                "recurrence_weekdays": ["3", "0"],
+            },
+        )
+        self.client.post(
+            "/tasks/",
+            {
+                "form_name": "task_add",
+                "title": "Lesen",
+                "recurrence_rule": "DAILY",
+                "recurrence_weekdays": ["3"],
+            },
+        )
+        rejected = self.client.post(
+            "/tasks/",
+            {
+                "form_name": "task_add",
+                "title": "Zu oft",
+                "recurrence_rule": "DAILY",
+                "recurrence_interval": "0",
+            },
+        )
+
+        weekly = Task.objects.get(title="Sport")
+        self.assertEqual((weekly.recurrence_interval, weekly.recurrence_weekdays), (2, "0,3"))
+        daily = Task.objects.get(title="Lesen")
+        self.assertEqual((daily.recurrence_interval, daily.recurrence_weekdays), (1, ""))
+        self.assertEqual(rejected.status_code, 200)
+        self.assertFalse(Task.objects.filter(title="Zu oft").exists())
 
     def test_completing_non_recurring_task_does_not_duplicate(self):
         task = Task.objects.create(user=self.user, title="Einmalig")

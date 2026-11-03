@@ -196,6 +196,8 @@ def _tasks(user):
                 "due_at": task.due_at,
                 "priority": task.priority,
                 "recurrence_rule": task.recurrence_rule,
+                "recurrence_interval": task.recurrence_interval,
+                "recurrence_weekdays": task.recurrence_weekdays,
                 "is_done": task.is_done,
                 "is_in_progress": task.is_in_progress,
                 "shared_with": [share.user.get_username() for share in task.shares.all()],

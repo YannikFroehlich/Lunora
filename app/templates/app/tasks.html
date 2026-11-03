@@ -209,6 +209,14 @@
                             <span>Wiederholung</span>
                             {{ task_form.recurrence_rule }}
                         </label>
+                        <label class="task-add-more-field" data-recurrence-interval>
+                            <span>{{ task_form.recurrence_interval.label }} <span data-recurrence-unit>Tage/Wochen/Monate/Jahre</span></span>
+                            {{ task_form.recurrence_interval }}
+                        </label>
+                        <fieldset class="task-add-more-field task-share-field" data-recurrence-weekdays>
+                            <legend>{{ task_form.recurrence_weekdays.label }}</legend>
+                            <div class="task-label-checks">{{ task_form.recurrence_weekdays }}</div>
+                        </fieldset>
                         <label class="task-add-more-field">
                             <span>{{ task_form.assignee.label }}</span>
                             {{ task_form.assignee }}
@@ -424,6 +432,8 @@
                         data-edit-priority="{{ item.priority }}"
                         data-edit-list="{{ item.task_list_id|default_if_none:'' }}"
                         data-edit-recurrence="{{ item.task.recurrence_rule }}"
+                        data-edit-interval="{{ item.task.recurrence_interval }}"
+                        data-edit-weekdays="{{ item.task.recurrence_weekdays }}"
                         data-edit-labels="{% for label in item.labels %}{{ label.id }}{% if not forloop.last %},{% endif %}{% endfor %}"
                         data-edit-parent="{{ item.parent_id|default_if_none:'' }}"
                         data-edit-assignee="{{ item.assignee_id|default_if_none:'' }}"
@@ -564,6 +574,8 @@
                         data-edit-priority="{{ child.priority }}"
                         data-edit-list="{{ child.task_list_id|default_if_none:'' }}"
                         data-edit-recurrence="{{ child.task.recurrence_rule }}"
+                        data-edit-interval="{{ child.task.recurrence_interval }}"
+                        data-edit-weekdays="{{ child.task.recurrence_weekdays }}"
                         data-edit-labels="{% for label in child.labels %}{{ label.id }}{% if not forloop.last %},{% endif %}{% endfor %}"
                         data-edit-parent="{{ child.parent_id|default_if_none:'' }}"
                         aria-label="Unteraufgabe bearbeiten">
@@ -672,6 +684,17 @@
                 <span>{{ edit_form.recurrence_rule.label }}</span>
                 {{ edit_form.recurrence_rule }}
             </label>
+
+            <label class="task-add-more-field" data-recurrence-interval>
+                <span>{{ edit_form.recurrence_interval.label }} <span data-recurrence-unit>Tage/Wochen/Monate/Jahre</span></span>
+                {{ edit_form.recurrence_interval }}
+                {{ edit_form.recurrence_interval.errors }}
+            </label>
+
+            <fieldset class="task-edit-field is-wide task-share-field" data-recurrence-weekdays>
+                <legend>{{ edit_form.recurrence_weekdays.label }}</legend>
+                <div class="task-label-checks">{{ edit_form.recurrence_weekdays }}</div>
+            </fieldset>
 
             <label class="task-add-more-field">
                 <span>{{ edit_form.assignee.label }}</span>
