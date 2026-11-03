@@ -6,7 +6,16 @@ from django.db import transaction
 from django.db.models import F, Max, Q
 from django.utils import timezone
 
-from app.models import Task, TaskComment, TaskLabel, TaskList, TaskShare, TaskTemplate, UserNotification
+from app.models import (
+    Task,
+    TaskComment,
+    TaskLabel,
+    TaskList,
+    TaskShare,
+    TaskTemplate,
+    TaskTimeEntry,
+    UserNotification,
+)
 from app.services.notes import display_name
 from app.services.user_preferences import (
     format_user_datetime,
@@ -97,6 +106,9 @@ def _apply_task_status(task, status, *, now=None):
     task.is_in_progress = status == Task.STATUS_IN_PROGRESS
     task.save(update_fields=["is_done", "is_in_progress", "updated_at"])
     is_done = task.is_done and not was_done
+    if is_done:
+        # Finishing a task stops every timer still running on it.
+        TaskTimeEntry.objects.filter(task=task, ended_at__isnull=True).update(ended_at=now or timezone.now())
 
     if is_done and task.recurrence_rule != Task.RECURRENCE_NONE:
         current_time = now or timezone.now()

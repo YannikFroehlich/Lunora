@@ -1,0 +1,8 @@
+{% if not entry.is_done %}
+<button class="task-timer-button{% if entry.timer_running %} is-running{% endif %}" type="submit" name="form_name" value="task_timer"
+        aria-pressed="{% if entry.timer_running %}true{% else %}false{% endif %}"
+        aria-label="{% if entry.timer_running %}Timer für „{{ entry.title }}“ stoppen{% else %}Timer für „{{ entry.title }}“ starten{% endif %}"
+        title="{% if entry.timer_running %}Timer stoppen{% else %}Zeit erfassen{% endif %}">
+    <i class="fa-solid {% if entry.timer_running %}fa-stop{% else %}fa-play{% endif %}" aria-hidden="true"></i>
+</button>
+{% endif %}

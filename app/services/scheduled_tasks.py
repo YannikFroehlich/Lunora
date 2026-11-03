@@ -57,6 +57,7 @@ def run_scheduled_tasks(*, now=None):
         include_task_assignments=feature_enabled("tasks"),
         include_habit_reminders=feature_enabled("tools"),
         include_chat_mentions=feature_enabled("messages"),
+        include_event_comments=feature_enabled("calendar_event_creation"),
     )
     web_push_result = send_pending_web_push_notifications(now=current_time)
     audit_log_result = {"purged": purge_old_entries(now=current_time)}

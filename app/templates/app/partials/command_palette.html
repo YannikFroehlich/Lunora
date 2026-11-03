@@ -32,6 +32,9 @@
             <a class="command-palette-item" id="command-tasks" role="option" href="{% url 'tasks' %}" data-command-item data-keywords="todo aufgabe hausaufgaben listen">
                 <i class="fa-regular fa-square-check" aria-hidden="true"></i><span>Aufgaben</span><small>Seite</small>
             </a>
+            <a class="command-palette-item" id="command-task-time" role="option" href="{% url 'task_time_report' %}" data-command-item data-keywords="zeit stunden timer stoppuhr arbeitszeit">
+                <i class="fa-regular fa-clock" aria-hidden="true"></i><span>Zeiterfassung</span><small>Seite</small>
+            </a>
             {% endif %}
             {% if feature_flags.weather %}
             <a class="command-palette-item" id="command-weather" role="option" href="{% url 'weather' %}" data-command-item data-keywords="vorhersage regen temperatur">

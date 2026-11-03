@@ -13,6 +13,8 @@ from django.test import TestCase
 
 from app.models import (
     CalendarEvent,
+    CalendarEventAttendee,
+    CalendarEventComment,
     Conversation,
     ConversationMember,
     Habit,
@@ -117,12 +119,15 @@ class PageAccessibilityMarkupTests(TestCase):
             conversation=self.group, sender=self.mira, body="Später", send_at="2099-03-10T10:00:00+01:00"
         )
         Task.objects.create(user=self.mira, title="Bericht")
-        CalendarEvent.objects.create(
+        self.event = CalendarEvent.objects.create(
             user=self.mira,
             title="Zahnarzt",
             start_at="2099-03-10T10:00:00+01:00",
             end_at="2099-03-10T11:00:00+01:00",
         )
+        # An invitee and a comment, so the detail page renders its RSVP-free thread and form.
+        CalendarEventAttendee.objects.create(event=self.event, user=self.lukas, invited_by=self.mira)
+        CalendarEventComment.objects.create(event=self.event, author=self.lukas, body="Ich komme mit.")
         Habit.objects.create(owner=self.mira, title="Lesen")
         self.diagram = UmlDiagram.objects.create(
             owner=self.mira, title="Klassen", document=empty_uml_document()
@@ -138,7 +143,9 @@ class PageAccessibilityMarkupTests(TestCase):
             "/calendar/?view=week&date=2099-03-10",
             "/calendar/?view=year&year=2099",
             "/calendar/?view=agenda&date=2099-03-09",
+            f"/calendar/events/{self.event.pk}/",
             "/tasks/",
+            "/tasks/time/",
             "/notes/",
             f"/notes/{self.note.pk}/",
             "/messages/",

@@ -1,0 +1,110 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}Zeiterfassung | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tasks.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell tasks-shell time-shell">
+    <header class="page-hero">
+        <div class="task-hero-copy">
+            <h1>Zeiterfassung</h1>
+            <p>Wie viel Zeit du diese Woche in deine Aufgaben gesteckt hast. Die Zeiten sieht nur du.</p>
+        </div>
+        <span class="task-hero-icon" aria-hidden="true">
+            <i class="fa-regular fa-clock"></i>
+        </span>
+    </header>
+
+    <div class="time-layout">
+        <section class="glass-panel time-panel" aria-labelledby="time-week-title">
+            <div class="time-toolbar">
+                <a class="icon-button" href="?week={{ report.previous_value }}" aria-label="Vorherige Woche"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></a>
+                <h2 id="time-week-title">{{ report.label }}</h2>
+                <a class="icon-button" href="?week={{ report.next_value }}" aria-label="Nächste Woche"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></a>
+                <span class="toolbar-spacer"></span>
+                {% if not report.is_current %}<a class="ghost-button" href="{% url 'task_time_report' %}">Diese Woche</a>{% endif %}
+                <a class="ghost-button" href="?week={{ report.week_value }}&amp;format=csv"><i class="fa-solid fa-file-csv" aria-hidden="true"></i> CSV</a>
+                <a class="ghost-button" href="{% url 'tasks' %}"><i class="fa-solid fa-list-check" aria-hidden="true"></i> Aufgaben</a>
+            </div>
+
+            {% include "app/partials/task_running_timer.html" %}
+
+            <p class="time-total"><strong>{{ report.total_label }}</strong> <span>in dieser Woche</span></p>
+
+            <ol class="time-days" aria-label="Zeit pro Tag">
+                {% for day in report.days %}
+                <li>
+                    <span class="time-day-name">{{ day.weekday|slice:":2" }}<span class="visually-hidden">{{ day.weekday|slice:"2:" }}, {{ day.date_label }}</span></span>
+                    <span class="time-bar" aria-hidden="true"><span style="--time-share: {{ day.percent }}%"></span></span>
+                    <span class="time-day-value">{{ day.label }}</span>
+                </li>
+                {% endfor %}
+            </ol>
+
+            <h3>Nach Aufgabe</h3>
+            {% if report.tasks %}
+            <ul class="time-tasks">
+                {% for task in report.tasks %}
+                <li>
+                    <span class="time-task-copy"><strong>{{ task.title }}</strong><small>{{ task.list_name }} · {{ task.percent }} %</small></span>
+                    <span class="time-day-value">{{ task.label }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="time-empty">In dieser Woche wurde noch keine Zeit erfasst. Starte einen Timer mit <i class="fa-solid fa-play" aria-hidden="true"></i><span class="visually-hidden">dem Play-Knopf</span> an einer Aufgabe oder trage Zeit nach.</p>
+            {% endif %}
+        </section>
+
+        <div class="time-side">
+            <section class="glass-panel time-panel" aria-labelledby="time-add-title">
+                <h2 id="time-add-title">Zeit nachtragen</h2>
+                <form class="time-add-form" method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="time_entry_add">
+                    {% if entry_form.non_field_errors %}<div class="form-errors">{{ entry_form.non_field_errors }}</div>{% endif %}
+                    <label>{{ entry_form.task.label }} {{ entry_form.task }}</label>
+                    {% if entry_form.task.errors %}<small class="form-error">{{ entry_form.task.errors|striptags }}</small>{% endif %}
+                    <div class="time-add-row">
+                        <label>{{ entry_form.day.label }} {{ entry_form.day }}</label>
+                        <label>{{ entry_form.minutes.label }} {{ entry_form.minutes }}</label>
+                    </div>
+                    {% if entry_form.day.errors %}<small class="form-error">{{ entry_form.day.errors|striptags }}</small>{% endif %}
+                    {% if entry_form.minutes.errors %}<small class="form-error">{{ entry_form.minutes.errors|striptags }}</small>{% endif %}
+                    <button class="primary-button" type="submit"><i class="fa-solid fa-plus" aria-hidden="true"></i> Eintragen</button>
+                </form>
+            </section>
+
+            <section class="glass-panel time-panel" aria-labelledby="time-entries-title">
+                <h2 id="time-entries-title">Einträge</h2>
+                {% if report.entries %}
+                <ul class="time-entries">
+                    {% for entry in report.entries %}
+                    <li{% if entry.is_running %} class="is-running"{% endif %}>
+                        <span class="time-task-copy"><strong>{{ entry.title }}</strong><small>{{ entry.day_label }} · {{ entry.time_label }}</small></span>
+                        <span class="time-day-value">{{ entry.duration_label }}</span>
+                        <form method="post" data-confirm="Diesen Eintrag löschen?">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_name" value="time_entry_delete">
+                            <input type="hidden" name="entry_id" value="{{ entry.id }}">
+                            <button class="icon-button" type="submit" aria-label="Eintrag „{{ entry.title }}“ vom {{ entry.day_label }} löschen"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
+                        </form>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="time-empty">Keine Einträge in dieser Woche.</p>
+                {% endif %}
+            </section>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block page_js %}
+<script src="{% versioned_static 'js/task_timer.js' %}"></script>
+{% endblock %}

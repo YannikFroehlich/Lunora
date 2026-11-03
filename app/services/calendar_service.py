@@ -9,6 +9,7 @@ from django.utils import timezone
 from app.models import (
     CalendarEvent,
     CalendarEventAttendee,
+    CalendarEventComment,
     CalendarReminder,
     UserNotification,
     VacationPeriod,
@@ -329,6 +330,57 @@ def _ics_fold(line):
         current_size += char_size
     chunks.append(current)
     return "\r\n ".join(chunks)
+
+
+EVENT_COMMENT_MAX_LENGTH = CalendarEventComment._meta.get_field("body").max_length
+
+
+def can_view_event(event, user):
+    """The organizer and everyone invited (whatever they answered) see an event's detail page."""
+    return event.user_id == user.pk or event.attendees.filter(user=user).exists()
+
+
+def event_comment_recipient_ids(event):
+    """Who hears about a new comment: the organizer and invitees who haven't declined."""
+    ids = set(
+        event.attendees.exclude(status=CalendarEventAttendee.STATUS_DECLINED).values_list(
+            "user_id", flat=True
+        )
+    )
+    ids.add(event.user_id)
+    return ids
+
+
+def add_event_comment(event, user, body):
+    """Comment on an event with invitees; raises ValueError with a German message otherwise."""
+    from app.services.notifications import materialize_event_comment_notification
+
+    body = (body or "").strip()
+    if not can_view_event(event, user):
+        raise ValueError("Diesen Termin gibt es nicht.")
+    if not event.attendees.exists():
+        raise ValueError("Kommentare gibt es nur bei Terminen mit Eingeladenen.")
+    if not body:
+        raise ValueError("Bitte schreibe einen Kommentar.")
+    if len(body) > EVENT_COMMENT_MAX_LENGTH:
+        raise ValueError(f"Ein Kommentar darf höchstens {EVENT_COMMENT_MAX_LENGTH} Zeichen lang sein.")
+    comment = CalendarEventComment.objects.create(event=event, author=user, body=body)
+    materialize_event_comment_notification(comment)
+    return comment
+
+
+def delete_event_comment(event, user, comment_id):
+    """Authors delete their own comments, together with the notifications about them."""
+    from app.models import UserNotification
+
+    comment = event.comments.filter(pk=comment_id, author=user).first()
+    if comment is None:
+        return False
+    UserNotification.objects.filter(
+        kind=UserNotification.KIND_EVENT_COMMENT, source_key=f"event-comment:{comment.pk}"
+    ).delete()
+    comment.delete()
+    return True
 
 
 def location_link(location):

@@ -16,7 +16,7 @@ CATEGORY_DEFINITIONS = (
     {
         "key": NotificationPreference.CATEGORY_CALENDAR,
         "label": "Kalender",
-        "hint": "Termine, Erinnerungen und Einladungen",
+        "hint": "Termine, Erinnerungen, Einladungen und Kommentare",
         "icon": "fa-calendar-days",
     },
     {
@@ -54,6 +54,7 @@ CATEGORY_DEFINITIONS = (
 KIND_TO_CATEGORY = {
     UserNotification.KIND_CALENDAR_REMINDER: NotificationPreference.CATEGORY_CALENDAR,
     UserNotification.KIND_EVENT_INVITATION: NotificationPreference.CATEGORY_CALENDAR,
+    UserNotification.KIND_EVENT_COMMENT: NotificationPreference.CATEGORY_CALENDAR,
     UserNotification.KIND_TASK_DUE: NotificationPreference.CATEGORY_TASKS,
     UserNotification.KIND_TASK_ASSIGNMENT: NotificationPreference.CATEGORY_TASKS,
     UserNotification.KIND_TASK_COMMENT: NotificationPreference.CATEGORY_TASKS,

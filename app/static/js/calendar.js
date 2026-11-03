@@ -307,6 +307,11 @@ if (editDialog) {
     if (locationInput) locationInput.value = data.location || "";
     if (categorySelect) categorySelect.value = data.category || "other";
     if (reminderSelect) reminderSelect.value = data.reminder || "";
+    const detailLink = editDialog.querySelector("[data-event-detail-link]");
+    if (detailLink) {
+      detailLink.hidden = !data.detailUrl;
+      detailLink.href = data.detailUrl || "#";
+    }
 
     const attendeeIds = (data.attendees || "").split(",").filter(Boolean);
     attendeeInputs.forEach((input) => {
@@ -338,6 +343,7 @@ if (editDialog) {
         attendees: button.dataset.editAttendees,
         reminder: button.dataset.editReminder,
         series: button.dataset.editSeries,
+        detailUrl: button.dataset.detailUrl,
       }),
     );
   });

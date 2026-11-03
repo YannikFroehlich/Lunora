@@ -21,7 +21,7 @@
                 <time class="agenda-time">{{ event.time }}</time>
                 <span class="agenda-dot" aria-hidden="true"></span>
                 <span class="agenda-copy">
-                    <a class="agenda-title" href="{{ event.day_url }}">{{ event.label }}</a>
+                    <a class="agenda-title" href="{{ event.detail_url }}">{{ event.label }}</a>
                     <small>
                         {{ event.category }}
                         {% if event.is_invited %}· <i class="fa-solid fa-user-group" aria-hidden="true"></i> Einladung{% endif %}

@@ -638,6 +638,24 @@ class CalendarEventAttendee(models.Model):
         return f"{self.user} @ {self.event}"
 
 
+class CalendarEventComment(models.Model):
+    """A note on one event between its organizer and the people invited to it."""
+
+    event = models.ForeignKey(CalendarEvent, on_delete=models.CASCADE, related_name="comments")
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="calendar_event_comments"
+    )
+    body = models.TextField(max_length=2000)
+    created_at = models.DateTimeField(auto_now_add=True)
+    edited_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return self.body[:80]
+
+
 class CalendarReminder(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="calendar_reminders"
@@ -820,6 +838,38 @@ class TaskComment(models.Model):
 
     def __str__(self):
         return self.body[:80]
+
+
+class TaskTimeEntry(models.Model):
+    """Time a user spent on a task: a running timer (``ended_at`` null, one per user) or a span."""
+
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="time_entries")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="task_time_entries"
+    )
+    started_at = models.DateTimeField()
+    ended_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-started_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user"], condition=models.Q(ended_at__isnull=True), name="unique_running_time_entry"
+            ),
+        ]
+        indexes = [models.Index(fields=["user", "started_at"], name="app_tasktime_user_started")]
+
+    @property
+    def is_running(self):
+        return self.ended_at is None
+
+    def duration_seconds(self, now=None):
+        end = self.ended_at or now or timezone.now()
+        return max(0, int((end - self.started_at).total_seconds()))
+
+    def __str__(self):
+        return f"{self.task} · {self.user}"
 
 
 class TaskTemplate(models.Model):
@@ -1070,6 +1120,7 @@ class UserNotification(models.Model):
     KIND_TASK_RETURNED = "task_returned"
     KIND_TASK_SHARE = "task_share"
     KIND_CHAT_MENTION = "chat_mention"
+    KIND_EVENT_COMMENT = "event_comment"
     KIND_CHOICES = [
         (KIND_CALENDAR_REMINDER, "Kalendererinnerung"),
         (KIND_TASK_DUE, "Fällige Aufgabe"),
@@ -1085,6 +1136,7 @@ class UserNotification(models.Model):
         (KIND_TASK_RETURNED, "Zurückgegebene Aufgabe"),
         (KIND_TASK_SHARE, "Geteilte Aufgabe"),
         (KIND_CHAT_MENTION, "Chat-Erwähnung"),
+        (KIND_EVENT_COMMENT, "Terminkommentar"),
     ]
 
     recipient = models.ForeignKey(
