@@ -262,6 +262,7 @@ def _messages(user, archive):
             "conversation_id": message.conversation_id,
             "conversation": message.conversation.display_title_for(user),
             "body": message.body,
+            "forwarded": message.is_forwarded,
             "created_at": message.created_at,
             "attachment": attachment_paths.get(message.pk),
         }

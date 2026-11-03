@@ -968,3 +968,128 @@ class MessageLiveUpdateTests(TestCase):
         self.assertTrue(response.json()["ok"])
         self.assertIn("contact_list_html", response.json())
         self.assertIn("overview_html", response.json())
+
+
+class MessageForwardTests(TestCase):
+    def setUp(self):
+        self.mira, self.lukas, self.anna, self.ben = (
+            User.objects.create_user(
+                username=f"{name}@example.com", email=f"{name}@example.com", password="secret-12345"
+            )
+            for name in ("mira", "lukas", "anna", "ben")
+        )
+        for user, name in (
+            (self.mira, "Mira"),
+            (self.lukas, "Lukas"),
+            (self.anna, "Anna"),
+            (self.ben, "Ben"),
+        ):
+            Profile.objects.create(user=user, display_name=name)
+        self.source = self.direct(self.mira, self.lukas)
+        self.target = self.direct(self.mira, self.anna)
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+    def direct(self, *users):
+        conversation = Conversation.objects.create(created_by=users[0])
+        for user in users:
+            ConversationMember.objects.create(conversation=conversation, user=user)
+        return conversation
+
+    def forward(self, message, target, source=None):
+        source = source or self.source
+        return self.client.post(
+            f"/messages/{source.id}/",
+            {
+                "form_name": "message_forward",
+                "conversation_id": source.id,
+                "message_id": message.id,
+                "target_conversation_id": target.id,
+            },
+        )
+
+    def test_forwarding_sends_a_copy_marked_as_forwarded(self):
+        original = self.source.messages.create(sender=self.lukas, body="Treffen um 18 Uhr")
+
+        response = self.forward(original, self.target)
+
+        self.assertRedirects(response, f"/messages/{self.target.id}/")
+        forwarded = self.target.messages.get()
+        self.assertEqual(forwarded.body, "Treffen um 18 Uhr")
+        self.assertEqual(forwarded.sender, self.mira)
+        self.assertTrue(forwarded.is_forwarded)
+        self.assertIsNone(forwarded.reply_to)
+
+        # Anna sees the label but not who wrote the original.
+        self.client.logout()
+        self.client.login(username="anna@example.com", password="secret-12345")
+        page = self.client.get(f"/messages/{self.target.id}/")
+        self.assertContains(page, "Weitergeleitet")
+        self.assertNotContains(page, "Lukas")
+
+    def test_forwarded_attachment_is_an_independent_copy(self):
+        with TemporaryDirectory() as private_root, override_settings(PRIVATE_MEDIA_ROOT=private_root):
+            original = self.source.messages.create(sender=self.lukas, body="")
+            ChatMessageAttachment.objects.create(
+                message=original,
+                uploaded_by=self.lukas,
+                kind="audio",
+                original_name="Sprachnachricht.ogg",
+                content_type="audio/ogg",
+                size=24,
+                duration_seconds=4,
+                file=SimpleUploadedFile("Sprachnachricht.ogg", b"OggS" + b"\x00" * 20),
+            )
+
+            self.forward(original, self.target)
+
+            copy = self.target.messages.get().attachment
+            self.assertNotEqual(copy.file_id, original.attachment.file_id)
+            self.assertEqual((copy.kind, copy.duration_seconds, copy.content_type), ("audio", 4, "audio/ogg"))
+            original.attachment.file.delete(save=False)
+            original.attachment.delete()
+            response = self.client.get(f"/messages/attachments/{copy.file_id}/download/")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(b"".join(response.streaming_content), b"OggS" + b"\x00" * 20)
+            response.close()
+
+    def test_only_reachable_conversations_and_messages_can_be_forwarded(self):
+        original = self.source.messages.create(sender=self.lukas, body="Geheim")
+        foreign = self.direct(self.anna, self.ben)
+
+        self.forward(original, foreign)
+        self.assertFalse(foreign.messages.exists())
+
+        self.forward(original, self.source)
+        self.assertEqual(self.source.messages.count(), 1)
+
+        original.is_deleted = True
+        original.save()
+        self.forward(original, self.target)
+        self.assertFalse(self.target.messages.exists())
+
+        foreign_message = foreign.messages.create(sender=self.anna, body="Nicht für Mira")
+        response = self.forward(foreign_message, self.target, source=foreign)
+        self.assertRedirects(response, "/messages/")
+        self.assertFalse(self.target.messages.exists())
+
+    def test_blocked_conversations_are_neither_offered_nor_accepted(self):
+        original = self.source.messages.create(sender=self.lukas, body="Hallo")
+        ConversationMember.objects.filter(conversation=self.target, user=self.anna).update(is_blocked=True)
+
+        page = self.client.get(f"/messages/{self.source.id}/")
+        self.assertEqual(page.context["forward_targets"], [])
+        self.assertNotContains(page, 'data-menu-action="forward"')
+
+        self.forward(original, self.target)
+        self.assertFalse(self.target.messages.exists())
+
+    def test_forward_targets_list_the_other_conversations(self):
+        group = Conversation.objects.create(created_by=self.mira, is_group=True, title="Team")
+        for user in (self.mira, self.lukas, self.ben):
+            ConversationMember.objects.create(conversation=group, user=user)
+
+        page = self.client.get(f"/messages/{self.source.id}/")
+
+        titles = [target["title"] for target in page.context["forward_targets"]]
+        self.assertCountEqual(titles, ["Anna", "Team"])
+        self.assertContains(page, 'data-menu-action="forward"')

@@ -117,6 +117,9 @@
                 </div>
                 <button type="button" role="menuitem" data-menu-action="reply"><i class="fa-solid fa-reply"></i> Antworten</button>
                 <button type="button" role="menuitem" data-menu-action="pin"><i class="fa-solid fa-thumbtack"></i><span data-menu-pin-label>Anpinnen</span></button>
+                {% if forward_targets %}
+                <button type="button" role="menuitem" data-menu-action="forward"><i class="fa-solid fa-share"></i> Weiterleiten</button>
+                {% endif %}
                 {% if feature_flags.tasks %}
                 <button type="button" role="menuitem" data-menu-action="prefill" data-prefill-target="task" data-prefill-url="{% url 'tasks' %}"><i class="fa-solid fa-list-check"></i> Als Aufgabe</button>
                 {% endif %}
@@ -134,6 +137,33 @@
                 <input type="hidden" name="action" value="">
                 <input type="hidden" name="emoji" value="">
             </form>
+
+            {% if forward_targets %}
+            <dialog class="forward-dialog" id="message-forward-dialog" aria-labelledby="message-forward-title">
+                <form class="glass-panel forward-dialog-card" method="post" action="{% url 'messages_detail' selected_conversation.id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="message_forward">
+                    <input type="hidden" name="conversation_id" value="{{ selected_conversation.id }}">
+                    <input type="hidden" name="message_id" value="" data-forward-message-id>
+                    <header class="forward-dialog-header">
+                        <h2 id="message-forward-title">Nachricht weiterleiten</h2>
+                        <button class="icon-button" type="button" data-forward-close aria-label="Dialog schließen"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                    </header>
+                    <p class="forward-dialog-preview" data-forward-preview></p>
+                    <fieldset class="forward-target-list">
+                        <legend>An</legend>
+                        {% for target in forward_targets %}
+                        <label><input type="radio" name="target_conversation_id" value="{{ target.id }}" required {% if forloop.first %}checked{% endif %}> <span>{{ target.title }}</span></label>
+                        {% endfor %}
+                    </fieldset>
+                    <p class="forward-dialog-hint">Die Nachricht wird als „Weitergeleitet“ von dir gesendet, ohne den ursprünglichen Absender.</p>
+                    <div class="forward-dialog-actions">
+                        <button class="ghost-button" type="button" data-forward-close>Abbrechen</button>
+                        <button class="primary-button" type="submit"><i class="fa-solid fa-share" aria-hidden="true"></i> Weiterleiten</button>
+                    </div>
+                </form>
+            </dialog>
+            {% endif %}
 
             <div class="typing-indicator" id="typing-indicator" aria-live="polite"></div>
 

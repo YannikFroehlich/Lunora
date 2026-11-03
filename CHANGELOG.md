@@ -6,6 +6,9 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Forward chat messages: "Weiterleiten" in a message's menu sends it, including an image, file or
+  voice message, to another of your conversations. It arrives as "Weitergeleitet" from you, without
+  naming who wrote the original.
 - Event reminders: an event can remind you "Zum Beginn", 5/15/30 minutes, 1–2 hours, 1–2 days or a
   week before it starts. The reminder reaches you and everyone who accepted the invitation, through
   the notification center, e-mail, Web Push and the browser, with the event's time, place and a link

@@ -374,6 +374,9 @@ class ChatMessage(models.Model):
         null=True,
         related_name="replies",
     )
+    # Sent with "Weiterleiten" from another conversation; the original sender is not recorded, so
+    # forwarding never reveals who wrote it to people outside that conversation.
+    is_forwarded = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     edited_at = models.DateTimeField(blank=True, null=True)
 
