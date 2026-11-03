@@ -6,6 +6,12 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- The calendar page's category legend is replaced by a "Kalender" panel listing your subscribed
+  calendars; open one to change its name, color and icon (e.g. a cake for birthdays), refresh or
+  remove it. Its events show that icon.
+- The calendar page works better on phones: the toolbar is more compact ("Termin" and "Heute" side
+  by side), the mouse hints are hidden, day dots show their event color, and the "Heute" list's edit
+  and delete buttons no longer appear empty.
 - Clicking a holiday or vacation on the calendar page opens the vacation planner with that day
   highlighted for three seconds.
 - The calendar page no longer shows the month statistics panel (event count, free and active

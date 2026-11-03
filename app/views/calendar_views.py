@@ -12,6 +12,8 @@ from app.forms import (
     CalendarEventMoveForm,
     CalendarQuickAddForm,
     CalendarReminderForm,
+    CalendarSubscriptionForm,
+    CalendarSubscriptionStyleForm,
 )
 from app.models import CalendarEvent, CalendarEventAttendee, CalendarReminder, Profile
 from app.services.calendar_service import (
@@ -25,9 +27,17 @@ from app.services.calendar_service import (
     series_scope_events,
     sync_event_reminders,
 )
+from app.services.calendar_subscriptions import can_refresh, sync_subscription
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.user_preferences import format_user_date, format_user_time
 from app.view_models import get_calendar_context, get_calendar_event_detail_context
+
+# The calendars panel edits, refreshes and removes subscriptions; adding one stays in settings.
+CALENDAR_PAGE_SUBSCRIPTION_FORMS = {
+    "calendar_subscription_style",
+    "calendar_subscription_refresh",
+    "calendar_subscription_delete",
+}
 
 
 @login_required
@@ -37,6 +47,13 @@ def calendar(request):
     event_form = CalendarEventForm(user=request.user) if calendar_event_creation_enabled else None
     edit_form = None
     editing_event_id = None
+
+    form_name = request.POST.get("form_name", "") if request.method == "POST" else ""
+    if form_name in CALENDAR_PAGE_SUBSCRIPTION_FORMS:
+        if not feature_enabled("calendar_subscriptions"):
+            return disabled_feature_response(request, "calendar_subscriptions")
+        handle_subscription_form(request, form_name)
+        return redirect(request.get_full_path())
 
     if request.method == "POST" and request.POST.get("form_name") == "calendar_event_add":
         if not calendar_event_creation_enabled:
@@ -297,3 +314,50 @@ def calendar_feed(request, token):
     response["Cache-Control"] = "private, no-cache"
     response["X-Robots-Tag"] = "noindex"
     return response
+
+
+def handle_subscription_form(request, form_name):
+    """Add, restyle, refresh or remove an external calendar (settings and calendar page); adding and
+    refreshing fetch it right away."""
+    if form_name == "calendar_subscription_add":
+        form = CalendarSubscriptionForm(request.POST, user=request.user)
+        if not form.is_valid():
+            django_messages.error(
+                request, " ".join(error for errors in form.errors.values() for error in errors)
+            )
+            return
+        _sync_with_message(request, form.save())
+        return
+    subscription = request.user.calendar_subscriptions.filter(
+        pk=request.POST.get("subscription_id") or 0
+    ).first()
+    if subscription is None:
+        return
+    if form_name == "calendar_subscription_style":
+        form = CalendarSubscriptionStyleForm(request.POST, instance=subscription)
+        if form.is_valid():
+            form.save()
+            django_messages.success(request, f"„{subscription.name}“ gespeichert.")
+        else:
+            django_messages.error(
+                request, " ".join(error for errors in form.errors.values() for error in errors)
+            )
+    elif form_name == "calendar_subscription_delete":
+        subscription.delete()
+        django_messages.success(request, f"„{subscription.name}“ wird nicht mehr abonniert.")
+    elif form_name == "calendar_subscription_refresh":
+        if can_refresh(subscription):
+            _sync_with_message(request, subscription)
+        else:
+            django_messages.info(request, f"„{subscription.name}“ wurde gerade erst aktualisiert.")
+
+
+def _sync_with_message(request, subscription):
+    if sync_subscription(subscription):
+        django_messages.success(
+            request, f"„{subscription.name}“ aktualisiert: {subscription.event_count} Termin(e)."
+        )
+    else:
+        django_messages.error(
+            request, f"„{subscription.name}“ konnte nicht geladen werden: {subscription.last_error}"
+        )
