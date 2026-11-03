@@ -1,4 +1,5 @@
 import hashlib
+import io
 import json
 import mimetypes
 import os
@@ -462,3 +463,89 @@ class CommandPaletteTests(TestCase):
         self.assertNotContains(response, 'id="command-vocabulary"')
         self.assertContains(response, 'id="command-tasks"')
         self.assertContains(response, 'id="command-administration"')
+
+
+class HealthEndpointTests(TestCase):
+    def test_reports_ok_without_login_and_without_details(self):
+        from app.services.health import record_automation_run
+
+        record_automation_run()
+        response = self.client.get("/healthz/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {"status": "ok", "checks": {"database": "ok", "cache": "ok", "automations": "ok"}},
+        )
+        self.assertIn("no-store", response["Cache-Control"])
+        self.assertEqual(response["X-Robots-Tag"], "noindex")
+        self.assertNotIn("sessionid", response.cookies)
+
+    @override_settings(LUNORA_HEALTH_REQUIRE_AUTOMATIONS=True, LUNORA_AUTOMATION_INTERVAL_SECONDS=60)
+    def test_stale_or_missing_automation_loop_fails_where_required(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from app.services.health import record_automation_run
+
+        response = self.client.get("/healthz/")
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["checks"]["automations"], "unknown")
+
+        record_automation_run(now=timezone.now() - timedelta(minutes=6))
+        response = self.client.get("/healthz/")
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(
+            response.json(),
+            {"status": "error", "checks": {"database": "ok", "cache": "ok", "automations": "stale"}},
+        )
+
+        record_automation_run(now=timezone.now() - timedelta(minutes=4))
+        self.assertEqual(self.client.get("/healthz/").status_code, 200)
+
+    @override_settings(LUNORA_HEALTH_REQUIRE_AUTOMATIONS=False)
+    def test_automations_are_only_reported_where_not_required(self):
+        response = self.client.get("/healthz/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["checks"]["automations"], "unknown")
+
+    def test_cache_failure_returns_503(self):
+        with (
+            patch("app.services.health.cache.set", side_effect=ConnectionError("redis down")),
+            self.assertLogs("app.services.health", level="WARNING"),
+        ):
+            response = self.client.get("/healthz/")
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["checks"]["cache"], "error")
+        self.assertNotContains(response, "redis down", status_code=503)
+
+    def test_database_failure_returns_503(self):
+        with (
+            patch("app.services.health.connection.cursor", side_effect=RuntimeError("db gone")),
+            self.assertLogs("app.services.health", level="WARNING"),
+        ):
+            response = self.client.get("/healthz/")
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["checks"]["database"], "error")
+
+    def test_only_get_is_allowed(self):
+        self.assertEqual(self.client.post("/healthz/").status_code, 405)
+
+    @override_settings(SECURE_SSL_REDIRECT=True)
+    def test_is_reachable_over_plain_http_for_local_monitors(self):
+        self.assertEqual(self.client.get("/healthz/").status_code, 200)
+        self.assertEqual(self.client.get("/login/").status_code, 301)
+
+    def test_run_automations_records_a_heartbeat(self):
+        from django.core.management import call_command
+
+        from app.models import AutomationHeartbeat
+
+        with patch("app.management.commands.run_automations.run_scheduled_tasks") as run:
+            run.return_value = {
+                "reminder_emails": {"sent": 0, "failed": 0},
+                "weekly_summaries": {"sent": 0, "failed": 0},
+            }
+            call_command("run_automations", stdout=io.StringIO())
+        self.assertTrue(AutomationHeartbeat.objects.filter(pk=1).exists())

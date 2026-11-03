@@ -18,6 +18,22 @@ from app.services.note_search import refresh_note_search_vectors
 from app.services.uml_content import empty_uml_document
 
 
+class AutomationHeartbeat(models.Model):
+    """Singleton row (pk 1) the ``run_automations`` process touches after every pass, read by /healthz/.
+
+    Kept in the database rather than the cache, because the local-memory cache isn't shared between
+    the web and automation processes in development."""
+
+    finished_at = models.DateTimeField()
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Automatik zuletzt {self.finished_at:%Y-%m-%d %H:%M}"
+
+
 class SystemSettings(models.Model):
     normal_login_enabled = models.BooleanField(default=True)
     calendar_event_creation_enabled = models.BooleanField(default=True)

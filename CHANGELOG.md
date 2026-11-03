@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Health check for monitoring: `/healthz/` answers 200 while the database, the cache and the
+  background automations are working and 503 otherwise, with only a status word per check.
 - Accessibility pass over all pages (checked with axe-core in light and dark mode, including open
   dialogs, and by keyboard): every form field now has a label for screen readers, labels no longer
   point at a field of another form on the same page, the notes editor, its checklist boxes and the

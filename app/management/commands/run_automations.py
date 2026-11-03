@@ -4,6 +4,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import close_old_connections
 
+from app.services.health import record_automation_run
 from app.services.scheduled_tasks import run_scheduled_tasks
 
 
@@ -31,6 +32,7 @@ class Command(BaseCommand):
         while True:
             close_old_connections()
             result = run_scheduled_tasks()
+            record_automation_run()
             self.stdout.write(self._summary(result))
             close_old_connections()
 
