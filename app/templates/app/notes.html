@@ -331,7 +331,14 @@
             {% endfor %}
         </div>
         {% endif %}
+        <p class="dialog-hint">Word-Dokument importieren</p>
+        <div class="note-import-row">
+            <input id="note-import-file" class="file-input" type="file" name="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" form="note-import-form" aria-label="Word-Datei (.docx)" required>
+            <button class="primary-button" type="submit" form="note-import-form"><i class="fa-solid fa-file-word" aria-hidden="true"></i> Importieren</button>
+        </div>
     </form>
+    {% comment %}A nested form would be dropped by the parser, so the inputs above point here via form="…".{% endcomment %}
+    <form id="note-import-form" method="post" action="{% url 'note_import' %}" enctype="multipart/form-data" hidden>{% csrf_token %}</form>
 </dialog>
 
 <dialog class="notes-dialog math-dialog" data-math-dialog>

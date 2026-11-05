@@ -124,6 +124,12 @@ class NoteHtmlRenderer:
             styles.append(f"background-color: {attrs['backgroundColor']}")
         if attrs.get("align") in {"left", "center", "right"}:
             styles.append(f"text-align: {attrs['align']}")
+        if attrs.get("borderColor") == "none":
+            styles.append("border-color: transparent")
+        elif HEX_COLOR_RE.fullmatch(str(attrs.get("borderColor") or "")):
+            styles.append(f"border-color: {attrs['borderColor']}")
+        if HEX_COLOR_RE.fullmatch(str(attrs.get("borderLeft") or "")):
+            styles.append(f"border-left: 3px solid {attrs['borderLeft']}")
         if styles:
             parts.append(f' style="{"; ".join(styles)}"')
         return f"<{tag}{''.join(parts)}>{self.blocks(content)}</{tag}>"
@@ -216,10 +222,18 @@ class NoteHtmlRenderer:
 
     @staticmethod
     def _align(attrs):
+        """Style attribute for a paragraph or heading: alignment plus shading and rules."""
+        styles = []
         align = attrs.get("textAlign")
         if align in ALLOWED_ALIGNMENTS and align not in {None, "left"}:
-            return f' style="text-align: {align}"'
-        return ""
+            styles.append(f"text-align: {align}")
+        if HEX_COLOR_RE.fullmatch(str(attrs.get("backgroundColor") or "")):
+            styles.append(f"background-color: {attrs['backgroundColor']}; padding: 0.15em 0.4em")
+        if HEX_COLOR_RE.fullmatch(str(attrs.get("borderLeft") or "")):
+            styles.append(f"border-left: 3px solid {attrs['borderLeft']}; padding-left: 0.6em")
+        if HEX_COLOR_RE.fullmatch(str(attrs.get("borderBottom") or "")):
+            styles.append(f"border-bottom: 1.5px solid {attrs['borderBottom']}; padding-bottom: 0.15em")
+        return f' style="{"; ".join(styles)}"' if styles else ""
 
 
 def _text_style(attrs):

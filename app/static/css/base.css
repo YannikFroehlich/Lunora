@@ -1273,6 +1273,28 @@ dialog .glass-panel {
   border-radius: var(--radius-sm);
 }
 
+/* Shared file picker: a dashed drop area with a pill button. */
+.file-input {
+  width: 100%;
+  padding: 8px;
+  color: var(--color-muted);
+  background: var(--surface-control);
+  border: 1px dashed var(--glass-border-soft);
+  border-radius: var(--radius-sm);
+}
+
+.file-input::file-selector-button {
+  margin-right: 12px;
+  padding: 7px 14px;
+  color: var(--color-heading);
+  font: inherit;
+  font-weight: 600;
+  background: var(--surface-control-hover);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+
 /* Shared form controls: toggle switch and custom checkbox. */
 .switch {
   position: relative;

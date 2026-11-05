@@ -9,7 +9,6 @@ import re
 import uuid
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import PurePath
-from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.core.exceptions import ValidationError
@@ -17,7 +16,13 @@ from django.db import transaction
 
 from app.models import CalendarEvent
 from app.services.calendar_service import MANUAL_RECURRENCE_MAX_INSTANCES
-from app.services.note_content import ALLOWED_CODE_LANGUAGES, document_plain_text, validate_note_document
+from app.services.docx_import import import_docx_upload
+from app.services.note_content import (
+    ALLOWED_CODE_LANGUAGES,
+    document_plain_text,
+    safe_link_href,
+    validate_note_document,
+)
 from app.services.notes import create_note
 from app.services.user_preferences import get_user_zoneinfo
 
@@ -25,6 +30,7 @@ MAX_IMPORT_FILES = 20
 MAX_IMPORT_FILE_BYTES = 2 * 1024 * 1024
 MARKDOWN_EXTENSIONS = {".md", ".markdown", ".txt"}
 ICS_EXTENSIONS = {".ics"}
+DOCX_EXTENSIONS = {".docx"}
 # Unbounded series ("every year") are expanded this far ahead, like the event form's own limit.
 RECURRENCE_HORIZON_DAYS = 1825
 
@@ -60,16 +66,6 @@ def _indent(line):
     return len(line) - len(line.lstrip(" "))
 
 
-def _safe_href(href):
-    parsed = urlparse(href)
-    scheme = parsed.scheme.lower()
-    if scheme in {"http", "https"} and parsed.hostname:
-        return href
-    if scheme == "mailto" and "@" in parsed.path:
-        return href
-    return None
-
-
 def _text_node(text, marks):
     node = {"type": "text", "text": text}
     if marks:
@@ -100,7 +96,7 @@ def parse_inline(text, marks=()):
             # Tiptap's code mark excludes every other mark.
             add(groups["code"].strip() if groups["ticks"] != "`" else groups["code"], ({"type": "code"},))
         elif groups["href"] is not None:
-            href = _safe_href(groups["href"])
+            href = safe_link_href(groups["href"])
             link_marks = (*marks, {"type": "link", "attrs": {"href": href}}) if href else marks
             for child in parse_inline(groups["ltext"] or groups["href"], link_marks):
                 add(child["text"], tuple(child.get("marks", ())))
@@ -711,8 +707,21 @@ def import_files(user, files, *, notes_enabled, calendar_enabled):
     for upload in files:
         name = upload.name or "Datei"
         extension = PurePath(name).suffix.lower()
-        if extension not in MARKDOWN_EXTENSIONS | ICS_EXTENSIONS:
-            errors.append(f"„{name}“: Nur .md-, .txt- und .ics-Dateien können importiert werden.")
+        if extension not in MARKDOWN_EXTENSIONS | ICS_EXTENSIONS | DOCX_EXTENSIONS:
+            errors.append(f"„{name}“: Nur .md-, .txt-, .docx- und .ics-Dateien können importiert werden.")
+            continue
+        if extension in DOCX_EXTENSIONS:
+            if not notes_enabled:
+                errors.append(f"„{name}“: Notizen sind gerade deaktiviert.")
+                continue
+            try:
+                _note, skipped_images = import_docx_upload(user, upload)
+            except ValidationError as error:
+                errors.append(f"„{name}“: {' '.join(error.messages)}")
+                continue
+            note_count += 1
+            if skipped_images:
+                errors.append(f"„{name}“: {skipped_images} Bild(er) konnten nicht übernommen werden.")
             continue
         if upload.size > MAX_IMPORT_FILE_BYTES:
             errors.append(f"„{name}“ ist größer als 2 MB.")
