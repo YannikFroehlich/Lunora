@@ -1014,6 +1014,18 @@
   grid-template-columns: 1fr;
 }
 
+.note-import-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.note-import-row input[type="file"] {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
 .custom-template-choice {
   display: flex;
   align-items: stretch;

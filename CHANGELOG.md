@@ -6,6 +6,11 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Word documents (.docx) can be imported as notes, from the "Neue Notiz" dialog on the notes page or
+  the data import in settings. Headings, paragraphs and alignment, bold/italic/underline/strike,
+  super-/subscript, text colors, highlights, font sizes and fonts (mapped to the editor's choices),
+  nested bullet and numbered lists, tables (merged cells, cell colors, column widths) and links come
+  along; embedded pictures become note images (GIF/BMP/TIFF are converted to PNG).
 - Recurring tasks can repeat every n days, weeks, months or years ("alle 2 Wochen"), and weekly
   tasks on chosen weekdays ("Mo und Do"). The next due date now keeps its local time of day across
   daylight-saving changes.

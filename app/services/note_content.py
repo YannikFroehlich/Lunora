@@ -350,6 +350,17 @@ def _validate_mark(mark, state):
         raise ValidationError(f"Die Textformatierung „{mark_type}“ darf keine Attribute enthalten.")
 
 
+def safe_link_href(href):
+    """href when it is a link the note validator accepts (http/https with a host, mailto), else None."""
+    parsed = urlparse(href)
+    scheme = parsed.scheme.lower()
+    if scheme in {"http", "https"} and parsed.hostname:
+        return href
+    if scheme == "mailto" and "@" in parsed.path:
+        return href
+    return None
+
+
 def document_plain_text(document):
     parts = []
 
