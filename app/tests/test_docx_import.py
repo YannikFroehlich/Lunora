@@ -22,7 +22,7 @@ NS = (
 )
 
 STYLES = f"""<w:styles {NS}>
-<w:docDefaults><w:rPrDefault><w:rPr><w:sz w:val="22"/></w:rPr></w:rPrDefault></w:docDefaults>
+<w:docDefaults><w:rPrDefault><w:rPr><w:sz w:val="24"/></w:rPr></w:rPrDefault></w:docDefaults>
 <w:style w:type="paragraph" w:default="1" w:styleId="Standard"><w:name w:val="Normal"/></w:style>
 <w:style w:type="paragraph" w:styleId="Titel"><w:name w:val="Title"/><w:basedOn w:val="Standard"/></w:style>
 <w:style w:type="paragraph" w:styleId="berschrift1"><w:name w:val="heading 1"/>
@@ -126,14 +126,14 @@ def _gif():
     return output.getvalue()
 
 
-def build_docx(body=BODY, extra=None):
+def build_docx(body=BODY, extra=None, styles=STYLES):
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("[Content_Types].xml", "<Types/>")
         archive.writestr(
             "word/document.xml", f"<w:document {NS}><w:body>{body}<w:sectPr/></w:body></w:document>"
         )
-        archive.writestr("word/styles.xml", STYLES)
+        archive.writestr("word/styles.xml", styles)
         archive.writestr("word/numbering.xml", NUMBERING)
         archive.writestr("word/_rels/document.xml.rels", RELS)
         archive.writestr("word/media/image1.png", _png())
@@ -179,7 +179,11 @@ class DocxConversionTests(TestCase):
             ],
         )
         self.assertEqual(content[0]["attrs"], {"level": 1})
-        self.assertNotIn("marks", content[0]["content"][0], "heading style colours stay out")
+        self.assertEqual(
+            _marks(content[0]["content"][0])["textStyle"],
+            {"color": "#2f5496", "fontSize": "24px"},
+            "headings keep their style's colour and size",
+        )
 
         paragraph = content[1]
         self.assertEqual(paragraph["attrs"], {"textAlign": "center"})
@@ -222,6 +226,66 @@ class DocxConversionTests(TestCase):
         )
         self.assertEqual(rows[2]["content"][0]["attrs"]["rowspan"], 2)
         self.assertEqual(len(rows[3]["content"]), 1)
+
+    def test_shading_borders_and_spacing_lines_carry_over(self):
+        callout = (
+            '<w:tcBorders><w:top w:val="none"/><w:left w:val="single" w:sz="24" w:color="548235"/>'
+            '<w:bottom w:val="nil"/><w:right w:val="none"/></w:tcBorders><w:shd w:fill="E2EFDA"/>'
+            '<w:tcW w:type="dxa" w:w="9000"/>'
+        )
+        grid_cell = (
+            '<w:tcBorders><w:top w:val="single" w:sz="4" w:color="BFBFBF"/>'
+            '<w:left w:val="single" w:sz="4" w:color="BFBFBF"/></w:tcBorders><w:shd w:fill="FFFFFF"/>'
+        )
+        body = "".join(
+            [
+                '<w:p><w:pPr><w:pStyle w:val="berschrift1"/><w:shd w:fill="1F4E79"/></w:pPr>'
+                '<w:r><w:rPr><w:color w:val="FFFFFF"/></w:rPr><w:t>Kapitel</w:t></w:r></w:p>',
+                '<w:p><w:pPr><w:pBdr><w:left w:val="single" w:sz="18" w:color="2E75B6"/>'
+                '<w:bottom w:val="single" w:color="auto"/></w:pBdr><w:shd w:fill="F2F2F2"/></w:pPr>'
+                '<w:r><w:rPr><w:color w:val="000000"/><w:sz w:val="11"/></w:rPr><w:t>Formel</w:t></w:r></w:p>',
+                '<w:p><w:r><w:rPr><w:sz w:val="8"/></w:rPr><w:t></w:t></w:r></w:p>',
+                "<w:p/>",
+                "<w:tbl><w:tr>" + _cell("Merke", callout) + _cell("Zelle", grid_cell) + "</w:tr></w:tbl>",
+            ]
+        )
+        _title, document, _images, _skipped = docx_to_note(build_docx(body), "datei")
+
+        validate_note_document(document)
+        heading, formula, empty, table = document["content"]
+        self.assertEqual(heading["attrs"], {"level": 1, "backgroundColor": "#1f4e79"})
+        self.assertEqual(_marks(heading["content"][0])["textStyle"]["color"], "#ffffff")
+        self.assertEqual(
+            formula["attrs"],
+            {"backgroundColor": "#f2f2f2", "borderLeft": "#2e75b6", "borderBottom": "#000000"},
+        )
+        self.assertEqual(
+            _marks(formula["content"][0])["textStyle"],
+            {"color": "#000000", "fontSize": "10px"},
+            "black text stays black on the white page; 5.5 pt maps to the smallest size",
+        )
+        self.assertEqual(empty, {"type": "paragraph"}, "only tiny empty spacing lines are dropped")
+        callout_cell, plain_cell = table["content"][0]["content"]
+        self.assertEqual(
+            callout_cell["attrs"],
+            {
+                "colwidth": [600],
+                "backgroundColor": "#e2efda",
+                "borderColor": "none",
+                "borderLeft": "#548235",
+            },
+        )
+        self.assertEqual(plain_cell["attrs"], {"borderColor": "#bfbfbf"}, "white fills are the paper")
+
+    def test_body_text_keeps_words_size_on_the_a4_page(self):
+        data = build_docx(
+            _para("Fließtext"),
+            styles=STYLES.replace('<w:sz w:val="24"/>', '<w:sz w:val="20"/>', 1),
+        )
+        _title, document, _images, _skipped = docx_to_note(data, "datei")
+
+        text = document["content"][0]["content"][0]
+        self.assertEqual(_marks(text)["textStyle"], {"fontSize": "14px"}, "10 pt is 13.3 px at 100 % zoom")
 
     def test_long_tables_are_split_into_tables_the_editor_allows(self):
         rows = "".join(f"<w:tr>{_cell(str(index))}</w:tr>" for index in range(45))

@@ -112,11 +112,24 @@ def _on(element):
 
 
 def _hex(value):
-    """A w:color/w:fill value as #rrggbb, or None for auto and pure black/white (which only fight
-    Lunora's light and dark themes)."""
-    if not value or not HEX_RE.match(value) or value.lower() in {"000000", "ffffff"}:
+    """A w:color value as #rrggbb, or None for auto. The note page is white paper like Word's, so
+    black and white text keep their colour."""
+    if not value or not HEX_RE.match(value):
         return None
     return f"#{value.lower()}"
+
+
+def _fill(value):
+    """A w:fill as #rrggbb, or None for auto and white (the paper itself)."""
+    color = _hex(value)
+    return None if color == "#ffffff" else color
+
+
+def _border(element):
+    """A border element's colour, or None when there is no visible line (auto means black)."""
+    if element is None or _val(element, "none") in {"none", "nil"}:
+        return None
+    return _hex(element.get(f"{W}color")) or "#000000"
 
 
 def _run_props(rpr):
@@ -139,11 +152,13 @@ def _run_props(rpr):
     if (element := rpr.find(W + "highlight")) is not None:
         props["highlight"] = HIGHLIGHT_COLORS.get(_val(element))
     elif (element := rpr.find(W + "shd")) is not None:
-        props["highlight"] = _hex(element.get(f"{W}fill"))
+        props["highlight"] = _fill(element.get(f"{W}fill"))
     return props
 
 
 def _font_size(half_points):
+    """The nearest editor size to Word's at 100 % zoom: the note page is A4 at 96 dpi like Word's,
+    so table widths and text sizes keep their proportions (1 pt = 4/3 px)."""
     px = half_points / 2 * 4 / 3
     return f"{min(FONT_SIZES_PX, key=lambda size: abs(size - px))}px"
 
@@ -165,6 +180,8 @@ class _Converter:
         self.base_props = _run_props(doc_rpr)
         for style in self._chain(self.default_style):
             self.base_props.update(style["rpr"])
+        # Word's own default is 10 pt when neither docDefaults nor the Normal style set one.
+        self.base_size = self.base_props.get("size") or 20
 
     # ---- package parts ----
 
@@ -295,13 +312,14 @@ class _Converter:
             level = int(_val(outline)) + 1
         is_heading = level is not None
 
-        if is_heading:
-            props = {}
-        else:
-            props = dict(self.base_props)
-            for style in chain:
-                props.update(style["rpr"])
+        props = dict(self.base_props)
+        for style in chain:
+            props.update(style["rpr"])
         inline, extra = self._inline(paragraph, props, is_heading, link=None)
+        if not inline and not extra and self._spacer(paragraph, props):
+            # A tiny empty line only spaces out tables or boxes; the editor has its own margins.
+            list_stack.clear()
+            return
         align = ALIGNMENTS.get(_val(_last(pprs, "jc")))
 
         if level == 0 and self.title is None and (text := _inline_text(inline).strip()):
@@ -320,6 +338,11 @@ class _Converter:
             node = {"type": "paragraph"}
         if align:
             node.setdefault("attrs", {})["textAlign"] = align
+        if fill := _fill(_attr(_last(pprs, "shd"), "fill")):
+            node.setdefault("attrs", {})["backgroundColor"] = fill
+        for side, key in (("left", "borderLeft"), ("bottom", "borderBottom")):
+            if color := _border(_last_border(pprs, side)):
+                node.setdefault("attrs", {})[key] = color
         if first is not None and first.get("content"):
             node["content"] = first["content"]
         rest = [
@@ -343,6 +366,12 @@ class _Converter:
                 blocks.append({"type": "blockquote", "content": produced})
         else:
             blocks.extend(produced)
+
+    def _spacer(self, paragraph, props):
+        """Whether an empty paragraph is set in at most half the body size."""
+        sizes = [props.get("size")] + [_run_props(rpr).get("size") for rpr in paragraph.iter(W + "rPr")]
+        sizes = [size for size in sizes if size]
+        return bool(sizes) and sizes[-1] * 2 <= self.base_size
 
     def _list_item(self, blocks, stack, num_id, ilvl, content):
         levels = self.numbering[num_id]
@@ -393,6 +422,7 @@ class _Converter:
                 span = min(max(int(span_value), 1), MAX_TABLE_SIZE) if (span_value or "").isdigit() else 1
                 merge = tcpr.find(W + "vMerge") if tcpr is not None else None
                 shading = tcpr.find(W + "shd") if tcpr is not None else None
+                width = tcpr.find(W + "tcW") if tcpr is not None else None
                 cells.append(
                     {
                         "cell": cell,
@@ -400,7 +430,13 @@ class _Converter:
                         "span": span,
                         "header": header,
                         "merge": None if merge is None else _val(merge, "continue"),
-                        "fill": _hex(shading.get(f"{W}fill")) if shading is not None else None,
+                        "fill": _fill(_attr(shading, "fill")),
+                        "borders": _cell_borders(tcpr.find(W + "tcBorders") if tcpr is not None else None),
+                        "width": (
+                            int(_attr(width, "w")) // 15
+                            if (_attr(width, "w") or "").isdigit() and _attr(width, "type") in {None, "dxa"}
+                            else None
+                        ),
                     }
                 )
                 column += span
@@ -436,8 +472,11 @@ class _Converter:
                     widths = grid[item["column"] : item["column"] + item["span"]]
                     if len(widths) == item["span"]:
                         attrs["colwidth"] = widths
+                    elif item["span"] == 1 and item["width"]:
+                        attrs["colwidth"] = [min(max(item["width"], 20), 2000)]
                     if item["fill"]:
                         attrs["backgroundColor"] = item["fill"]
+                    attrs.update(item["borders"])
                     if item["merge"] == "restart":
                         open_merges[item["column"]] = attrs
                     else:
@@ -525,8 +564,12 @@ class _Converter:
             style["color"] = props["color"]
         if (font := FONT_MAP.get((props.get("font") or "").lower())) is not None:
             style["fontFamily"] = font
-        if not is_heading and props.get("size") and props["size"] != self.base_props.get("size"):
-            style["fontSize"] = _font_size(props["size"])
+        if props.get("size"):
+            size = _font_size(props["size"])
+            # 16px is the editor's body text; headings always keep their Word size, since the
+            # editor's own heading sizes differ.
+            if is_heading or size != "16px":
+                style["fontSize"] = size
         if style:
             marks.append({"type": "textStyle", "attrs": style})
         if props.get("highlight"):
@@ -591,6 +634,42 @@ def _on_attr(value):
     return (value or "").lower() in {"1", "true", "on"}
 
 
+def _attr(element, name):
+    return element.get(f"{W}{name}") if element is not None else None
+
+
+def _last_border(pprs, side):
+    """Paragraph borders merge side by side along the style chain."""
+    for ppr in reversed(pprs):
+        if (element := ppr.find(f"{W}pBdr/{W}{side}")) is not None:
+            return element
+    return None
+
+
+def _find_side(borders, side, alias):
+    element = borders.find(W + side)
+    return element if element is not None else borders.find(W + alias)
+
+
+def _cell_borders(borders):
+    """Cell attrs for Word's cell borders: borderColor for the lines ("none" hides them) and
+    borderLeft for an accent bar, as in coloured callout boxes."""
+    if borders is None:
+        return {}
+    top, right, bottom = (
+        _border(_find_side(borders, side, alias))
+        for side, alias in (("top", "top"), ("right", "end"), ("bottom", "bottom"))
+    )
+    left_element = _find_side(borders, "left", "start")
+    left = _border(left_element)
+    color = top or right or bottom
+    attrs = {"borderColor": color or "none"}
+    thick = (_attr(left_element, "sz") or "").isdigit() and int(_attr(left_element, "sz")) >= 12
+    if left and (left != color or thick):
+        attrs["borderLeft"] = left
+    return attrs
+
+
 def _last(pprs, tag):
     """The most specific paragraph property: direct formatting wins over the style chain."""
     for ppr in reversed(pprs):
@@ -637,8 +716,10 @@ def _split_images(inline):
 
 
 def _with_attrs(segment, node):
-    if node.get("attrs", {}).get("textAlign") and segment["type"] == "paragraph":
-        segment["attrs"] = {"textAlign": node["attrs"]["textAlign"]}
+    """A paragraph split off around a picture keeps its line's alignment and shading."""
+    attrs = {key: value for key, value in node.get("attrs", {}).items() if key != "level"}
+    if attrs and segment["type"] == "paragraph":
+        segment["attrs"] = attrs
     return segment
 
 

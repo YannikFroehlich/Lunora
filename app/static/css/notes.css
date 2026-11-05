@@ -677,9 +677,9 @@
 }
 
 .note-document-header {
-  min-height: 88px;
-  gap: 14px;
-  padding: 16px 20px 14px 26px;
+  min-height: 72px;
+  gap: 8px 14px;
+  padding: 12px 20px 10px 26px;
   border-bottom: 1px solid var(--glass-border-soft);
 }
 
@@ -689,7 +689,8 @@
 
 .note-title-wrap {
   min-width: 0;
-  flex: 1;
+  /* Wide enough for a readable title; below that the actions wrap onto their own row. */
+  flex: 1 1 260px;
 }
 
 .note-title-input {
@@ -707,7 +708,7 @@
 .note-meta-line {
   flex-wrap: wrap;
   gap: 7px 15px;
-  margin-top: 7px;
+  margin-top: 4px;
   color: var(--color-muted);
   font-size: var(--text-xs);
 }
@@ -1215,18 +1216,21 @@
   flex-direction: column;
   margin: 0 auto;
   padding: 68px 72px 72px;
+  /* Plain paper like a word processor: white with black text, untouched by the color theme, so text
+     colors look as they did in Word (dark mode below works like Word's, too). */
+  --color-text: #000000;
+  --color-heading: #000000;
   color: var(--color-text);
-  /* Near-white paper with a hint of the color theme; the unmixed --theme-bg keeps it calm
-     regardless of the theme strength. */
-  background: color-mix(in srgb, var(--theme-bg) 18%, #ffffff);
+  background: #ffffff;
   border: 1px solid var(--color-line);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-soft);
 }
 
-[data-theme="dark"] .note-editor-page {
-  background: color-mix(in srgb, var(--theme-panel-solid), #ffffff 6%);
-  border-color: rgba(255, 255, 255, 0.06);
+/* Highlights are light colors, so their text stays black like in Word, also on the dark page.
+   !important because Tiptap's highlight writes an inline "color: inherit". */
+.note-editor-page .tiptap mark {
+  color: #000000 !important;
 }
 
 /* Focus ring belongs on the rounded page, not the borderless contenteditable
@@ -1234,6 +1238,38 @@
 .note-editor-page:focus-within {
   border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 14%, transparent);
+}
+
+/* Dark mode like Word's: a dark grey page on which the document's colors flip their lightness but
+   keep their hue (black text turns white, a dark blue heading light blue, a light green cell dark
+   green). The page keeps its light colors and is inverted as a whole; inverting .tiptap instead
+   would make it the containing block of floating images and shift them by the page padding.
+   Everything drawn on the page that isn't document color is set so it comes out unchanged. */
+[data-theme="dark"] .note-editor-page {
+  filter: invert(1) hue-rotate(180deg);
+  /* #d9d9d9 shows as #262626, Word's dark page. */
+  background: #d9d9d9;
+  border-color: rgba(0, 0, 0, 0.06);
+  box-shadow: none;
+}
+
+[data-theme="dark"] .note-editor-page:focus-within {
+  /* The accent with its lightness flipped comes out as the accent after the inversion. */
+  --page-ring: hsl(from var(--color-accent) h s calc(100 - l));
+  border-color: color-mix(in srgb, var(--page-ring) 55%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--page-ring) 14%, transparent);
+}
+
+/* Inverting twice restores pictures, code blocks and the app's own chips and menus. */
+[data-theme="dark"] .note-editor-page :is(
+  img,
+  pre,
+  .note-attachment,
+  .note-mention,
+  .note-link-chip,
+  .note-image-layout-menu
+) {
+  filter: invert(1) hue-rotate(180deg);
 }
 
 .note-editor-page .tiptap {
@@ -1258,8 +1294,11 @@
 .note-editor-page .tiptap blockquote { margin-left: 0; padding-left: 16px; border-left: 3px solid var(--color-accent); }
 .note-editor-page .tiptap table { width: 100%; margin: 18px 0; border-collapse: collapse; table-layout: fixed; }
 .note-editor-page .tiptap th,
-.note-editor-page .tiptap td { min-width: 70px; padding: 8px; border: 1px solid rgba(120, 99, 76, 0.28); vertical-align: top; }
-.note-editor-page .tiptap th { background: color-mix(in srgb, var(--color-accent) 16%, transparent); }
+.note-editor-page .tiptap td { min-width: 32px; padding: 4px 7px; border: 1px solid rgba(120, 99, 76, 0.28); vertical-align: top; }
+.note-editor-page .tiptap th { text-align: left; background: color-mix(in srgb, var(--color-accent) 16%, transparent); }
+/* Like Word's cell margins: no extra paragraph gap at the cell's top and bottom. */
+.note-editor-page .tiptap :is(td, th) > :first-child { margin-top: 0; }
+.note-editor-page .tiptap :is(td, th) > :last-child { margin-bottom: 0; }
 .note-editor-page .selectedCell { outline: 2px solid var(--color-accent-strong); }
 
 .note-editor-page .tiptap pre {
@@ -1930,6 +1969,15 @@
   border-radius: var(--radius-sm);
 }
 
+/* The file picker's pill button sits with the same inset on every side of the 42px field. */
+.notes-dialog .file-input {
+  padding: 4px;
+}
+
+.notes-dialog .file-input::file-selector-button {
+  padding: 5px 14px;
+}
+
 .share-candidates,
 .share-list,
 .version-list,
@@ -2149,17 +2197,11 @@
     height: calc(100dvh - 60px);
   }
 
-  /* The left nav column eats into the same width the title/actions row was
-     already tight on, so give the title its own row here (normally this only
-     kicks in below 1100px, see the shared @media above). */
+  /* The left nav column eats into the width of the title/actions row, so the actions may wrap
+     onto their own row; on wide screens they stay next to the title and the page keeps its
+     height. */
   body[data-page="notes"] .note-document-header {
-    align-items: flex-start;
     flex-wrap: wrap;
-  }
-
-  body[data-page="notes"] .note-header-actions {
-    width: 100%;
-    justify-content: flex-start;
   }
 }
 

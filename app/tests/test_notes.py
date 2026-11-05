@@ -4,6 +4,7 @@ from datetime import timedelta
 from tempfile import TemporaryDirectory
 
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
@@ -934,6 +935,32 @@ class NotesTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 400, response.content)
+
+    def test_block_shading_and_cell_borders_only_accept_hex_colors(self):
+        def doc(block):
+            return {"type": "doc", "content": [block]}
+
+        def cell(attrs):
+            row = {"type": "tableRow", "content": [{"type": "tableCell", "attrs": attrs, "content": []}]}
+            return doc({"type": "table", "content": [row]})
+
+        validate_note_document(
+            doc(
+                {
+                    "type": "heading",
+                    "attrs": {"level": 1, "backgroundColor": "#1f4e79", "borderBottom": "#000000"},
+                }
+            )
+        )
+        validate_note_document(cell({"borderColor": "none", "borderLeft": "#548235"}))
+        for invalid in (
+            doc({"type": "paragraph", "attrs": {"borderLeft": "red"}}),
+            doc({"type": "paragraph", "attrs": {"borderTop": "#000000"}}),
+            cell({"borderColor": "transparent"}),
+            cell({"borderLeft": "none"}),
+        ):
+            with self.subTest(invalid=invalid), self.assertRaises(ValidationError):
+                validate_note_document(invalid)
 
     def test_private_image_upload_requires_note_access(self):
         note = self.create_note()
@@ -2231,10 +2258,20 @@ class NoteHtmlRendererTests(TestCase):
                                     "type": "tableHeader",
                                     "attrs": {"colspan": 2, "backgroundColor": "#ffeeaa"},
                                     "content": [],
-                                }
+                                },
+                                {
+                                    "type": "tableCell",
+                                    "attrs": {"borderColor": "none", "borderLeft": "#548235"},
+                                    "content": [],
+                                },
                             ],
                         }
                     ],
+                },
+                {
+                    "type": "paragraph",
+                    "attrs": {"backgroundColor": "#f2f2f2", "borderLeft": "#2e75b6"},
+                    "content": [{"type": "text", "text": "Formel"}],
                 },
             ]
         )
@@ -2251,6 +2288,10 @@ class NoteHtmlRendererTests(TestCase):
         self.assertIn('<li class="task-item is-checked"><input type="checkbox" disabled checked', html)
         self.assertInHTML('<pre><code class="language-python">x = &#x27;&lt;b&gt;&#x27;</code></pre>', html)
         self.assertIn('<th colspan="2" style="background-color: #ffeeaa">', html)
+        self.assertIn('<td style="border-color: transparent; border-left: 3px solid #548235">', html)
+        self.assertIn(
+            "background-color: #f2f2f2; padding: 0.15em 0.4em; border-left: 3px solid #2e75b6", html
+        )
 
     def test_unvalidated_markup_and_unsafe_values_are_neutralised(self):
         html = self.render(
@@ -2279,6 +2320,11 @@ class NoteHtmlRendererTests(TestCase):
                     "content": [{"type": "text", "text": "z"}],
                 },
                 {"type": "unknownNode", "content": [{"type": "text", "text": "versteckt"}]},
+                {
+                    "type": "heading",
+                    "attrs": {"level": 2, "backgroundColor": "red;x:url(y)", "borderBottom": "#12345"},
+                    "content": [{"type": "text", "text": "Kopf"}],
+                },
                 {"type": "noteImage", "attrs": {"attachmentId": str(uuid.uuid4()), "alt": "<b>"}},
             ]
         )
@@ -2288,6 +2334,8 @@ class NoteHtmlRendererTests(TestCase):
         self.assertNotIn("<img", html)
         self.assertNotIn("color:red", html)
         self.assertNotIn("url(x)", html)
+        self.assertNotIn("url(y)", html)
+        self.assertIn("<h3>Kopf</h3>", html)
         self.assertNotIn("versteckt", html)
         self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", html)
         self.assertIn("<pre><code>z</code></pre>", html)

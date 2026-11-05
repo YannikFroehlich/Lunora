@@ -76,6 +76,8 @@ ALLOWED_LINE_HEIGHTS = {"1", "1.15", "1.5", "2"}
 ALLOWED_ALIGNMENTS = {"left", "center", "right", "justify", None}
 HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 ATTACHMENT_ID_RE = re.compile(r"^[0-9a-fA-F-]{36}$")
+# Paragraph/heading shading and rules (e.g. from Word): each a #rrggbb color.
+BLOCK_BOX_ATTRIBUTES = ("backgroundColor", "borderLeft", "borderBottom")
 MAX_LATEX_LENGTH = 4000
 
 
@@ -214,13 +216,29 @@ def _validate_node(node, *, depth, state):
 
 def _validate_node_attrs(node_type, attrs, state):
     allowed = {
-        "paragraph": {"textAlign"},
-        "heading": {"level", "textAlign"},
+        "paragraph": {"textAlign", *BLOCK_BOX_ATTRIBUTES},
+        "heading": {"level", "textAlign", *BLOCK_BOX_ATTRIBUTES},
         "orderedList": {"start", "type"},
         "codeBlock": {"language"},
         "taskItem": {"checked"},
-        "tableCell": {"colspan", "rowspan", "colwidth", "backgroundColor", "align"},
-        "tableHeader": {"colspan", "rowspan", "colwidth", "backgroundColor", "align"},
+        "tableCell": {
+            "colspan",
+            "rowspan",
+            "colwidth",
+            "backgroundColor",
+            "align",
+            "borderColor",
+            "borderLeft",
+        },
+        "tableHeader": {
+            "colspan",
+            "rowspan",
+            "colwidth",
+            "backgroundColor",
+            "align",
+            "borderColor",
+            "borderLeft",
+        },
         "noteImage": {"attachmentId", "alt", "title", "width", "float", "floatX", "floatY"},
         "noteAttachment": {"attachmentId", "name", "size"},
         "mention": {"userId", "label"},
@@ -232,6 +250,9 @@ def _validate_node_attrs(node_type, attrs, state):
         raise ValidationError(f"Das Element „{node_type}“ enthält unerlaubte Attribute.")
     if "textAlign" in attrs and attrs["textAlign"] not in ALLOWED_ALIGNMENTS:
         raise ValidationError("Die Textausrichtung ist ungültig.")
+    for key in BLOCK_BOX_ATTRIBUTES:
+        if attrs.get(key) and not HEX_COLOR_RE.fullmatch(str(attrs[key])):
+            raise ValidationError("Eine Absatzfarbe ist ungültig.")
     if node_type == "heading" and attrs.get("level") not in {1, 2, 3}:
         raise ValidationError("Es sind nur Überschriften der Ebenen 1 bis 3 erlaubt.")
     if (
@@ -248,6 +269,11 @@ def _validate_node_attrs(node_type, attrs, state):
                 raise ValidationError("Die Tabellenzellengröße ist ungültig.")
         if attrs.get("backgroundColor") and not HEX_COLOR_RE.fullmatch(attrs["backgroundColor"]):
             raise ValidationError("Die Zellenfarbe ist ungültig.")
+        if attrs.get("borderLeft") and not HEX_COLOR_RE.fullmatch(str(attrs["borderLeft"])):
+            raise ValidationError("Die Rahmenfarbe ist ungültig.")
+        border_color = attrs.get("borderColor")
+        if border_color and border_color != "none" and not HEX_COLOR_RE.fullmatch(str(border_color)):
+            raise ValidationError("Die Rahmenfarbe ist ungültig.")
         if attrs.get("align") not in {None, "left", "center", "right"}:
             raise ValidationError("Die Zellenausrichtung ist ungültig.")
         colwidth = attrs.get("colwidth")
