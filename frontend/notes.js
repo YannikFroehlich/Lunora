@@ -3,7 +3,7 @@ import StarterKit from "@tiptap/starter-kit";
 import { CodeBlockLowlight } from "@tiptap/extension-code-block-lowlight";
 import { Highlight } from "@tiptap/extension-highlight";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
-import { TableKit } from "@tiptap/extension-table";
+import { TableCell, TableHeader, TableKit } from "@tiptap/extension-table";
 import { TextAlign } from "@tiptap/extension-text-align";
 import { TextStyleKit } from "@tiptap/extension-text-style";
 import { Subscript } from "@tiptap/extension-subscript";
@@ -264,6 +264,68 @@ function createNoteImageNodeView() {
     };
   };
 }
+
+// Shading and rules on paragraphs, headings and table cells (e.g. from imported Word documents).
+// Each value is kept in a data attribute; only the #rrggbb form the server accepts (plus "none"
+// for cell borders) is read back from HTML, so pasted rgb() colors can't make the note unsavable.
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+
+function colorAttribute(dataName, toStyle, { allowNone = false } = {}) {
+  return {
+    default: null,
+    parseHTML: (element) => {
+      const value = element.getAttribute(`data-${dataName}`) || "";
+      return HEX_COLOR.test(value) || (allowNone && value === "none") ? value : null;
+    },
+    renderHTML: (attributes) => {
+      const key = dataName.replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase());
+      const value = attributes[key];
+      return value ? { [`data-${dataName}`]: value, style: toStyle(value) } : {};
+    },
+  };
+}
+
+const BlockBox = Extension.create({
+  name: "blockBox",
+  addGlobalAttributes() {
+    return [
+      {
+        types: ["paragraph", "heading"],
+        attributes: {
+          backgroundColor: colorAttribute(
+            "background-color",
+            (color) => `background-color: ${color}; padding: 0.15em 0.4em`,
+          ),
+          borderLeft: colorAttribute("border-left", (color) => `border-left: 3px solid ${color}; padding-left: 0.6em`),
+          borderBottom: colorAttribute(
+            "border-bottom",
+            (color) => `border-bottom: 1.5px solid ${color}; padding-bottom: 0.15em`,
+          ),
+        },
+      },
+    ];
+  },
+});
+
+const cellBoxAttributes = {
+  backgroundColor: colorAttribute("background-color", (color) => `background-color: ${color}`),
+  borderColor: colorAttribute("border-color", (color) => `border-color: ${color === "none" ? "transparent" : color}`, {
+    allowNone: true,
+  }),
+  borderLeft: colorAttribute("border-left", (color) => `border-left: 3px solid ${color}`),
+};
+
+const ShadedTableCell = TableCell.extend({
+  addAttributes() {
+    return { ...this.parent?.(), ...cellBoxAttributes };
+  },
+});
+
+const ShadedTableHeader = TableHeader.extend({
+  addAttributes() {
+    return { ...this.parent?.(), ...cellBoxAttributes };
+  },
+});
 
 const NoteImage = Node.create({
   name: "noteImage",
@@ -937,7 +999,10 @@ function initNotesApp() {
         Highlight.configure({ multicolor: true }),
         TextStyleKit,
         TextAlign.configure({ types: ["heading", "paragraph"] }),
-        TableKit.configure({ table: { resizable: true } }),
+        BlockBox,
+        TableKit.configure({ table: { resizable: true }, tableCell: false, tableHeader: false }),
+        ShadedTableCell,
+        ShadedTableHeader,
         TaskList,
         TaskItem.configure({
           nested: true,

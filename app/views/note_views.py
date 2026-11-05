@@ -2,6 +2,7 @@ import json
 import re
 from io import BytesIO
 
+from django.contrib import messages as django_messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -22,6 +23,7 @@ from app.models import (
     NoteVersion,
     Profile,
 )
+from app.services.docx_import import import_docx_upload
 from app.services.note_content import NOTE_TEMPLATE_LABELS, NOTE_TEMPLATES
 from app.services.note_files import NOTE_FILE_ACCEPT, NOTE_IMAGE_ACCEPT
 from app.services.note_html import render_note_html
@@ -410,6 +412,27 @@ def note_create_api(request):
         return _error_response("Vorlage nicht gefunden.", status=404)
     except ValidationError as error:
         return _error_response(error)
+
+
+@login_required
+@require_http_methods(["POST"])
+def note_import(request):
+    """Create a note from an uploaded Word file and open it."""
+    disabled = _feature_guard(request)
+    if disabled:
+        return disabled
+    upload = request.FILES.get("file")
+    if upload is None or not upload.name.lower().endswith(".docx"):
+        django_messages.error(request, "Bitte wähle eine Word-Datei (.docx) aus.")
+        return redirect("notes")
+    try:
+        note, skipped_images = import_docx_upload(request.user, upload)
+    except ValidationError as error:
+        django_messages.error(request, f"„{upload.name}“: {' '.join(error.messages)}")
+        return redirect("notes")
+    if skipped_images:
+        django_messages.warning(request, f"{skipped_images} Bild(er) konnten nicht übernommen werden.")
+    return redirect("note_detail", note_id=note.id)
 
 
 @login_required

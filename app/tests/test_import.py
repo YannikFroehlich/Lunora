@@ -293,7 +293,7 @@ class DataImportViewTests(TestCase):
         self.assertEqual(CalendarEvent.objects.filter(user=self.user).count(), 11)
         self.assertContains(response, "1 Notiz(en) importiert.")
         self.assertContains(response, "„kalender.ics“: 5 Termin(e) importiert")
-        self.assertContains(response, "„bild.png“: Nur .md-, .txt- und .ics-Dateien")
+        self.assertContains(response, "„bild.png“: Nur .md-, .txt-, .docx- und .ics-Dateien")
         self.assertContains(response, "„kaputt.md“ ist keine UTF-8-Textdatei.")
 
     def test_disabled_areas_are_not_imported(self):

@@ -628,14 +628,14 @@
 
             <section id="settings-panel-import" class="glass-panel security-panel" role="tabpanel" aria-labelledby="settings-tab-security" data-settings-panel="security">
                 <div class="panel-title"><i class="fa-solid fa-file-import" aria-hidden="true"></i><h2>Datenimport</h2></div>
-                <p class="panel-description">Übernimm Daten aus anderen Apps: Markdown-Dateien (.md, .txt) werden zu Notizen, Kalenderdateien (.ics, etwa aus Google Kalender, Apple Kalender oder Outlook) zu Terminen. Bis zu 20 Dateien mit je höchstens 2 MB; Termine, die schon importiert wurden, werden übersprungen.</p>
+                <p class="panel-description">Übernimm Daten aus anderen Apps: Markdown- (.md, .txt) und Word-Dateien (.docx) werden zu Notizen, Kalenderdateien (.ics, etwa aus Google Kalender, Apple Kalender oder Outlook) zu Terminen. Bis zu 20 Dateien mit je höchstens 2 MB (Word-Dateien mit Bildern bis 20 MB); Termine, die schon importiert wurden, werden übersprungen.</p>
                 <form class="two-factor-form" method="post" enctype="multipart/form-data">
                     {% csrf_token %}
                     <input type="hidden" name="form_name" value="data_import">
                     <input type="hidden" name="return_to" value="{{ return_to }}">
                     <label class="settings-calendar-form" for="data-import-files">
                         <span class="field-label">Dateien</span>
-                        <input id="data-import-files" class="data-import-input" type="file" name="files" accept=".md,.markdown,.txt,.ics,text/markdown,text/plain,text/calendar" multiple required>
+                        <input id="data-import-files" class="file-input data-import-input" type="file" name="files" accept=".md,.markdown,.txt,.docx,.ics,text/markdown,text/plain,text/calendar,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple required>
                     </label>
                     <div class="calendar-form-actions">
                         <button class="primary-button" type="submit">

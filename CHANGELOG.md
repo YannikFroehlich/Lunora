@@ -6,6 +6,24 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Word documents (.docx) can be imported as notes, from the "Neue Notiz" dialog on the notes page or
+  the data import in settings. Headings, paragraphs and alignment, bold/italic/underline/strike,
+  super-/subscript, text colors, highlights, font sizes and fonts (mapped to the editor's choices),
+  nested bullet and numbered lists, tables (merged cells, cell colors, column widths) and links come
+  along; embedded pictures become note images (GIF/BMP/TIFF are converted to PNG).
+- The note editor's page is now plain white with black text instead of following the color theme,
+  so text and highlight colors look as they do in Word. In dark mode it works like Word's: a dark
+  grey page on which the document's colors flip their lightness (dark blue headings turn light
+  blue, light cell shading dark), while pictures and code blocks stay as they are.
+- Table cells in notes show their background color (e.g. from imported Word tables), and
+  paragraphs, headings and cells can carry Word's shading, rules and colored accent bars.
+- Word import is closer to the original: headings keep their style's color, size and shading, all
+  text keeps Word's size at 100 % zoom (the note page is A4 like Word's, so tables keep their
+  proportions), black and white text keep their color, colored callout boxes and formula boxes keep
+  their background and left bar, table borders keep their color, and tiny empty spacing lines are
+  dropped. Note tables use Word-like cell margins and left-aligned header cells.
+- The note editor's header is more compact: on wide screens the note actions sit next to the title
+  instead of on their own row, so more of the document is visible.
 - Recurring tasks can repeat every n days, weeks, months or years ("alle 2 Wochen"), and weekly
   tasks on chosen weekdays ("Mo und Do"). The next due date now keeps its local time of day across
   daylight-saving changes.
