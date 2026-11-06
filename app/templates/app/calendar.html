@@ -103,7 +103,7 @@
                             <input type="hidden" name="form_name" value="task_toggle">
                             <input type="hidden" name="task_id" value="{{ task.id }}">
                             <input type="hidden" name="return_to" value="{{ request.get_full_path }}">
-                            <input type="checkbox" name="is_done" onchange="this.form.submit()" aria-label="Aufgabe „{{ task.label }}“ erledigen">
+                            <input type="checkbox" name="is_done" data-auto-submit aria-label="Aufgabe „{{ task.label }}“ erledigen">
                             <span>{% if task.owner_name %}<i class="fa-solid fa-user-check" aria-hidden="true"></i> {% endif %}{{ task.label }}</span>
                         </form>
                         {% endfor %}
@@ -365,7 +365,7 @@
                     {% csrf_token %}
                     <input type="hidden" name="form_name" value="reminder_toggle">
                     <input type="hidden" name="reminder_id" value="{{ item.reminder.id }}">
-                    <input type="checkbox" name="is_done" {% if item.is_done %}checked{% endif %} onchange="this.form.submit()" aria-label="Erinnerung „{{ item.title }}“ {% if item.is_done %}wieder öffnen{% else %}erledigen{% endif %}">
+                    <input type="checkbox" name="is_done" {% if item.is_done %}checked{% endif %} data-auto-submit aria-label="Erinnerung „{{ item.title }}“ {% if item.is_done %}wieder öffnen{% else %}erledigen{% endif %}">
                     <span>{{ item.title }}<small>{{ item.due_label }}</small></span>
                     <button class="reminder-delete-button" type="submit" name="form_name" value="reminder_delete" aria-label="Erinnerung löschen">
                         <i class="fa-solid fa-trash" aria-hidden="true"></i>
@@ -397,7 +397,7 @@
                     <input type="hidden" name="form_name" value="task_toggle">
                     <input type="hidden" name="task_id" value="{{ item.id }}">
                     <input type="hidden" name="return_to" value="{{ request.get_full_path }}">
-                    <input type="checkbox" name="is_done" onchange="this.form.submit()" aria-label="Aufgabe „{{ item.title }}“ erledigen">
+                    <input type="checkbox" name="is_done" data-auto-submit aria-label="Aufgabe „{{ item.title }}“ erledigen">
                     <span>{{ item.title }}<small>{{ item.due_label }}</small></span>
                 </form>
                 {% endfor %}

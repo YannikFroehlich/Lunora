@@ -44,7 +44,7 @@
                     <input type="hidden" name="form_name" value="task_toggle">
                     <input type="hidden" name="task_id" value="{{ task.id }}">
                     <input type="hidden" name="return_to" value="{{ request.get_full_path }}">
-                    <input type="checkbox" name="is_done" onchange="this.form.submit()" aria-label="Aufgabe „{{ task.label }}“ erledigen">
+                    <input type="checkbox" name="is_done" data-auto-submit aria-label="Aufgabe „{{ task.label }}“ erledigen">
                 </form>
                 <span class="agenda-copy">
                     <span class="agenda-title">{{ task.label }}</span>

@@ -188,7 +188,7 @@
 {% endblock %}
 
 {% block page_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
     (function () {
         const input = document.querySelector("[data-vocab-filter]");
         const rows = Array.from(document.querySelectorAll("[data-vocab-search]"));

@@ -41,12 +41,12 @@
                 <button class="{% if current_status == 'trash' %}is-active{% endif %}" name="status" value="trash">Papierkorb</button>
             </div>
             <div class="notes-filter-row">
-                <select name="scope" aria-label="Besitzfilter" onchange="this.form.submit()">
+                <select name="scope" aria-label="Besitzfilter" data-auto-submit>
                     <option value="all" {% if current_scope == 'all' %}selected{% endif %}>Alle Notizen</option>
                     <option value="owned" {% if current_scope == 'owned' %}selected{% endif %}>Meine Notizen</option>
                     <option value="shared" {% if current_scope == 'shared' %}selected{% endif %}>Mit mir geteilt</option>
                 </select>
-                <select name="sort" aria-label="Sortierung" onchange="this.form.submit()">
+                <select name="sort" aria-label="Sortierung" data-auto-submit>
                     {% if query %}
                     <option value="relevance" {% if current_sort == 'relevance' %}selected{% endif %}>Relevanz</option>
                     {% else %}

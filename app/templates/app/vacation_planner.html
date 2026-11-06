@@ -20,7 +20,7 @@
                 <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
             </a>
             <form method="get">
-                <select name="year" aria-label="Jahr" onchange="this.form.submit()">
+                <select name="year" aria-label="Jahr" data-auto-submit>
                     {% for option in year_options %}
                     <option value="{{ option }}" {% if option == selected_year %}selected{% endif %}>{{ option }}</option>
                     {% endfor %}
@@ -171,7 +171,7 @@
                             </div>
                             <button class="ghost-button" type="submit"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Speichern</button>
                         </form>
-                        <form method="post" action="{% url 'vacation_period_delete' %}" onsubmit="return confirm('Urlaub wirklich löschen?');">
+                        <form method="post" action="{% url 'vacation_period_delete' %}" data-confirm="Urlaub wirklich löschen?">
                             {% csrf_token %}
                             <input type="hidden" name="year" value="{{ selected_year }}">
                             <input type="hidden" name="month" value="{{ selected_month }}">
@@ -298,7 +298,7 @@
                             <label class="check-line"><input type="checkbox" name="is_half_day" {% if holiday.day_value|stringformat:'s' == '0.5' %}checked{% endif %}> <span>Halber Feiertag</span></label>
                             <button class="ghost-button" type="submit">Speichern</button>
                         </form>
-                        <form method="post" action="{% url 'custom_holiday_delete' %}" onsubmit="return confirm('Feiertag wirklich löschen?');">
+                        <form method="post" action="{% url 'custom_holiday_delete' %}" data-confirm="Feiertag wirklich löschen?">
                             {% csrf_token %}
                             <input type="hidden" name="year" value="{{ selected_year }}">
                             <input type="hidden" name="month" value="{{ selected_month }}">
