@@ -1,4 +1,4 @@
-"""Chat domain logic beyond plain messages: @-mentions, polls and scheduled messages.
+"""Chat domain logic: membership, attachments, forwarding, @-mentions, polls and scheduled messages.
 
 The message views stay request-flow only and call into here; ``run_scheduled_tasks`` delivers due
 scheduled messages, and the messages page delivers the open conversation's due ones on every poll,
@@ -7,6 +7,7 @@ so they also go out on setups without the automations loop.
 
 from datetime import timedelta
 
+from django.core.files.base import ContentFile
 from django.db import transaction
 from django.db.models import Prefetch
 from django.utils import timezone
@@ -16,6 +17,8 @@ from django.utils.text import normalize_newlines
 
 from app.models import (
     ChatMessage,
+    ChatMessageAttachment,
+    ChatMessageReaction,
     ChatPoll,
     ChatPollOption,
     ChatPollVote,
@@ -24,6 +27,7 @@ from app.models import (
     ScheduledChatMessage,
     UserNotification,
 )
+from app.services.chat_files import audio_content_type, infer_attachment_kind
 from app.services.user_preferences import format_user_datetime, localtime_for_user
 
 MENTION_ALL = "alle"
@@ -34,6 +38,7 @@ SCHEDULED_DELIVERY_BATCH = 200
 # Own messages stay editable this long after sending.
 CHAT_EDIT_WINDOW = timedelta(hours=24)
 CHAT_MESSAGE_MAX_LENGTH = ChatMessage._meta.get_field("body").max_length
+MESSAGE_REACTION_EMOJIS = [emoji for emoji, _label in ChatMessageReaction.EMOJI_CHOICES]
 
 
 # --- Sending -----------------------------------------------------------------------------------
@@ -53,6 +58,163 @@ def can_send(conversation, user, members=None):
 
 def touch_conversation(message):
     Conversation.objects.filter(pk=message.conversation_id).update(updated_at=message.created_at)
+
+
+# --- Members and message actions --------------------------------------------------------------
+
+
+def conversation_member(conversation, user):
+    if not conversation:
+        return None
+    return next(
+        (member for member in conversation.member_rows.all() if member.user_id == user.id),
+        None,
+    )
+
+
+def other_members(conversation, user):
+    return [member for member in conversation.member_rows.all() if member.user_id != user.id]
+
+
+def blocked_by_other_side(conversation, user):
+    """Whether the other side of a direct conversation has blocked it, so `user` cannot send."""
+    if not conversation or conversation.is_group:
+        return False
+    return any(member.is_blocked for member in other_members(conversation, user))
+
+
+def apply_member_action(conversation, user, action):
+    member = conversation_member(conversation, user)
+    if not member:
+        return
+
+    now = timezone.now()
+    update_fields = []
+    if action == "mute_8h":
+        member.muted_until = now + timedelta(hours=8)
+        update_fields.append("muted_until")
+    elif action == "mute_1w":
+        member.muted_until = now + timedelta(weeks=1)
+        update_fields.append("muted_until")
+    elif action == "mute_1y":
+        member.muted_until = now + timedelta(days=365)
+        update_fields.append("muted_until")
+    elif action == "unmute":
+        member.muted_until = None
+        update_fields.append("muted_until")
+    elif action == "block":
+        member.is_blocked = True
+        update_fields.append("is_blocked")
+    elif action == "unblock":
+        member.is_blocked = False
+        update_fields.append("is_blocked")
+
+    if update_fields:
+        member.save(update_fields=update_fields)
+
+
+def delete_message(message, user):
+    if message.sender_id != user.id or message.is_deleted:
+        return
+    attachment = getattr(message, "attachment", None)
+    if attachment:
+        attachment.file.delete(save=False)
+        attachment.delete()
+    message.body = ""
+    message.is_deleted = True
+    message.deleted_at = timezone.now()
+    message.is_pinned = False
+    message.pinned_at = None
+    message.pinned_by = None
+    message.reactions.all().delete()
+    delete_poll(message)
+    forget_mentions(message)
+    message.mentioned_users.clear()
+    message.save(update_fields=["body", "is_deleted", "deleted_at", "is_pinned", "pinned_at", "pinned_by"])
+
+
+def attach_file(message, user, upload, duration_seconds=None):
+    kind = infer_attachment_kind(upload.name)
+    is_audio = kind == ChatMessageAttachment.KIND_AUDIO
+    content_type = (
+        audio_content_type(upload.name)
+        if is_audio
+        else (getattr(upload, "content_type", "") or "application/octet-stream")
+    )
+    ChatMessageAttachment.objects.create(
+        message=message,
+        uploaded_by=user,
+        kind=kind,
+        original_name=upload.name[:255],
+        content_type=content_type[:160],
+        size=upload.size,
+        duration_seconds=duration_seconds if is_audio else None,
+        file=upload,
+    )
+
+
+def forward_message(message, target, user):
+    """Copy a message (body and attachment, no reply quote) into ``target`` as ``user``'s own."""
+    forwarded = ChatMessage.objects.create(
+        conversation=target, sender=user, body=message.body, is_forwarded=True
+    )
+    attachment = getattr(message, "attachment", None)
+    if attachment:
+        # A real copy, so deleting either message never removes the other one's file.
+        with attachment.file.open("rb") as handle:
+            content = ContentFile(handle.read(), name=attachment.original_name)
+        ChatMessageAttachment.objects.create(
+            message=forwarded,
+            uploaded_by=user,
+            kind=attachment.kind,
+            original_name=attachment.original_name,
+            content_type=attachment.content_type,
+            size=attachment.size,
+            duration_seconds=attachment.duration_seconds,
+            file=content,
+        )
+    return forwarded
+
+
+def forward_targets(user, current_conversation):
+    """Conversations a message can be forwarded to: visible ones the user can write in."""
+    targets = []
+    for conversation in Conversation.visible_for(user).order_by("-updated_at"):
+        if conversation.pk == current_conversation.pk:
+            continue
+        member = next((row for row in conversation.member_rows.all() if row.user_id == user.id), None)
+        if (member and member.is_blocked) or blocked_by_other_side(conversation, user):
+            continue
+        targets.append({"id": conversation.pk, "title": conversation.display_title_for(user)})
+    return targets
+
+
+def toggle_pin(message, user):
+    if message.is_deleted:
+        return
+    if message.is_pinned:
+        message.is_pinned = False
+        message.pinned_at = None
+        message.pinned_by = None
+    else:
+        message.is_pinned = True
+        message.pinned_at = timezone.now()
+        message.pinned_by = user
+    message.save(update_fields=["is_pinned", "pinned_at", "pinned_by"])
+
+
+def toggle_reaction(message, user, emoji):
+    if message.is_deleted or emoji not in MESSAGE_REACTION_EMOJIS:
+        return
+    reaction = ChatMessageReaction.objects.filter(message=message, user=user).first()
+    if reaction and reaction.emoji == emoji:
+        reaction.delete()
+        return
+    if reaction:
+        reaction.emoji = emoji
+        reaction.save(update_fields=["emoji"])
+        return
+    ChatMessageReaction.objects.create(message=message, user=user, emoji=emoji)
 
 
 # --- Mentions ----------------------------------------------------------------------------------
