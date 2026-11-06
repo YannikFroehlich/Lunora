@@ -14,6 +14,8 @@ from app.models import (
     Profile,
     SystemSettings,
     Task,
+    TaskComment,
+    TaskLabel,
     UmlDiagram,
     VacationPeriod,
     VocabularyCard,
@@ -125,6 +127,24 @@ class GlobalSearchTests(TestCase):
         self.assertEqual(response.context["notes_results"], [])
         self.assertNotContains(response, "Rakete geheime Unterhaltung")
         self.assertNotContains(response, "Rakete privater Termin")
+
+    def test_global_search_finds_tasks_by_label_and_comment_once_each(self):
+        task = Task.objects.create(user=self.mira, title="Einkauf")
+        task.labels.add(
+            TaskLabel.objects.create(owner=self.mira, name="Raumfahrt"),
+            TaskLabel.objects.create(owner=self.mira, name="Raumstation"),
+        )
+        commented = Task.objects.create(user=self.mira, title="Anruf")
+        TaskComment.objects.create(task=commented, author=self.mira, body="Raumanzug bestellen")
+        Task.objects.create(user=self.mira, title="Sonstiges")
+        foreign = Task.objects.create(user=self.lukas, title="Fremd")
+        foreign.labels.add(TaskLabel.objects.create(owner=self.lukas, name="Raumfahrt"))
+        self.client.login(username="mira@example.com", password="secret-12345")
+
+        response = self.client.get("/search/", {"q": "Raum"})
+
+        titles = sorted(item["title"] for item in response.context["task_results"])
+        self.assertEqual(titles, ["Anruf", "Einkauf"])
 
     def test_global_search_returns_matches_across_tasks_and_vacation_periods(self):
         Task.objects.create(user=self.mira, title="Raketenstart vorbereiten")

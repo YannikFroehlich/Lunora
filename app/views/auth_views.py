@@ -1,3 +1,5 @@
+import hashlib
+import logging
 import time
 
 from django.conf import settings
@@ -20,8 +22,13 @@ from app.services import audit_log, two_factor
 from app.services.system_settings import normal_user_login_enabled, user_can_login
 from app.services.turnstile import verify_registration_token
 
+logger = logging.getLogger(__name__)
+
 TWO_FACTOR_SESSION_KEY = "two_factor_pending"
 TWO_FACTOR_PENDING_SECONDS = 5 * 60
+PASSWORD_RESET_EMAIL_LIMIT = 3
+PASSWORD_RESET_IP_LIMIT = 10
+PASSWORD_RESET_WINDOW_SECONDS = 60 * 60
 
 
 class LunoraLoginView(LoginView):
@@ -92,6 +99,27 @@ def login_two_factor(request):
     return render(request, "app/login_two_factor.html", {"error": error})
 
 
+def _counter_exceeded(key, limit):
+    """Count one request against ``key``; the window starts at its first request and doesn't slide."""
+    if cache.add(key, 1, PASSWORD_RESET_WINDOW_SECONDS):
+        return False
+    try:
+        return cache.incr(key) > limit
+    except ValueError:  # Expired between add and incr, so this request starts over.
+        return False
+
+
+def _password_reset_limit_reached(request, email):
+    """Per address, so nobody's inbox gets flooded; per client, so nobody can walk through addresses."""
+    email_hash = hashlib.sha256(email.strip().casefold().encode()).hexdigest()
+    limited = _counter_exceeded(f"password-reset-email:{email_hash}", PASSWORD_RESET_EMAIL_LIMIT)
+    # Without a known client address the counter would be shared by every visitor.
+    ip_address = audit_log.client_ip(request)
+    if ip_address and _counter_exceeded(f"password-reset-ip:{ip_address}", PASSWORD_RESET_IP_LIMIT):
+        limited = True
+    return limited
+
+
 class LunoraPasswordResetView(PasswordResetView):
     template_name = "app/password_reset_form.html"
     email_template_name = "app/password_reset_email.html"
@@ -102,6 +130,13 @@ class LunoraPasswordResetView(PasswordResetView):
         if not normal_user_login_enabled():
             return render(request, "app/password_reset_form.html", {"reset_disabled": True}, status=503)
         return super().dispatch(request, *args, **kwargs)
+
+    def form_valid(self, form):
+        # The same answer as a sent mail: a visible limit would reveal which addresses have accounts.
+        if _password_reset_limit_reached(self.request, form.cleaned_data["email"]):
+            logger.warning("Password reset request dropped by the rate limit")
+            return redirect(self.get_success_url())
+        return super().form_valid(form)
 
 
 class LunoraPasswordResetDoneView(PasswordResetDoneView):

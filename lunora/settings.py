@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
+from django.utils.csp import CSP
 
 mimetypes.add_type("application/javascript", ".js", strict=True)
 
@@ -158,6 +159,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "django.middleware.csp.ContentSecurityPolicyMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -178,6 +180,7 @@ TEMPLATES = [
         "OPTIONS": {
             "context_processors": [
                 "django.template.context_processors.request",
+                "django.template.context_processors.csp",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "app.context_processors.appearance_settings",
@@ -256,6 +259,22 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool("DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS
 SECURE_HSTS_PRELOAD = env_bool("DJANGO_SECURE_HSTS_PRELOAD", False)
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = os.getenv("DJANGO_SECURE_REFERRER_POLICY", "same-origin")
+# Scripts run only from our own origin or with the page's nonce. Inline styles stay allowed: the
+# appearance settings, the editor and Leaflet all set style attributes. The two outside sources
+# are Turnstile on the registration page and Leaflet and its base map on the weather page.
+_TURNSTILE_ORIGIN = "https://challenges.cloudflare.com"
+SECURE_CSP = {
+    "default-src": [CSP.SELF],
+    "script-src": [CSP.SELF, CSP.NONCE, _TURNSTILE_ORIGIN, "https://unpkg.com/leaflet@1.9.4/"],
+    "style-src": [CSP.SELF, CSP.UNSAFE_INLINE],
+    # data: and blob: for the UML image export and Leaflet's empty placeholder tile.
+    "img-src": [CSP.SELF, "data:", "blob:", "https://tile.openstreetmap.org"],
+    "frame-src": [_TURNSTILE_ORIGIN],
+    "frame-ancestors": [CSP.NONE],
+    "object-src": [CSP.NONE],
+    "base-uri": [CSP.SELF],
+    "form-action": [CSP.SELF],
+}
 SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_HTTPONLY = env_bool("DJANGO_CSRF_COOKIE_HTTPONLY", False)
 

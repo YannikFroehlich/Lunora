@@ -4,6 +4,9 @@ A file counts for whoever uploaded it, so a note's attachments can belong to sev
 Profile images stay out (one small file per user), and so does text stored in the database.
 """
 
+from collections import Counter
+
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db.models import Sum
 from django.template.defaultfilters import filesizeformat
@@ -26,6 +29,17 @@ def user_storage_used(user):
 
 def total_storage_used():
     return _total_size(NoteAttachment.objects.all()) + _total_size(ChatMessageAttachment.objects.all())
+
+
+def top_storage_users(count=10):
+    """The accounts using the most storage: [{"user", "used"}], largest first."""
+    totals = Counter()
+    for model in (NoteAttachment, ChatMessageAttachment):
+        rows = model.objects.exclude(uploaded_by=None).values_list("uploaded_by").annotate(total=Sum("size"))
+        totals.update(dict(rows))
+    top = totals.most_common(count)
+    users = get_user_model().objects.in_bulk([user_id for user_id, _used in top])
+    return [{"user": users[user_id], "used": used} for user_id, used in top]
 
 
 def user_storage_limit():

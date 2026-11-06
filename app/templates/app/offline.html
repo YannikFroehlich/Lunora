@@ -7,11 +7,7 @@
     <meta name="theme-color" content="#c2a276">
     <meta name="robots" content="noindex, noarchive">
     <title>Offline | Lunora</title>
-    <script>
-        const offlineTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-        document.documentElement.dataset.theme = offlineTheme;
-        document.documentElement.style.colorScheme = offlineTheme;
-    </script>
+    <script src="{% versioned_static 'js/offline.js' %}"></script>
     <link rel="icon" type="image/png" sizes="32x32" href="{% static 'img/favicon-32.png' %}?v=brand-4">
     <link rel="apple-touch-icon" sizes="180x180" href="{% static 'img/apple-touch-icon.png' %}?v=brand-4">
     <link rel="stylesheet" href="{% versioned_static 'css/base.css' %}">
@@ -34,8 +30,5 @@
         </div>
     </section>
 </main>
-<script>
-    document.querySelector("[data-offline-retry]")?.addEventListener("click", () => window.location.reload());
-</script>
 </body>
 </html>

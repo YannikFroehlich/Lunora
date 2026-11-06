@@ -6,6 +6,14 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Password reset mails are limited to three per address and ten per client within an hour, so
+  nobody can flood someone's inbox with them. Further requests get the usual confirmation page, so
+  the limit doesn't reveal whether an address has an account.
+- Stricter protection against injected scripts: every page now sends a Content-Security-Policy, so
+  the browser only runs Lunora's own scripts (plus Cloudflare Turnstile and the weather map's
+  Leaflet) and refuses scripts smuggled in through content.
+- The global search also finds tasks by their labels and comments.
+- The administration page's "Speicher" panel lists the ten accounts using the most storage.
 - Storage limit per user: files uploaded to notes and chats count towards a limit (1 GB by default)
   that administrators set under Administration → Speicher, where 0 means no limit. Uploads, Word
   imports with pictures, duplicated notes and forwarded attachments that would exceed it are

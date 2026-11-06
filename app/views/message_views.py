@@ -6,7 +6,6 @@ from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
-from django.core.files.base import ContentFile
 from django.db.models import Count, Max, Q
 from django.http import FileResponse, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
@@ -27,17 +26,24 @@ from app.models import (
     ScheduledChatMessage,
 )
 from app.services.chat import (
+    MESSAGE_REACTION_EMOJIS,
+    apply_member_action,
     apply_mentions,
+    attach_file,
+    blocked_by_other_side,
     can_edit_message,
     can_send,
     cancel_scheduled_message,
     close_poll,
+    conversation_member,
     create_poll,
-    delete_poll,
+    delete_message,
     edit_message,
-    forget_mentions,
+    forward_message,
+    forward_targets,
     mark_conversation_mentions_read,
     mention_candidates,
+    other_members,
     poll_item,
     poll_prefetch,
     render_message_body,
@@ -46,9 +52,10 @@ from app.services.chat import (
     scheduled_message_items,
     send_due_scheduled_messages,
     send_scheduled_message_now,
+    toggle_pin,
     toggle_poll_vote,
+    toggle_reaction,
 )
-from app.services.chat_files import audio_content_type, infer_attachment_kind
 from app.services.message_queries import (
     current_members_by_conversation,
     last_messages_by_conversation,
@@ -64,7 +71,6 @@ from app.services.user_preferences import (
     localtime_for_user,
 )
 
-MESSAGE_REACTION_EMOJIS = [emoji for emoji, _label in ChatMessageReaction.EMOJI_CHOICES]
 MESSAGE_STREAM_PAGE_SIZE = 50
 CHAT_SEARCH_LIMIT = 30
 # Newer messages kept below a search hit when the stream jumps to it.
@@ -92,14 +98,14 @@ def messages(request, conversation_id=None):
             if not selected_conversation:
                 django_messages.error(request, "Diese Unterhaltung wurde nicht gefunden.")
                 return redirect("messages")
-            current_member = _get_conversation_member(selected_conversation, request.user)
+            current_member = conversation_member(selected_conversation, request.user)
             if current_member and current_member.is_blocked:
                 django_messages.error(
                     request,
                     "Du hast diesen Chat blockiert. Hebe die Blockierung auf, um wieder zu schreiben.",
                 )
                 return redirect("messages_detail", conversation_id=selected_conversation.id)
-            if _conversation_blocked_for_sender(selected_conversation, request.user):
+            if blocked_by_other_side(selected_conversation, request.user):
                 django_messages.error(request, "Diese Nachricht konnte nicht gesendet werden.")
                 return redirect("messages_detail", conversation_id=selected_conversation.id)
             if message_form.is_valid():
@@ -132,7 +138,7 @@ def messages(request, conversation_id=None):
                 message.save()
                 upload = message_form.cleaned_data.get("attachment")
                 if upload:
-                    _create_chat_attachment(
+                    attach_file(
                         message, request.user, upload, message_form.cleaned_data.get("voice_duration")
                     )
                 selected_conversation.updated_at = message.created_at
@@ -176,7 +182,7 @@ def messages(request, conversation_id=None):
                     )
 
                 body = start_form.cleaned_data.get("body")
-                if body and not _conversation_blocked_for_sender(selected_conversation, request.user):
+                if body and not blocked_by_other_side(selected_conversation, request.user):
                     message = ChatMessage.objects.create(
                         conversation=selected_conversation,
                         sender=request.user,
@@ -206,11 +212,11 @@ def messages(request, conversation_id=None):
 
             action = request.POST.get("action")
             if action == "delete":
-                _delete_chat_message_for_user(message, request.user)
+                delete_message(message, request.user)
             elif action == "pin":
-                _toggle_chat_message_pin(message, request.user)
+                toggle_pin(message, request.user)
             elif action == "reaction":
-                _toggle_chat_message_reaction(message, request.user, request.POST.get("emoji"))
+                toggle_reaction(message, request.user, request.POST.get("emoji"))
 
             return redirect("messages_detail", conversation_id=selected_conversation.id)
 
@@ -231,10 +237,8 @@ def messages(request, conversation_id=None):
             if not message or is_poll or not target or target.pk == source_conversation.pk:
                 django_messages.error(request, "Die Nachricht konnte nicht weitergeleitet werden.")
                 return redirect("messages_detail", conversation_id=source_conversation.id)
-            target_member = _get_conversation_member(target, request.user)
-            if (target_member and target_member.is_blocked) or _conversation_blocked_for_sender(
-                target, request.user
-            ):
+            target_member = conversation_member(target, request.user)
+            if (target_member and target_member.is_blocked) or blocked_by_other_side(target, request.user):
                 django_messages.error(request, "In diese Unterhaltung kann derzeit nicht geschrieben werden.")
                 return redirect("messages_detail", conversation_id=source_conversation.id)
             attachment = getattr(message, "attachment", None)
@@ -243,7 +247,7 @@ def messages(request, conversation_id=None):
             except ValidationError as error:
                 django_messages.error(request, " ".join(error.messages))
                 return redirect("messages_detail", conversation_id=source_conversation.id)
-            forwarded = _forward_chat_message(message, target, request.user)
+            forwarded = forward_message(message, target, request.user)
             target.updated_at = forwarded.created_at
             target.save(update_fields=["updated_at"])
             target.mark_read_for(request.user)
@@ -292,7 +296,7 @@ def messages(request, conversation_id=None):
                 ).delete()
                 return redirect("messages")
 
-            _apply_conversation_member_action(selected_conversation, request.user, action)
+            apply_member_action(selected_conversation, request.user, action)
             return redirect("messages_detail", conversation_id=selected_conversation.id)
 
         elif form_name == "archive":
@@ -343,7 +347,7 @@ def messages(request, conversation_id=None):
         _build_member_items(selected_conversation, request.user) if selected_conversation else []
     )
     current_member = (
-        _get_conversation_member(selected_conversation, request.user) if selected_conversation else None
+        conversation_member(selected_conversation, request.user) if selected_conversation else None
     )
     current_member_state = _build_current_member_state(current_member, request.user, selected_conversation)
     available_recipients = (
@@ -391,7 +395,7 @@ def messages(request, conversation_id=None):
     # The forward and poll dialogs and the @ suggestions live outside the live-updated partials,
     # so only the full page needs these.
     context["forward_targets"] = (
-        _forward_targets(request.user, selected_conversation) if selected_conversation else []
+        forward_targets(request.user, selected_conversation) if selected_conversation else []
     )
     context["poll_form"] = ChatPollForm()
     context["poll_option_slots"] = range(1, 5)
@@ -461,7 +465,7 @@ def messages_live_updates(request, conversation_id=None):
         )
         message_items = message_window["message_items"]
         pinned_message_items = _build_pinned_message_items(selected_conversation, request.user)
-        current_member = _get_conversation_member(selected_conversation, request.user)
+        current_member = conversation_member(selected_conversation, request.user)
         context.update(
             {
                 "message_items": message_items,
@@ -661,22 +665,6 @@ def _get_user_conversation(user, conversation_id):
     return Conversation.visible_for(user).filter(pk=conversation_id).first()
 
 
-def _get_conversation_member(conversation, user):
-    if not conversation:
-        return None
-    return next(
-        (member for member in conversation.member_rows.all() if member.user_id == user.id),
-        None,
-    )
-
-
-def _conversation_blocked_for_sender(conversation, user):
-    """Whether the other side of a direct conversation has blocked it, so `user` cannot send."""
-    if not conversation or conversation.is_group:
-        return False
-    return any(member.is_blocked for member in _other_conversation_members(conversation, user))
-
-
 def _live_updates_fingerprint(request, typing_label):
     """Cheap digest of the state the live partials render from, so idle polls skip all rendering."""
     conversation_ids = ConversationMember.objects.filter(user=request.user).values("conversation_id")
@@ -737,7 +725,7 @@ def _typing_label(conversation, user):
     now = timezone.now()
     typing_users = [
         member.user
-        for member in _other_conversation_members(conversation, user)
+        for member in other_members(conversation, user)
         if member.typing_until and member.typing_until > now
     ]
     if not typing_users:
@@ -748,36 +736,6 @@ def _typing_label(conversation, user):
     if len(typing_users) == 2:
         return f"{names[0]} und {names[1]} schreiben …"
     return f"{names[0]}, {names[1]} und weitere schreiben …"
-
-
-def _apply_conversation_member_action(conversation, user, action):
-    member = _get_conversation_member(conversation, user)
-    if not member:
-        return
-
-    now = timezone.now()
-    update_fields = []
-    if action == "mute_8h":
-        member.muted_until = now + timedelta(hours=8)
-        update_fields.append("muted_until")
-    elif action == "mute_1w":
-        member.muted_until = now + timedelta(weeks=1)
-        update_fields.append("muted_until")
-    elif action == "mute_1y":
-        member.muted_until = now + timedelta(days=365)
-        update_fields.append("muted_until")
-    elif action == "unmute":
-        member.muted_until = None
-        update_fields.append("muted_until")
-    elif action == "block":
-        member.is_blocked = True
-        update_fields.append("is_blocked")
-    elif action == "unblock":
-        member.is_blocked = False
-        update_fields.append("is_blocked")
-
-    if update_fields:
-        member.save(update_fields=update_fields)
 
 
 def _build_current_member_state(member, user, conversation=None):
@@ -794,7 +752,7 @@ def _build_current_member_state(member, user, conversation=None):
         "is_muted": is_muted,
         "muted_until_label": format_user_datetime(member.muted_until, user) if is_muted else "",
         "is_blocked": member.is_blocked,
-        "blocked_by_recipient": _conversation_blocked_for_sender(conversation, user),
+        "blocked_by_recipient": blocked_by_other_side(conversation, user),
     }
 
 
@@ -1037,14 +995,10 @@ def _build_reply_preview(message):
     }
 
 
-def _other_conversation_members(conversation, user):
-    return [member for member in conversation.member_rows.all() if member.user_id != user.id]
-
-
 def _message_read_count(message, conversation, user):
     return sum(
         1
-        for member in _other_conversation_members(conversation, user)
+        for member in other_members(conversation, user)
         if member.last_read_at and member.last_read_at >= message.created_at
     )
 
@@ -1054,12 +1008,12 @@ def _message_is_read_by_others(message, conversation, user):
 
 
 def _message_read_receipt(message, conversation, user):
-    other_members = _other_conversation_members(conversation, user)
-    if not other_members:
+    others = other_members(conversation, user)
+    if not others:
         return ""
 
     read_count = _message_read_count(message, conversation, user)
-    total_count = len(other_members)
+    total_count = len(others)
 
     if conversation.is_group:
         if read_count:
@@ -1114,82 +1068,6 @@ def _build_reaction_items(message, user):
     return grouped
 
 
-def _delete_chat_message_for_user(message, user):
-    if message.sender_id != user.id or message.is_deleted:
-        return
-    attachment = getattr(message, "attachment", None)
-    if attachment:
-        attachment.file.delete(save=False)
-        attachment.delete()
-    message.body = ""
-    message.is_deleted = True
-    message.deleted_at = timezone.now()
-    message.is_pinned = False
-    message.pinned_at = None
-    message.pinned_by = None
-    message.reactions.all().delete()
-    delete_poll(message)
-    forget_mentions(message)
-    message.mentioned_users.clear()
-    message.save(update_fields=["body", "is_deleted", "deleted_at", "is_pinned", "pinned_at", "pinned_by"])
-
-
-def _create_chat_attachment(message, user, upload, duration_seconds=None):
-    kind = infer_attachment_kind(upload.name)
-    is_audio = kind == ChatMessageAttachment.KIND_AUDIO
-    content_type = (
-        audio_content_type(upload.name)
-        if is_audio
-        else (getattr(upload, "content_type", "") or "application/octet-stream")
-    )
-    ChatMessageAttachment.objects.create(
-        message=message,
-        uploaded_by=user,
-        kind=kind,
-        original_name=upload.name[:255],
-        content_type=content_type[:160],
-        size=upload.size,
-        duration_seconds=duration_seconds if is_audio else None,
-        file=upload,
-    )
-
-
-def _forward_chat_message(message, target, user):
-    """Copy a message (body and attachment, no reply quote) into ``target`` as ``user``'s own."""
-    forwarded = ChatMessage.objects.create(
-        conversation=target, sender=user, body=message.body, is_forwarded=True
-    )
-    attachment = getattr(message, "attachment", None)
-    if attachment:
-        # A real copy, so deleting either message never removes the other one's file.
-        with attachment.file.open("rb") as handle:
-            content = ContentFile(handle.read(), name=attachment.original_name)
-        ChatMessageAttachment.objects.create(
-            message=forwarded,
-            uploaded_by=user,
-            kind=attachment.kind,
-            original_name=attachment.original_name,
-            content_type=attachment.content_type,
-            size=attachment.size,
-            duration_seconds=attachment.duration_seconds,
-            file=content,
-        )
-    return forwarded
-
-
-def _forward_targets(user, current_conversation):
-    """Conversations a message can be forwarded to: visible ones the user can write in."""
-    targets = []
-    for conversation in Conversation.visible_for(user).order_by("-updated_at"):
-        if conversation.pk == current_conversation.pk:
-            continue
-        member = next((row for row in conversation.member_rows.all() if row.user_id == user.id), None)
-        if (member and member.is_blocked) or _conversation_blocked_for_sender(conversation, user):
-            continue
-        targets.append({"id": conversation.pk, "title": conversation.display_title_for(user)})
-    return targets
-
-
 def _format_duration(seconds):
     if seconds is None:
         return ""
@@ -1216,34 +1094,6 @@ def _build_attachment_item(message):
         "inline_url": reverse("chat_attachment_download", args=[attachment.file_id, "inline"]),
         "download_url": reverse("chat_attachment_download", args=[attachment.file_id, "download"]),
     }
-
-
-def _toggle_chat_message_pin(message, user):
-    if message.is_deleted:
-        return
-    if message.is_pinned:
-        message.is_pinned = False
-        message.pinned_at = None
-        message.pinned_by = None
-    else:
-        message.is_pinned = True
-        message.pinned_at = timezone.now()
-        message.pinned_by = user
-    message.save(update_fields=["is_pinned", "pinned_at", "pinned_by"])
-
-
-def _toggle_chat_message_reaction(message, user, emoji):
-    if message.is_deleted or emoji not in MESSAGE_REACTION_EMOJIS:
-        return
-    reaction = ChatMessageReaction.objects.filter(message=message, user=user).first()
-    if reaction and reaction.emoji == emoji:
-        reaction.delete()
-        return
-    if reaction:
-        reaction.emoji = emoji
-        reaction.save(update_fields=["emoji"])
-        return
-    ChatMessageReaction.objects.create(message=message, user=user, emoji=emoji)
 
 
 def _build_member_items(conversation, user):

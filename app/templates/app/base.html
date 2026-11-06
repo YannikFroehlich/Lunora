@@ -23,10 +23,18 @@
     <meta name="mobile-web-app-capable" content="yes">
 
     <link rel="preload" href="{% static 'vendor/inter/inter-latin-variable.woff2' %}?v=inter-1" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="{% versioned_static 'vendor/fontawesome/css/all.min.css' %}" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="{% versioned_static 'vendor/fontawesome/css/all.min.css' %}" media="print" data-late-stylesheet>
     <noscript><link rel="stylesheet" href="{% versioned_static 'vendor/fontawesome/css/all.min.css' %}"></noscript>
 
-    <script>
+    <script nonce="{{ csp_nonce }}">
+        // Load the icon font without blocking rendering. The stylesheet may already be there.
+        (function () {
+            const stylesheet = document.querySelector("link[data-late-stylesheet]");
+            const apply = () => { stylesheet.media = "all"; };
+            stylesheet.addEventListener("load", apply);
+            if (stylesheet.sheet) apply();
+        })();
+
         // Apply the saved theme early to avoid a visible theme flash while loading.
         (function () {
             const storageKey = "lunora-theme";

@@ -8,7 +8,7 @@ from django.utils import timezone
 from app.forms import StorageLimitForm, SystemSettingsForm
 from app.models import AuditLogEntry, UserSession
 from app.services import audit_log
-from app.services.storage_quota import total_storage_used
+from app.services.storage_quota import top_storage_users, total_storage_used
 from app.services.system_settings import get_system_settings, logout_other_authenticated_sessions
 
 
@@ -88,6 +88,7 @@ def administration(request):
             "system_settings": settings_obj,
             "session_stats": _active_session_stats(),
             "total_storage_used": total_storage_used(),
+            "top_storage_users": top_storage_users(),
             "audit_log": audit_log.audit_log_page(
                 request.user, filter_key=request.GET.get("audit", "all"), page=request.GET.get("audit_page")
             ),

@@ -72,6 +72,13 @@
                     <h2>Speicher</h2>
                 </div>
                 <p class="admin-muted">Belegt durch Anhänge aller Nutzer: <strong>{{ total_storage_used|filesizeformat }}</strong></p>
+                {% if top_storage_users %}
+                <ol class="admin-storage-users" aria-label="Nutzer mit dem meisten Speicher">
+                    {% for row in top_storage_users %}
+                    <li><span>{{ row.user.get_username }}</span> <strong>{{ row.used|filesizeformat }}</strong></li>
+                    {% endfor %}
+                </ol>
+                {% endif %}
                 <form method="post">
                     {% csrf_token %}
                     <input type="hidden" name="form_name" value="storage_limit">
@@ -94,7 +101,7 @@
                     <h2>Sitzungen beenden</h2>
                 </div>
                 <p>Loggt alle aktuell angemeldeten Nutzer und Geräte aus. Deine aktuelle Admin-Sitzung bleibt aktiv.</p>
-                <form method="post" onsubmit="return confirm('Alle anderen aktiven Sitzungen wirklich ausloggen?');">
+                <form method="post" data-confirm="Alle anderen aktiven Sitzungen wirklich ausloggen?">
                     {% csrf_token %}
                     <input type="hidden" name="form_name" value="force_logout_all">
                     <button class="ghost-button danger-button" type="submit">

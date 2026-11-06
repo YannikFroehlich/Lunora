@@ -55,7 +55,7 @@ class SettingsProfileTests(TestCase):
         self.assertNotIn("cdn.jsdelivr.net", content)
         self.assertIn("/static/vendor/inter/inter-latin-variable.woff2", content)
         self.assertIn(
-            f'<link rel="stylesheet" href="{icon_stylesheet}" media="print" onload="this.media=\'all\'">',
+            f'<link rel="stylesheet" href="{icon_stylesheet}" media="print" data-late-stylesheet>',
             content,
         )
         self.assertNotIn(f'rel="preload" href="{icon_stylesheet}"', content)

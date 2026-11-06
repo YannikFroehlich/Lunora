@@ -244,6 +244,15 @@ class StorageLimitAdministrationTests(StorageQuotaTestCase):
         self.client.post("/administration/", {"form_name": "system_settings", "normal_login_enabled": "on"})
         self.assertEqual(SystemSettings.objects.get(pk=1).user_storage_limit_mb, 700)
 
+    def test_administration_lists_the_largest_users_first(self):
+        self.fill_storage(3)
+        self.fill_storage(5, user=self.other)
+        self.client.force_login(self.admin)
+        response = self.client.get("/administration/")
+        rows = [(row["user"], row["used"]) for row in response.context["top_storage_users"]]
+        self.assertEqual(rows, [(self.other, 5 * MB), (self.user, 3 * MB)])
+        self.assertEqual(response.context["total_storage_used"], 8 * MB)
+
     def test_settings_page_shows_the_usage(self):
         set_limit(10)
         self.fill_storage(5)

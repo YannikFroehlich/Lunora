@@ -375,7 +375,7 @@
                         name="is_done"
                         aria-label="{{ item.title }} als {% if item.is_done %}offen{% else %}erledigt{% endif %} markieren"
                         {% if item.is_done %}checked{% endif %}
-                        onchange="this.form.submit()"
+                        data-auto-submit
                     >
 
                     <div class="task-copy">
@@ -546,7 +546,7 @@
                         name="is_done"
                         aria-label="{{ child.title }} als {% if child.is_done %}offen{% else %}erledigt{% endif %} markieren"
                         {% if child.is_done %}checked{% endif %}
-                        onchange="this.form.submit()"
+                        data-auto-submit
                     >
 
                     <div class="task-copy">

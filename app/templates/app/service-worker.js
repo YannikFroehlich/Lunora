@@ -1,6 +1,6 @@
 {% load static static_versioning %}
 const CACHE_PREFIX = "lunora-pwa";
-const CACHE_VERSION = "{% static_version 'css/base.css' 'css/offline.css' 'js/base.js' %}";
+const CACHE_VERSION = "{% static_version 'css/base.css' 'css/offline.css' 'js/base.js' 'js/offline.js' %}";
 const STATIC_CACHE = `${CACHE_PREFIX}-static-${CACHE_VERSION}`;
 const PAGES_CACHE = `${CACHE_PREFIX}-pages-${CACHE_VERSION}`;
 const MAX_CACHED_PAGES = 60;
@@ -10,6 +10,7 @@ const APP_SHELL_URLS = [
   OFFLINE_URL,
   "{% versioned_static 'css/base.css' %}",
   "{% versioned_static 'css/offline.css' %}",
+  "{% versioned_static 'js/offline.js' %}",
   "{% static 'img/lunora_logo.svg' %}?v=brand-4",
   "{% static 'img/icon-192.png' %}?v=brand-4",
   "{% static 'img/icon-512.png' %}?v=brand-4",

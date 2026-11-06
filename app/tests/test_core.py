@@ -182,6 +182,32 @@ class StaticVersioningTests(SimpleTestCase):
         )
 
 
+class ContentSecurityPolicyTests(TestCase):
+    def test_page_script_carries_the_nonce_of_the_header(self):
+        response = self.client.get("/login/")
+        policy = response.headers["Content-Security-Policy"]
+        nonce = re.search(r"'nonce-([^']+)'", policy).group(1)
+        self.assertIn(f'<script nonce="{nonce}">', response.content.decode())
+        self.assertIn("frame-ancestors 'none'", policy)
+        self.assertNotIn("script-src 'unsafe-inline'", policy)
+
+    def test_every_request_gets_its_own_nonce(self):
+        policies = {self.client.get("/login/").headers["Content-Security-Policy"] for _ in range(2)}
+        self.assertEqual(len(policies), 2)
+
+    def test_templates_have_no_script_the_policy_would_block(self):
+        # A blocked inline handler or script fails silently in the browser, not in any other test.
+        problems = []
+        for path in (BASE_DIR / "app" / "templates").rglob("*.html"):
+            text = path.read_text(encoding="utf-8")
+            for match in re.finditer(r"<script\b[^>]*>|\son[a-z]+\s*=\s*[\"']", text):
+                tag = match.group(0)
+                if tag.startswith("<script") and ("src=" in tag or "nonce=" in tag):
+                    continue
+                problems.append(f"{path.name}:{text.count(chr(10), 0, match.start()) + 1}: {tag}")
+        self.assertEqual(problems, [])
+
+
 class DesignTokenTests(SimpleTestCase):
     """Guard the shared design tokens in base.css against per-page drift."""
 

@@ -16,6 +16,31 @@
   padding: 28px 30px;
 }
 
+.admin-storage-users {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-storage-users li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--color-muted);
+}
+
+.admin-storage-users span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-storage-users strong {
+  flex: none;
+  color: var(--color-heading);
+}
+
 .admin-storage-field {
   display: grid;
   gap: 8px;

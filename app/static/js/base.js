@@ -578,6 +578,12 @@ document.addEventListener("submit", (event) => {
   if (message && !window.confirm(message)) event.preventDefault();
 });
 
+// Filters and checkboxes that submit their form as soon as they change. Delegated, because the
+// Content-Security-Policy forbids inline handlers and live updates swap some of these controls.
+document.addEventListener("change", (event) => {
+  if (event.target.matches?.("[data-auto-submit]")) event.target.form?.submit();
+});
+
 // Remember the last visited app sections in this browser, newest first, so the dashboard's
 // "Zuletzt genutzt" widget (home.js) can order its tiles without any server-side tracking.
 const RECENT_SECTIONS_STORAGE_KEY = "lunora-recent-sections";
