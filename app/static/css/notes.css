@@ -1208,9 +1208,11 @@
 }
 
 .note-editor-page {
-  /* A4 at 96dpi (210mm x 297mm), padding matching the PDF export's margins (19mm sides/bottom, 18mm top) */
+  /* A4 at 96dpi (210mm x 297mm), padding matching the PDF export's margins (19mm sides/bottom, 18mm top).
+     The width is fixed like a sheet in Word: a shrinking page would wrap text differently and let
+     imported tables, which keep their width, stick out. The scroll area scrolls sideways instead. */
   position: relative;
-  width: min(100%, 794px);
+  width: 794px;
   min-height: 1123px;
   display: flex;
   flex-direction: column;
@@ -2153,7 +2155,8 @@
   .notes-shell { grid-template-columns: 310px minmax(0, 1fr); }
   .note-document-header { align-items: flex-start; flex-wrap: wrap; }
   .note-header-actions { width: 100%; justify-content: flex-end; }
-  .note-editor-page { padding: 38px; }
+  /* Tablets and phones have no room for a sheet next to the list, so the text reflows here. */
+  .note-editor-page { width: 100%; padding: 38px; }
 }
 
 @media (max-width: 760px) {
