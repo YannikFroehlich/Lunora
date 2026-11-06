@@ -6,6 +6,9 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- The note page keeps its A4 width on smaller desktop windows too and scrolls sideways, like a sheet
+  in Word, instead of getting narrower. Text wraps the same in every window, and imported tables no
+  longer stick out of the page.
 - Password reset mails are limited to three per address and ten per client within an hour, so
   nobody can flood someone's inbox with them. Further requests get the usual confirmation page, so
   the limit doesn't reveal whether an address has an account.
