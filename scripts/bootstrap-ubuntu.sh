@@ -24,6 +24,7 @@ apt-get install --yes \
     python3-pip \
     python3-venv \
     redis-server \
+    restic \
     unattended-upgrades
 
 install -d -m 0755 /usr/share/keyrings

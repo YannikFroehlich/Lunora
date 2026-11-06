@@ -157,8 +157,11 @@ location: `Windows PC (PowerShell)`, `Ubuntu server`, or `Cloudflare dashboard`.
   purging runs around 03:20 with a randomized delay.
 - Local backups are stored below `/srv/lunora/backups` with 14-day retention and
   contain a PostgreSQL custom-format dump, uploads archive, and SHA-256 manifest.
-  Local backups do not protect against server or disk loss; an encrypted off-site copy
-  remains recommended.
+  Local backups do not protect against server or disk loss. `lunora-offsite-backup.timer`
+  (`scripts/offsite-backup.sh`, around 03:00) copies the newest one plus `/etc/lunora` to an
+  encrypted restic repository configured in `/etc/lunora/offsite.env`, once set up as described
+  in `DEPLOYMENT.md`. It stays a separate unit so a slow or dead target cannot block the
+  pre-deployment backup; never output `offsite.env`.
 - Public uploads live in `/srv/lunora/app/media`; private note attachments live in
   `/srv/lunora/app/private_media`; collected static files live in
   `/srv/lunora/app/staticfiles`. Preserve ownership, setgid directory modes, and the
