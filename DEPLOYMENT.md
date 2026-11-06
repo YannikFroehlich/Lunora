@@ -221,5 +221,86 @@ Details stehen nur im Journal von `lunora-web`. Ein externer Uptime-Monitor kann
 
 Extern müssen `https://lunora.yfserver.de/login/`, Registrierung, Passwort-Reset,
 Profilbild, privater Notizanhang, E-Mail-Versand, Web Push bei geschlossenem Tab und ein Neustart des Servers getestet
-werden. Lokale Backups schützen nicht vor einem Defekt oder Verlust des Servers; später
-sollte mindestens eine verschlüsselte Kopie auf ein zweites System ergänzt werden.
+werden. Lokale Backups schützen nicht vor einem Defekt oder Verlust des Servers; dafür gibt es
+das Offsite-Backup.
+
+## Offsite-Backup
+
+`lunora-offsite-backup.timer` kopiert nachts gegen 03:00 das neueste lokale Backup mit
+[restic](https://restic.net/) in ein verschlüsseltes Repository auf einem zweiten System: den
+Datenbank-Dump, `media`, `private_media` und `/etc/lunora` (Secrets und VAPID-Schlüssel, ohne die
+ein neuer Server nicht wie der alte läuft). Verschlüsselt wird auf `yfsrv1`, das Ziel sieht nur
+Chiffretext. Aufbewahrt werden 14 tägliche, 8 wöchentliche und 12 monatliche Stände; jeder Lauf
+liest zusätzlich zufällige 5 % der Daten zurück. Das Skript prüft vorher `SHA256SUMS` und den Dump
+und bricht ab, wenn das lokale Backup älter als 26 Stunden ist. Es läuft als eigene Unit, damit ein
+langsames oder ausgefallenes Ziel das Backup vor Deployments nicht blockiert.
+
+### Einrichten
+
+```bash
+sudo apt-get install --yes restic
+sudo install -o root -g root -m 0600 deploy/lunora-offsite.env.example /etc/lunora/offsite.env
+openssl rand -hex 32
+sudo nano /etc/lunora/offsite.env
+```
+
+`RESTIC_REPOSITORY` und `RESTIC_PASSWORD` setzen. **Das Passwort zusätzlich außerhalb des Servers
+ablegen, etwa im Passwort-Manager: Ohne es ist das Backup für niemanden mehr lesbar, und bei einem
+Serververlust ist die Kopie in `/etc/lunora` selbst nur im Backup.** Bei einem `sftp:`-Ziel den
+SSH-Schlüssel und `known_hosts` unter `/root/.ssh/` ablegen und einmal `sudo ssh <ziel>` ausführen.
+Dann das Repository anlegen und den ersten Lauf starten; der erste Upload kann über den Heimanschluss
+lange dauern, spätere Läufe übertragen nur Änderungen:
+
+```bash
+sudo bash -c 'set -a; source /etc/lunora/offsite.env; set +a; restic init'
+sudo install -o root -g root -m 0750 scripts/offsite-backup.sh /usr/local/sbin/lunora-offsite-backup
+sudo install -o root -g root -m 0644 deploy/lunora-offsite-backup.service /etc/systemd/system/
+sudo install -o root -g root -m 0644 deploy/lunora-offsite-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl start lunora-backup.service
+sudo systemctl start lunora-offsite-backup.service
+sudo journalctl -u lunora-offsite-backup.service --no-pager -n 50
+sudo systemctl enable --now lunora-offsite-backup.timer
+```
+
+Das Auto-Deployment installiert diese Dateien nicht. Nach einer Änderung an Skript oder Units die
+`install`-Befehle oben wiederholen.
+
+Ohne SMTP meldet niemand einen fehlgeschlagenen Lauf. Deshalb `OFFSITE_PING_URL` auf einen externen
+Dead-Man's-Switch setzen (zum Beispiel healthchecks.io): Der Dienst alarmiert, wenn der tägliche
+Aufruf ausbleibt, also auch wenn der ganze Server ausfällt. Manuell prüfen:
+
+```bash
+systemctl list-timers lunora-offsite-backup.timer --no-pager
+sudo bash -c 'set -a; source /etc/lunora/offsite.env; set +a; restic snapshots --compact'
+```
+
+### Wiederherstellung testen
+
+Einmal nach dem Einrichten und nach relevanten Änderungen, ohne die Produktion anzufassen:
+
+```bash
+sudo bash -c 'set -a; source /etc/lunora/offsite.env; set +a; restic restore latest --target /srv/lunora/backups/.restore-test'
+sudo ls /srv/lunora/backups/.restore-test/srv/lunora/app/private_media
+sudo -u postgres createdb lunora_restore_test
+sudo sh -c 'runuser -u postgres -- pg_restore --no-owner --dbname=lunora_restore_test < /srv/lunora/backups/.restore-test/srv/lunora/backups/.offsite/database.dump'
+sudo -u postgres psql --dbname=lunora_restore_test --command='SELECT count(*) FROM app_note;'
+sudo -u postgres dropdb lunora_restore_test
+sudo rm -rf -- /srv/lunora/backups/.restore-test
+```
+
+### Server neu aufbauen
+
+1. `scripts/bootstrap-ubuntu.sh` ausführen, das Repository nach `/srv/lunora/app` klonen und die venv
+   anlegen (siehe „Reihenfolge“).
+2. `RESTIC_REPOSITORY` und `RESTIC_PASSWORD` von Hand setzen, dann `restic restore latest --target /tmp/lunora-restore`.
+3. `etc/lunora` nach `/etc/lunora` kopieren, `media` und `private_media` nach `/srv/lunora/app`.
+   restic stellt numerische UIDs wieder her: Besitzer und Rechte danach mit den Angaben aus diesem
+   Dokument korrigieren.
+4. Rolle und leere Datenbank `lunora` anlegen, `.offsite/database.dump` mit
+   `pg_restore --no-owner --role=lunora --dbname=lunora` einspielen.
+5. Ab „Installation der versionierten Systemdateien“ weiter wie oben, dann `/healthz/` prüfen.
+
+Der Server kann mit den Zugangsdaten aus `offsite.env` auch Stände im Repository löschen. Wer das nach
+einer Kompromittierung ausschließen will, braucht ein Ziel mit Append-only-Modus oder Object Lock;
+das ist bewusst noch nicht eingerichtet.

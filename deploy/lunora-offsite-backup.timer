@@ -1,0 +1,11 @@
+[Unit]
+Description=Copy the Lunora backup off-site every night
+
+[Timer]
+OnCalendar=*-*-* 03:00:00 Europe/Berlin
+Persistent=true
+RandomizedDelaySec=10m
+Unit=lunora-offsite-backup.service
+
+[Install]
+WantedBy=timers.target
