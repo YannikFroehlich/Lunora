@@ -126,7 +126,13 @@ def global_search(request):
     if query and flags["tasks"]:
         tasks = (
             visible_tasks(request.user)
-            .filter(title__icontains=query)
+            .filter(
+                Q(title__icontains=query)
+                | Q(labels__name__icontains=query)
+                | Q(comments__body__icontains=query)
+            )
+            # The joins repeat a task per matching label and comment.
+            .distinct()
             .order_by("is_done", "due_at", "-id")[:SEARCH_RESULT_LIMIT]
         )
         task_results = [
