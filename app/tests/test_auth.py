@@ -4,6 +4,7 @@ from urllib.error import URLError
 
 from django.apps import apps
 from django.contrib.auth.models import User
+from django.core import mail
 from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, SimpleTestCase, TestCase, override_settings
@@ -76,6 +77,78 @@ class TurnstileValidationTests(SimpleTestCase):
 
         with self.assertLogs("app.services.turnstile", "WARNING"):
             self.assertFalse(verify_registration_token("valid-token"))
+
+
+class PasswordResetLimitTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+        User.objects.create_user("mira", "mira@example.com", "pw")
+
+    def request_reset(self, email, **extra):
+        return self.client.post("/password-reset/", {"email": email}, **extra)
+
+    def test_address_gets_three_mails_and_a_fourth_request_looks_the_same(self):
+        for _ in range(3):
+            self.assertRedirects(self.request_reset("mira@example.com"), "/password-reset/done/")
+        self.assertEqual(len(mail.outbox), 3)
+
+        with self.assertLogs("app.views.auth_views", level="WARNING"):
+            response = self.request_reset("mira@example.com")
+
+        self.assertRedirects(response, "/password-reset/done/")
+        self.assertEqual(len(mail.outbox), 3)
+
+    def test_spelling_of_the_address_does_not_reset_its_limit(self):
+        for email in ("mira@example.com", "MIRA@example.com", "Mira@Example.com"):
+            self.request_reset(email)
+        with self.assertLogs("app.views.auth_views", level="WARNING"):
+            self.request_reset("mira@EXAMPLE.com")
+        self.assertEqual(len(mail.outbox), 3)
+
+    def test_unknown_address_gets_the_same_answer_past_its_limit(self):
+        with self.assertLogs("app.views.auth_views", level="WARNING"):
+            responses = [self.request_reset("nobody@example.com") for _ in range(4)]
+        for response in responses:
+            self.assertRedirects(response, "/password-reset/done/")
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_one_address_at_its_limit_leaves_others_alone(self):
+        User.objects.create_user("lukas", "lukas@example.com", "pw")
+        with self.assertLogs("app.views.auth_views", level="WARNING"):
+            for _ in range(4):
+                self.request_reset("mira@example.com")
+        self.request_reset("lukas@example.com")
+        self.assertEqual(mail.outbox[-1].to, ["lukas@example.com"])
+
+    def test_one_client_is_stopped_after_ten_requests_another_is_not(self):
+        for number in range(11):
+            User.objects.create_user(f"user{number}", f"user{number}@example.com", "pw")
+        for number in range(10):
+            self.request_reset(f"user{number}@example.com", REMOTE_ADDR="203.0.113.1")
+        self.assertEqual(len(mail.outbox), 10)
+
+        with self.assertLogs("app.views.auth_views", level="WARNING"):
+            self.request_reset("user10@example.com", REMOTE_ADDR="203.0.113.1")
+        self.assertEqual(len(mail.outbox), 10)
+
+        self.request_reset("user10@example.com", REMOTE_ADDR="203.0.113.2")
+        self.assertEqual(len(mail.outbox), 11)
+
+    def test_visitors_without_a_known_address_do_not_share_a_counter(self):
+        # Behind Nginx's Unix socket REMOTE_ADDR is empty unless LUNORA_CLIENT_IP_HEADER is set.
+        for number in range(11):
+            User.objects.create_user(f"user{number}", f"user{number}@example.com", "pw")
+            self.request_reset(f"user{number}@example.com", REMOTE_ADDR="")
+        self.assertEqual(len(mail.outbox), 11)
+
+    def test_address_is_not_stored_in_the_cache_key(self):
+        with patch("app.views.auth_views.cache") as mocked_cache:
+            mocked_cache.add.return_value = True
+            self.request_reset("mira@example.com")
+        keys = [call.args[0] for call in mocked_cache.add.call_args_list]
+        self.assertTrue(keys)
+        self.assertFalse(any("mira" in key for key in keys))
 
 
 class TwoFactorTests(TestCase):
