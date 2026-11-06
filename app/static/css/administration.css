@@ -11,8 +11,28 @@
 
 .admin-settings-panel,
 .admin-status-panel,
+.admin-storage-panel,
 .admin-danger-panel {
   padding: 28px 30px;
+}
+
+.admin-storage-field {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.admin-storage-field strong {
+  color: var(--color-heading);
+}
+
+.admin-storage-field input {
+  width: 100%;
+  padding: 10px 12px;
+  color: var(--color-text);
+  background: var(--surface-control);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-sm);
 }
 
 .admin-side-stack {

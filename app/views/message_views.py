@@ -5,6 +5,7 @@ from urllib.parse import urlencode
 from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 from django.db.models import Count, Max, Q
 from django.http import FileResponse, HttpResponse, JsonResponse
@@ -54,6 +55,7 @@ from app.services.message_queries import (
     unread_state_by_conversation,
 )
 from app.services.note_search import build_snippet, parse_search_query
+from app.services.storage_quota import ensure_storage_available
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.user_preferences import (
     format_user_date,
@@ -86,7 +88,7 @@ def messages(request, conversation_id=None):
                 request.user,
                 request.POST.get("conversation_id") or conversation_id,
             )
-            message_form = MessageForm(request.POST, request.FILES)
+            message_form = MessageForm(request.POST, request.FILES, user=request.user)
             if not selected_conversation:
                 django_messages.error(request, "Diese Unterhaltung wurde nicht gefunden.")
                 return redirect("messages")
@@ -234,6 +236,12 @@ def messages(request, conversation_id=None):
                 target, request.user
             ):
                 django_messages.error(request, "In diese Unterhaltung kann derzeit nicht geschrieben werden.")
+                return redirect("messages_detail", conversation_id=source_conversation.id)
+            attachment = getattr(message, "attachment", None)
+            try:
+                ensure_storage_available(request.user, attachment.size if attachment else 0)
+            except ValidationError as error:
+                django_messages.error(request, " ".join(error.messages))
                 return redirect("messages_detail", conversation_id=source_conversation.id)
             forwarded = _forward_chat_message(message, target, request.user)
             target.updated_at = forwarded.created_at

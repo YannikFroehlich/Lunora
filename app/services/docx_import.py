@@ -34,6 +34,7 @@ from app.services.note_files import (
     validate_note_upload,
 )
 from app.services.notes import create_note
+from app.services.storage_quota import ensure_storage_available
 
 MAX_DOCX_BYTES = 20 * 1024 * 1024
 MAX_DOCX_ENTRIES = 2000
@@ -785,6 +786,7 @@ def import_docx_note(user, filename, data):
         data, PurePath(filename).stem.strip() or "Importierte Notiz"
     )
     validate_note_document(document)
+    ensure_storage_available(user, sum(len(content) for _id, _name, _type, content in images))
     saved = []
     try:
         with transaction.atomic():

@@ -32,6 +32,7 @@ from app.services.dashboard import normalize_dashboard_layout, validate_dashboar
 from app.services.data_export import export_filename, write_user_export
 from app.services.data_import import import_files
 from app.services.health import health_report
+from app.services.storage_quota import storage_summary
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.user_preferences import format_user_datetime
 from app.services.user_sessions import (
@@ -342,6 +343,7 @@ def settings(request):
                 for row in active_sessions(request.user)
             ],
             "account_deletion_blocked_reason": account_deletion_blocked_reason(request.user),
+            "storage": storage_summary(request.user),
         }
     )
     return render(request, "app/settings.html", context)

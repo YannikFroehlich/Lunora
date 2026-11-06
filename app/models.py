@@ -48,6 +48,8 @@ class SystemSettings(models.Model):
     tasks_enabled = models.BooleanField(default=True)
     tools_enabled = models.BooleanField(default=True)
     note_public_links_enabled = models.BooleanField(default=True)
+    # Per user, for files they uploaded (see app.services.storage_quota). 0 means no limit.
+    user_storage_limit_mb = models.PositiveIntegerField(default=1024)
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

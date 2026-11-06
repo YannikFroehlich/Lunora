@@ -1326,3 +1326,8 @@
 .data-import-input {
   margin-top: 8px;
 }
+
+.storage-meter {
+  width: 100%;
+  accent-color: var(--color-accent);
+}

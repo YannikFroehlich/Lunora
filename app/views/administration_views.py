@@ -5,9 +5,10 @@ from django.http import HttpResponseForbidden
 from django.shortcuts import redirect, render
 from django.utils import timezone
 
-from app.forms import SystemSettingsForm
+from app.forms import StorageLimitForm, SystemSettingsForm
 from app.models import AuditLogEntry, UserSession
 from app.services import audit_log
+from app.services.storage_quota import total_storage_used
 from app.services.system_settings import get_system_settings, logout_other_authenticated_sessions
 
 
@@ -28,8 +29,24 @@ def administration(request):
         return HttpResponseForbidden("Diese Seite ist nur für Superuser verfügbar.")
 
     settings_obj = get_system_settings()
+    storage_form = StorageLimitForm(instance=settings_obj)
 
-    if request.method == "POST" and request.POST.get("form_name") == "system_settings":
+    if request.method == "POST" and request.POST.get("form_name") == "storage_limit":
+        storage_form = StorageLimitForm(request.POST, instance=settings_obj)
+        if storage_form.is_valid():
+            settings_obj = storage_form.save(commit=False)
+            settings_obj.updated_by = request.user
+            settings_obj.save()
+            if storage_form.changed_data:
+                audit_log.record(
+                    AuditLogEntry.ACTION_SETTINGS_CHANGED,
+                    request,
+                    summary=f"Speicherlimit pro Nutzer: {settings_obj.user_storage_limit_mb} MB",
+                )
+            django_messages.success(request, "Speicherlimit gespeichert.")
+            return redirect("administration")
+        form = SystemSettingsForm(instance=settings_obj)
+    elif request.method == "POST" and request.POST.get("form_name") == "system_settings":
         form = SystemSettingsForm(request.POST, instance=settings_obj)
         if form.is_valid():
             changes = [
@@ -67,8 +84,10 @@ def administration(request):
         {
             "active_page": "administration",
             "form": form,
+            "storage_form": storage_form,
             "system_settings": settings_obj,
             "session_stats": _active_session_stats(),
+            "total_storage_used": total_storage_used(),
             "audit_log": audit_log.audit_log_page(
                 request.user, filter_key=request.GET.get("audit", "all"), page=request.GET.get("audit_page")
             ),
