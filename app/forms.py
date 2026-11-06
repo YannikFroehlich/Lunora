@@ -53,6 +53,7 @@ from app.services.image_uploads import PROFILE_IMAGE_ACCEPT, validate_profile_im
 from app.services.notes import display_name
 from app.services.notification_preferences import CATEGORY_DEFINITIONS
 from app.services.quick_add import parse_quick_add
+from app.services.storage_quota import ensure_storage_available
 from app.services.tasks import DEFAULT_DUE_TIME, update_task_shares
 from app.services.time_tracking import MANUAL_ENTRY_MAX_MINUTES, trackable_tasks
 from app.services.user_preferences import get_user_zoneinfo, localtime_for_user
@@ -611,6 +612,17 @@ class NotificationCategoryPreferencesForm(forms.Form):
             )
 
 
+class StorageLimitForm(forms.ModelForm):
+    class Meta:
+        model = SystemSettings
+        fields = ["user_storage_limit_mb"]
+        labels = {"user_storage_limit_mb": "Speicherlimit pro Nutzer (MB)"}
+        help_texts = {
+            "user_storage_limit_mb": "0 bedeutet kein Limit. Liegt jemand schon darüber, bleiben seine "
+            "Dateien erhalten, neue Uploads werden aber abgelehnt."
+        }
+
+
 class MessageForm(forms.ModelForm):
     attachment = forms.FileField(label="Anhang", required=False)
     voice_duration = forms.IntegerField(required=False, min_value=0, max_value=CHAT_VOICE_MAX_SECONDS)
@@ -636,8 +648,9 @@ class MessageForm(forms.ModelForm):
             )
         }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.user = user
         self.fields["body"].required = False
 
     def clean_body(self):
@@ -647,6 +660,7 @@ class MessageForm(forms.ModelForm):
         upload = self.cleaned_data.get("attachment")
         if upload:
             self.attachment_kind = validate_chat_upload(upload)
+            ensure_storage_available(self.user, upload.size)
         return upload
 
     def clean(self):

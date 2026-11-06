@@ -6,6 +6,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Storage limit per user: files uploaded to notes and chats count towards a limit (1 GB by default)
+  that administrators set under Administration → Speicher, where 0 means no limit. Uploads, Word
+  imports with pictures, duplicated notes and forwarded attachments that would exceed it are
+  rejected with a message; existing files stay. Einstellungen → Sicherheit shows how much you use.
 - Word documents (.docx) can be imported as notes, from the "Neue Notiz" dialog on the notes page or
   the data import in settings. Headings, paragraphs and alignment, bold/italic/underline/strike,
   super-/subscript, text colors, highlights, font sizes and fonts (mapped to the editor's choices),

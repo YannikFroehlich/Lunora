@@ -49,6 +49,7 @@ from app.services.note_content import (
     validate_note_document,
 )
 from app.services.note_files import NOTE_TOTAL_ATTACHMENT_BYTES
+from app.services.storage_quota import ensure_storage_available
 
 VERSION_INTERVAL = timedelta(minutes=5)
 VERSION_RETENTION = timedelta(days=90)
@@ -823,6 +824,8 @@ def duplicate_note(user, note_id, *, title=None, document=None):
     validated = validate_note_document(source_document)
     attachment_ids = validated["attachments"]
     _validate_attachment_references(source, attachment_ids)
+    copied_bytes = source.attachments.filter(file_id__in=attachment_ids).aggregate(total=Sum("size"))["total"]
+    ensure_storage_available(user, copied_bytes)
     target = create_note(
         user,
         title=(title or f"{source.title} (Kopie)")[:200],
@@ -951,6 +954,7 @@ def create_attachment(user, note_id, upload, *, kind):
     current_size = note.attachments.aggregate(total=Sum("size"))["total"] or 0
     if current_size + (getattr(upload, "size", 0) or 0) > NOTE_TOTAL_ATTACHMENT_BYTES:
         raise ValidationError("Eine Notiz darf insgesamt höchstens 100 MB Dateien enthalten.")
+    ensure_storage_available(user, getattr(upload, "size", 0))
     from app.services.note_files import validate_note_upload
 
     validate_note_upload(upload, kind=kind)

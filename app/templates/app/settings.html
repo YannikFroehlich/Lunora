@@ -43,7 +43,7 @@
                 <i class="fa-solid fa-cloud-sun" aria-hidden="true"></i>
                 <span>Wetter</span>
             </button>
-            <button class="settings-section-tab" type="button" role="tab" id="settings-tab-security" aria-selected="false" aria-controls="settings-panel-security settings-panel-devices settings-panel-export settings-panel-delete" tabindex="-1" data-settings-tab="security">
+            <button class="settings-section-tab" type="button" role="tab" id="settings-tab-security" aria-selected="false" aria-controls="settings-panel-security settings-panel-devices settings-panel-storage settings-panel-export settings-panel-delete" tabindex="-1" data-settings-tab="security">
                 <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
                 <span>Sicherheit</span>
             </button>
@@ -613,6 +613,21 @@
                         Alle anderen Geräte abmelden
                     </button>
                 </form>
+            </section>
+
+            <section id="settings-panel-storage" class="glass-panel security-panel" role="tabpanel" aria-labelledby="settings-tab-security" data-settings-panel="security">
+                <div class="panel-title"><i class="fa-solid fa-hard-drive" aria-hidden="true"></i><h2>Speicher</h2></div>
+                <p class="panel-description">
+                    {% if storage.limit %}
+                    {{ storage.used|filesizeformat }} von {{ storage.limit|filesizeformat }} belegt.
+                    {% else %}
+                    {{ storage.used|filesizeformat }} belegt, ohne Limit.
+                    {% endif %}
+                    Es zählen Dateien, die du in Notizen und Chats hochgeladen hast.
+                </p>
+                {% if storage.limit %}
+                <progress class="storage-meter" value="{{ storage.percent }}" max="100" aria-label="Belegter Speicher">{{ storage.percent }} %</progress>
+                {% endif %}
             </section>
 
             <section id="settings-panel-export" class="glass-panel security-panel" role="tabpanel" aria-labelledby="settings-tab-security" data-settings-panel="security">

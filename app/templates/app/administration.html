@@ -66,6 +66,28 @@
                 {% endif %}
             </section>
 
+            <section class="glass-panel admin-storage-panel">
+                <div class="panel-title">
+                    <i class="fa-solid fa-hard-drive" aria-hidden="true"></i>
+                    <h2>Speicher</h2>
+                </div>
+                <p class="admin-muted">Belegt durch Anhänge aller Nutzer: <strong>{{ total_storage_used|filesizeformat }}</strong></p>
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="storage_limit">
+                    <label class="admin-storage-field" for="{{ storage_form.user_storage_limit_mb.id_for_label }}">
+                        <strong>{{ storage_form.user_storage_limit_mb.label }}</strong>
+                        {{ storage_form.user_storage_limit_mb }}
+                    </label>
+                    {{ storage_form.user_storage_limit_mb.errors }}
+                    <p class="admin-muted">{{ storage_form.user_storage_limit_mb.help_text }}</p>
+                    <button class="primary-button" type="submit">
+                        <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+                        Speichern
+                    </button>
+                </form>
+            </section>
+
             <section class="glass-panel admin-danger-panel">
                 <div class="panel-title">
                     <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>

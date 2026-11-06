@@ -732,7 +732,7 @@ class SettingsProfileTests(TestCase):
         self.assertContains(response, 'data-settings-panel="notifications"')
         self.assertContains(response, 'data-settings-panel="weather"')
         self.assertContains(response, 'data-settings-panel="app"')
-        self.assertContains(response, 'data-settings-panel="security"', count=5)
+        self.assertContains(response, 'data-settings-panel="security"', count=6)
         self.assertContains(response, "Sprache &amp; Region speichern")
         self.assertContains(response, 'name="form_name" value="calendar_feed_reset"')
         self.assertContains(response, 'name="form_name" value="appearance"')

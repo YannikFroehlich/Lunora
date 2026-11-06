@@ -55,6 +55,7 @@ class DefaultSystemSettings:
     tasks_enabled: bool = True
     tools_enabled: bool = True
     note_public_links_enabled: bool = True
+    user_storage_limit_mb: int = 1024
     updated_by: object = None
     updated_at: object = None
 
