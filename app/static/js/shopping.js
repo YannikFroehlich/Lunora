@@ -1,6 +1,4 @@
 (() => {
-  const MAX_SUGGESTIONS = 6;
-
   // Case- and accent-insensitive, so "apfel" finds "Äpfel".
   function normalize(text) {
     return text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim();
@@ -16,8 +14,9 @@
 
   // The same product in singular or plural first, then names starting with the query, a later
   // word starting with it, anywhere; then the same for the query without its plural ending
-  // ("Gurken" still finds "Salatgurke"). Alphabetical within each rank.
-  function rankSuggestions(suggestions, query, limit = MAX_SUGGESTIONS) {
+  // ("Gurken" still finds "Salatgurke"). Alphabetical within each rank. All matches by default;
+  // the panel scrolls.
+  function rankSuggestions(suggestions, query, limit = Infinity) {
     const needle = normalize(query);
     if (!needle) return [];
     const needleStem = singular(needle);
@@ -109,8 +108,6 @@
         name.textContent = suggestion.name;
         aisle.textContent = suggestion.aisle;
         option.append(emoji, name, aisle);
-        // mousedown would blur the input (and close the panel) before the click lands.
-        option.addEventListener("mousedown", (event) => event.preventDefault());
         option.addEventListener("click", () => choose(suggestion));
         return option;
       }),
@@ -120,6 +117,8 @@
     setActive(-1);
   }
 
+  // mousedown on an option or the scrollbar would blur the input (and close the panel) first.
+  panel.addEventListener("mousedown", (event) => event.preventDefault());
   input.addEventListener("input", render);
   input.addEventListener("blur", hide);
   input.addEventListener("keydown", (event) => {

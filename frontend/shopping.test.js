@@ -56,8 +56,9 @@ describe("rankSuggestions", () => {
     expect(names("reis")).toEqual(["Reis"]);
   });
 
-  it("returns nothing for blank input and honours the limit", () => {
+  it("returns nothing for blank input, every match by default and honours a limit", () => {
     expect(names("  ")).toEqual([]);
+    expect(names("a")).toHaveLength(7);
     expect(names("a", 2)).toHaveLength(2);
   });
 });
