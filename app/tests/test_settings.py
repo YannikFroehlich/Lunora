@@ -1650,6 +1650,7 @@ class SettingsProfileTests(TestCase):
 
 class DataExportTests(TestCase):
     def setUp(self):
+        cache.clear()
         self.lea = User.objects.create_user(username="lea", email="lea@example.com", password="pw-12345!")
         self.tom = User.objects.create_user(username="tom", email="tom@example.com", password="pw-12345!")
         Profile.objects.create(user=self.lea, display_name="Lea", calendar_feed_token="geheimer-token")
@@ -1664,6 +1665,31 @@ class DataExportTests(TestCase):
 
     def test_export_requires_login(self):
         self.assertRedirects(self.client.get("/settings/export/"), "/login/?next=/settings/export/")
+
+    def test_only_one_export_per_user_within_the_interval(self):
+        self.client.force_login(self.lea)
+        self._download()
+
+        self.assertRedirects(
+            self.client.get("/settings/export/"), "/settings/", fetch_redirect_response=False
+        )
+
+        self.client.force_login(self.tom)
+        self.assertEqual(self._download()[0].status_code, 200)
+
+    def test_export_is_written_next_to_the_uploads(self):
+        import tempfile
+        from unittest.mock import patch
+
+        from django.conf import settings
+
+        self.client.force_login(self.lea)
+        with patch(
+            "app.services.data_export.tempfile.TemporaryFile", wraps=tempfile.TemporaryFile
+        ) as temporary_file:
+            self._download()
+
+        temporary_file.assert_called_once_with(dir=settings.PRIVATE_MEDIA_ROOT)
 
     def test_export_contains_own_data_and_attachments_only(self):
         note = Note.objects.create(owner=self.lea, title="Mathe", plain_text="Integrale")

@@ -6,6 +6,23 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- More protection against abuse: specially built Markdown files can no longer tie up the server,
+  failed logins are also limited per client across all accounts, attempt counters can't be outrun
+  with parallel requests, and a data export can be started once every two minutes. Markdown lines
+  over 10,000 characters are imported without inline formatting, and files with very many long
+  lines are refused. Malformed diagrams and two-factor codes now get a normal error message.
+- Notes can be exported as Word documents (.docx), from the button next to PDF and Markdown or with
+  Ctrl+Alt+W. Headings, text formatting, colors, lists, tables, links and pictures come along.
+- While subscribed calendars are switched off for the site, their events no longer make someone
+  show up as busy in the availability check of an invitation.
+- Hardened the Word import and calendar subscriptions against crafted input: specially built .docx
+  files can no longer tie up the server, a broken or malicious subscribed calendar no longer stops
+  notifications for everyone, and calendar servers that answer extremely slowly are cut off after
+  30 seconds. Such a calendar shows "Der Kalender konnte nicht gelesen werden." and keeps its
+  previous events; an .ics file with impossible dates is reported instead of causing an error page.
+  Descriptions of imported and subscribed calendar events are cut off after 10,000 characters.
+- A failing background job no longer holds up the others: if, say, the reminder e-mails fail, Web
+  Push and scheduled chat messages still go out. `/healthz/` keeps reporting the problem.
 - The note page keeps its A4 width on smaller desktop windows too and scrolls sideways, like a sheet
   in Word, instead of getting narrower. Text wraps the same in every window, and imported tables no
   longer stick out of the page.

@@ -1,11 +1,14 @@
 import json
 import socket
+import threading
+import time
 import zipfile
 from datetime import timedelta
 from io import BytesIO
 from unittest import mock
 
 from django.contrib.auth.models import User
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.utils import timezone
 
@@ -20,7 +23,7 @@ from app.services.calendar_subscriptions import (
     sync_subscription,
 )
 from app.services.data_export import write_user_export
-from app.services.data_import import import_ics_events
+from app.services.data_import import MAX_ICS_DESCRIPTION_CHARS, import_files, import_ics_events
 from app.services.scheduled_tasks import run_scheduled_tasks
 from app.tests.helpers import FakeHttpConnection
 
@@ -123,6 +126,49 @@ class CalendarSubscriptionConnectTests(TestCase):
         socket_class.assert_not_called()
 
 
+class CalendarSubscriptionDeadlineTests(TestCase):
+    """A real http.client against a loopback server that sends one byte at a time."""
+
+    def fetch_from_dripping_server(self, head):
+        listener = socket.create_server(("127.0.0.1", 0))
+        self.addCleanup(listener.close)
+
+        def serve():
+            client, _address = listener.accept()
+            with client:
+                client.recv(4096)
+                try:
+                    client.sendall(head)
+                    # Bounded, so a regression fails the time check below instead of hanging.
+                    for _byte in range(150):
+                        client.sendall(b"x")
+                        time.sleep(0.02)
+                except OSError:
+                    pass
+
+        threading.Thread(target=serve, daemon=True).start()
+        port = listener.getsockname()[1]
+        started = time.monotonic()
+        with (
+            mock.patch("app.services.calendar_subscriptions.FETCH_DEADLINE_SECONDS", 0.2),
+            mock.patch(
+                "app.services.calendar_subscriptions._public_connection",
+                lambda _address, timeout=None, _source=None: socket.create_connection(
+                    ("127.0.0.1", port), timeout
+                ),
+            ),
+            self.assertRaises(SubscriptionError),
+        ):
+            fetch_calendar("http://calendar.example.com/cal.ics")
+        self.assertLess(time.monotonic() - started, 2)
+
+    def test_slow_status_line_is_cut_at_the_deadline(self):
+        self.fetch_from_dripping_server(b"")
+
+    def test_slow_body_is_cut_at_the_deadline(self):
+        self.fetch_from_dripping_server(b"HTTP/1.1 200 OK\r\n\r\nBEGIN:VCALENDAR\r\n")
+
+
 class CalendarSubscriptionSyncTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
@@ -198,6 +244,69 @@ class CalendarSubscriptionSyncTests(TestCase):
             result = run_scheduled_tasks(now=self.now + timedelta(hours=2))
             self.assertTrue(result["calendar_subscriptions"]["disabled"])
             self.assertEqual(fetched.call_count, 2)
+
+    def hostile_calendars(self):
+        start = f"DTSTART:{self.now:%Y%m%dT%H%M%SZ}\r\n"
+        return [
+            ics(f"UID:x\r\n{start}DURATION:P99999999999W\r\n"),
+            ics(f"UID:x\r\n{start}RRULE:FREQ=DAILY;INTERVAL=99999999999\r\n"),
+            ics(f"UID:x\r\n{start}RRULE:FREQ=YEARLY;INTERVAL=100000\r\n"),
+            ics("UID:x\r\nDTSTART:99991231T235959Z\r\nDURATION:P2D\r\n"),
+        ]
+
+    def test_hostile_calendar_fails_alone_and_keeps_the_old_events(self):
+        self.sync(ics(vevent("a", "Eins", self.now)))
+
+        for text in self.hostile_calendars():
+            CalendarSubscription.objects.filter(pk=self.subscription.pk).update(last_attempt_at=None)
+            with self.subTest(text=text):
+                self.assertFalse(self.sync(text))
+                self.subscription.refresh_from_db()
+                self.assertEqual(self.subscription.last_error, "Der Kalender konnte nicht gelesen werden.")
+                self.assertEqual(self.subscription.last_attempt_at, self.now)
+                self.assertEqual(CalendarEvent.objects.filter(subscription=self.subscription).count(), 1)
+
+    def test_hostile_calendar_is_not_retried_on_every_pass(self):
+        text = self.hostile_calendars()[0]
+        with mock.patch("app.services.calendar_subscriptions.fetch_calendar", return_value=text):
+            self.assertEqual(sync_due_subscriptions(now=self.now), {"synced": 0, "failed": 1})
+            self.assertEqual(
+                sync_due_subscriptions(now=self.now + timedelta(minutes=5)), {"synced": 0, "failed": 0}
+            )
+
+    def test_malformed_redirect_fails_without_showing_the_url(self):
+        FakeHttpConnection.responses = [(302, {"Location": "http://[bad/"}, b"")]
+        FakeHttpConnection.requests = []
+        with mock.patch.multiple(
+            "app.services.calendar_subscriptions.http.client",
+            HTTPSConnection=FakeHttpConnection,
+            HTTPConnection=FakeHttpConnection,
+        ):
+            self.assertFalse(sync_subscription(self.subscription, now=self.now))
+
+        self.subscription.refresh_from_db()
+        self.assertEqual(self.subscription.last_error, "Der Kalender konnte nicht gelesen werden.")
+
+    def test_long_descriptions_are_shortened(self):
+        description = "x" * (MAX_ICS_DESCRIPTION_CHARS + 1)
+
+        self.assertTrue(self.sync(ics(vevent("a", "Eins", self.now, extra=f"DESCRIPTION:{description}\r\n"))))
+
+        event = CalendarEvent.objects.get(subscription=self.subscription)
+        self.assertEqual(len(event.description), MAX_ICS_DESCRIPTION_CHARS)
+
+    def test_nul_characters_are_dropped(self):
+        self.assertTrue(self.sync(ics(vevent("a", "Ti\x00tel", self.now))))
+
+        self.assertTrue(CalendarEvent.objects.filter(subscription=self.subscription, title="Titel").exists())
+
+    def test_uploaded_ics_with_impossible_dates_is_reported(self):
+        upload = SimpleUploadedFile("kalender.ics", self.hostile_calendars()[0].encode())
+
+        successes, errors = import_files(self.user, [upload], notes_enabled=True, calendar_enabled=True)
+
+        self.assertEqual(successes, [])
+        self.assertIn("ungültige Termine", errors[0])
 
     def test_own_feed_and_export_leave_subscribed_events_and_url_out(self):
         self.sync(ics(vevent("a", "Privattermin", self.now + timedelta(days=1))))

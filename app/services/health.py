@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 def record_automation_run(*, now=None):
-    """Called by ``run_automations`` after each pass."""
+    """Called by ``run_automations`` after each pass in which no step failed."""
     AutomationHeartbeat.objects.update_or_create(pk=1, defaults={"finished_at": now or timezone.now()})
 
 

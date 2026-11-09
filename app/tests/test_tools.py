@@ -201,6 +201,17 @@ class UmlDiagramTests(TestCase):
         self.assertTrue(UmlDiagram.objects.filter(pk=diagram.pk).exists())
         self.assertNotContains(self.client.get("/tools/uml/"), "Geheim")
 
+    def test_malformed_values_are_rejected_instead_of_crashing(self):
+        from django.core.exceptions import ValidationError
+
+        huge_position = {"id": "n1", "text": "", "x": 10**400, "y": 0}
+        for document in (
+            self._document(classes=[_uml_class("c1", "Auto", kind=[])]),
+            self._document(notes=[huge_position]),
+        ):
+            with self.subTest(document=str(document)[:60]), self.assertRaises(ValidationError):
+                validate_uml_document(document)
+
     def test_duplicate_and_delete_own_diagram(self):
         document = self._document(classes=[_uml_class("c1", "Auto")])
         diagram = UmlDiagram.objects.create(

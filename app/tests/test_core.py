@@ -575,3 +575,38 @@ class HealthEndpointTests(TestCase):
             }
             call_command("run_automations", stdout=io.StringIO())
         self.assertTrue(AutomationHeartbeat.objects.filter(pk=1).exists())
+
+    def test_failing_step_does_not_stop_the_later_ones(self):
+        from app.services.scheduled_tasks import failed_steps, run_scheduled_tasks
+
+        with (
+            patch(
+                "app.services.scheduled_tasks.send_due_reminder_emails",
+                side_effect=RuntimeError("geheime-url"),
+            ),
+            patch(
+                "app.services.scheduled_tasks.send_pending_web_push_notifications",
+                return_value={"sent": 1, "failed": 0},
+            ) as web_push,
+            self.assertLogs("app.services.scheduled_tasks", "ERROR") as logs,
+        ):
+            result = run_scheduled_tasks()
+
+        self.assertEqual(failed_steps(result), ["reminder_emails"])
+        web_push.assert_called_once()
+        self.assertIn("RuntimeError", logs.output[0])
+        self.assertNotIn("geheime-url", logs.output[0])
+
+    def test_run_automations_reports_a_failed_step_without_a_heartbeat(self):
+        from django.core.management import CommandError, call_command
+
+        from app.models import AutomationHeartbeat
+
+        with patch("app.management.commands.run_automations.run_scheduled_tasks") as run:
+            run.return_value = {
+                "reminder_emails": {"sent": 0, "failed": 0, "error": True},
+                "weekly_summaries": {"sent": 0, "failed": 0},
+            }
+            with self.assertRaisesMessage(CommandError, "reminder_emails"):
+                call_command("run_automations", stdout=io.StringIO())
+        self.assertFalse(AutomationHeartbeat.objects.filter(pk=1).exists())

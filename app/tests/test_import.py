@@ -1,7 +1,9 @@
+import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 
@@ -39,6 +41,64 @@ print("hi")
 
 ---
 """
+
+
+class MarkdownHostileInputTests(TestCase):
+    def test_lines_built_to_make_the_parser_backtrack_stay_fast(self):
+        byline = "# Titel\n\n*Zuletzt bearbeitet am" + " von" * 5000
+        for text in (
+            "# a" + " " * 1500 + "b",
+            "- a\n" + "\n" * 20000 + "  x",
+            "| a |\n" + " " * 20000 + "x",
+            "| a |\n---" + " " * 20000 + "x",
+            byline,
+            "a\n" * 20000,
+            "\n" * 20000 + "a",
+            "*a " * 4000,
+        ):
+            with self.subTest(text=text[:20]):
+                started = time.monotonic()
+                markdown_to_note(text, "datei")
+                self.assertLess(time.monotonic() - started, 1)
+
+    def test_too_many_long_lines_are_refused(self):
+        with self.assertRaisesMessage(ValidationError, "sehr lange Zeilen"):
+            markdown_to_note(("*a " * 3000 + "\n") * 200, "datei")
+
+    def test_a_line_too_long_for_inline_parsing_stays_plain_text(self):
+        line = "**fett** " + "x" * 10_000
+
+        _title, document = markdown_to_note(line, "datei")
+
+        self.assertEqual(document["content"][0]["content"], [{"type": "text", "text": line}])
+
+    def test_deep_nesting_is_refused_instead_of_crashing(self):
+        for text in (">" * 5000, "\n".join("  " * depth + "- x" for depth in range(600))):
+            with self.subTest(text=text[:10]), self.assertRaisesMessage(ValidationError, "verschachtelt"):
+                markdown_to_note(text, "datei")
+
+    def test_nested_emphasis_stops_at_the_depth_limit(self):
+        _title, document = markdown_to_note("*_" * 40 + "x" + "_*" * 40, "datei")
+
+        validate_note_document(document)
+
+    def test_headings_and_table_separators_keep_their_meaning(self):
+        self.assertEqual(markdown_to_note("# Titel ##  ", "datei")[0], "Titel")
+        self.assertEqual(markdown_to_note("# C#", "datei")[0], "C")
+        heading = markdown_to_note("text\n\n## Plan ##", "datei")[1]["content"][1]
+        self.assertEqual(heading["content"], [{"type": "text", "text": "Plan"}])
+        for separator in ("| --- | :---: |", "---|---", ":---"):
+            document = markdown_to_note(f"| a | b |\n{separator}\n| c | d |", "datei")[1]
+            self.assertEqual(document["content"][0]["type"], "table", separator)
+        document = markdown_to_note("| a | b |\n| c | d |", "datei")[1]
+        self.assertEqual(document["content"][0]["type"], "paragraph")
+
+    def test_paragraph_lines_are_joined_and_breaks_stay_separate(self):
+        document = markdown_to_note("eins\nzwei  \n\\\ndrei", "datei")[1]
+
+        types = [node["type"] for node in document["content"][0]["content"]]
+        self.assertIn("hardBreak", types)
+        self.assertEqual(document["content"][0]["content"][0], {"type": "text", "text": "eins zwei"})
 
 
 class MarkdownImportTests(TestCase):

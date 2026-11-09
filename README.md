@@ -14,7 +14,7 @@ Lunora ist ein kleines Django-basiertes Workspace-Dashboard mit ruhiger Glas-UI.
 - Nachrichtenseite mit Direktunterhaltungen, ungelesenen Nachrichten, Live-Updates, Reaktionen, angepinnten Nachrichten, Lesestatus, Stummschalten und Blockieren
 - Zentrale Benachrichtigungs-Inbox mit ungelesenem Badge, Filter und Lesestatus sowie detaillierten Kanalregeln pro Kategorie für Inbox, E-Mail und Web Push
 - Web-Push-Zustellung für Termineinladungen, Erinnerungen, Aufgaben, Notizaktivitäten, Freigaben und Wetterwarnungen mit Ruhezeit, Geräte-Test und automatischer Wiederholung
-- Notizbereich mit Rich-Text-Editor, Autosave, frei belegbaren Hotkeys, Hashtags, Freigaben, Versionen, privaten Anhängen, layoutgetreuem PDF-Export, Archiv und Papierkorb
+- Notizbereich mit Rich-Text-Editor, Autosave, frei belegbaren Hotkeys, Hashtags, Freigaben, Versionen, privaten Anhängen, layoutgetreuem PDF-Export, Word-Import und -Export, Archiv und Papierkorb
 - Responsive UI mit gemeinsamen Design-Tokens, Darkmode-Kontrast, Fokuszuständen und gestylten Scrollbars
 
 ## Tech Stack

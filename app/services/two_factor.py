@@ -42,7 +42,8 @@ def _normalize_code(code):
 def matching_step(secret, code, *, now=None, after_step=None):
     """Return the time step the code belongs to, or None. Steps up to after_step count as used."""
     code = _normalize_code(code)
-    if len(code) != TOTP_DIGITS or not code.isdigit():
+    # isascii: compare_digest refuses non-ASCII strings, and isdigit accepts other scripts' digits.
+    if len(code) != TOTP_DIGITS or not code.isascii() or not code.isdigit():
         return None
     step = current_step(now)
     for candidate in range(step - TOTP_VALID_WINDOW, step + TOTP_VALID_WINDOW + 1):

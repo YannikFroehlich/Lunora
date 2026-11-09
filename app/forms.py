@@ -34,6 +34,7 @@ from app.models import (
     VocabularyCard,
     VocabularyList,
 )
+from app.services import audit_log
 from app.services.calendar_service import (
     AVAILABILITY_MAX_SPAN,
     AVAILABILITY_MAX_USERS,
@@ -55,11 +56,17 @@ from app.services.notification_preferences import CATEGORY_DEFINITIONS
 from app.services.quick_add import parse_quick_add
 from app.services.storage_quota import ensure_storage_available
 from app.services.tasks import DEFAULT_DUE_TIME, update_task_shares
+from app.services.throttle import count_hit
 from app.services.time_tracking import MANUAL_ENTRY_MAX_MINUTES, trackable_tasks
 from app.services.user_preferences import get_user_zoneinfo, localtime_for_user
 
 LOGIN_ATTEMPT_LIMIT = 5
 LOGIN_ATTEMPT_LOCKOUT_SECONDS = 15 * 60
+# Per client across all accounts; high enough for many people behind one address.
+LOGIN_CLIENT_ATTEMPT_LIMIT = 50
+LOGIN_LOCKED_MESSAGE = (
+    "Zu viele fehlgeschlagene Anmeldeversuche. Bitte warte einige Minuten und versuche es erneut."
+)
 
 
 def _login_attempt_cache_key(identifier):
@@ -79,31 +86,33 @@ class EmailLoginForm(AuthenticationForm):
     )
 
     def clean(self):
-        """Throttle repeated failed logins per resolved identifier.
+        """Throttle repeated failed logins per resolved identifier and per client.
 
         Keyed on the resolved username (not the raw input) so alternating between
-        an account's e-mail and username doesn't reset the attempt count. This uses
-        the default cache, so the counter is per-process — sufficient for a single
-        local `runserver` process, but it would need a shared cache backend (e.g.
-        Redis) to hold up across multiple WSGI workers.
+        an account's e-mail and username doesn't reset the attempt count. The client
+        limit runs before the password hash, so unknown names can't burn CPU unchecked.
+        Both need a shared cache to hold across WSGI workers (Redis in production).
         """
+        client_ip = audit_log.client_ip(self.request)
+        client_key = f"login-client:{client_ip}" if client_ip else None
+        if client_key and cache.get(client_key, 0) >= LOGIN_CLIENT_ATTEMPT_LIMIT:
+            raise forms.ValidationError(LOGIN_LOCKED_MESSAGE, code="login_locked")
+
         raw_identifier = self.cleaned_data.get("username")
         resolved_identifier = self._resolve_username(raw_identifier) if raw_identifier else None
         if resolved_identifier:
             self.cleaned_data["username"] = resolved_identifier
             cache_key = _login_attempt_cache_key(resolved_identifier)
             if cache.get(cache_key, 0) >= LOGIN_ATTEMPT_LIMIT:
-                raise forms.ValidationError(
-                    "Zu viele fehlgeschlagene Anmeldeversuche. Bitte warte einige Minuten und versuche es erneut.",
-                    code="login_locked",
-                )
+                raise forms.ValidationError(LOGIN_LOCKED_MESSAGE, code="login_locked")
 
         try:
             cleaned_data = super().clean()
         except forms.ValidationError:
+            if client_key:
+                count_hit(client_key, LOGIN_ATTEMPT_LOCKOUT_SECONDS)
             if resolved_identifier:
-                cache_key = _login_attempt_cache_key(resolved_identifier)
-                cache.set(cache_key, cache.get(cache_key, 0) + 1, LOGIN_ATTEMPT_LOCKOUT_SECONDS)
+                count_hit(_login_attempt_cache_key(resolved_identifier), LOGIN_ATTEMPT_LOCKOUT_SECONDS)
             raise
 
         if resolved_identifier:

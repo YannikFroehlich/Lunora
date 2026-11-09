@@ -1,10 +1,10 @@
 import json
-import tempfile
 from urllib.parse import urlencode, urlparse, urlunparse
 
 from django.contrib import messages as django_messages
 from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
+from django.core.cache import cache
 from django.db import transaction
 from django.http import FileResponse, JsonResponse
 from django.shortcuts import redirect, render
@@ -29,7 +29,7 @@ from app.services import audit_log, two_factor
 from app.services.accounts import account_deletion_blocked_reason, delete_account
 from app.services.calendar_service import disable_calendar_feed, reset_calendar_feed_token
 from app.services.dashboard import normalize_dashboard_layout, validate_dashboard_layout
-from app.services.data_export import export_filename, write_user_export
+from app.services.data_export import export_filename, export_temp_file, write_user_export
 from app.services.data_import import import_files
 from app.services.health import health_report
 from app.services.storage_quota import storage_summary
@@ -349,6 +349,7 @@ def settings(request):
     return render(request, "app/settings.html", context)
 
 
+DATA_EXPORT_INTERVAL_SECONDS = 120
 TWO_FACTOR_SETUP_SESSION_KEY = "two_factor_setup_secret"
 TWO_FACTOR_NEW_CODES_SESSION_KEY = "two_factor_new_codes"
 
@@ -390,8 +391,13 @@ def _handle_two_factor_form(request, profile, form_name):
 
 @login_required
 def data_export(request):
-    # A temporary file keeps memory flat even when notes carry large attachments.
-    archive = tempfile.TemporaryFile()
+    # An export can be as large as the user's whole storage quota, so parallel ones would fill the disk.
+    if not cache.add(f"data-export:{request.user.pk}", 1, DATA_EXPORT_INTERVAL_SECONDS):
+        django_messages.error(
+            request, "Ein Export läuft gerade oder ist eben erst fertig geworden. Bitte warte zwei Minuten."
+        )
+        return redirect("settings")
+    archive = export_temp_file()
     write_user_export(request.user, archive)
     audit_log.record(AuditLogEntry.ACTION_DATA_EXPORT, request)
     archive.seek(0)

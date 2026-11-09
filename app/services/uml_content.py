@@ -63,10 +63,14 @@ def validate_uml_document(document):
     relations = _list(document["relations"], "Beziehungen", MAX_RELATIONS)
 
     element_kinds = {}
-    cleaned_classes = [_clean_class(item, element_kinds) for item in classes]
-    cleaned_notes = [_clean_note(item, element_kinds) for item in notes]
     relation_ids = set()
-    cleaned_relations = [_clean_relation(item, element_kinds, relation_ids) for item in relations]
+    try:
+        cleaned_classes = [_clean_class(item, element_kinds) for item in classes]
+        cleaned_notes = [_clean_note(item, element_kinds) for item in notes]
+        cleaned_relations = [_clean_relation(item, element_kinds, relation_ids) for item in relations]
+    except (TypeError, OverflowError) as error:
+        # A list where an allowlist expects a string, or an integer too large for a float.
+        raise ValidationError("Das Diagramm enthält ungültige Daten.") from error
 
     return {
         "version": UML_DOCUMENT_VERSION,

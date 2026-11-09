@@ -44,6 +44,11 @@ MAX_IMAGES = 200
 # Pixels Pillow may decode when an image has to be converted or scaled down.
 MAX_CONVERT_PIXELS = 40_000_000
 MAX_TABLE_SIZE = 20
+# Formats a picture may be converted from; Pillow would otherwise try every parser it has (EPS even
+# starts Ghostscript).
+CONVERTIBLE_IMAGE_FORMATS = ("BMP", "GIF", "JPEG", "PNG", "TIFF", "WEBP")
+# Word's list levels. Each w:num copies its levels, so an unbounded set would multiply into gigabytes.
+LIST_LEVELS = {str(level) for level in range(9)}
 
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 R = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -205,7 +210,9 @@ class _Converter:
         data = self._read(name, MAX_XML_PART_BYTES)
         if data is None:
             return None
-        if b"<!DOCTYPE" in data or b"<!ENTITY" in data:
+        # UTF-16 puts a NUL next to every ASCII byte, which would hide the declarations from the check.
+        markup = data.replace(b"\x00", b"")
+        if b"<!DOCTYPE" in markup or b"<!ENTITY" in markup:
             raise ValidationError("Die Word-Datei enthält nicht erlaubte XML-Deklarationen.")
         try:
             return ElementTree.fromstring(data)
@@ -254,6 +261,8 @@ class _Converter:
         for item in root.iter(f"{W}abstractNum"):
             levels = {}
             for level in item.iter(f"{W}lvl"):
+                if level.get(f"{W}ilvl") not in LIST_LEVELS:
+                    continue
                 start = _val(level.find(W + "start"), "1")
                 levels[level.get(f"{W}ilvl")] = (
                     _val(level.find(W + "numFmt"), "decimal"),
@@ -580,7 +589,7 @@ class _Converter:
         return marks
 
     def _drawing(self, drawing, nodes, extra):
-        for textbox in drawing.iter(f"{W}txbxContent"):
+        for textbox in _outer_textboxes(drawing):
             extra.extend(self.blocks(textbox))
         blip = next(drawing.iter(f"{A}blip"), None)
         rel_id = blip.get(f"{R}embed") if blip is not None else None
@@ -629,6 +638,16 @@ class _Converter:
         self.images.append((file_id, name, content_type, content))
         self.image_ids[path] = file_id
         return file_id
+
+
+def _outer_textboxes(element):
+    """The text boxes in element, without those inside another one: blocks() reaches those through
+    their own drawing, so listing them here too would double the work per nesting level."""
+    for child in element:
+        if child.tag == W + "txbxContent":
+            yield child
+        else:
+            yield from _outer_textboxes(child)
 
 
 def _on_attr(value):
@@ -733,7 +752,7 @@ def _note_image(name, data):
     except ValidationError:
         pass
     try:
-        with Image.open(io.BytesIO(data)) as image:
+        with Image.open(io.BytesIO(data), formats=CONVERTIBLE_IMAGE_FORMATS) as image:
             if image.width * image.height > MAX_CONVERT_PIXELS:
                 return None
             image.thumbnail((NOTE_IMAGE_MAX_WIDTH, NOTE_IMAGE_MAX_HEIGHT))
@@ -772,8 +791,9 @@ def docx_to_note(data, fallback_title):
             content = converter.blocks(body)
         except RecursionError as error:
             raise ValidationError("Die Word-Datei ist zu tief verschachtelt.") from error
-        except (zipfile.BadZipFile, OSError, EOFError, zlib.error, RuntimeError) as error:
-            # RuntimeError: encrypted entries; zlib.error/EOFError: broken compressed data.
+        except (zipfile.BadZipFile, OSError, EOFError, zlib.error, RuntimeError, ValueError) as error:
+            # RuntimeError: encrypted entries; zlib.error/EOFError: broken compressed data;
+            # ValueError: numbers int() refuses although str.isdigit() accepts them ("²").
             raise ValidationError("Die Word-Datei ist beschädigt.") from error
     title = converter.title or fallback_title
     document = {"type": "doc", "content": content or [{"type": "paragraph"}]}

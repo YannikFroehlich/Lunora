@@ -143,7 +143,7 @@ class PasswordResetLimitTests(TestCase):
         self.assertEqual(len(mail.outbox), 11)
 
     def test_address_is_not_stored_in_the_cache_key(self):
-        with patch("app.views.auth_views.cache") as mocked_cache:
+        with patch("app.services.throttle.cache") as mocked_cache:
             mocked_cache.add.return_value = True
             self.request_reset("mira@example.com")
         keys = [call.args[0] for call in mocked_cache.add.call_args_list]
@@ -151,11 +151,47 @@ class PasswordResetLimitTests(TestCase):
         self.assertFalse(any("mira" in key for key in keys))
 
 
+class LoginClientLimitTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+
+    def test_failures_across_accounts_lock_that_client_only(self):
+        User.objects.create_user(username="mira", email="mira@example.com", password="secret-12345")
+        correct = {"username": "mira@example.com", "password": "secret-12345"}
+
+        with patch("app.forms.LOGIN_CLIENT_ATTEMPT_LIMIT", 3):
+            for number in range(3):
+                self.client.post(
+                    "/login/",
+                    {"username": f"nobody{number}@example.com", "password": "falsch"},
+                    REMOTE_ADDR="203.0.113.7",
+                )
+            locked = self.client.post("/login/", correct, REMOTE_ADDR="203.0.113.7")
+            elsewhere = self.client.post("/login/", correct, REMOTE_ADDR="203.0.113.8")
+
+        self.assertContains(locked, "Zu viele fehlgeschlagene Anmeldeversuche")
+        self.assertFalse(locked.wsgi_request.user.is_authenticated)
+        self.assertEqual(elsewhere.status_code, 302)
+
+    def test_count_hit_counts_atomically_and_restarts_after_expiry(self):
+        from app.services.throttle import count_hit
+
+        self.assertEqual([count_hit("zaehler", 60) for _ in range(3)], [1, 2, 3])
+        with patch("app.services.throttle.cache") as mocked_cache:
+            mocked_cache.add.return_value = False
+            mocked_cache.incr.side_effect = ValueError
+            self.assertEqual(count_hit("zaehler", 60), 1)
+
+
 class TwoFactorTests(TestCase):
     def setUp(self):
         cache.clear()
         self.user = User.objects.create_user(username="lea", email="lea@example.com", password="pw-12345!")
         self.profile = Profile.objects.create(user=self.user, display_name="Lea")
+
+    def test_digits_of_other_scripts_are_a_wrong_code_not_an_error(self):
+        self.assertIsNone(two_factor.matching_step(two_factor.generate_secret(), "١٢٣٤٥٦"))
 
     def _enable(self):
         secret = two_factor.generate_secret()
