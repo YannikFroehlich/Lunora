@@ -118,6 +118,7 @@ urlpatterns = [
     path("notes/", view.notes, name="notes"),
     path("notes/<int:note_id>/export/pdf/", view.note_pdf_export, name="note_pdf_export"),
     path("notes/<int:note_id>/export/markdown/", view.note_markdown_export, name="note_markdown_export"),
+    path("notes/<int:note_id>/export/docx/", view.note_docx_export, name="note_docx_export"),
     path("notes/<int:note_id>/", view.notes, name="note_detail"),
     path("notes/api/create/", view.note_create_api, name="note_create_api"),
     path("notes/import/", view.note_import, name="note_import"),

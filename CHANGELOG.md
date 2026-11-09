@@ -6,6 +6,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Notes can be exported as Word documents (.docx), from the button next to PDF and Markdown or with
+  Ctrl+Alt+W. Headings, text formatting, colors, lists, tables, links and pictures come along.
+- While subscribed calendars are switched off for the site, their events no longer make someone
+  show up as busy in the availability check of an invitation.
 - Hardened the Word import and calendar subscriptions against crafted input: specially built .docx
   files can no longer tie up the server, a broken or malicious subscribed calendar no longer stops
   notifications for everyone, and calendar servers that answer extremely slowly are cut off after

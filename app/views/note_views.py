@@ -25,6 +25,8 @@ from app.models import (
 )
 from app.services.docx_import import import_docx_upload
 from app.services.note_content import NOTE_TEMPLATE_LABELS, NOTE_TEMPLATES
+from app.services.note_docx import CONTENT_TYPE as DOCX_CONTENT_TYPE
+from app.services.note_docx import note_docx_filename, render_note_docx
 from app.services.note_files import NOTE_FILE_ACCEPT, NOTE_IMAGE_ACCEPT
 from app.services.note_html import render_note_html
 from app.services.note_markdown import note_markdown_filename, render_note_markdown
@@ -129,6 +131,7 @@ SHORTCUT_ACTIONS = {
     "versions",
     "exportPdf",
     "exportMarkdown",
+    "exportWord",
     "saveAsTemplate",
     "shortcutSettings",
 }
@@ -336,9 +339,7 @@ def notes(request, note_id=None):
     return render(request, "app/notes.html", context)
 
 
-@login_required
-@require_http_methods(["GET"])
-def note_pdf_export(request, note_id):
+def _note_export(request, note_id, render, filename, content_type):
     disabled = _feature_guard(request)
     if disabled:
         return disabled
@@ -347,35 +348,35 @@ def note_pdf_export(request, note_id):
     except Note.DoesNotExist:
         raise Http404("Notiz nicht gefunden.") from None
     response = FileResponse(
-        render_note_pdf(note),
-        as_attachment=True,
-        filename=note_pdf_filename(note),
-        content_type="application/pdf",
+        render(note), as_attachment=True, filename=filename(note), content_type=content_type
     )
     response["Cache-Control"] = "private, no-store"
     response["X-Content-Type-Options"] = "nosniff"
     return response
+
+
+@login_required
+@require_http_methods(["GET"])
+def note_pdf_export(request, note_id):
+    return _note_export(request, note_id, render_note_pdf, note_pdf_filename, "application/pdf")
 
 
 @login_required
 @require_http_methods(["GET"])
 def note_markdown_export(request, note_id):
-    disabled = _feature_guard(request)
-    if disabled:
-        return disabled
-    try:
-        note = get_accessible_note(request.user, note_id, allow_deleted=True)
-    except Note.DoesNotExist:
-        raise Http404("Notiz nicht gefunden.") from None
-    response = FileResponse(
-        BytesIO(render_note_markdown(note).encode("utf-8")),
-        as_attachment=True,
-        filename=note_markdown_filename(note),
-        content_type="text/markdown; charset=utf-8",
+    return _note_export(
+        request,
+        note_id,
+        lambda note: BytesIO(render_note_markdown(note).encode("utf-8")),
+        note_markdown_filename,
+        "text/markdown; charset=utf-8",
     )
-    response["Cache-Control"] = "private, no-store"
-    response["X-Content-Type-Options"] = "nosniff"
-    return response
+
+
+@login_required
+@require_http_methods(["GET"])
+def note_docx_export(request, note_id):
+    return _note_export(request, note_id, render_note_docx, note_docx_filename, DOCX_CONTENT_TYPE)
 
 
 @login_required

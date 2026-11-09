@@ -874,6 +874,26 @@ class CalendarLocationAvailabilityYearTests(TestCase):
         attendee.save()
         self.assertEqual(self.availability(attendees=[self.lukas.pk]).json()["users"][0]["status"], "busy")
 
+    def test_availability_counts_subscribed_calendars_while_the_feature_is_on(self):
+        from app.models import CalendarSubscription
+
+        subscription = CalendarSubscription.objects.create(
+            user=self.lukas, name="Privat", url="https://calendar.example.com/x.ics", color="green"
+        )
+        self.event(
+            self.lukas,
+            "Geheimer Abo-Termin",
+            datetime(2099, 3, 10, 10, 0, tzinfo=self.berlin),
+            subscription=subscription,
+        )
+
+        response = self.availability(attendees=[self.lukas.pk])
+        self.assertEqual(response.json()["users"][0]["status"], "busy")
+        self.assertNotContains(response, "Geheimer Abo-Termin")
+
+        SystemSettings.objects.update_or_create(pk=1, defaults={"calendar_subscriptions_enabled": False})
+        self.assertEqual(self.availability(attendees=[self.lukas.pk]).json()["users"][0]["status"], "free")
+
     def test_availability_ignores_the_event_being_edited(self):
         start = datetime(2099, 3, 10, 10, 0, tzinfo=self.berlin)
         own = self.event(self.mira, "Abstimmung", start)

@@ -405,13 +405,16 @@ def location_link(location):
 def attendee_availability(users, start_at, end_at, *, exclude_event_id=None):
     """Free/busy of ``users`` between ``start_at`` and ``end_at``.
 
-    Only a status per person comes back, never titles or times of their events: own events and
-    accepted invitations count as busy, a booked vacation (when the planner is on) as away.
+    Only a status per person comes back, never titles or times of their events: own events (those
+    of subscribed calendars included, unless that feature is off) and accepted invitations count as
+    busy, a booked vacation (when the planner is on) as away.
     ``exclude_event_id`` leaves out the event being edited, which would otherwise always collide.
     """
     users = list(users)
     user_ids = [user.pk for user in users]
     events = CalendarEvent.objects.filter(start_at__lt=end_at, end_at__gt=start_at)
+    if not feature_enabled("calendar_subscriptions"):
+        events = events.filter(subscription=None)
     if exclude_event_id:
         events = events.exclude(pk=exclude_event_id)
     busy = set(events.filter(user_id__in=user_ids).values_list("user_id", flat=True))

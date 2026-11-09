@@ -910,6 +910,7 @@ const COMMAND_DEFAULTS = {
   versions: { label: "Versionsverlauf", shortcut: "Mod+Alt+V" },
   exportPdf: { label: "Als PDF exportieren", shortcut: "Mod+Alt+E" },
   exportMarkdown: { label: "Als Markdown exportieren", shortcut: "Mod+Alt+Shift+E" },
+  exportWord: { label: "Als Word-Dokument exportieren", shortcut: "Mod+Alt+W" },
   print: { label: "Drucken", shortcut: "Mod+P" },
   saveAsTemplate: { label: "Als Vorlage speichern", shortcut: "Mod+Alt+T" },
   shortcutSettings: { label: "Hotkey-Einstellungen", shortcut: "Mod+Alt+K" },
@@ -1331,8 +1332,9 @@ function initNotesApp() {
       comments: openCommentsDialog,
       outline: toggleOutlinePanel,
       versions: openVersionsDialog,
-      exportPdf: exportPdf,
-      exportMarkdown: exportMarkdown,
+      exportPdf: () => exportNote("pdf", "PDF"),
+      exportMarkdown: () => exportNote("markdown", "Markdown"),
+      exportWord: () => exportNote("docx", "Word"),
       print: () => window.print(),
       saveAsTemplate: saveNoteAsTemplate,
       shortcutSettings: openShortcutDialog,
@@ -1829,22 +1831,13 @@ function initNotesApp() {
     return true;
   }
 
-  async function exportPdf() {
+  async function exportNote(format, label) {
     while (saving) await new Promise((resolve) => window.setTimeout(resolve, 50));
     if (dirty && !(await saveNow())) {
-      setSaveStatus("PDF-Export erst nach erfolgreichem Speichern möglich");
+      setSaveStatus(`${label}-Export erst nach erfolgreichem Speichern möglich`);
       return;
     }
-    window.location.assign(`/notes/${note.id}/export/pdf/`);
-  }
-
-  async function exportMarkdown() {
-    while (saving) await new Promise((resolve) => window.setTimeout(resolve, 50));
-    if (dirty && !(await saveNow())) {
-      setSaveStatus("Markdown-Export erst nach erfolgreichem Speichern möglich");
-      return;
-    }
-    window.location.assign(`/notes/${note.id}/export/markdown/`);
+    window.location.assign(`/notes/${note.id}/export/${format}/`);
   }
 
   async function saveNoteAsTemplate() {

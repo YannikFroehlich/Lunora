@@ -2154,7 +2154,7 @@
 @media (max-width: 1100px) {
   .notes-shell { grid-template-columns: 310px minmax(0, 1fr); }
   .note-document-header { align-items: flex-start; flex-wrap: wrap; }
-  .note-header-actions { width: 100%; justify-content: flex-end; }
+  .note-header-actions { width: 100%; justify-content: flex-end; flex-wrap: wrap; }
   /* Tablets and phones have no room for a sheet next to the list, so the text reflows here. */
   .note-editor-page { width: 100%; padding: 38px; }
 }
@@ -2168,7 +2168,7 @@
   .notes-mobile-back { display: inline-grid; }
   .note-document-header { min-height: auto; padding: 12px; }
   .note-title-wrap { width: calc(100% - 56px); }
-  .note-header-actions { overflow-x: auto; justify-content: flex-start; }
+  .note-header-actions { overflow-x: auto; justify-content: flex-start; flex-wrap: nowrap; }
   .note-editor-statusbar { display: none; }
   .note-editor-scroll { padding: 12px 8px 28px; }
   .note-editor-page { min-height: calc(100dvh - 290px); padding: 24px 18px; }
