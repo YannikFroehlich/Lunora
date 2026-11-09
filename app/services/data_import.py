@@ -8,6 +8,7 @@ import calendar
 import re
 import uuid
 from datetime import UTC, date, datetime, time, timedelta
+from itertools import groupby
 from pathlib import PurePath
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -36,14 +37,21 @@ RECURRENCE_HORIZON_DAYS = 1825
 
 # ---- Markdown → Tiptap document ----------------------------------------------------------------
 
-HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
+# Files come from users, so a pattern must not backtrack polynomially: no adjacent \s* or lazy groups
+# before an end anchor. Trailing "#" of a heading and table cells are taken apart in plain Python.
+HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 RULE_RE = re.compile(r"^ {0,3}([-*_])(?:\s*\1){2,}\s*$")
 FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})\s*([\w+-]*)")
 LIST_RE = re.compile(r"^(\s*)([-*+]|\d{1,9}[.)])\s+(?:\[([ xX])\]\s+)?(.*)$")
-TABLE_SEPARATOR_RE = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$")
+TABLE_SEPARATOR_CELL_RE = re.compile(r":?-{3,}:?")
 MATH_BLOCK_RE = re.compile(r"^\$\$(.+)\$\$$")
 # The export writes this byline under the title; it is not part of the note's content.
-EXPORT_BYLINE_RE = re.compile(r"^\*Zuletzt bearbeitet am .+ von .+\*$")
+EXPORT_BYLINE_PREFIX = "*Zuletzt bearbeitet am "
+# ponytail: INLINE_RE rescans to the line's end for every unclosed delimiter, so its cost grows with the
+# square of the line. These limits bound that to seconds per file; a linear scanner would remove them.
+MAX_INLINE_CHARS = 10_000
+MAX_INLINE_COST = 1_000_000_000
+MAX_INLINE_DEPTH = 8
 INLINE_RE = re.compile(
     r"""
     \\(?P<esc>[\\`*_{}\[\]()#+\-.!|~<>$])
@@ -75,6 +83,8 @@ def _text_node(text, marks):
 
 def parse_inline(text, marks=()):
     """Inline Markdown (emphasis, code, links, the export's HTML tags) → text nodes with marks."""
+    if len(text) > MAX_INLINE_CHARS or len(marks) >= MAX_INLINE_DEPTH:
+        return [_text_node(text, marks)] if text else []
     nodes = []
     position = 0
 
@@ -129,16 +139,12 @@ def _paragraph(lines):
             content.append({"type": "hardBreak"} if hard_break else _text_node(" ", ()))
     # Merge the joining spaces into neighbouring unformatted text.
     merged = []
-    for node in content:
-        if (
-            merged
-            and node.get("type") == "text"
-            and merged[-1].get("type") == "text"
-            and (merged[-1].get("marks") == node.get("marks"))
-        ):
-            merged[-1]["text"] += node["text"]
+    for (node_type, _marks), group in groupby(content, key=lambda node: (node["type"], node.get("marks"))):
+        nodes = list(group)
+        if node_type == "text":
+            merged.append({**nodes[0], "text": "".join(node["text"] for node in nodes)})
         else:
-            merged.append(node)
+            merged.extend(nodes)
     paragraph = {"type": "paragraph"}
     if merged:
         paragraph["content"] = merged
@@ -190,8 +196,8 @@ def _parse_list(lines, start):
             if not line.strip():
                 following = next((j for j in range(index + 1, len(lines)) if lines[j].strip()), None)
                 if following is not None and _indent(lines[following]) > base_indent:
-                    item_lines.append("")
-                    index += 1
+                    item_lines.extend([""] * (following - index))
+                    index = following
                     continue
                 break
             if _indent(line) <= base_indent:
@@ -217,6 +223,20 @@ def _parse_list(lines, start):
     return block, index
 
 
+def _heading_text(match):
+    """A heading's text without the optional closing hashes ("## Titel ##")."""
+    return match.group(2).rstrip().rstrip("#").rstrip()
+
+
+def _is_table_separator(line):
+    cells = line.strip().removeprefix("|").removesuffix("|").split("|")
+    return all(TABLE_SEPARATOR_CELL_RE.fullmatch(cell.strip()) for cell in cells)
+
+
+def _is_export_byline(line):
+    return line.startswith(EXPORT_BYLINE_PREFIX) and " von " in line and line.endswith("*")
+
+
 def _starts_block(lines, index):
     line = lines[index]
     return bool(
@@ -227,9 +247,7 @@ def _starts_block(lines, index):
         or line.lstrip().startswith(">")
         or MATH_BLOCK_RE.match(line.strip())
         or (
-            line.lstrip().startswith("|")
-            and index + 1 < len(lines)
-            and TABLE_SEPARATOR_RE.match(lines[index + 1])
+            line.lstrip().startswith("|") and index + 1 < len(lines) and _is_table_separator(lines[index + 1])
         )
     )
 
@@ -259,7 +277,7 @@ def parse_blocks(lines):
             blocks.append(block)
         elif heading := HEADING_RE.match(line):
             block = {"type": "heading", "attrs": {"level": min(len(heading.group(1)), 3)}}
-            if content := parse_inline(heading.group(2)):
+            if content := parse_inline(_heading_text(heading)):
                 block["content"] = content
             blocks.append(block)
             index += 1
@@ -279,9 +297,7 @@ def parse_blocks(lines):
             block, index = _parse_list(lines, index)
             blocks.append(block)
         elif (
-            line.lstrip().startswith("|")
-            and index + 1 < len(lines)
-            and TABLE_SEPARATOR_RE.match(lines[index + 1])
+            line.lstrip().startswith("|") and index + 1 < len(lines) and _is_table_separator(lines[index + 1])
         ):
             table_lines = [line]
             index += 2
@@ -302,17 +318,22 @@ def parse_blocks(lines):
 def markdown_to_note(text, fallback_title):
     """Return (title, document); a leading "# Heading" becomes the title, as in the export."""
     lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-    while lines and not lines[0].strip():
-        lines.pop(0)
+    if sum(len(line) ** 2 for line in lines if len(line) <= MAX_INLINE_CHARS) > MAX_INLINE_COST:
+        raise ValidationError("Die Datei enthält zu viele sehr lange Zeilen.")
+    # An index instead of lines.pop(0), which would shift the whole list for every leading blank line.
+    start = next((index for index, line in enumerate(lines) if line.strip()), len(lines))
+    lines = lines[start:]
     title = fallback_title
     if lines and (heading := HEADING_RE.match(lines[0])) and len(heading.group(1)) == 1:
-        title = heading.group(2).strip() or fallback_title
-        lines.pop(0)
-        while lines and not lines[0].strip():
-            lines.pop(0)
-        if lines and EXPORT_BYLINE_RE.match(lines[0].strip()):
-            lines.pop(0)
-    content = parse_blocks(lines) or [{"type": "paragraph"}]
+        title = _heading_text(heading) or fallback_title
+        start = next((index for index, line in enumerate(lines) if index and line.strip()), len(lines))
+        lines = lines[start:]
+        if lines and _is_export_byline(lines[0].strip()):
+            lines = lines[1:]
+    try:
+        content = parse_blocks(lines) or [{"type": "paragraph"}]
+    except RecursionError as error:
+        raise ValidationError("Die Datei ist zu tief verschachtelt.") from error
     return title[:200], {"type": "doc", "content": content}
 
 

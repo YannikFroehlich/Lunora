@@ -1,10 +1,13 @@
 """Personal data export: everything a user owns in Lunora as one ZIP archive (JSON, Markdown, files)."""
 
 import json
+import os
 import posixpath
 import shutil
+import tempfile
 import zipfile
 
+from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
 from django.utils import timezone
 from django.utils.text import slugify
@@ -75,6 +78,12 @@ PROFILE_FIELDS = [
     "dashboard_layout",
     "note_shortcuts",
 ]
+
+
+def export_temp_file():
+    """An anonymous file on the same disk as the uploads: /tmp is a RAM disk on the server."""
+    os.makedirs(settings.PRIVATE_MEDIA_ROOT, exist_ok=True)
+    return tempfile.TemporaryFile(dir=settings.PRIVATE_MEDIA_ROOT)
 
 
 def export_filename(user, now=None):

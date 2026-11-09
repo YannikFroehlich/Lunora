@@ -295,6 +295,9 @@ class AuditLogTests(TestCase):
         self.client.post("/settings/", {"form_name": "two_factor_recovery_codes", "password": "secret-12345"})
         self.client.post("/settings/", {"form_name": "two_factor_disable", "password": "secret-12345"})
         self.client.post("/settings/", {"form_name": "session_revoke_others"})
+        from django.core.cache import cache
+
+        cache.clear()
         self.client.get("/settings/export/").close()
 
         self.assertEqual(

@@ -165,7 +165,7 @@ def uml_diagram_api(request, diagram_id):
 
     try:
         payload = json.loads(request.body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
+    except (ValueError, RecursionError):  # ValueError covers bad encoding, bad JSON and giant integers.
         return JsonResponse({"ok": False, "error": "Die Anfrage muss gültiges JSON sein."}, status=400)
     if not isinstance(payload, dict):
         return JsonResponse({"ok": False, "error": "Die Anfrage ist ungültig."}, status=400)

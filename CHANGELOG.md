@@ -6,6 +6,11 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- More protection against abuse: specially built Markdown files can no longer tie up the server,
+  failed logins are also limited per client across all accounts, attempt counters can't be outrun
+  with parallel requests, and a data export can be started once every two minutes. Markdown lines
+  over 10,000 characters are imported without inline formatting, and files with very many long
+  lines are refused. Malformed diagrams and two-factor codes now get a normal error message.
 - Notes can be exported as Word documents (.docx), from the button next to PDF and Markdown or with
   Ctrl+Alt+W. Headings, text formatting, colors, lists, tables, links and pictures come along.
 - While subscribed calendars are switched off for the site, their events no longer make someone

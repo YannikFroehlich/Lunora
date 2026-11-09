@@ -20,6 +20,7 @@ from app.forms import LOGIN_ATTEMPT_LIMIT, LOGIN_ATTEMPT_LOCKOUT_SECONDS, EmailL
 from app.models import AuditLogEntry, Profile
 from app.services import audit_log, two_factor
 from app.services.system_settings import normal_user_login_enabled, user_can_login
+from app.services.throttle import count_hit
 from app.services.turnstile import verify_registration_token
 
 logger = logging.getLogger(__name__)
@@ -90,7 +91,7 @@ def login_two_factor(request):
                 del request.session[TWO_FACTOR_SESSION_KEY]
                 login(request, profile.user, backend=pending["backend"])
                 return redirect(pending["next"])
-            cache.set(attempts_key, cache.get(attempts_key, 0) + 1, LOGIN_ATTEMPT_LOCKOUT_SECONDS)
+            count_hit(attempts_key, LOGIN_ATTEMPT_LOCKOUT_SECONDS)
             audit_log.record(
                 AuditLogEntry.ACTION_TWO_FACTOR_FAILED, request, actor=profile.user if profile else None
             )
@@ -101,12 +102,7 @@ def login_two_factor(request):
 
 def _counter_exceeded(key, limit):
     """Count one request against ``key``; the window starts at its first request and doesn't slide."""
-    if cache.add(key, 1, PASSWORD_RESET_WINDOW_SECONDS):
-        return False
-    try:
-        return cache.incr(key) > limit
-    except ValueError:  # Expired between add and incr, so this request starts over.
-        return False
+    return count_hit(key, PASSWORD_RESET_WINDOW_SECONDS) > limit
 
 
 def _password_reset_limit_reached(request, email):
