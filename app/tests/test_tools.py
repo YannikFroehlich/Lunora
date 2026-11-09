@@ -648,6 +648,21 @@ class ShoppingCatalogTests(SimpleTestCase):
             with self.subTest(name=name):
                 self.assertEqual(classify_item(name), expected)
 
+    def test_emoji_fit_the_product_within_an_aisle(self):
+        cases = {
+            "Salami": "🥪",
+            "Bratwurst": "🌭",
+            "Himbeeren": "🍓",
+            "Heidelbeeren": "🫐",
+            "Zwieback": "🍞",
+            "Prosecco": "🥂",
+            "Alufolie": "📜",
+            "Müllbeutel": "🗑️",
+        }
+        for name, emoji in cases.items():
+            with self.subTest(name=name):
+                self.assertEqual(classify_item(name)[1], emoji)
+
     def test_unknown_items_land_in_other(self):
         self.assertEqual(classify_item("Klebeband"), ("other", "🛒"))
 
