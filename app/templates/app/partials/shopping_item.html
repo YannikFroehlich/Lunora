@@ -1,0 +1,19 @@
+<li class="shopping-item{% if item.is_done %} is-done{% endif %}" id="item-{{ item.pk }}">
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="form_name" value="shopping_toggle">
+        <input type="hidden" name="item_id" value="{{ item.pk }}">
+        <button class="shopping-toggle" type="submit" aria-pressed="{{ item.is_done|yesno:'true,false' }}">
+            <span class="shopping-box" aria-hidden="true"><i class="fa-solid fa-check"></i></span>
+            <span class="shopping-emoji" aria-hidden="true">{{ item.emoji }}</span>
+            <span class="shopping-name">{{ item.name }}</span>
+            {% if item.quantity %}<small>{{ item.quantity }}</small>{% endif %}
+        </button>
+    </form>
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="form_name" value="shopping_delete">
+        <input type="hidden" name="item_id" value="{{ item.pk }}">
+        <button class="icon-button" type="submit" aria-label="„{{ item.name }}“ löschen" title="Löschen"><i class="fa-regular fa-trash-can" aria-hidden="true"></i></button>
+    </form>
+</li>

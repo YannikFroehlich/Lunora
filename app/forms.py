@@ -1103,7 +1103,16 @@ class ShoppingItemForm(forms.ModelForm):
         fields = ["name", "quantity"]
         labels = {"name": "Artikel", "quantity": "Menge"}
         widgets = {
-            "name": forms.TextInput(attrs={"placeholder": "z. B. Milch", "autocomplete": "off"}),
+            "name": forms.TextInput(
+                attrs={
+                    "placeholder": "z. B. Milch",
+                    "autocomplete": "off",
+                    "role": "combobox",
+                    "aria-autocomplete": "list",
+                    "aria-expanded": "false",
+                    "aria-controls": "shopping-suggestions",
+                }
+            ),
             "quantity": forms.TextInput(attrs={"placeholder": "optional", "autocomplete": "off"}),
         }
 

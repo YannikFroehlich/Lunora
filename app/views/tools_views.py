@@ -12,6 +12,7 @@ from django.views.decorators.http import require_http_methods
 from app.forms import HabitForm, HabitReminderForm, ShoppingItemForm
 from app.models import Habit, ShoppingItem, UmlDiagram
 from app.services.habits import habit_items, toggle_habit_check
+from app.services.shopping import SUGGESTIONS, classify_item, group_items
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.uml_content import validate_uml_document
 from app.services.user_preferences import format_user_datetime, localtime_for_user
@@ -108,6 +109,16 @@ def shopping_list(request):
     if form_name == "shopping_add":
         form = ShoppingItemForm(request.POST)
         if form.is_valid():
+            # Adding something already on the list (e.g. picked again from the suggestions)
+            # brings that row back instead of writing it twice.
+            existing = ShoppingItem.objects.filter(
+                owner=request.user, name__iexact=form.cleaned_data["name"]
+            ).first()
+            if existing is not None:
+                existing.is_done = False
+                existing.quantity = form.cleaned_data["quantity"] or existing.quantity
+                existing.save(update_fields=["is_done", "quantity"])
+                return redirect(f"{page_url}?add=1")
             if ShoppingItem.objects.filter(owner=request.user).count() >= MAX_SHOPPING_ITEMS:
                 form.add_error(None, f"Es passen höchstens {MAX_SHOPPING_ITEMS} Artikel auf den Zettel.")
             else:
@@ -121,8 +132,10 @@ def shopping_list(request):
             return redirect(page_url)
         item.is_done = not item.is_done
         item.save(update_fields=["is_done"])
-        # Back to the ticked row, so a long list doesn't jump to the top while shopping.
-        return redirect(f"{page_url}#item-{item.pk}")
+        # A ticked item moves to "Im Wagen"; return to the aisle it came from, so a long list
+        # doesn't jump around while shopping. An unticked one goes back to its own row.
+        anchor = f"group-{classify_item(item.name)[0]}" if item.is_done else f"item-{item.pk}"
+        return redirect(f"{page_url}#{anchor}")
     elif form_name == "shopping_delete":
         item = _posted_shopping_item(request)
         if item is not None:
@@ -137,14 +150,17 @@ def shopping_list(request):
         form.fields["name"].widget.attrs["autofocus"] = True
 
     items = list(ShoppingItem.objects.filter(owner=request.user))
+    groups, done_items = group_items(items)
     return render(
         request,
         "app/shopping_list.html",
         {
             "active_page": "tools",
             "shopping_form": form,
-            "items": items,
-            "done_count": sum(item.is_done for item in items),
+            "item_count": len(items),
+            "groups": groups,
+            "done_items": done_items,
+            "suggestions": SUGGESTIONS,
         },
     )
 

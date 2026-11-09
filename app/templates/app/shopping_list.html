@@ -18,14 +18,17 @@
         <i class="fa-solid fa-basket-shopping hero-branch" aria-hidden="true"></i>
     </header>
 
-    <section class="glass-panel uml-create-panel">
+    <section class="glass-panel uml-create-panel shopping-create-panel">
         <form class="vocab-create-form shopping-create-form" method="post">
             {% csrf_token %}
             <input type="hidden" name="form_name" value="shopping_add">
-            <label class="vocab-field vocab-field-wide">
-                <span>{{ shopping_form.name.label }}</span>
-                {{ shopping_form.name }}
-            </label>
+            <div class="shopping-name-field" data-shopping-suggest>
+                <label class="vocab-field vocab-field-wide">
+                    <span>{{ shopping_form.name.label }}</span>
+                    {{ shopping_form.name }}
+                </label>
+                <div class="shopping-suggestions" id="shopping-suggestions" role="listbox" aria-label="Vorschläge" hidden></div>
+            </div>
             <label class="vocab-field">
                 <span>{{ shopping_form.quantity.label }}</span>
                 {{ shopping_form.quantity }}
@@ -35,10 +38,10 @@
         </form>
     </section>
 
-    {% if items %}
+    {% if item_count %}
     <div class="shopping-toolbar">
-        <span>{{ done_count }} von {{ items|length }} erledigt</span>
-        {% if done_count %}
+        <span>{{ done_items|length }} von {{ item_count }} im Wagen</span>
+        {% if done_items %}
         <form method="post">
             {% csrf_token %}
             <input type="hidden" name="form_name" value="shopping_clear_done">
@@ -46,28 +49,26 @@
         </form>
         {% endif %}
     </div>
-    <ul class="glass-panel shopping-items">
-        {% for item in items %}
-        <li class="shopping-item{% if item.is_done %} is-done{% endif %}" id="item-{{ item.pk }}">
-            <form method="post">
-                {% csrf_token %}
-                <input type="hidden" name="form_name" value="shopping_toggle">
-                <input type="hidden" name="item_id" value="{{ item.pk }}">
-                <button class="shopping-toggle" type="submit" aria-pressed="{{ item.is_done|yesno:'true,false' }}">
-                    <span class="shopping-box" aria-hidden="true"><i class="fa-solid fa-check"></i></span>
-                    <span class="shopping-name">{{ item.name }}</span>
-                    {% if item.quantity %}<small>{{ item.quantity }}</small>{% endif %}
-                </button>
-            </form>
-            <form method="post">
-                {% csrf_token %}
-                <input type="hidden" name="form_name" value="shopping_delete">
-                <input type="hidden" name="item_id" value="{{ item.pk }}">
-                <button class="icon-button" type="submit" aria-label="„{{ item.name }}“ löschen" title="Löschen"><i class="fa-regular fa-trash-can" aria-hidden="true"></i></button>
-            </form>
-        </li>
+    <div class="glass-panel shopping-list">
+        {% for group in groups %}
+        <section class="shopping-group" id="group-{{ group.key }}" aria-labelledby="group-{{ group.key }}-title">
+            <h2 id="group-{{ group.key }}-title"><span aria-hidden="true">{{ group.emoji }}</span> {{ group.label }} <small>{{ group.items|length }}</small></h2>
+            <ul class="shopping-items">
+                {% for item in group.items %}{% include 'app/partials/shopping_item.html' %}{% endfor %}
+            </ul>
+        </section>
+        {% empty %}
+        <p class="shopping-all-done"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Alles im Wagen.</p>
         {% endfor %}
-    </ul>
+        {% if done_items %}
+        <section class="shopping-group is-done" id="group-done" aria-labelledby="group-done-title">
+            <h2 id="group-done-title"><span aria-hidden="true">🛒</span> Im Wagen <small>{{ done_items|length }}</small></h2>
+            <ul class="shopping-items">
+                {% for item in done_items %}{% include 'app/partials/shopping_item.html' %}{% endfor %}
+            </ul>
+        </section>
+        {% endif %}
+    </div>
     {% else %}
     <div class="empty-state-card uml-empty">
         <i class="fa-solid fa-basket-shopping" aria-hidden="true"></i>
@@ -76,4 +77,9 @@
     </div>
     {% endif %}
 </section>
+{{ suggestions|json_script:"shopping-suggestion-data" }}
+{% endblock %}
+
+{% block page_js %}
+<script src="{% versioned_static 'js/shopping.js' %}"></script>
 {% endblock %}

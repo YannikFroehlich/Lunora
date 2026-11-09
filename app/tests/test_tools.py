@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 
 from django.contrib.auth.models import User
 from django.core import mail
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 
 from app.models import (
@@ -29,6 +29,7 @@ from app.services.habits import (
     longest_streak,
 )
 from app.services.notifications import materialize_due_habit_reminders, send_pending_user_notification_emails
+from app.services.shopping import CATALOG, PRODUCTS, SUGGESTIONS, classify_item
 from app.services.uml_content import validate_uml_document
 from app.services.user_preferences import localtime_for_user
 from app.services.vocabulary import parse_bulk_cards, review_card
@@ -543,17 +544,47 @@ class ShoppingListTests(TestCase):
         self.assertContains(response, "höchstens 200 Artikel")
         self.assertEqual(ShoppingItem.objects.filter(owner=self.user).count(), 200)
 
-    def test_toggle_flips_the_item_and_returns_to_its_row(self):
+    def test_toggle_returns_to_the_aisle_when_ticking_and_to_the_row_when_unticking(self):
         item = ShoppingItem.objects.create(owner=self.user, name="Brot")
+
+        response = self._post("shopping_toggle", item_id=item.pk)
+        self.assertRedirects(response, f"{self.url}#group-bakery", fetch_redirect_response=False)
+        item.refresh_from_db()
+        self.assertTrue(item.is_done)
 
         response = self._post("shopping_toggle", item_id=item.pk)
         self.assertRedirects(response, f"{self.url}#item-{item.pk}", fetch_redirect_response=False)
         item.refresh_from_db()
-        self.assertTrue(item.is_done)
-
-        self._post("shopping_toggle", item_id=item.pk)
-        item.refresh_from_db()
         self.assertFalse(item.is_done)
+
+    def test_adding_an_item_already_on_the_list_reopens_it_instead_of_duplicating(self):
+        item = ShoppingItem.objects.create(owner=self.user, name="Milch", quantity="1 Liter", is_done=True)
+
+        self._post("shopping_add", name="milch", quantity="")
+        item.refresh_from_db()
+        self.assertEqual((item.is_done, item.quantity), (False, "1 Liter"))
+
+        self._post("shopping_add", name="Milch", quantity="2 Liter")
+        item.refresh_from_db()
+        self.assertEqual(item.quantity, "2 Liter")
+        self.assertEqual(ShoppingItem.objects.count(), 1)
+
+    def test_open_items_are_grouped_by_aisle_in_store_order_and_ticked_ones_move_to_the_cart(self):
+        for name, done in (("Duschgel", False), ("Vollmilch", False), ("Bananen", False), ("Brot", True)):
+            ShoppingItem.objects.create(owner=self.user, name=name, is_done=done)
+
+        response = self.client.get(self.url)
+
+        groups = response.context["groups"]
+        self.assertEqual([group["key"] for group in groups], ["produce", "dairy", "household"])
+        self.assertEqual([item.emoji for group in groups for item in group["items"]], ["🍌", "🥛", "🧼"])
+        self.assertEqual([item.name for item in response.context["done_items"]], ["Brot"])
+        self.assertContains(response, "Im Wagen")
+        self.assertContains(response, 'aria-controls="shopping-suggestions"')
+        self.assertIn(
+            {"name": "Toilettenpapier", "emoji": "🧻", "aisle": "Drogerie & Haushalt"},
+            response.context["suggestions"],
+        )
 
     def test_clear_done_keeps_open_items_and_other_users_items(self):
         ShoppingItem.objects.create(owner=self.user, name="Gekauft", is_done=True)
@@ -595,6 +626,49 @@ class ShoppingListTests(TestCase):
         self.assertEqual(self.client.get(self.url).status_code, 503)
         self.assertEqual(self._post("shopping_add", name="Milch").status_code, 503)
         self.assertFalse(ShoppingItem.objects.exists())
+
+
+class ShoppingCatalogTests(SimpleTestCase):
+    def test_the_last_word_of_a_compound_decides_the_aisle(self):
+        cases = {
+            "Erdbeermarmelade": ("pantry", "🍯"),
+            "Schweinefleisch": ("meat", "🥩"),
+            "Milchschokolade": ("sweets", "🍫"),
+            "Kaffeebohnen": ("drinks", "☕"),
+            "Kidneybohnen": ("pantry", "🥫"),
+            "Salatgurke": ("produce", "🥒"),
+            "Glühbirne": ("household", "💡"),
+            "Apfelsaft": ("drinks", "🧃"),
+            "Reis": ("pantry", "🍚"),
+            "Vanilleeis": ("frozen", "🍨"),
+            "Süßkartoffeln": ("produce", "🍠"),
+            "EIER": ("dairy", "🥚"),
+        }
+        for name, expected in cases.items():
+            with self.subTest(name=name):
+                self.assertEqual(classify_item(name), expected)
+
+    def test_unknown_items_land_in_other(self):
+        self.assertEqual(classify_item("Klebeband"), ("other", "🛒"))
+
+    def test_every_catalog_entry_classifies_into_its_own_aisle(self):
+        for category, entries in CATALOG.items():
+            for name, emoji, _stems in entries:
+                with self.subTest(name=name):
+                    self.assertEqual(classify_item(name), (category, emoji))
+
+    def test_every_suggested_product_lands_in_the_aisle_it_is_listed_under(self):
+        for category, names in PRODUCTS.items():
+            for name in (name.strip() for name in names.split(",")):
+                with self.subTest(name=name):
+                    self.assertEqual(classify_item(name)[0], category)
+
+    def test_suggestions_cover_compounds_with_their_own_emoji(self):
+        by_name = {suggestion["name"]: suggestion for suggestion in SUGGESTIONS}
+
+        self.assertEqual(by_name["Apfelsaft"], {"name": "Apfelsaft", "emoji": "🧃", "aisle": "Getränke"})
+        self.assertGreater(len(SUGGESTIONS), 300)
+        self.assertEqual(len(by_name), len(SUGGESTIONS))
 
 
 class HabitTrackerTests(TestCase):
