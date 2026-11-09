@@ -57,6 +57,11 @@ WP = "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}"
 V = "{urn:schemas-microsoft-com:vml}"
 MC = "{http://schemas.openxmlformats.org/markup-compatibility/2006}"
 PR = "{http://schemas.openxmlformats.org/package/2006/relationships}"
+W14 = "{http://schemas.microsoft.com/office/word/2010/wordml}"
+
+# What an unfilled form field becomes: Word's grey placeholder ("Klicken oder tippen Sie hier …")
+# is a hint, not content, so it turns into a blank to fill in, as on a printed worksheet.
+FORM_GAP = "__________"
 
 HEADING_STYLE_RE = re.compile(r"^heading (\d)$")
 ALIGNMENTS = {
@@ -178,6 +183,7 @@ class _Converter:
         self.skipped_images = 0
         self.title = None
         self.counters = {}
+        self.form_text = None  # result runs of a legacy text form field, collected until its end
         self.rels = self._relationships()
         self.styles, self.default_style = self._styles()
         self.numbering = self._numbering()
@@ -292,7 +298,10 @@ class _Converter:
             if child.tag == W + "tbl":
                 blocks.extend(self._table(child))
             elif child.tag == W + "sdt" and (content := child.find(W + "sdtContent")) is not None:
-                blocks.extend(self.blocks(content))
+                if _showing_placeholder(child):
+                    blocks.append({"type": "paragraph", "content": [{"type": "text", "text": FORM_GAP}]})
+                else:
+                    blocks.extend(self.blocks(content))
             elif child.tag == W + "customXml":
                 blocks.extend(self.blocks(child))
         return blocks
@@ -326,6 +335,9 @@ class _Converter:
         for style in chain:
             props.update(style["rpr"])
         inline, extra = self._inline(paragraph, props, is_heading, link=None)
+        if self.form_text is not None:
+            # A form field without its end in this paragraph keeps whatever it showed.
+            self._end_form_text(inline, self._marks(props, is_heading, None))
         if not inline and not extra and self._spacer(paragraph, props):
             # A tiny empty line only spaces out tables or boxes; the editor has its own margins.
             list_stack.clear()
@@ -423,10 +435,10 @@ class _Converter:
             if (width := column.get(f"{W}w", "")).isdigit()
         ]
         rows = []
-        for row in table.findall(W + "tr"):
+        for row in _unwrapped(table, W + "tr"):
             header = row.find(f"{W}trPr/{W}tblHeader") is not None
             cells, column = [], 0
-            for cell in row.findall(W + "tc"):
+            for cell in _unwrapped(row, W + "tc"):
                 tcpr = cell.find(W + "tcPr")
                 span_value = _val(tcpr.find(W + "gridSpan")) if tcpr is not None else None
                 span = min(max(int(span_value), 1), MAX_TABLE_SIZE) if (span_value or "").isdigit() else 1
@@ -526,6 +538,8 @@ class _Converter:
                 child_nodes, child_extra = self._inline(child, props, is_heading, href or link)
                 nodes += child_nodes
                 extra += child_extra
+            elif tag == W + "sdt":
+                self._content_control(child, props, is_heading, link, nodes, extra)
             elif tag in {W + "del", W + "moveFrom", W + "pPr", W + "rPr"}:
                 continue
             else:
@@ -534,6 +548,50 @@ class _Converter:
                 nodes += child_nodes
                 extra += child_extra
         return nodes, extra
+
+    def _content_control(self, sdt, props, is_heading, link, nodes, extra):
+        """An inline content control: its shown text, a blank for a placeholder, a box for a check box."""
+        checkbox = sdt.find(f"{W}sdtPr/{W14}checkbox")
+        if checkbox is not None:
+            checked = checkbox.find(W14 + "checked")
+            is_checked = checked is not None and checked.get(f"{W14}val", "1") in {"1", "true"}
+            _add_text(nodes, "☒" if is_checked else "☐", self._marks(props, is_heading, link))
+        elif _showing_placeholder(sdt):
+            _add_text(nodes, FORM_GAP, self._marks(props, is_heading, link))
+        elif (content := sdt.find(W + "sdtContent")) is not None:
+            child_nodes, child_extra = self._inline(content, props, is_heading, link)
+            for node in child_nodes:
+                _append(nodes, node)
+            extra += child_extra
+
+    def _form_field(self, field_char, nodes, marks):
+        """Legacy form fields (FORMTEXT, FORMCHECKBOX, FORMDROPDOWN) keep their value in w:ffData."""
+        kind = field_char.get(f"{W}fldCharType")
+        if kind == "end" and self.form_text is not None:
+            self._end_form_text(nodes, marks)
+        data = field_char.find(W + "ffData")
+        if kind != "begin" or data is None:
+            return
+        if (box := data.find(W + "checkBox")) is not None:
+            state = box.find(W + "checked")
+            state = box.find(W + "default") if state is None else state
+            _add_text(nodes, "☒" if state is not None and _on(state) else "☐", marks)
+        elif (choices := data.find(W + "ddList")) is not None:
+            entries = [_val(entry) or "" for entry in choices.findall(W + "listEntry")]
+            index = _val(choices.find(W + "result")) or _val(choices.find(W + "default")) or "0"
+            if index.isdigit() and int(index) < len(entries):
+                _add_text(nodes, entries[int(index)], marks)
+        elif data.find(W + "textInput") is not None:
+            self.form_text = []
+
+    def _end_form_text(self, nodes, marks):
+        """Word fills an empty text form field with en spaces; that becomes a blank to fill in."""
+        result, self.form_text = self.form_text, None
+        if any(node["type"] != "text" for node in result) or _inline_text(result).strip():
+            for node in result:
+                _append(nodes, node)
+        else:
+            _add_text(nodes, FORM_GAP, marks)
 
     def _run(self, run, paragraph_props, is_heading, link, nodes, extra):
         props = dict(paragraph_props)
@@ -545,23 +603,28 @@ class _Converter:
         marks = self._marks(props, is_heading, link)
         for child in run:
             tag = child.tag
+            if tag == W + "fldChar":
+                self._form_field(child, nodes, marks)
+                continue
+            # A legacy text form field's result is collected to tell an empty field from a filled one.
+            out = nodes if self.form_text is None else self.form_text
             if tag == W + "t":
-                _add_text(nodes, child.text or "", marks)
+                _add_text(out, child.text or "", marks)
             elif tag == W + "tab":
-                _add_text(nodes, "\t", marks)
+                _add_text(out, "\t", marks)
             elif tag in {W + "noBreakHyphen"}:
-                _add_text(nodes, "-", marks)
+                _add_text(out, "-", marks)
             elif tag == W + "cr" or (tag == W + "br" and child.get(f"{W}type") in {None, "textWrapping"}):
-                nodes.append({"type": "hardBreak"})
+                out.append({"type": "hardBreak"})
             elif tag in {W + "drawing", W + "pict"}:
-                self._drawing(child, nodes, extra)
+                self._drawing(child, out, extra)
             elif tag == MC + "AlternateContent":
                 # The Choice is the modern form; the Fallback repeats it for old readers.
                 choice = child.find(MC + "Choice")
                 if choice is not None:
                     for item in choice:
                         if item.tag in {W + "drawing", W + "pict"}:
-                            self._drawing(item, nodes, extra)
+                            self._drawing(item, out, extra)
 
     def _marks(self, props, is_heading, link):
         marks = [{"type": key} for key in ("bold", "italic", "underline", "strike") if props.get(key)]
@@ -650,6 +713,22 @@ def _outer_textboxes(element):
             yield from _outer_textboxes(child)
 
 
+def _showing_placeholder(sdt):
+    return (element := sdt.find(f"{W}sdtPr/{W}showingPlcHdr")) is not None and _on(element)
+
+
+def _unwrapped(element, tag):
+    """element's tag children, including those wrapped in content controls (repeating sections)
+    or custom XML."""
+    for child in element:
+        if child.tag == tag:
+            yield child
+        elif child.tag == W + "sdt" and (content := child.find(W + "sdtContent")) is not None:
+            yield from _unwrapped(content, tag)
+        elif child.tag == W + "customXml":
+            yield from _unwrapped(child, tag)
+
+
 def _on_attr(value):
     return (value or "").lower() in {"1", "true", "on"}
 
@@ -708,6 +787,13 @@ def _add_text(nodes, text, marks):
     if marks:
         node["marks"] = marks
     nodes.append(node)
+
+
+def _append(nodes, node):
+    if node["type"] == "text":
+        _add_text(nodes, node["text"], node.get("marks", []))
+    else:
+        nodes.append(node)
 
 
 def _inline_text(nodes):
