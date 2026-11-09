@@ -7,12 +7,13 @@ from django.core.exceptions import ValidationError
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
-from django.views.decorators.http import require_http_methods
+from django.views.decorators.http import require_http_methods, require_POST
 
 from app.forms import HabitForm, HabitReminderForm, ShoppingItemForm
 from app.models import Habit, ShoppingItem, UmlDiagram
 from app.services.habits import habit_items, toggle_habit_check
 from app.services.shopping import SUGGESTIONS, classify_item, group_items
+from app.services.shopping_products import MAX_SHOPPING_ITEMS, attach_products, scan_barcode
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.uml_content import validate_uml_document
 from app.services.user_preferences import format_user_datetime, localtime_for_user
@@ -20,7 +21,6 @@ from app.view_models import get_tools_context
 from app.views.navigation import local_return_to
 
 UML_TITLE_MAX_LENGTH = UmlDiagram._meta.get_field("title").max_length
-MAX_SHOPPING_ITEMS = 200
 
 
 def _clean_title(value):
@@ -150,6 +150,7 @@ def shopping_list(request):
         form.fields["name"].widget.attrs["autofocus"] = True
 
     items = list(ShoppingItem.objects.filter(owner=request.user))
+    attach_products(request.user, items)
     groups, done_items = group_items(items)
     return render(
         request,
@@ -163,6 +164,21 @@ def shopping_list(request):
             "suggestions": SUGGESTIONS,
         },
     )
+
+
+@login_required
+@require_POST
+def shopping_scan(request):
+    """One barcode from the scanner dialog: ticks off or adds the product, as JSON."""
+    if not feature_enabled("tools"):
+        return disabled_feature_response(request, "tools", json_response=True)
+    status, result = scan_barcode(
+        request.user,
+        request.POST.get("barcode", "")[:40],
+        request.POST.get("mode", ""),
+        request.POST.get("name", "")[:500],
+    )
+    return JsonResponse(result, status=status)
 
 
 @login_required

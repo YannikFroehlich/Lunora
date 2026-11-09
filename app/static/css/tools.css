@@ -1549,6 +1549,185 @@ a.tool-card:hover {
   text-decoration: line-through;
 }
 
+/* A scanned item shows its product on a second line; the nutrition table opens below it. */
+.shopping-item {
+  flex-wrap: wrap;
+}
+
+.shopping-product {
+  order: 3;
+  flex-basis: 100%;
+  margin: -6px 0 8px 48px;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.shopping-product summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  cursor: pointer;
+}
+
+.shopping-product p {
+  margin: 6px 0 0;
+}
+
+.nutri-score {
+  display: inline-grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  color: #fff;
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  border-radius: var(--radius-xs);
+}
+
+/* The label's own colors, the same in both themes so it reads like the one on the pack. */
+.nutri-score-a {
+  background: #038141;
+}
+
+.nutri-score-b {
+  color: #1a1a1a;
+  background: #85bb2f;
+}
+
+.nutri-score-c {
+  color: #1a1a1a;
+  background: #fecb02;
+}
+
+.nutri-score-d {
+  color: #1a1a1a;
+  background: #ee8100;
+}
+
+.nutri-score-e {
+  background: #e63e11;
+}
+
+.shopping-nutrition {
+  margin-top: 8px;
+  border-collapse: collapse;
+}
+
+.shopping-nutrition caption {
+  padding-bottom: 4px;
+  text-align: left;
+}
+
+.shopping-nutrition th,
+.shopping-nutrition td {
+  padding: 2px 16px 2px 0;
+  font-weight: 400;
+  text-align: left;
+}
+
+.shopping-nutrition td {
+  color: var(--color-text);
+  text-align: right;
+}
+
+.shopping-create-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.shopping-scanner {
+  width: min(480px, calc(100vw - 32px));
+  padding: 20px;
+  color: var(--color-text);
+}
+
+.shopping-scanner-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.shopping-scanner-head h2 {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.shopping-scan-mode {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 14px 0;
+  padding: 0;
+  border: 0;
+}
+
+.shopping-scan-mode legend {
+  margin-bottom: 6px;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.shopping-scan-mode label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.shopping-scan-video {
+  display: block;
+  width: 100%;
+  max-height: 46vh;
+  object-fit: cover;
+  background: #000;
+  border-radius: var(--radius-sm);
+}
+
+.shopping-scan-video[hidden] {
+  display: none;
+}
+
+.shopping-scan-status {
+  min-height: 1.4em;
+  margin: 12px 0;
+}
+
+.shopping-scan-result {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: var(--surface-control);
+  border-radius: var(--radius-sm);
+}
+
+.shopping-scan-result[hidden],
+.shopping-scan-form[hidden] {
+  display: none;
+}
+
+.shopping-scan-result small {
+  display: block;
+  color: var(--color-muted);
+}
+
+.shopping-scan-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.shopping-scan-credit {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+}
+
 /* ---- Habits ---------------------------------------------------------------------------------- */
 
 @media (min-width: 901px) {

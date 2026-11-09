@@ -1107,10 +1107,40 @@ class ShoppingItem(models.Model):
     name = models.CharField(max_length=120)
     quantity = models.CharField(max_length=40, blank=True)
     is_done = models.BooleanField(default=False)
+    # Set once the item was scanned, so the next scan of that barcode finds it exactly.
+    barcode = models.CharField(max_length=14, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return self.name
+
+
+class ShoppingProduct(models.Model):
+    """A product its owner scanned once, from Open Food Facts or named by hand.
+
+    Later scans of the barcode read it from here without asking Open Food Facts again.
+    """
+
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="shopping_products"
+    )
+    barcode = models.CharField(max_length=14)
+    name = models.CharField(max_length=120)
+    brand = models.CharField(max_length=80, blank=True)
+    package = models.CharField(max_length=40, blank=True)
+    nutri_score = models.CharField(max_length=1, blank=True)
+    # Per 100 g/ml, keyed like app.services.shopping_products.NUTRIENTS.
+    nutrition = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["owner", "barcode"], name="unique_shopping_product_barcode")
+        ]
 
     def __str__(self):
         return self.name

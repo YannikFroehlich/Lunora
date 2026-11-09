@@ -6,6 +6,13 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- The shopping list scans barcodes: "Scannen" opens the phone camera (browsers with barcode
+  detection, e.g. Chrome on Android; elsewhere the number under the barcode is typed in). In the store
+  a scan ticks off the matching item ("Milch" for "Frische Vollmilch"), at home it puts the product on
+  the list. The first scan looks the product up on Open Food Facts and keeps it with brand, pack size,
+  Nutri-Score and nutrition values, shown under the item; products Open Food Facts doesn't know are
+  named once by hand. The lookup goes through the Lunora server, so Open Food Facts never sees who
+  scanned what.
 - "Neue Notiz" on a folder now also puts an imported Word document into that folder instead of the
   top level.
 - Notes have fill-in fields: click into one and type, like in Word. Word documents bring theirs along
