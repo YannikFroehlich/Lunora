@@ -925,7 +925,7 @@ def docx_to_note(data, fallback_title):
     return title[:200], document, converter.images, converter.skipped_images
 
 
-def import_docx_note(user, filename, data):
+def import_docx_note(user, filename, data, *, folder_id=None):
     """Create a note from a .docx file; returns (note, number of images that couldn't be used)."""
     title, document, images, skipped = docx_to_note(
         data, PurePath(filename).stem.strip() or "Importierte Notiz"
@@ -935,7 +935,7 @@ def import_docx_note(user, filename, data):
     saved = []
     try:
         with transaction.atomic():
-            note = create_note(user, title=title)
+            note = create_note(user, title=title, folder_id=folder_id)
             for file_id, name, content_type, content in images:
                 attachment = NoteAttachment(
                     note=note,
@@ -959,10 +959,12 @@ def import_docx_note(user, filename, data):
     return note, skipped
 
 
-def import_docx_upload(user, upload):
+def import_docx_upload(user, upload, *, folder_id=None):
     """import_docx_note for an uploaded file, with the size checked before anything is read."""
     if upload.size > MAX_DOCX_BYTES:
         raise ValidationError(
             f"Word-Dateien dürfen höchstens {MAX_DOCX_BYTES // (1024 * 1024)} MB groß sein."
         )
-    return import_docx_note(user, upload.name or "Word-Dokument.docx", upload.read(MAX_DOCX_BYTES + 1))
+    return import_docx_note(
+        user, upload.name or "Word-Dokument.docx", upload.read(MAX_DOCX_BYTES + 1), folder_id=folder_id
+    )

@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- "Neue Notiz" on a folder now also puts an imported Word document into that folder instead of the
+  top level.
 - Notes have fill-in fields: click into one and type, like in Word. Word documents bring theirs along
   (content controls and legacy form fields for text, dates and lists): Word's grey hint stays a grey
   hint until something is typed in, filled-in fields keep their value, and the Word export turns them
