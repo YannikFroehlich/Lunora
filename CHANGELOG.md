@@ -6,6 +6,11 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Hardened the Word import and calendar subscriptions against crafted input: specially built .docx
+  files can no longer tie up the server, a broken or malicious subscribed calendar no longer stops
+  notifications for everyone, and calendar servers that answer extremely slowly are cut off after
+  30 seconds. Such a calendar shows "Der Kalender konnte nicht gelesen werden." and keeps its
+  previous events; an .ics file with impossible dates is reported instead of causing an error page.
 - The note page keeps its A4 width on smaller desktop windows too and scrolls sideways, like a sheet
   in Word, instead of getting narrower. Text wraps the same in every window, and imported tables no
   longer stick out of the page.

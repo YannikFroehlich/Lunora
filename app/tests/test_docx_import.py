@@ -9,7 +9,7 @@ from django.urls import reverse
 from PIL import Image
 
 from app.models import Note, NoteAttachment, Profile
-from app.services.docx_import import docx_to_note
+from app.services.docx_import import _Converter, _note_image, docx_to_note
 from app.services.note_content import validate_note_document
 from app.services.notes import save_note
 
@@ -126,7 +126,7 @@ def _gif():
     return output.getvalue()
 
 
-def build_docx(body=BODY, extra=None, styles=STYLES):
+def build_docx(body=BODY, extra=None, styles=STYLES, numbering=NUMBERING):
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("[Content_Types].xml", "<Types/>")
@@ -134,7 +134,7 @@ def build_docx(body=BODY, extra=None, styles=STYLES):
             "word/document.xml", f"<w:document {NS}><w:body>{body}<w:sectPr/></w:body></w:document>"
         )
         archive.writestr("word/styles.xml", styles)
-        archive.writestr("word/numbering.xml", NUMBERING)
+        archive.writestr("word/numbering.xml", numbering)
         archive.writestr("word/_rels/document.xml.rels", RELS)
         archive.writestr("word/media/image1.png", _png())
         archive.writestr("word/media/image2.gif", _gif())
@@ -322,6 +322,61 @@ class DocxConversionTests(TestCase):
             archive.writestr("word/document.xml", b" " * (11 * 1024 * 1024))
         with self.assertRaisesMessage(ValidationError, "zu große Bestandteile"):
             docx_to_note(huge.getvalue(), "datei")
+
+    def test_doctype_cannot_hide_behind_utf16(self):
+        def convert(doctype):
+            xml = (
+                f'<?xml version="1.0" encoding="UTF-16"?>{doctype}'
+                f"<w:document {NS}><w:body>{_para('Text')}</w:body></w:document>"
+            )
+            output = io.BytesIO()
+            with zipfile.ZipFile(output, "w") as archive:
+                archive.writestr("word/document.xml", xml.encode("utf-16"))
+            return docx_to_note(output.getvalue(), "datei")
+
+        with self.assertRaisesMessage(ValidationError, "nicht erlaubte XML"):
+            convert('<!DOCTYPE x [<!ENTITY a "aaaa">]>')
+        self.assertEqual(convert("")[1]["content"][0]["content"][0]["text"], "Text")
+
+    def test_nested_text_boxes_are_converted_once(self):
+        nested = "<w:p/>"
+        for _level in range(14):
+            nested = f"<w:p><w:r><w:drawing><w:txbxContent>{nested}</w:txbxContent></w:drawing></w:r></w:p>"
+
+        _title, document, _images, _skipped = docx_to_note(build_docx(nested), "datei")
+
+        self.assertEqual(len(document["content"]), 15)
+
+    def test_only_word_list_levels_are_kept(self):
+        levels = "".join(f'<w:lvl w:ilvl="{level}"/>' for level in range(500))
+        numbering = (
+            f'<w:numbering {NS}><w:abstractNum w:abstractNumId="0">{levels}</w:abstractNum>'
+            '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>'
+        )
+
+        with zipfile.ZipFile(io.BytesIO(build_docx(numbering=numbering))) as archive:
+            kept = _Converter(archive).numbering["1"]
+
+        self.assertEqual(set(kept), {str(level) for level in range(9)})
+
+    def test_digits_int_refuses_count_as_a_broken_file(self):
+        numbering = (
+            f'<w:numbering {NS}><w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0">'
+            '<w:start w:val="²"/></w:lvl></w:abstractNum></w:numbering>'
+        )
+
+        with self.assertRaisesMessage(ValidationError, "beschädigt"):
+            docx_to_note(build_docx(numbering=numbering), "datei")
+
+    def test_only_expected_image_formats_are_converted(self):
+        def encoded(image_format):
+            output = io.BytesIO()
+            Image.new("RGB", (10, 10)).save(output, image_format)
+            return output.getvalue()
+
+        self.assertEqual(_note_image("bild.tiff", encoded("TIFF"))[0], "bild.png")
+        self.assertEqual(_note_image("bild.bmp", encoded("BMP"))[0], "bild.png")
+        self.assertIsNone(_note_image("bild.ppm", encoded("PPM")))
 
 
 class DocxImportViewTests(TestCase):

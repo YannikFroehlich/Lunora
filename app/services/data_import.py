@@ -544,7 +544,8 @@ def _rule_month_days(year, month, by_day, month_days, default_day):
 
 def parse_ics_events(text, default_zone):
     """Yield one dict per VEVENT; skipped (cancelled or unreadable) events yield None."""
-    unfolded = re.sub(r"\r?\n[ \t]", "", text.replace("\r\n", "\n"))
+    # PostgreSQL refuses NUL characters in text columns.
+    unfolded = re.sub(r"\r?\n[ \t]", "", text.replace("\x00", "").replace("\r\n", "\n"))
     block = None
     for line in unfolded.split("\n"):
         upper = line.strip().upper()
@@ -735,7 +736,11 @@ def import_files(user, files, *, notes_enabled, calendar_enabled):
             if not calendar_enabled:
                 errors.append(f"„{name}“: Termine anlegen ist gerade deaktiviert.")
                 continue
-            counts = import_ics_events(user, text)
+            try:
+                counts = import_ics_events(user, text)
+            except (OverflowError, ValueError):  # Dates and intervals beyond what datetime can hold.
+                errors.append(f"„{name}“ enthält ungültige Termine.")
+                continue
             successes.append(_ics_summary(name, counts))
         else:
             if not notes_enabled:

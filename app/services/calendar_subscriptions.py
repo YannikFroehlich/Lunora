@@ -8,6 +8,7 @@ import http.client
 import ipaddress
 import logging
 import socket
+import threading
 import time
 from datetime import timedelta
 from urllib.parse import urljoin, urlsplit
@@ -102,6 +103,37 @@ def _public_connection(address, timeout=None, source_address=None):
     raise error
 
 
+class _DeadlineCut:
+    """Cuts a connection at the fetch deadline. Socket timeouts only limit single reads, so a server
+    sending one byte at a time could otherwise hold a fetch open for days, in the TLS handshake and
+    the headers as well as the body. Shuts down a dup of the socket because TLS wrapping detaches
+    the original."""
+
+    def __init__(self, deadline):
+        self.deadline = deadline
+        self.watched = None
+        self.timer = None
+
+    def connect(self, address, timeout=None, source_address=None):
+        sock = _public_connection(address, timeout, source_address)
+        self.watched = sock.dup()
+        self.timer = threading.Timer(max(self.deadline - time.monotonic(), 0), self._cut)
+        self.timer.daemon = True
+        self.timer.start()
+        return sock
+
+    def _cut(self):
+        try:
+            self.watched.shutdown(socket.SHUT_RDWR)
+        except OSError:  # Already closed.
+            pass
+
+    def release(self):
+        if self.timer:
+            self.timer.cancel()
+            self.watched.close()
+
+
 def fetch_calendar(url):
     """Download an iCalendar text, following up to MAX_REDIRECTS redirects (each one checked again)."""
     deadline = time.monotonic() + FETCH_DEADLINE_SECONDS
@@ -116,7 +148,8 @@ def fetch_calendar(url):
             _ascii_host(parts.hostname), DEFAULT_PORTS[parts.scheme.lower()], timeout=FETCH_TIMEOUT_SECONDS
         )
         # http.client opens its socket through this attribute.
-        connection._create_connection = _public_connection
+        cut = _DeadlineCut(deadline)
+        connection._create_connection = cut.connect
         path = (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
         try:
             connection.request(
@@ -133,6 +166,7 @@ def fetch_calendar(url):
             raise SubscriptionError("Der Kalender-Server ist nicht erreichbar.") from None
         finally:
             connection.close()
+            cut.release()
     raise SubscriptionError("Die Adresse leitet zu oft weiter.")
 
 
@@ -143,9 +177,10 @@ def _read_calendar(response, deadline):
         size += len(chunk)
         if size > MAX_CALENDAR_BYTES:
             raise SubscriptionError("Der Kalender ist größer als 5 MB.")
-        if time.monotonic() > deadline:
-            raise SubscriptionError("Der Kalender-Server antwortet zu langsam.")
         chunks.append(chunk)
+    # A connection cut at the deadline ends like a complete download.
+    if time.monotonic() > deadline:
+        raise SubscriptionError("Der Kalender-Server antwortet zu langsam.")
     text = b"".join(chunks).decode("utf-8-sig", errors="replace")
     if "BEGIN:VCALENDAR" not in text:
         raise SubscriptionError("Unter der Adresse liegt kein iCal-Kalender.")
@@ -163,30 +198,35 @@ def sync_subscription(subscription, *, now=None):
         rows, _counts = ics_event_rows(
             subscription.user, text, window=(now - WINDOW_PAST, now + WINDOW_FUTURE), limit=MAX_EVENTS
         )
+        for row in rows:
+            row.subscription = subscription
+        with transaction.atomic():
+            # The row lock makes a concurrent sync of the same calendar wait, instead of both deleting
+            # the old events and then both inserting new ones.
+            if not CalendarSubscription.objects.select_for_update().filter(pk=subscription.pk).exists():
+                return False
+            CalendarEvent.objects.filter(subscription=subscription).delete()
+            CalendarEvent.objects.bulk_create(rows)
+            subscription.last_synced_at = now
+            subscription.last_error = ""
+            subscription.event_count = len(rows)
+            CalendarSubscription.objects.filter(pk=subscription.pk).update(
+                last_attempt_at=now, last_synced_at=now, last_error="", event_count=len(rows)
+            )
+        return True
     except SubscriptionError as error:
         subscription.last_error = str(error)
-        CalendarSubscription.objects.filter(pk=subscription.pk).update(
-            last_attempt_at=now, last_error=subscription.last_error
-        )
         logger.info("Calendar subscription %s failed: %s", subscription.pk, error)
-        return False
-
-    for row in rows:
-        row.subscription = subscription
-    with transaction.atomic():
-        # The row lock makes a concurrent sync of the same calendar wait, instead of both deleting
-        # the old events and then both inserting new ones.
-        if not CalendarSubscription.objects.select_for_update().filter(pk=subscription.pk).exists():
-            return False
-        CalendarEvent.objects.filter(subscription=subscription).delete()
-        CalendarEvent.objects.bulk_create(rows)
-        subscription.last_synced_at = now
-        subscription.last_error = ""
-        subscription.event_count = len(rows)
-        CalendarSubscription.objects.filter(pk=subscription.pk).update(
-            last_attempt_at=now, last_synced_at=now, last_error="", event_count=len(rows)
-        )
-    return True
+    except Exception as error:
+        # The data comes from a stranger's server and must never stop the automation loop that also
+        # delivers everyone's notifications. Only the type is logged: a message could hold the URL.
+        subscription.last_error = "Der Kalender konnte nicht gelesen werden."
+        logger.warning("Calendar subscription %s failed: %s", subscription.pk, type(error).__name__)
+    # Stored even for a calendar that always fails, or it would stay first in line on every pass.
+    CalendarSubscription.objects.filter(pk=subscription.pk).update(
+        last_attempt_at=now, last_error=subscription.last_error
+    )
+    return False
 
 
 def can_refresh(subscription, *, now=None):
