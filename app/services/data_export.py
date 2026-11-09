@@ -26,6 +26,7 @@ from app.models import (
     NoteTemplate,
     ScheduledChatMessage,
     ShoppingItem,
+    ShoppingProduct,
     Task,
     TaskLabel,
     TaskList,
@@ -111,7 +112,20 @@ def write_user_export(user, fileobj):
         _add_json(
             archive,
             "einkaufszettel.json",
-            list(ShoppingItem.objects.filter(owner=user).values("name", "quantity", "is_done", "created_at")),
+            list(
+                ShoppingItem.objects.filter(owner=user).values(
+                    "name", "quantity", "is_done", "barcode", "created_at"
+                )
+            ),
+        )
+        _add_json(
+            archive,
+            "einkaufsprodukte.json",
+            list(
+                ShoppingProduct.objects.filter(owner=user).values(
+                    "barcode", "name", "brand", "package", "nutri_score", "nutrition", "created_at"
+                )
+            ),
         )
         for diagram in UmlDiagram.objects.filter(owner=user):
             name = f"uml/{diagram.pk}-{slugify(diagram.title) or 'diagramm'}.json"

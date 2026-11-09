@@ -33,7 +33,10 @@
                 <span>{{ shopping_form.quantity.label }}</span>
                 {{ shopping_form.quantity }}
             </label>
-            <button class="primary-button" type="submit"><i class="fa-solid fa-plus" aria-hidden="true"></i> Hinzufügen</button>
+            <div class="shopping-create-actions">
+                <button class="primary-button" type="submit"><i class="fa-solid fa-plus" aria-hidden="true"></i> Hinzufügen</button>
+                <button class="ghost-button" type="button" data-shopping-scan-open><i class="fa-solid fa-barcode" aria-hidden="true"></i> Scannen</button>
+            </div>
             {% if shopping_form.errors %}<ul class="errorlist">{% for errors in shopping_form.errors.values %}{% for error in errors %}<li>{{ error }}</li>{% endfor %}{% endfor %}</ul>{% endif %}
         </form>
     </section>
@@ -77,6 +80,38 @@
     </div>
     {% endif %}
 </section>
+
+<dialog class="glass-panel shopping-scanner" data-shopping-scanner data-scan-url="{% url 'shopping_scan' %}" aria-labelledby="shopping-scanner-title">
+    {% csrf_token %}
+    <div class="shopping-scanner-head">
+        <h2 id="shopping-scanner-title">Strichcode scannen</h2>
+        <button class="icon-button" type="button" data-shopping-scan-close aria-label="Scanner schließen" title="Schließen"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+    </div>
+    <fieldset class="shopping-scan-mode">
+        <legend>Beim Scannen</legend>
+        <label><input type="radio" name="scan_mode" value="shop" checked> Im Laden abhaken</label>
+        <label><input type="radio" name="scan_mode" value="add"> Auf den Zettel setzen</label>
+    </fieldset>
+    <video class="shopping-scan-video" muted playsinline hidden></video>
+    <p class="shopping-scan-status" data-scan-status role="status" aria-live="polite"></p>
+    <div class="shopping-scan-result" data-scan-result hidden></div>
+    <form class="shopping-scan-form" data-scan-name hidden>
+        <input type="hidden" name="barcode">
+        <label class="vocab-field">
+            <span>Produktname</span>
+            <input type="text" name="name" maxlength="120" autocomplete="off" required>
+        </label>
+        <button class="primary-button" type="submit">Speichern</button>
+    </form>
+    <form class="shopping-scan-form" data-scan-manual>
+        <label class="vocab-field">
+            <span>Nummer unter dem Strichcode</span>
+            <input type="text" name="barcode" inputmode="numeric" pattern="[0-9 ]{8,16}" maxlength="16" autocomplete="off" required>
+        </label>
+        <button class="ghost-button" type="submit">Suchen</button>
+    </form>
+    <p class="shopping-scan-credit">Produktdaten von <a href="https://world.openfoodfacts.org/" target="_blank" rel="noopener noreferrer">Open Food Facts</a> (ODbL).</p>
+</dialog>
 {{ suggestions|json_script:"shopping-suggestion-data" }}
 {% endblock %}
 

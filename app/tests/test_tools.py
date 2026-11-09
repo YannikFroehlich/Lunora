@@ -1,9 +1,12 @@
 import json
 from datetime import date, datetime, time, timedelta
+from unittest.mock import patch
+from urllib.error import HTTPError, URLError
 from zoneinfo import ZoneInfo
 
 from django.contrib.auth.models import User
 from django.core import mail
+from django.core.cache import cache
 from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 
@@ -13,6 +16,7 @@ from app.models import (
     NotificationPreference,
     Profile,
     ShoppingItem,
+    ShoppingProduct,
     SystemSettings,
     UmlDiagram,
     UserNotification,
@@ -30,9 +34,11 @@ from app.services.habits import (
 )
 from app.services.notifications import materialize_due_habit_reminders, send_pending_user_notification_emails
 from app.services.shopping import CATALOG, PRODUCTS, SUGGESTIONS, classify_item
+from app.services.shopping_products import normalize_barcode, parse_open_food_facts
 from app.services.uml_content import validate_uml_document
 from app.services.user_preferences import localtime_for_user
 from app.services.vocabulary import parse_bulk_cards, review_card
+from app.tests.helpers import FakeJsonResponse
 
 
 def _uml_class(class_id, name, kind="class", **overrides):
@@ -626,6 +632,228 @@ class ShoppingListTests(TestCase):
         self.assertEqual(self.client.get(self.url).status_code, 503)
         self.assertEqual(self._post("shopping_add", name="Milch").status_code, 503)
         self.assertFalse(ShoppingItem.objects.exists())
+
+
+MILK = "4000417025005"
+
+
+def off_milk_response():
+    return FakeJsonResponse(
+        {
+            "status": 1,
+            "product": {
+                "product_name_de": "Frische Vollmilch  3,5 %",
+                "brands": "Gut & Günstig, Edeka",
+                "quantity": "1 l",
+                "nutriscore_grade": "b",
+                "nutriments": {"energy-kcal_100g": 64, "fat_100g": "3.5", "sugars_100g": 4.8},
+            },
+        }
+    )
+
+
+class ShoppingBarcodeTests(SimpleTestCase):
+    def test_barcodes_are_normalized_and_checked(self):
+        cases = {
+            MILK: MILK,
+            "4000 4170 2500 5": MILK,
+            "96385074": "96385074",
+            "036000291452": "0036000291452",
+            "4000417025006": None,
+            "12345": None,
+            "40004170250x5": None,
+            "": None,
+            None: None,
+        }
+        for raw, expected in cases.items():
+            with self.subTest(raw=raw):
+                self.assertEqual(normalize_barcode(raw), expected)
+
+    def test_open_food_facts_answers_are_reduced_to_checked_fields(self):
+        product = parse_open_food_facts(
+            {
+                "status": 1,
+                "product": {
+                    "product_name": "Whole milk",
+                    "product_name_de": "Frische   Vollmilch",
+                    "brands": "Gut & Günstig, Edeka",
+                    "quantity": "1 l ℮",
+                    "nutriscore_grade": "not-applicable",
+                    "nutriments": {
+                        "energy-kcal_100g": 64,
+                        "fat_100g": "3.54",
+                        "sugars_100g": "viel",
+                        "proteins_100g": -1,
+                        "salt_100g": True,
+                        "carbohydrates_100g": float("nan"),
+                    },
+                },
+            }
+        )
+
+        self.assertEqual(
+            product,
+            {
+                "name": "Frische Vollmilch",
+                "brand": "Gut & Günstig",
+                "package": "1 l",
+                "nutri_score": "",
+                "nutrition": {"energy-kcal": 64.0, "fat": 3.5},
+            },
+        )
+        for data in (
+            {"status": 0},
+            {"status": 1, "product": {"brands": "X"}},
+            [],
+            {"status": 1, "product": "x"},
+        ):
+            with self.subTest(data=data):
+                self.assertIsNone(parse_open_food_facts(data))
+
+
+@patch("app.services.shopping_products.urlopen")
+class ShoppingScanTests(TestCase):
+    url = "/tools/shopping/scan/"
+
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(username="lea", email="lea@example.com", password="pw-12345!")
+        self.other = User.objects.create_user(username="tom", email="tom@example.com", password="pw-12345!")
+        self.client.force_login(self.user)
+
+    def _scan(self, barcode=MILK, mode="shop", **data):
+        return self.client.post(self.url, {"barcode": barcode, "mode": mode, **data})
+
+    def test_scanning_in_the_store_ticks_off_the_matching_item_and_remembers_the_product(self, urlopen):
+        urlopen.return_value = off_milk_response()
+        milk = ShoppingItem.objects.create(owner=self.user, name="Milch")
+        bread = ShoppingItem.objects.create(owner=self.user, name="Brot")
+
+        response = self._scan()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "ticked")
+        self.assertEqual(response.json()["product"]["nutri_score"], "B")
+        milk.refresh_from_db()
+        bread.refresh_from_db()
+        self.assertEqual((milk.is_done, milk.barcode, bread.is_done), (True, MILK, False))
+        product = ShoppingProduct.objects.get(owner=self.user)
+        self.assertEqual(
+            (product.name, product.brand, product.package, product.nutrition["fat"]),
+            ("Frische Vollmilch 3,5 %", "Gut & Günstig", "1 l", 3.5),
+        )
+        self.assertIn(f"/product/{MILK}.json", urlopen.call_args.args[0].full_url)
+
+        # Scanned again it's already in the cart, and the stored product needs no lookup.
+        urlopen.reset_mock()
+        self.assertEqual(self._scan().json()["status"], "done")
+        urlopen.assert_not_called()
+
+    def test_items_match_by_word_stems_and_unlisted_products_are_reported(self, urlopen):
+        urlopen.return_value = off_milk_response()
+        ShoppingItem.objects.create(owner=self.user, name="Bananen")
+
+        self.assertEqual(self._scan().json()["status"], "missing")
+        self.assertFalse(ShoppingItem.objects.filter(is_done=True).exists())
+
+        ShoppingItem.objects.create(owner=self.user, name="Vollmilch")
+        self.assertEqual(self._scan().json()["status"], "ticked")
+        self.assertTrue(ShoppingItem.objects.get(name="Vollmilch").is_done)
+
+    def test_scanning_at_home_puts_the_product_on_the_list_once(self, urlopen):
+        urlopen.return_value = off_milk_response()
+
+        self.assertEqual(self._scan(mode="add").json()["status"], "added")
+        item = ShoppingItem.objects.get(owner=self.user)
+        self.assertEqual((item.name, item.quantity, item.barcode), ("Frische Vollmilch 3,5 %", "1 l", MILK))
+
+        item.is_done = True
+        item.save()
+        self._scan(mode="add")
+        item.refresh_from_db()
+        self.assertFalse(item.is_done)
+        self.assertEqual(ShoppingItem.objects.count(), 1)
+
+    def test_an_unknown_product_is_named_by_hand(self, urlopen):
+        urlopen.side_effect = HTTPError("url", 404, "Not Found", {}, None)
+        ShoppingItem.objects.create(owner=self.user, name="Hafermilch")
+
+        response = self._scan()
+        self.assertEqual((response.json()["status"], response.json()["barcode"]), ("unknown", MILK))
+        self.assertFalse(ShoppingProduct.objects.exists())
+
+        response = self._scan(name="  Oatly   Hafermilch ")
+        self.assertEqual(response.json()["status"], "ticked")
+        self.assertEqual(ShoppingProduct.objects.get().name, "Oatly Hafermilch")
+        self.assertEqual(urlopen.call_count, 1)
+        # Nothing but a name: no product line under the item.
+        self.assertNotContains(self.client.get("/tools/shopping/"), "shopping-product")
+
+    def test_a_failed_lookup_is_reported_and_not_cached(self, urlopen):
+        urlopen.side_effect = URLError("offline")
+
+        response = self._scan()
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("nicht erreichbar", response.json()["message"])
+        urlopen.side_effect = None
+        urlopen.return_value = off_milk_response()
+        self.assertEqual(self._scan(mode="add").json()["status"], "added")
+
+    def test_lookups_are_cached_across_users_but_products_stay_private(self, urlopen):
+        urlopen.return_value = off_milk_response()
+        ShoppingProduct.objects.create(owner=self.other, barcode=MILK, name="Toms Milch")
+
+        self._scan(mode="add")
+        self.client.force_login(self.other)
+        self._scan(mode="add")
+        self.client.force_login(
+            User.objects.create_user(username="ida", email="ida@example.com", password="x")
+        )
+        self._scan(mode="add")
+
+        self.assertEqual(urlopen.call_count, 1)
+        self.assertEqual(ShoppingProduct.objects.get(owner=self.user).name, "Frische Vollmilch 3,5 %")
+        self.assertEqual(ShoppingItem.objects.get(owner=self.other).name, "Toms Milch")
+        self.assertEqual(ShoppingProduct.objects.count(), 3)
+
+    def test_new_lookups_are_throttled_per_user(self, urlopen):
+        urlopen.return_value = FakeJsonResponse({"status": 0})
+        with patch("app.services.shopping_products.LOOKUPS_PER_WINDOW", 1):
+            self.assertEqual(self._scan(barcode="96385074").status_code, 200)
+            response = self._scan()
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("Zu viele", response.json()["message"])
+
+    def test_invalid_requests_are_refused(self, urlopen):
+        self.assertEqual(self._scan(barcode="4000417025006").status_code, 400)
+        self.assertEqual(self._scan(mode="steal").status_code, 400)
+        self.assertEqual(self.client.get(self.url).status_code, 405)
+        urlopen.assert_not_called()
+        self.client.logout()
+        self.assertEqual(self._scan().status_code, 302)
+
+    def test_the_list_shows_the_scanned_product_with_its_nutrition(self, urlopen):
+        urlopen.return_value = off_milk_response()
+        self._scan(mode="add")
+
+        response = self.client.get("/tools/shopping/")
+
+        self.assertContains(response, "nutri-score-b")
+        self.assertContains(response, "Gut &amp; Günstig · 1 l")
+        self.assertContains(response, "<td>3,5 g</td>", html=True)
+        self.assertContains(response, "<td>64 kcal</td>", html=True)
+        self.assertContains(response, "data-shopping-scanner")
+
+    def test_disabled_tools_flag_blocks_scanning(self, urlopen):
+        SystemSettings.objects.update_or_create(pk=1, defaults={"tools_enabled": False})
+
+        response = self._scan()
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response["Content-Type"], "application/json")
+        urlopen.assert_not_called()
 
 
 class ShoppingCatalogTests(SimpleTestCase):

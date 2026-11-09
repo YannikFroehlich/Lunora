@@ -45,6 +45,7 @@
   globalThis.LunoraShopping = { normalize, singular, rankSuggestions };
 
   if (typeof document === "undefined") return;
+  initScanner();
   const root = document.querySelector("[data-shopping-suggest]");
   const dataElement = document.getElementById("shopping-suggestion-data");
   if (!root || !dataElement) return;
@@ -142,4 +143,155 @@
       event.preventDefault();
     }
   });
+
+  // Barcode scanner dialog: the camera through the browser's BarcodeDetector where there is one
+  // (Chrome on Android), typing the number everywhere. Each code goes to the server, which looks
+  // the product up and ticks off or adds the matching item; the list reloads when it closes.
+  function initScanner() {
+    const dialog = document.querySelector("[data-shopping-scanner]");
+    const opener = document.querySelector("[data-shopping-scan-open]");
+    if (!dialog || !opener) return;
+    const video = dialog.querySelector("video");
+    const status = dialog.querySelector("[data-scan-status]");
+    const result = dialog.querySelector("[data-scan-result]");
+    const manualForm = dialog.querySelector("[data-scan-manual]");
+    const nameForm = dialog.querySelector("[data-scan-name]");
+    const csrfToken = dialog.querySelector("input[name=csrfmiddlewaretoken]").value;
+    const formats = ["ean_13", "ean_8", "upc_a"];
+    let stream = null;
+    let timer = null;
+    let busy = false;
+    let changed = false;
+    let last = { code: "", at: 0 };
+
+    function mode() {
+      return dialog.querySelector("input[name=scan_mode]:checked").value;
+    }
+
+    function showProduct(product) {
+      result.hidden = !product;
+      if (!product) return;
+      const name = document.createElement("strong");
+      const details = document.createElement("small");
+      name.textContent = product.name;
+      details.textContent = [product.brand, product.package].filter(Boolean).join(" · ");
+      const text = document.createElement("span");
+      text.append(name, details);
+      const parts = [];
+      if (product.nutri_score) {
+        const score = document.createElement("span");
+        score.className = `nutri-score nutri-score-${product.nutri_score.toLowerCase()}`;
+        score.title = `Nutri-Score ${product.nutri_score}`;
+        score.textContent = product.nutri_score;
+        parts.push(score);
+      }
+      result.replaceChildren(...parts, text);
+    }
+
+    async function send(code, name = "") {
+      busy = true;
+      const body = new FormData();
+      body.append("csrfmiddlewaretoken", csrfToken);
+      body.append("barcode", code);
+      body.append("mode", mode());
+      if (name) body.append("name", name);
+      status.textContent = "Suche …";
+      try {
+        const response = await fetch(dialog.dataset.scanUrl, { method: "POST", body, credentials: "same-origin" });
+        const data = await response.json();
+        status.textContent = data.message || "Das hat nicht geklappt.";
+        showProduct(data.product);
+        changed ||= Boolean(data.changed);
+        if (data.changed) navigator.vibrate?.(80);
+        nameForm.hidden = data.status !== "unknown";
+        if (data.status === "unknown") {
+          nameForm.elements.barcode.value = data.barcode;
+          nameForm.elements.name.value = "";
+          nameForm.elements.name.focus();
+        }
+      } catch {
+        status.textContent = "Keine Verbindung. Versuch es noch einmal.";
+      } finally {
+        busy = false;
+      }
+    }
+
+    function detected(code) {
+      // The camera sees the same code many times a second; one send per product in view.
+      const now = Date.now();
+      // A product being named stays put until it's saved or another code comes along.
+      if (busy || (!nameForm.hidden && code === nameForm.elements.barcode.value)) return;
+      if (code === last.code && now - last.at < 4000) return;
+      last = { code, at: now };
+      send(code);
+    }
+
+    async function startCamera() {
+      const supported = "BarcodeDetector" in window && navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
+      if (!supported) {
+        status.textContent = "Dieser Browser erkennt keine Strichcodes. Tipp die Nummer darunter ein.";
+        return;
+      }
+      try {
+        const available = await window.BarcodeDetector.getSupportedFormats();
+        const detector = new window.BarcodeDetector({ formats: formats.filter((f) => available.includes(f)) });
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+        if (!dialog.open) {
+          stopCamera();
+          return;
+        }
+        video.srcObject = stream;
+        video.hidden = false;
+        await video.play();
+        status.textContent = "Halte den Strichcode vor die Kamera.";
+        timer = setInterval(async () => {
+          if (busy || video.readyState < 2) return;
+          try {
+            const codes = await detector.detect(video);
+            if (codes.length) detected(codes[0].rawValue);
+          } catch {
+            // A frame the detector couldn't read; the next one will do.
+          }
+        }, 300);
+      } catch {
+        stopCamera();
+        status.textContent = "Kein Zugriff auf die Kamera. Du kannst die Nummer auch eintippen.";
+      }
+    }
+
+    function stopCamera() {
+      clearInterval(timer);
+      timer = null;
+      stream?.getTracks().forEach((track) => track.stop());
+      stream = null;
+      video.srcObject = null;
+      video.hidden = true;
+    }
+
+    opener.addEventListener("click", () => {
+      changed = false;
+      last = { code: "", at: 0 };
+      status.textContent = "";
+      showProduct(null);
+      nameForm.hidden = true;
+      dialog.showModal();
+      startCamera();
+    });
+    dialog.querySelector("[data-shopping-scan-close]").addEventListener("click", () => dialog.close());
+    dialog.addEventListener("close", () => {
+      stopCamera();
+      if (changed) window.location.reload();
+    });
+    manualForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (busy) return;
+      send(manualForm.elements.barcode.value);
+      manualForm.reset();
+    });
+    nameForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (busy) return;
+      send(nameForm.elements.barcode.value, nameForm.elements.name.value);
+    });
+  }
 })();
