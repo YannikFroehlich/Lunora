@@ -6,11 +6,12 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
-- Word import: form fields arrive as in the document. An unfilled content control (Word's grey
-  placeholder such as "Klicken oder tippen Sie hier …") becomes a blank `__________` to fill in
-  instead of grey text, filled-in controls keep their text, check boxes become ☐/☒, and legacy
-  form fields (text, check box, dropdown) keep their value. Table rows inside repeating sections
-  are no longer dropped.
+- Notes have fill-in fields: click into one and type, like in Word. Word documents bring theirs along
+  (content controls and legacy form fields for text, dates and lists): Word's grey hint stays a grey
+  hint until something is typed in, filled-in fields keep their value, and the Word export turns them
+  back into Word input fields. New ones are inserted under "Einfügen" → "Eingabefeld" or with
+  Ctrl+Alt+J. PDF, Markdown and the public link show an empty field as `__________`. Check boxes
+  from Word become ☐/☒, and table rows inside repeating sections are no longer dropped.
 - New tool "Einkaufszettel": a shopping list with optional quantities, tick items off in the store
   and clear the ticked ones in one go. Items get a matching emoji and are sorted by store aisle
   (fruit & veg, dairy, drinks, …), ticked ones move to "Im Wagen", the name field suggests over 1,500

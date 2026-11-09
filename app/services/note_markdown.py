@@ -6,6 +6,8 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.text import slugify
 
+from app.services.note_content import FORM_FIELD_BLANK
+
 ESCAPE_RE = re.compile(r"([\\`*_\[\]<>|])")
 
 
@@ -169,6 +171,8 @@ class NoteMarkdownRenderer:
                 parts.append(f"[{label}]({href})")
             elif child_type == "mathInline":
                 parts.append(f"${(child.get('attrs') or {}).get('latex', '')}$")
+            elif child_type == "formField":
+                parts.append(self._escape((child.get("attrs") or {}).get("value") or FORM_FIELD_BLANK))
             elif child_type == "text":
                 parts.append(self._styled_text(child))
         return "".join(parts)

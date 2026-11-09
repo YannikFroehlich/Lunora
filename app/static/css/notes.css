@@ -1389,6 +1389,42 @@
   border-radius: var(--radius-pill);
 }
 
+/* Fill-in fields (Word's content controls) are part of the document like its text, so in dark mode
+   they flip with the page instead of being restored. */
+.note-form-field {
+  display: inline-block;
+  max-width: 100%;
+}
+
+.note-form-field-input {
+  max-width: 100%;
+  margin: 0 1px;
+  padding: 0 4px;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  background: #f0f0f0;
+  border: 0;
+  border-bottom: 1px solid #8c8c8c;
+  border-radius: 0;
+}
+
+.note-form-field-input::placeholder {
+  color: #808080;
+  opacity: 1;
+}
+
+.note-form-field-input:focus-visible {
+  background: #e3e3e3;
+  border-bottom-color: #262626;
+  outline: 0;
+  box-shadow: inset 0 -1px 0 #262626;
+}
+
+.note-form-field-input:read-only {
+  cursor: default;
+}
+
 .note-comment-mark {
   background: rgba(241, 217, 158, 0.42);
   border-bottom: 2px solid var(--color-accent-strong);

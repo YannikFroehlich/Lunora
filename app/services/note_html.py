@@ -19,6 +19,7 @@ from app.services.note_content import (
     ALLOWED_FONT_SIZES,
     ALLOWED_FONTS,
     ALLOWED_LINE_HEIGHTS,
+    FORM_FIELD_BLANK,
     HEX_COLOR_RE,
 )
 from app.services.note_markdown import NoteMarkdownRenderer
@@ -179,6 +180,10 @@ class NoteHtmlRenderer:
                 parts.append(format_html('<span class="mention">@{}</span>', attrs.get("label", "")))
             elif child_type == "noteLink":
                 parts.append(format_html('<span class="note-link">{}</span>', attrs.get("label", "")))
+            elif child_type == "formField":
+                parts.append(
+                    format_html('<span class="form-field">{}</span>', attrs.get("value") or FORM_FIELD_BLANK)
+                )
             elif child_type == "mathInline":
                 parts.append(
                     format_html(

@@ -9,7 +9,7 @@ from django.urls import reverse
 from PIL import Image
 
 from app.models import Note, NoteAttachment, Profile
-from app.services.docx_import import FORM_GAP, _Converter, _note_image, docx_to_note
+from app.services.docx_import import _Converter, _note_image, docx_to_note
 from app.services.note_content import validate_note_document
 from app.services.notes import save_note
 
@@ -295,7 +295,7 @@ class DocxConversionTests(TestCase):
         validate_note_document(document)
         self.assertEqual([len(table["content"]) for table in document["content"]], [20, 20, 5])
 
-    def test_form_fields_keep_their_values_and_show_blanks_for_placeholders(self):
+    def test_form_fields_become_fill_in_fields_with_their_hint_and_value(self):
         def control(content, placeholder=False, extra_pr=""):
             pr = '<w:alias w:val="Eingabe"/><w:tag w:val="Eingabe"/>' + extra_pr
             if placeholder:
@@ -321,6 +321,8 @@ class DocxConversionTests(TestCase):
                 + control(run("Name", grey), placeholder=True)
                 + run(" Klasse: ")
                 + control(run("10b"))
+                + run(" Quelle: ")
+                + control(run("(Müller 2020)"), extra_pr="<w:citation/>")
                 + run(" Datum: ")
                 + control(
                     run("Datum", grey),
@@ -336,6 +338,7 @@ class DocxConversionTests(TestCase):
                 + "</w:p>",
                 control(_para("Klicken oder tippen Sie hier, um Text einzugeben."), placeholder=True),
                 control(_para("Eingetragener Absatz")),
+                "<w:p>" + control("<w:r><w:t>zwei</w:t><w:br/><w:t>Zeilen</w:t></w:r>") + "</w:p>",
                 "<w:p>"
                 + run("Vorname: ")
                 + field("<w:textInput/>", "FORMTEXT", run(" " * 5))
@@ -360,28 +363,28 @@ class DocxConversionTests(TestCase):
         _title, document, _images, _skipped = docx_to_note(build_docx(body=body), "Arbeitsblatt")
 
         validate_note_document(document)
-        texts = [
-            "".join(node.get("text", "") for node in block.get("content", []))
-            for block in document["content"]
-            if block["type"] == "paragraph"
-        ]
+
+        def shown(block):
+            parts = []
+            for node in block.get("content", []):
+                attrs = node.get("attrs", {})
+                if node["type"] == "formField":
+                    parts.append(f"[{attrs['placeholder']}|{attrs['value']}]")
+                else:
+                    parts.append(node.get("text", " / "))
+            return "".join(parts)
+
         self.assertEqual(
-            texts,
+            [shown(block) for block in document["content"] if block["type"] == "paragraph"],
             [
-                f"Name: {FORM_GAP} Klasse: 10b Datum: {FORM_GAP}",
+                "Name: [Name|] Klasse: [|10b] Quelle: (Müller 2020) Datum: [Datum|]",
                 "☒ erledigt ☐ offen",
-                FORM_GAP,
+                "[Klicken oder tippen Sie hier, um Text einzugeben.|]",
                 "Eingetragener Absatz",
-                f"Vorname: {FORM_GAP} Ort: Osnabrück Haken: ☒ Farbe: blau",
+                "zwei / Zeilen",
+                "Vorname: [|] Ort: [|Osnabrück] Haken: ☒ Farbe: [|blau]",
             ],
         )
-        self.assertEqual(
-            [node.get("marks") for node in document["content"][0]["content"]],
-            [None],
-            "the blanks don't take over the grey placeholder style",
-        )
-        bold = [node["text"] for node in document["content"][4]["content"] if "bold" in _marks(node)]
-        self.assertEqual(bold, ["nabrück"], "a filled form field keeps its formatting")
         table = document["content"][-1]
         self.assertEqual(len(table["content"]), 2, "rows inside a repeating section are kept")
         self.assertEqual(table["content"][1]["content"][0]["content"][0]["content"][0]["text"], "Wiederholt")

@@ -25,6 +25,9 @@ from app.services.note_content import (
 )
 from app.services.notes import display_name
 
+# Word's own hint for an empty plain-text content control.
+FORM_FIELD_HINT = "Klicken oder tippen Sie hier, um Text einzugeben."
+
 CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -100,6 +103,17 @@ def _run(text, rpr=""):
         elif piece:
             pieces.append(f'<w:t xml:space="preserve">{escape(piece)}</w:t>')
     return f"<w:r>{rpr}{''.join(pieces)}</w:r>" if pieces else ""
+
+
+def _form_field(attrs):
+    """A fill-in field as a Word plain-text content control, the counterpart of docx_import's; an
+    empty one shows its hint greyed out until something is typed in, like Word's placeholder."""
+    if value := str(attrs.get("value") or ""):
+        return f"<w:sdt><w:sdtPr><w:text/></w:sdtPr><w:sdtContent>{_run(value)}</w:sdtContent></w:sdt>"
+    hint = _run(
+        str(attrs.get("placeholder") or "") or FORM_FIELD_HINT, '<w:rPr><w:color w:val="808080"/></w:rPr>'
+    )
+    return f"<w:sdt><w:sdtPr><w:showingPlcHdr/><w:text/></w:sdtPr><w:sdtContent>{hint}</w:sdtContent></w:sdt>"
 
 
 def _file_size(size):
@@ -502,6 +516,8 @@ class NoteDocxRenderer:
                 parts.append(_run(attrs.get("label", "")))
             elif child_type == "mathInline":
                 parts.append(self._code_run(attrs.get("latex", "")))
+            elif child_type == "formField":
+                parts.append(_form_field(attrs))
         return "".join(parts)
 
     @staticmethod
