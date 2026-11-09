@@ -23,6 +23,8 @@ from PIL import Image
 from app.models import NoteAttachment
 from app.services.note_content import (
     ALLOWED_FONT_SIZES,
+    MAX_FORM_FIELD_PLACEHOLDER,
+    MAX_FORM_FIELD_VALUE,
     document_plain_text,
     safe_link_href,
     validate_note_document,
@@ -58,10 +60,18 @@ V = "{urn:schemas-microsoft-com:vml}"
 MC = "{http://schemas.openxmlformats.org/markup-compatibility/2006}"
 PR = "{http://schemas.openxmlformats.org/package/2006/relationships}"
 W14 = "{http://schemas.microsoft.com/office/word/2010/wordml}"
-
-# What an unfilled form field becomes: Word's grey placeholder ("Klicken oder tippen Sie hier …")
-# is a hint, not content, so it turns into a blank to fill in, as on a printed worksheet.
-FORM_GAP = "__________"
+# Content controls of these kinds are fill-in fields; the others (building blocks, citations,
+# pictures, equations, groups) only wrap document content.
+FIELD_CONTROL_KINDS = {"text", "richText", "date", "dropDownList", "comboBox"}
+SDT_KIND_TAGS = FIELD_CONTROL_KINDS | {
+    "docPartObj",
+    "docPartList",
+    "citation",
+    "bibliography",
+    "equation",
+    "picture",
+    "group",
+}
 
 HEADING_STYLE_RE = re.compile(r"^heading (\d)$")
 ALIGNMENTS = {
@@ -299,7 +309,8 @@ class _Converter:
                 blocks.extend(self._table(child))
             elif child.tag == W + "sdt" and (content := child.find(W + "sdtContent")) is not None:
                 if _showing_placeholder(child):
-                    blocks.append({"type": "paragraph", "content": [{"type": "text", "text": FORM_GAP}]})
+                    hint = "".join(text.text or "" for text in content.iter(W + "t"))
+                    blocks.append({"type": "paragraph", "content": [_field(placeholder=hint)]})
                 else:
                     blocks.extend(self.blocks(content))
             elif child.tag == W + "customXml":
@@ -337,7 +348,7 @@ class _Converter:
         inline, extra = self._inline(paragraph, props, is_heading, link=None)
         if self.form_text is not None:
             # A form field without its end in this paragraph keeps whatever it showed.
-            self._end_form_text(inline, self._marks(props, is_heading, None))
+            self._end_form_text(inline)
         if not inline and not extra and self._spacer(paragraph, props):
             # A tiny empty line only spaces out tables or boxes; the editor has its own margins.
             list_stack.clear()
@@ -550,16 +561,24 @@ class _Converter:
         return nodes, extra
 
     def _content_control(self, sdt, props, is_heading, link, nodes, extra):
-        """An inline content control: its shown text, a blank for a placeholder, a box for a check box."""
+        """An inline content control: a fill-in field (Word's grey placeholder becomes its hint), a box
+        for a check box, or just its content when it isn't an input or holds more than plain text."""
         checkbox = sdt.find(f"{W}sdtPr/{W14}checkbox")
         if checkbox is not None:
             checked = checkbox.find(W14 + "checked")
             is_checked = checked is not None and checked.get(f"{W14}val", "1") in {"1", "true"}
             _add_text(nodes, "☒" if is_checked else "☐", self._marks(props, is_heading, link))
-        elif _showing_placeholder(sdt):
-            _add_text(nodes, FORM_GAP, self._marks(props, is_heading, link))
-        elif (content := sdt.find(W + "sdtContent")) is not None:
-            child_nodes, child_extra = self._inline(content, props, is_heading, link)
+            return
+        content = sdt.find(W + "sdtContent")
+        if content is None:
+            return
+        child_nodes, child_extra = self._inline(content, props, is_heading, link)
+        text = _inline_text(child_nodes)
+        if _showing_placeholder(sdt):
+            nodes.append(_field(placeholder=text))
+        elif _is_input(sdt) and _plain(child_nodes, child_extra) and len(text) <= MAX_FORM_FIELD_VALUE:
+            nodes.append(_field(value=text))
+        else:
             for node in child_nodes:
                 _append(nodes, node)
             extra += child_extra
@@ -568,7 +587,7 @@ class _Converter:
         """Legacy form fields (FORMTEXT, FORMCHECKBOX, FORMDROPDOWN) keep their value in w:ffData."""
         kind = field_char.get(f"{W}fldCharType")
         if kind == "end" and self.form_text is not None:
-            self._end_form_text(nodes, marks)
+            self._end_form_text(nodes)
         data = field_char.find(W + "ffData")
         if kind != "begin" or data is None:
             return
@@ -580,18 +599,19 @@ class _Converter:
             entries = [_val(entry) or "" for entry in choices.findall(W + "listEntry")]
             index = _val(choices.find(W + "result")) or _val(choices.find(W + "default")) or "0"
             if index.isdigit() and int(index) < len(entries):
-                _add_text(nodes, entries[int(index)], marks)
+                nodes.append(_field(value=entries[int(index)][:MAX_FORM_FIELD_VALUE]))
         elif data.find(W + "textInput") is not None:
             self.form_text = []
 
-    def _end_form_text(self, nodes, marks):
-        """Word fills an empty text form field with en spaces; that becomes a blank to fill in."""
+    def _end_form_text(self, nodes):
+        """A legacy text form field becomes a fill-in field; Word fills an empty one with en spaces."""
         result, self.form_text = self.form_text, None
-        if any(node["type"] != "text" for node in result) or _inline_text(result).strip():
+        text = _inline_text(result)
+        if _plain(result, []) and len(text) <= MAX_FORM_FIELD_VALUE:
+            nodes.append(_field(value=text if text.strip() else ""))
+        else:
             for node in result:
                 _append(nodes, node)
-        else:
-            _add_text(nodes, FORM_GAP, marks)
 
     def _run(self, run, paragraph_props, is_heading, link, nodes, extra):
         props = dict(paragraph_props)
@@ -715,6 +735,25 @@ def _outer_textboxes(element):
 
 def _showing_placeholder(sdt):
     return (element := sdt.find(f"{W}sdtPr/{W}showingPlcHdr")) is not None and _on(element)
+
+
+def _is_input(sdt):
+    """Whether a content control is a text, date or list input (no kind given means rich text)."""
+    properties = sdt.find(W + "sdtPr")
+    kinds = {child.tag.removeprefix(W) for child in properties} if properties is not None else set()
+    return not (kinds & SDT_KIND_TAGS) or bool(kinds & FIELD_CONTROL_KINDS)
+
+
+def _plain(nodes, extra):
+    """Whether inline content is plain text a fill-in field can hold."""
+    return not extra and all(node["type"] == "text" for node in nodes)
+
+
+def _field(*, value="", placeholder=""):
+    return {
+        "type": "formField",
+        "attrs": {"placeholder": placeholder.strip()[:MAX_FORM_FIELD_PLACEHOLDER], "value": value},
+    }
 
 
 def _unwrapped(element, tag):

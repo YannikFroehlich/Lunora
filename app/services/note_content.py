@@ -33,6 +33,7 @@ ALLOWED_NODE_TYPES = {
     "noteLink",
     "mathInline",
     "mathBlock",
+    "formField",
 }
 ALLOWED_MARK_TYPES = {
     "bold",
@@ -79,6 +80,11 @@ ATTACHMENT_ID_RE = re.compile(r"^[0-9a-fA-F-]{36}$")
 # Paragraph/heading shading and rules (e.g. from Word): each a #rrggbb color.
 BLOCK_BOX_ATTRIBUTES = ("backgroundColor", "borderLeft", "borderBottom")
 MAX_LATEX_LENGTH = 4000
+# A fill-in field (Word's content controls): plain text typed into it plus the grey hint shown while
+# it is empty. Exports show an empty one as FORM_FIELD_BLANK, as on a printed worksheet.
+MAX_FORM_FIELD_VALUE = 2000
+MAX_FORM_FIELD_PLACEHOLDER = 200
+FORM_FIELD_BLANK = "__________"
 
 
 EMPTY_DOCUMENT = {"type": "doc", "content": [{"type": "paragraph"}]}
@@ -245,6 +251,7 @@ def _validate_node_attrs(node_type, attrs, state):
         "noteLink": {"noteId", "label"},
         "mathInline": {"latex"},
         "mathBlock": {"latex"},
+        "formField": {"placeholder", "value"},
     }.get(node_type, set())
     if set(attrs) - allowed:
         raise ValidationError(f"Das Element „{node_type}“ enthält unerlaubte Attribute.")
@@ -315,6 +322,13 @@ def _validate_node_attrs(node_type, attrs, state):
         latex = attrs.get("latex")
         if not isinstance(latex, str) or not latex.strip() or len(latex) > MAX_LATEX_LENGTH:
             raise ValidationError("Die Formel ist ungültig.")
+    if node_type == "formField":
+        value, placeholder = attrs.get("value", ""), attrs.get("placeholder", "")
+        if not isinstance(value, str) or len(value) > MAX_FORM_FIELD_VALUE:
+            raise ValidationError("Der Inhalt eines Eingabefelds ist ungültig.")
+        if not isinstance(placeholder, str) or len(placeholder) > MAX_FORM_FIELD_PLACEHOLDER:
+            raise ValidationError("Der Hinweistext eines Eingabefelds ist ungültig.")
+        state["characters"] += len(value)
 
 
 def _validate_mark(mark, state):
@@ -397,6 +411,8 @@ def document_plain_text(document):
             parts.append(f"@{(node.get('attrs') or {}).get('label', '')}")
         elif node.get("type") == "noteLink":
             parts.append(f"[[{(node.get('attrs') or {}).get('label', '')}]]")
+        elif node.get("type") == "formField":
+            parts.append((node.get("attrs") or {}).get("value", ""))
         elif node.get("type") in {"hardBreak", "paragraph", "heading", "listItem", "taskItem", "tableRow"}:
             if parts and not parts[-1].endswith("\n"):
                 parts.append("\n")

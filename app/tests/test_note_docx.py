@@ -4,14 +4,18 @@ import zipfile
 from xml.etree import ElementTree
 
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 from django.test import Client, TestCase
 from PIL import Image
 
 from app.models import Note, NoteAttachment, NoteShare, Profile, SystemSettings
 from app.services.docx_import import docx_to_note
-from app.services.note_content import validate_note_document
+from app.services.note_content import document_plain_text, validate_note_document
 from app.services.note_docx import render_note_docx
+from app.services.note_html import render_note_html
+from app.services.note_markdown import render_note_markdown
+from app.services.note_pdf import NotePdfRenderer
 from app.services.notes import create_note
 
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
@@ -134,6 +138,49 @@ class NoteDocxRenderTests(NoteDocxTestCase):
         self.assertEqual(content[3]["attrs"], {"start": 3, "type": "a"})
         self.assertEqual(content[5]["content"][0]["text"], "a<b")
         self.assertEqual(content[5]["content"][1]["type"], "hardBreak")
+
+    def test_form_fields_survive_every_export(self):
+        def field(placeholder="", value=""):
+            return {"type": "formField", "attrs": {"placeholder": placeholder, "value": value}}
+
+        data = self.export(
+            paragraph(text("Name: "), field("Name"), text(" Klasse: "), field("Klasse", "10b"))
+        )
+
+        _title, document, _images, _skipped = docx_to_note(data, "datei")
+        fields = [node for node in document["content"][0]["content"] if node["type"] == "formField"]
+        # Word keeps no hint once a value is typed, so the filled field comes back without one.
+        self.assertEqual(fields, [field("Name"), field(value="10b")])
+        note = Note.objects.get(pk=self.note.pk)
+        self.assertEqual(document_plain_text(note.document), "Name:  Klasse: 10b")
+        self.assertIn("Name: \\_\\_\\_\\_\\_\\_\\_\\_\\_\\_ Klasse: 10b", render_note_markdown(note))
+        self.assertIn(
+            '<span class="form-field">__________</span>', render_note_html(note, attachment_url=str)
+        )
+        self.assertIn('<span class="form-field">10b</span>', render_note_html(note, attachment_url=str))
+        self.assertEqual(
+            NotePdfRenderer(note).inline_markup(note.document["content"][0]["content"]),
+            "Name: __________ Klasse: 10b",
+        )
+
+    def test_form_field_attributes_are_validated(self):
+        for attrs in (
+            {"placeholder": "", "value": 3},
+            {"placeholder": "x" * 201, "value": ""},
+            {"placeholder": "", "value": "x" * 2001},
+            {"placeholder": "", "value": "", "onclick": "x"},
+        ):
+            with self.subTest(attrs=attrs), self.assertRaises(ValidationError):
+                validate_note_document(
+                    {"type": "doc", "content": [paragraph({"type": "formField", "attrs": attrs})]}
+                )
+        with self.assertRaises(ValidationError):
+            validate_note_document(
+                {
+                    "type": "doc",
+                    "content": [paragraph({"type": "formField", "marks": [{"type": "bold"}]})],
+                }
+            )
 
     def test_every_part_is_well_formed_and_declared(self):
         parts = self.parts(self.export(paragraph(text("Inhalt"))))

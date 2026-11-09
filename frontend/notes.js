@@ -583,6 +583,85 @@ const Mention = Node.create({
   },
 });
 
+// Mirrors MAX_FORM_FIELD_VALUE in note_content.py.
+const FORM_FIELD_MAX_LENGTH = 2000;
+
+// A fill-in field like Word's content controls: a real text input inside the line, showing its
+// placeholder grey while empty. Typing stores the text in the node's `value`, so it saves like any
+// other edit. Marks are not allowed on it (the server only accepts them on text).
+const FormField = Node.create({
+  name: "formField",
+  group: "inline",
+  inline: true,
+  atom: true,
+  selectable: false,
+  marks: "",
+  addAttributes() {
+    return {
+      placeholder: { default: "", rendered: false, parseHTML: (element) => element.dataset.placeholder || "" },
+      value: { default: "", rendered: false, parseHTML: (element) => element.dataset.value || "" },
+    };
+  },
+  parseHTML() {
+    return [{ tag: "span[data-form-field]" }];
+  },
+  renderHTML({ node, HTMLAttributes }) {
+    return [
+      "span",
+      mergeAttributes(HTMLAttributes, {
+        "data-form-field": "true",
+        "data-placeholder": node.attrs.placeholder,
+        "data-value": node.attrs.value,
+        class: "note-form-field",
+      }),
+      node.attrs.value || "__________",
+    ];
+  },
+  renderText({ node }) {
+    return node.attrs.value || "__________";
+  },
+  addNodeView() {
+    return ({ node: initialNode, editor, getPos }) => {
+      let node = initialNode;
+      const dom = document.createElement("span");
+      dom.className = "note-form-field";
+      dom.contentEditable = "false";
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "note-form-field-input";
+      input.maxLength = FORM_FIELD_MAX_LENGTH;
+      input.autocomplete = "off";
+      input.spellcheck = true;
+      const sync = () => {
+        if (input.value !== node.attrs.value) input.value = node.attrs.value || "";
+        input.placeholder = node.attrs.placeholder || "";
+        input.setAttribute("aria-label", node.attrs.placeholder || "Eingabefeld");
+        input.readOnly = !editor.isEditable;
+        input.size = Math.min(Math.max(input.value.length, input.placeholder.length, 8) + 1, 60);
+      };
+      input.addEventListener("input", () => {
+        const pos = typeof getPos === "function" ? getPos() : null;
+        if (typeof pos !== "number" || !editor.isEditable) return;
+        editor.view.dispatch(editor.view.state.tr.setNodeAttribute(pos, "value", input.value));
+      });
+      sync();
+      dom.append(input);
+      return {
+        dom,
+        update(updatedNode) {
+          if (updatedNode.type.name !== node.type.name) return false;
+          node = updatedNode;
+          sync();
+          return true;
+        },
+        // The input handles its own keys, clicks and selection; ProseMirror stays out of it.
+        stopEvent: (event) => event.target === input,
+        ignoreMutation: () => true,
+      };
+    };
+  },
+});
+
 const NoteLink = Node.create({
   name: "noteLink",
   group: "inline",
@@ -883,6 +962,7 @@ const COMMAND_DEFAULTS = {
   horizontalRule: { label: "Trennlinie", shortcut: "Alt+Shift+-" },
   codeBlock: { label: "Codeblock", shortcut: "Mod+Alt+C" },
   insertMath: { label: "Formel einfügen", shortcut: "Mod+Alt+Q" },
+  insertFormField: { label: "Eingabefeld einfügen", shortcut: "Mod+Alt+J" },
   addComment: { label: "Kommentar hinzufügen", shortcut: "Mod+Alt+M" },
   comments: { label: "Kommentare anzeigen", shortcut: "Mod+Alt+/" },
   insertTable: { label: "Tabelle einfügen", shortcut: "Ctrl+Alt+T" },
@@ -1018,6 +1098,7 @@ function initNotesApp() {
         NoteAttachmentNode,
         MathInline.configure({ onEdit: openMathDialog }),
         MathBlock.configure({ onEdit: openMathDialog }),
+        FormField,
         CommentThread,
         Mention.configure({
           suggestion: {
@@ -1291,6 +1372,12 @@ function initNotesApp() {
       horizontalRule: () => editor?.chain().focus().setHorizontalRule().run(),
       codeBlock: () => editor?.chain().focus().toggleCodeBlock().run(),
       insertMath: insertMath,
+      insertFormField: () =>
+        editor
+          ?.chain()
+          .focus()
+          .insertContent({ type: "formField", attrs: { placeholder: "", value: "" } })
+          .run(),
       addComment: addCommentToSelection,
       insertTable: () => insertTable(document.querySelector("[data-table-dialog-open]")),
       addRowBefore: () => editor?.chain().focus().addRowBefore().run(),

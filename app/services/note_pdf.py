@@ -23,6 +23,8 @@ from reportlab.platypus import (
 )
 from reportlab.platypus.xpreformatted import XPreformatted
 
+from app.services.note_content import FORM_FIELD_BLANK
+
 PAGE_WIDTH, PAGE_HEIGHT = A4
 PAGE_MARGIN = 19 * mm
 CONTENT_WIDTH = PAGE_WIDTH - (2 * PAGE_MARGIN)
@@ -172,6 +174,9 @@ class NotePdfRenderer:
         for child in content:
             if child.get("type") == "hardBreak":
                 parts.append("<br/>")
+                continue
+            if child.get("type") == "formField":
+                parts.append(escape((child.get("attrs") or {}).get("value") or FORM_FIELD_BLANK))
                 continue
             if child.get("type") == "mathInline":
                 latex = escape((child.get("attrs") or {}).get("latex", ""))
