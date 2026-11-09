@@ -295,7 +295,11 @@ def notes(request, note_id=None):
         "title": ("title", "id"),
         "updated": ("-state_is_pinned", "-updated_at", "-id"),
     }
-    note_list = list(queryset.order_by(*order_map.get(sort, order_map["custom"]))[:200])
+    # ponytail: the sidebar is one draggable folder tree, so it needs every note and paging would split
+    # folders. Load folder contents on demand if accounts ever reach many thousands of notes.
+    note_list = list(
+        queryset.defer("document", "search_vector").order_by(*order_map.get(sort, order_map["custom"]))
+    )
 
     selected_note = None
     if note_id:

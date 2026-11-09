@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- The notes sidebar and its search results now show every note. Accounts with more than 200 notes
+  used to lose the rest from the list without any hint.
 - Notes in folders no longer get cut off at the right edge of the sidebar when their title is long;
   the title ends with "…" instead.
 - The shopping list can be shared: under "Gemeinsam nutzen" you name someone by e-mail or username,

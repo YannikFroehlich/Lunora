@@ -6,7 +6,9 @@ from tempfile import TemporaryDirectory
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connection
 from django.test import Client, SimpleTestCase, TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from app.models import (
@@ -171,6 +173,17 @@ class NotesTests(TestCase):
         self.assertEqual(detail.status_code, 200)
         self.assertEqual(detail.context["selected_note_data"]["id"], note.id)
         self.assertContains(detail, '<a class="notes-mobile-back" href="/notes/"')
+
+    def test_notes_overview_lists_every_note_without_loading_documents(self):
+        Note.objects.bulk_create(Note(owner=self.owner, title=f"Notiz {index}") for index in range(205))
+
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get("/notes/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context["note_items"]), 205)
+        self.assertContains(response, "data-note-card=", count=205)
+        self.assertNotIn('"app_note"."document"', " ".join(query["sql"] for query in queries))
 
     def test_notes_overview_empty_state_invites_first_note_when_none_exist(self):
         response = self.client.get("/notes/")
