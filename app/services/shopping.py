@@ -21,7 +21,8 @@ CATEGORIES = (
 FALLBACK_CATEGORY = "other"
 
 # category: (suggested name, emoji, space-separated stems matched anywhere in the item name).
-# Stems are singular so a plural and its compound end at the same spot ("bohne"/"kaffeebohne").
+# Stems are singular so a plural and its compound end at the same spot ("bohne"/"kaffeebohne");
+# "_" stands for a space inside a stem ("red_bull").
 CATALOG = {
     "produce": (
         ("Äpfel", "🍎", "apfel äpfel"),
@@ -76,9 +77,9 @@ CATALOG = {
         ("Wraps", "🫓", "wrap tortilla fladenbrot pita"),
     ),
     "dairy": (
-        ("Milch", "🥛", "milch"),
-        ("Käse", "🧀", "käse gouda emmentaler parmesan mozzarella feta camembert brie halloumi"),
-        ("Butter", "🧈", "butter margarine"),
+        ("Milch", "🥛", "milch alpro landliebe bärenmarke"),
+        ("Käse", "🧀", "käse gouda emmentaler parmesan mozzarella feta camembert brie halloumi philadelphia"),
+        ("Butter", "🧈", "butter margarine rama"),
         ("Eier", "🥚", "eier"),
         ("Joghurt", "🥛", "joghurt jogurt quark skyr kefir"),
         ("Pudding", "🍮", "pudding milchreis"),
@@ -88,13 +89,17 @@ CATALOG = {
     "meat": (
         ("Hähnchen", "🍗", "hähnchen hühnchen huhn chicken pute geflügel"),
         ("Hackfleisch", "🥩", "hack fleisch rind schwein steak schnitzel gulasch frikadelle"),
-        ("Wurst", "🌭", "wurst würstchen salami schinken aufschnitt leberkäse"),
+        ("Wurst", "🌭", "wurst würstchen salami schinken aufschnitt leberkäse rügenwalder"),
         ("Speck", "🥓", "speck bacon"),
         ("Lachs", "🐟", "fisch lachs forelle hering kabeljau"),
         ("Garnelen", "🦐", "garnele shrimp krabbe"),
     ),
     "pantry": (
-        ("Nudeln", "🍝", "nudel pasta spaghetti penne fusilli lasagne tortellini gnocchi"),
+        (
+            "Nudeln",
+            "🍝",
+            "nudel pasta spaghetti penne fusilli lasagne tortellini gnocchi barilla miracoli ravioli",
+        ),
         ("Reis", "🍚", "reis couscous bulgur quinoa"),
         ("Mehl", "🌾", "mehl"),
         ("Zucker", "🍬", "zucker"),
@@ -102,56 +107,72 @@ CATALOG = {
         ("Olivenöl", "🫒", "öl essig olive balsamico"),
         ("Kidneybohnen", "🥫", "dose konserve bohne linse kichererbse passierte"),
         ("Ketchup", "🥫", "soße sauce ketchup senf mayo pesto tomatenmark"),
-        ("Müsli", "🥣", "müsli flocken cornflakes granola"),
+        ("Müsli", "🥣", "müsli flocken cornflakes granola kellogg"),
         ("Marmelade", "🍯", "marmelade konfitüre honig nutella aufstrich erdnussbutter sirup"),
-        ("Gemüsebrühe", "🍲", "brühe suppe"),
+        ("Gemüsebrühe", "🍲", "brühe suppe maggi knorr"),
         ("Backpulver", "🧁", "backpulver hefe vanille stärke"),
         ("Apfelmus", "🍎", "apfelmus"),
         ("Sauerkraut", "🫙", "sauerkraut gewürzgurke kokosmilch"),
     ),
     "frozen": (
-        ("Pizza", "🍕", "pizza"),
+        ("Pizza", "🍕", "pizza ristorante"),
         ("Pommes", "🍟", "pommes krokette"),
         ("Erbsen", "🥦", "erbse"),
-        ("Eis", "🍨", "eis eiscreme"),
+        ("Eis", "🍨", "eis eiscreme magnum langnese ben_&_jerry"),
         ("Eiswürfel", "🧊", "eiswürfel tiefkühl"),
         ("Fischstäbchen", "🐟", "fischstäbchen"),
     ),
     "sweets": (
-        ("Schokolade", "🍫", "schokolade schoko praline riegel"),
-        ("Kekse", "🍪", "keks cookie waffel"),
-        ("Gummibärchen", "🍬", "gummibär bonbon fruchtgummi lakritz kaugummi marshmallow"),
-        ("Chips", "🍿", "chips flips popcorn salzstangen cracker studentenfutter"),
+        (
+            "Schokolade",
+            "🍫",
+            "schokolade schoko praline riegel milka ritter_sport bueno duplo hanuta knoppers toffifee merci raffaello rocher twix snickers mars kitkat",
+        ),
+        ("Kekse", "🍪", "keks cookie waffel oreo leibniz prinzenrolle"),
+        (
+            "Gummibärchen",
+            "🍬",
+            "gummibär bonbon fruchtgummi lakritz kaugummi marshmallow haribo tic_tac mentos werther",
+        ),
+        ("Chips", "🍿", "chips flips popcorn salzstangen cracker studentenfutter pringles funny"),
     ),
     "drinks": (
-        ("Wasser", "💧", "wasser sprudel"),
-        ("Orangensaft", "🧃", "saft schorle"),
-        ("Cola", "🥤", "cola limo fanta sprite eistee energy smoothie"),
-        ("Kaffee", "☕", "kaffee espresso kaffeebohne kakao"),
+        ("Wasser", "💧", "wasser sprudel volvic gerolsteiner"),
+        ("Orangensaft", "🧃", "saft schorle capri durstlöscher granini hohes_c"),
+        (
+            "Cola",
+            "🥤",
+            "cola limo fanta sprite eistee energy smoothie spezi mezzo schweppes club-mate fritz-kola red_bull monster lipton",
+        ),
+        ("Kaffee", "☕", "kaffee espresso kaffeebohne kakao jacobs nescafé dallmayr tchibo nesquik"),
         ("Tee", "🍵", "tee"),
-        ("Bier", "🍺", "bier radler"),
+        ("Bier", "🍺", "bier radler krombacher beck's augustiner erdinger bitburger warsteiner radeberger"),
         ("Wein", "🍷", "wein sekt prosecco rosé"),
-        ("Schnaps", "🥃", "schnaps wodka whisky likör"),
+        ("Schnaps", "🥃", "schnaps wodka whisky likör jägermeister aperol"),
     ),
     "household": (
-        ("Toilettenpapier", "🧻", "toilettenpapier klopapier küchenrolle taschentuch taschentücher"),
-        ("Duschgel", "🧼", "seife duschgel shampoo spülung"),
+        (
+            "Toilettenpapier",
+            "🧻",
+            "toilettenpapier klopapier küchenrolle taschentuch taschentücher tempo zewa",
+        ),
+        ("Duschgel", "🧼", "seife duschgel shampoo spülung dove"),
         (
             "Spülmittel",
             "🧽",
-            "spülmittel spülmaschine schwamm schwämme spültuch spültücher putzmittel reiniger",
+            "spülmittel spülmaschine schwamm schwämme spültuch spültücher putzmittel reiniger pril somat finish domestos meister_proper swiffer",
         ),
-        ("Waschmittel", "🧺", "waschmittel weichspüler"),
-        ("Zahnpasta", "🪥", "zahnpasta zahnbürste zahnseide"),
-        ("Sonnencreme", "🧴", "creme lotion deo watte tampon feuchttuch feuchttücher"),
+        ("Waschmittel", "🧺", "waschmittel weichspüler ariel persil lenor"),
+        ("Zahnpasta", "🪥", "zahnpasta zahnbürste zahnseide elmex colgate"),
+        ("Sonnencreme", "🧴", "creme lotion deo watte tampon feuchttuch feuchttücher nivea labello"),
         ("Rasierer", "🪒", "rasier"),
         ("Müllbeutel", "🗑️", "müllbeutel mülltüte alufolie frischhaltefolie backpapier gefrierbeutel"),
         ("Batterien", "🔋", "batterie"),
         ("Glühbirnen", "💡", "glühbirne leuchtmittel"),
         ("Teelichter", "🕯️", "teelicht kerze"),
         ("Grillkohle", "🔥", "grillkohle streichholz streichhölzer"),
-        ("Windeln", "🍼", "windel babynahrung"),
-        ("Katzenfutter", "🐾", "futter streu"),
+        ("Windeln", "🍼", "windel babynahrung pampers"),
+        ("Katzenfutter", "🐾", "futter streu whiskas"),
         ("Pflaster", "💊", "tablette medikament pflaster"),
         ("Blumen", "💐", "blume"),
     ),
@@ -185,13 +206,14 @@ PRODUCTS = {
         Butter, Margarine, Eier, Joghurt, Naturjoghurt, Griechischer Joghurt, Fruchtjoghurt,
         Quark, Magerquark, Skyr, Sahne, Schlagsahne, Saure Sahne, Schmand, Crème fraîche,
         Frischkäse, Hüttenkäse, Mozzarella, Gouda, Emmentaler, Parmesan, Feta, Camembert, Brie,
-        Reibekäse, Scheibenkäse, Halloumi, Pudding, Milchreis, Kefir, Tofu
+        Reibekäse, Scheibenkäse, Halloumi, Pudding, Milchreis, Kefir, Tofu, Rama, Philadelphia,
+        Alpro Haferdrink, Landliebe Milch, Bärenmarke
     """,
     "meat": """
         Hähnchenbrust, Hähnchenschenkel, Putenbrust, Hackfleisch, Rinderhack, Gemischtes Hack,
         Rindersteak, Schweinefilet, Schnitzel, Gulasch, Bratwurst, Wiener Würstchen, Salami,
         Kochschinken, Aufschnitt, Leberwurst, Leberkäse, Speck, Bacon, Frikadellen, Lachs,
-        Räucherlachs, Thunfisch, Forelle, Garnelen, Hering, Kabeljau, Seelachs
+        Räucherlachs, Thunfisch, Forelle, Garnelen, Hering, Kabeljau, Seelachs, Rügenwalder Mühle
     """,
     "pantry": """
         Nudeln, Spaghetti, Penne, Fusilli, Lasagneplatten, Tortellini, Gnocchi, Reis, Basmatireis,
@@ -201,24 +223,32 @@ PRODUCTS = {
         Sonnenblumenöl, Essig, Balsamico, Ketchup, Senf, Mayonnaise, Pesto, Tomatensoße,
         Sojasoße, Gemüsebrühe, Hühnerbrühe, Müsli, Haferflocken, Cornflakes, Granola, Marmelade,
         Honig, Nutella, Erdnussbutter, Ahornsirup, Backpulver, Hefe, Speisestärke, Apfelmus,
-        Sauerkraut, Gewürzgurken, Oliven, Kokosmilch
+        Sauerkraut, Gewürzgurken, Oliven, Kokosmilch, Barilla Spaghetti, Miracoli, Ravioli, Maggi,
+        Knorr Fix, Kellogg's Frosties
     """,
     "frozen": """
         Pizza, Tiefkühlpizza, Pommes, Kroketten, Fischstäbchen, Eis, Vanilleeis, Eiswürfel,
-        Tiefkühlgemüse, Erbsen
+        Tiefkühlgemüse, Erbsen, Ristorante Pizza, Magnum, Langnese, Ben & Jerry's
     """,
     "sweets": """
         Schokolade, Vollmilchschokolade, Zartbitterschokolade, Pralinen, Schokoriegel,
         Müsliriegel, Kekse, Butterkekse, Waffeln, Gummibärchen, Fruchtgummi, Lakritz, Bonbons,
         Kaugummi, Chips, Tortilla-Chips, Popcorn, Salzstangen, Erdnussflips, Cracker,
-        Studentenfutter, Marshmallows
+        Studentenfutter, Marshmallows, Haribo Goldbären, Milka, Ritter Sport, Kinder Schokolade,
+        Kinder Bueno, Duplo, Hanuta, Knoppers, Toffifee, Merci, Raffaello, Ferrero Rocher, Twix,
+        Snickers, Mars, KitKat, Oreo, Leibniz Butterkeks, Prinzenrolle, Pringles,
+        Funny-Frisch Chips, Tic Tac, Mentos, Werther's Original
     """,
     "drinks": """
         Wasser, Mineralwasser, Stilles Wasser, Sprudel, Apfelsaft, Orangensaft, Multivitaminsaft,
         Traubensaft, Apfelschorle, Cola, Cola Zero, Limonade, Eistee, Energydrink, Smoothie,
         Kaffee, Kaffeebohnen, Kaffeepads, Espresso, Tee, Grüner Tee, Früchtetee, Pfefferminztee,
         Kräutertee, Kakao, Bier, Alkoholfreies Bier, Radler, Weißwein, Rotwein, Rosé, Sekt,
-        Prosecco, Wodka, Whisky
+        Prosecco, Wodka, Whisky, Paulaner Spezi, Spezi, Mezzo Mix, Coca-Cola, Coca-Cola Zero, Fanta,
+        Sprite, Schweppes, Club-Mate, Fritz-Kola, Red Bull, Monster Energy, Capri-Sun, Durstlöscher,
+        Lipton Ice Tea, Granini, Hohes C, Volvic, Gerolsteiner, Krombacher, Beck's, Augustiner,
+        Paulaner Weißbier, Erdinger, Bitburger, Warsteiner, Radeberger, Jacobs Krönung, Nescafé,
+        Dallmayr Prodomo, Tchibo Kaffee, Nesquik, Jägermeister, Aperol
     """,
     "household": """
         Toilettenpapier, Küchenrolle, Taschentücher, Spülmittel, Spülmaschinentabs, Schwämme,
@@ -227,13 +257,15 @@ PRODUCTS = {
         Spülung, Handseife, Zahnpasta, Zahnbürste, Zahnseide, Deo, Rasierer, Rasierschaum,
         Bodylotion, Handcreme, Sonnencreme, Wattepads, Wattestäbchen, Tampons, Feuchttücher,
         Windeln, Babynahrung, Katzenfutter, Hundefutter, Katzenstreu, Batterien, Glühbirnen,
-        Kerzen, Teelichter, Pflaster, Kopfschmerztabletten, Blumen, Grillkohle, Streichhölzer
+        Kerzen, Teelichter, Pflaster, Kopfschmerztabletten, Blumen, Grillkohle, Streichhölzer,
+        Tempo, Zewa, Ariel, Persil, Lenor, Pril, Somat, Finish, Domestos, Meister Proper, Swiffer,
+        Dove, Elmex, Colgate, Nivea, Labello, Pampers, Whiskas
     """,
 }
 
 CATEGORY_LABELS = {key: (label, emoji) for key, label, emoji in CATEGORIES}
 _STEMS = tuple(
-    (stem.casefold(), category, emoji)
+    (stem.replace("_", " ").casefold(), category, emoji)
     for category, entries in CATALOG.items()
     for _name, emoji, stems in entries
     for stem in stems.split()

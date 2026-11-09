@@ -667,8 +667,13 @@ class ShoppingCatalogTests(SimpleTestCase):
         by_name = {suggestion["name"]: suggestion for suggestion in SUGGESTIONS}
 
         self.assertEqual(by_name["Apfelsaft"], {"name": "Apfelsaft", "emoji": "🧃", "aisle": "Getränke"})
-        self.assertGreater(len(SUGGESTIONS), 300)
+        self.assertEqual(by_name["Paulaner Spezi"]["aisle"], "Getränke")
+        self.assertGreater(len(SUGGESTIONS), 450)
         self.assertEqual(len(by_name), len(SUGGESTIONS))
+
+    def test_multi_word_stems_match_only_as_a_whole(self):
+        self.assertEqual(classify_item("Hohes C"), ("drinks", "🧃"))
+        self.assertEqual(classify_item("Weintrauben")[0], "produce")  # not "ben" of "Ben & Jerry's"
 
 
 class HabitTrackerTests(TestCase):
