@@ -215,7 +215,7 @@ sudo journalctl -u lunora-backup.service --no-pager -n 50
 `/healthz/` braucht keine Anmeldung und antwortet mit `200` und `{"status": "ok", "checks": {…}}`,
 solange Datenbank, Cache (Redis) und die Automatik laufen; sonst mit `503` und `"error"`,
 `"stale"` (der `lunora-automations`-Dienst hat seit drei Intervallen, mindestens fünf Minuten,
-keinen Durchlauf abgeschlossen) oder `"unknown"` (noch nie gelaufen) beim betroffenen Check.
+keinen Durchlauf fehlerfrei abgeschlossen) oder `"unknown"` (noch nie gelaufen) beim betroffenen Check.
 Details stehen nur im Journal von `lunora-web`. Ein externer Uptime-Monitor kann
 `https://lunora.yfserver.de/healthz/` abfragen.
 

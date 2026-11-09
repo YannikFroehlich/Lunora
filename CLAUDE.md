@@ -233,7 +233,7 @@ Static CSS/JS entry files are cache-busted with a content hash rather than Djang
 
 ### Health check
 
-`/healthz/` (`healthz` in `core_views.py`, `app/services/health.py`) is public, GET-only and `never_cache`: it checks the database, the cache and the `AutomationHeartbeat` row that `run_automations` touches after every pass (overdue after three intervals, at least five minutes), answers 200/503 with only fixed status words, and logs causes server-side. The automations check only counts where `LUNORA_HEALTH_REQUIRE_AUTOMATIONS` is on (default: production). It is in `SECURE_REDIRECT_EXEMPT` so host-local monitors can use plain HTTP; never add versions, hostnames or exception text to its body.
+`/healthz/` (`healthz` in `core_views.py`, `app/services/health.py`) is public, GET-only and `never_cache`: it checks the database, the cache and the `AutomationHeartbeat` row that `run_automations` touches after every pass without a failed step (`_guarded` in `scheduled_tasks.py` keeps one failing step from stopping the later ones; overdue after three intervals, at least five minutes), answers 200/503 with only fixed status words, and logs causes server-side. The automations check only counts where `LUNORA_HEALTH_REQUIRE_AUTOMATIONS` is on (default: production). It is in `SECURE_REDIRECT_EXEMPT` so host-local monitors can use plain HTTP; never add versions, hostnames or exception text to its body.
 
 ## Configuration
 

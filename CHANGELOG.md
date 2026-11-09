@@ -12,6 +12,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   30 seconds. Such a calendar shows "Der Kalender konnte nicht gelesen werden." and keeps its
   previous events; an .ics file with impossible dates is reported instead of causing an error page.
   Descriptions of imported and subscribed calendar events are cut off after 10,000 characters.
+- A failing background job no longer holds up the others: if, say, the reminder e-mails fail, Web
+  Push and scheduled chat messages still go out. `/healthz/` keeps reporting the problem.
 - The note page keeps its A4 width on smaller desktop windows too and scrolls sideways, like a sheet
   in Word, instead of getting narrower. Text wraps the same in every window, and imported tables no
   longer stick out of the page.
