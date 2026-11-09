@@ -23,7 +23,7 @@ from app.services.calendar_subscriptions import (
     sync_subscription,
 )
 from app.services.data_export import write_user_export
-from app.services.data_import import import_files, import_ics_events
+from app.services.data_import import MAX_ICS_DESCRIPTION_CHARS, import_files, import_ics_events
 from app.services.scheduled_tasks import run_scheduled_tasks
 from app.tests.helpers import FakeHttpConnection
 
@@ -286,6 +286,14 @@ class CalendarSubscriptionSyncTests(TestCase):
 
         self.subscription.refresh_from_db()
         self.assertEqual(self.subscription.last_error, "Der Kalender konnte nicht gelesen werden.")
+
+    def test_long_descriptions_are_shortened(self):
+        description = "x" * (MAX_ICS_DESCRIPTION_CHARS + 1)
+
+        self.assertTrue(self.sync(ics(vevent("a", "Eins", self.now, extra=f"DESCRIPTION:{description}\r\n"))))
+
+        event = CalendarEvent.objects.get(subscription=self.subscription)
+        self.assertEqual(len(event.description), MAX_ICS_DESCRIPTION_CHARS)
 
     def test_nul_characters_are_dropped(self):
         self.assertTrue(self.sync(ics(vevent("a", "Ti\x00tel", self.now))))

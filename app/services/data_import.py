@@ -341,6 +341,8 @@ ICS_WEEKDAYS = {"MO": 0, "TU": 1, "WE": 2, "TH": 3, "FR": 4, "SA": 5, "SU": 6}
 BYDAY_RE = re.compile(r"^([+-]?\d{1,2})?(MO|TU|WE|TH|FR|SA|SU)$")
 # Periods walked at most, so a rule that rarely matches (FEB 30th never does) can't loop for long.
 MAX_RECURRENCE_PERIODS = 5000
+# Every occurrence of a series stores its own copy, so a long text would multiply in the database.
+MAX_ICS_DESCRIPTION_CHARS = 10_000
 
 
 def _ics_unescape(value):
@@ -587,7 +589,9 @@ def _ics_event(properties, default_zone):
         "uid": properties.get("UID", ("",))[0].strip()[:255],
         "title": _ics_unescape(properties.get("SUMMARY", ("",))[0]).strip()[:255] or "Ohne Titel",
         "location": _ics_unescape(properties.get("LOCATION", ("",))[0]).strip()[:255],
-        "description": _ics_unescape(properties.get("DESCRIPTION", ("",))[0]).strip(),
+        "description": _ics_unescape(properties.get("DESCRIPTION", ("",))[0]).strip()[
+            :MAX_ICS_DESCRIPTION_CHARS
+        ],
         "start_at": start_at,
         "end_at": end_at,
         "is_all_day": is_all_day,
