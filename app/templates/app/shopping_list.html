@@ -1,0 +1,85 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}Einkaufszettel | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell tools-shell">
+    <header class="page-hero">
+        <div>
+            <a class="tools-back-link" href="{% url 'tools' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Werkzeuge</a>
+            <h1>Einkaufszettel</h1>
+            <p>Schreib auf, was fehlt, und hake es im Laden ab.</p>
+        </div>
+        <i class="fa-solid fa-basket-shopping hero-branch" aria-hidden="true"></i>
+    </header>
+
+    <section class="glass-panel uml-create-panel shopping-create-panel">
+        <form class="vocab-create-form shopping-create-form" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="shopping_add">
+            <div class="shopping-name-field" data-shopping-suggest>
+                <label class="vocab-field vocab-field-wide">
+                    <span>{{ shopping_form.name.label }}</span>
+                    {{ shopping_form.name }}
+                </label>
+                <div class="shopping-suggestions" id="shopping-suggestions" role="listbox" aria-label="Vorschläge" hidden></div>
+            </div>
+            <label class="vocab-field">
+                <span>{{ shopping_form.quantity.label }}</span>
+                {{ shopping_form.quantity }}
+            </label>
+            <button class="primary-button" type="submit"><i class="fa-solid fa-plus" aria-hidden="true"></i> Hinzufügen</button>
+            {% if shopping_form.errors %}<ul class="errorlist">{% for errors in shopping_form.errors.values %}{% for error in errors %}<li>{{ error }}</li>{% endfor %}{% endfor %}</ul>{% endif %}
+        </form>
+    </section>
+
+    {% if item_count %}
+    <div class="shopping-toolbar">
+        <span>{{ done_items|length }} von {{ item_count }} im Wagen</span>
+        {% if done_items %}
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="shopping_clear_done">
+            <button class="ghost-button" type="submit"><i class="fa-solid fa-broom" aria-hidden="true"></i> Erledigte entfernen</button>
+        </form>
+        {% endif %}
+    </div>
+    <div class="glass-panel shopping-list">
+        {% for group in groups %}
+        <section class="shopping-group" id="group-{{ group.key }}" aria-labelledby="group-{{ group.key }}-title">
+            <h2 id="group-{{ group.key }}-title"><span aria-hidden="true">{{ group.emoji }}</span> {{ group.label }} <small>{{ group.items|length }}</small></h2>
+            <ul class="shopping-items">
+                {% for item in group.items %}{% include 'app/partials/shopping_item.html' %}{% endfor %}
+            </ul>
+        </section>
+        {% empty %}
+        <p class="shopping-all-done"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Alles im Wagen.</p>
+        {% endfor %}
+        {% if done_items %}
+        <section class="shopping-group is-done" id="group-done" aria-labelledby="group-done-title">
+            <h2 id="group-done-title"><span aria-hidden="true">🛒</span> Im Wagen <small>{{ done_items|length }}</small></h2>
+            <ul class="shopping-items">
+                {% for item in done_items %}{% include 'app/partials/shopping_item.html' %}{% endfor %}
+            </ul>
+        </section>
+        {% endif %}
+    </div>
+    {% else %}
+    <div class="empty-state-card uml-empty">
+        <i class="fa-solid fa-basket-shopping" aria-hidden="true"></i>
+        <strong>Der Zettel ist leer</strong>
+        <p>Trag oben ein, was du brauchst, z. B. „Milch“ und „2 Liter“.</p>
+    </div>
+    {% endif %}
+</section>
+{{ suggestions|json_script:"shopping-suggestion-data" }}
+{% endblock %}
+
+{% block page_js %}
+<script src="{% versioned_static 'js/shopping.js' %}"></script>
+{% endblock %}

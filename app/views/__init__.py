@@ -57,7 +57,15 @@ from .notification_views import (
 from .pwa_views import offline, service_worker
 from .search_views import global_search
 from .tasks_views import task_time_report, tasks
-from .tools_views import focus_timer, habits, tools, uml_diagram_api, uml_diagram_editor, uml_diagrams
+from .tools_views import (
+    focus_timer,
+    habits,
+    shopping_list,
+    tools,
+    uml_diagram_api,
+    uml_diagram_editor,
+    uml_diagrams,
+)
 from .vacation_planner_views import (
     custom_holiday_delete,
     custom_holiday_save,
@@ -165,6 +173,7 @@ __all__ = [
     "LunoraPasswordResetCompleteView",
     "register",
     "settings",
+    "shopping_list",
     "weather",
     "dashboard_weather",
     "weather_map_tile",

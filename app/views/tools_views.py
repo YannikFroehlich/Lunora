@@ -6,11 +6,13 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
-from app.forms import HabitForm, HabitReminderForm
-from app.models import Habit, UmlDiagram
+from app.forms import HabitForm, HabitReminderForm, ShoppingItemForm
+from app.models import Habit, ShoppingItem, UmlDiagram
 from app.services.habits import habit_items, toggle_habit_check
+from app.services.shopping import SUGGESTIONS, classify_item, group_items
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.uml_content import validate_uml_document
 from app.services.user_preferences import format_user_datetime, localtime_for_user
@@ -18,6 +20,7 @@ from app.view_models import get_tools_context
 from app.views.navigation import local_return_to
 
 UML_TITLE_MAX_LENGTH = UmlDiagram._meta.get_field("title").max_length
+MAX_SHOPPING_ITEMS = 200
 
 
 def _clean_title(value):
@@ -84,6 +87,81 @@ def habits(request):
         request,
         "app/habits.html",
         {"active_page": "tools", "habits": habit_items(request.user, today), "habit_form": habit_form},
+    )
+
+
+def _posted_shopping_item(request):
+    """The posted item of this user; a tampered id counts as a missing item."""
+    try:
+        return ShoppingItem.objects.filter(owner=request.user, pk=request.POST.get("item_id")).first()
+    except ValueError:
+        return None
+
+
+@login_required
+def shopping_list(request):
+    if not feature_enabled("tools"):
+        return disabled_feature_response(request, "tools")
+
+    page_url = reverse("shopping_list")
+    form_name = request.POST.get("form_name") if request.method == "POST" else None
+    form = ShoppingItemForm()
+    if form_name == "shopping_add":
+        form = ShoppingItemForm(request.POST)
+        if form.is_valid():
+            # Adding something already on the list (e.g. picked again from the suggestions)
+            # brings that row back instead of writing it twice.
+            existing = ShoppingItem.objects.filter(
+                owner=request.user, name__iexact=form.cleaned_data["name"]
+            ).first()
+            if existing is not None:
+                existing.is_done = False
+                existing.quantity = form.cleaned_data["quantity"] or existing.quantity
+                existing.save(update_fields=["is_done", "quantity"])
+                return redirect(f"{page_url}?add=1")
+            if ShoppingItem.objects.filter(owner=request.user).count() >= MAX_SHOPPING_ITEMS:
+                form.add_error(None, f"Es passen höchstens {MAX_SHOPPING_ITEMS} Artikel auf den Zettel.")
+            else:
+                item = form.save(commit=False)
+                item.owner = request.user
+                item.save()
+                return redirect(f"{page_url}?add=1")
+    elif form_name == "shopping_toggle":
+        item = _posted_shopping_item(request)
+        if item is None:
+            return redirect(page_url)
+        item.is_done = not item.is_done
+        item.save(update_fields=["is_done"])
+        # A ticked item moves to "Im Wagen"; return to the aisle it came from, so a long list
+        # doesn't jump around while shopping. An unticked one goes back to its own row.
+        anchor = f"group-{classify_item(item.name)[0]}" if item.is_done else f"item-{item.pk}"
+        return redirect(f"{page_url}#{anchor}")
+    elif form_name == "shopping_delete":
+        item = _posted_shopping_item(request)
+        if item is not None:
+            item.delete()
+        return redirect(page_url)
+    elif form_name == "shopping_clear_done":
+        ShoppingItem.objects.filter(owner=request.user, is_done=True).delete()
+        return redirect(page_url)
+
+    # Only after adding: on a phone, focus on opening would cover the list with the keyboard.
+    if request.GET.get("add"):
+        form.fields["name"].widget.attrs["autofocus"] = True
+
+    items = list(ShoppingItem.objects.filter(owner=request.user))
+    groups, done_items = group_items(items)
+    return render(
+        request,
+        "app/shopping_list.html",
+        {
+            "active_page": "tools",
+            "shopping_form": form,
+            "item_count": len(items),
+            "groups": groups,
+            "done_items": done_items,
+            "suggestions": SUGGESTIONS,
+        },
     )
 
 

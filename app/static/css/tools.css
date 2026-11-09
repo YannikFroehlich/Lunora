@@ -1337,6 +1337,218 @@ a.tool-card:hover {
   }
 }
 
+/* ---- Shopping list --------------------------------------------------------------------------- */
+
+@media (min-width: 901px) {
+  .shopping-create-form {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 1fr) auto;
+  }
+}
+
+/* The suggestion dropdown has to reach past the panel and over the list panel below it. */
+.shopping-create-panel {
+  z-index: 2;
+  overflow: visible;
+}
+
+.shopping-name-field {
+  position: relative;
+}
+
+.shopping-suggestions {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  left: 0;
+  z-index: 80;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--surface-panel-solid);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  box-shadow: 0 22px 56px rgba(0, 0, 0, 0.18);
+}
+
+.shopping-suggestions[hidden] {
+  display: none;
+}
+
+.shopping-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 10px 6px 6px;
+  color: var(--color-text);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.shopping-suggestion:hover {
+  background: var(--surface-control-hover);
+}
+
+.shopping-suggestion[aria-selected="true"] {
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+
+.shopping-suggestion strong {
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.shopping-suggestion small {
+  margin-left: auto;
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.shopping-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.shopping-toolbar form,
+.shopping-item form {
+  margin: 0;
+}
+
+.shopping-list {
+  margin-top: 12px;
+  padding: 6px 10px 10px;
+}
+
+.shopping-group {
+  scroll-margin-top: 96px;
+}
+
+.shopping-group h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 6px 4px;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.shopping-group h2 small {
+  padding: 1px 8px;
+  font-size: var(--text-2xs);
+  background: var(--surface-control);
+  border-radius: var(--radius-pill);
+}
+
+.shopping-group.is-done {
+  margin-top: 8px;
+  border-top: 1px dashed var(--color-line);
+}
+
+.shopping-all-done {
+  margin: 14px 6px 6px;
+  color: var(--color-success);
+  font-weight: 600;
+}
+
+.shopping-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shopping-emoji {
+  display: grid;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  font-size: var(--text-xl);
+  line-height: 1;
+  background: var(--surface-control);
+  border-radius: var(--radius-sm);
+}
+
+.shopping-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  scroll-margin-top: 96px;
+}
+
+.shopping-item + .shopping-item {
+  border-top: 1px solid var(--color-line);
+}
+
+.shopping-item form:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.shopping-toggle {
+  display: flex;
+  width: 100%;
+  min-height: 48px;
+  align-items: center;
+  gap: 12px;
+  padding: 6px;
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+
+.shopping-box {
+  display: grid;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  color: transparent;
+  font-size: var(--text-xs);
+  border: 1.5px solid var(--color-muted);
+  border-radius: var(--radius-xs);
+}
+
+.shopping-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.shopping-toggle small {
+  flex: none;
+  max-width: 40%;
+  margin-left: auto;
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+
+.shopping-item.is-done .shopping-box {
+  color: var(--color-on-accent);
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.shopping-item.is-done .shopping-emoji {
+  opacity: 0.5;
+  filter: grayscale(1);
+}
+
+.shopping-item.is-done .shopping-name {
+  color: var(--color-muted);
+  text-decoration: line-through;
+}
+
 /* ---- Habits ---------------------------------------------------------------------------------- */
 
 @media (min-width: 901px) {

@@ -19,6 +19,7 @@ from app.models import (
     NotificationPreference,
     OfficialHoliday,
     Profile,
+    ShoppingItem,
     SystemSettings,
     Task,
     TaskLabel,
@@ -157,6 +158,7 @@ class VocabularyListAdmin(admin.ModelAdmin):
 admin.site.register(VocabularyCard)
 admin.site.register(Habit)
 admin.site.register(Bookmark)
+admin.site.register(ShoppingItem)
 
 
 @admin.register(UserNotification)

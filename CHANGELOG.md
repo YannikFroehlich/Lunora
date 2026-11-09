@@ -6,6 +6,11 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- New tool "Einkaufszettel": a shopping list with optional quantities, tick items off in the store
+  and clear the ticked ones in one go. Items get a matching emoji and are sorted by store aisle
+  (fruit & veg, dairy, drinks, …), ticked ones move to "Im Wagen", the name field suggests over 350
+  everyday products with their emoji and aisle while typing, and adding something that's already
+  on the list brings that row back instead of writing it twice.
 - More protection against abuse: specially built Markdown files can no longer tie up the server,
   failed logins are also limited per client across all accounts, attempt counters can't be outrun
   with parallel requests, and a data export can be started once every two minutes. Markdown lines

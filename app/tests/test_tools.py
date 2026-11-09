@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 
 from django.contrib.auth.models import User
 from django.core import mail
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 
 from app.models import (
@@ -12,6 +12,7 @@ from app.models import (
     HabitCheck,
     NotificationPreference,
     Profile,
+    ShoppingItem,
     SystemSettings,
     UmlDiagram,
     UserNotification,
@@ -28,6 +29,7 @@ from app.services.habits import (
     longest_streak,
 )
 from app.services.notifications import materialize_due_habit_reminders, send_pending_user_notification_emails
+from app.services.shopping import CATALOG, PRODUCTS, SUGGESTIONS, classify_item
 from app.services.uml_content import validate_uml_document
 from app.services.user_preferences import localtime_for_user
 from app.services.vocabulary import parse_bulk_cards, review_card
@@ -504,6 +506,169 @@ class VocabularySharingTests(TestCase):
         self.assertEqual(send_pending_user_notification_emails(include_vocabulary_shares=False)["sent"], 0)
         self.assertEqual(send_pending_user_notification_emails()["sent"], 1)
         self.assertIn("Vokabelliste", mail.outbox[0].subject)
+
+
+class ShoppingListTests(TestCase):
+    url = "/tools/shopping/"
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="lea", email="lea@example.com", password="pw-12345!")
+        self.other = User.objects.create_user(username="tom", email="tom@example.com", password="pw-12345!")
+        self.client.force_login(self.user)
+
+    def _post(self, form_name, **data):
+        return self.client.post(self.url, {"form_name": form_name, **data})
+
+    def test_add_stores_the_item_for_the_user_and_refocuses_the_field(self):
+        response = self._post("shopping_add", name="  Milch ", quantity="2 Liter")
+
+        self.assertRedirects(response, f"{self.url}?add=1")
+        item = ShoppingItem.objects.get()
+        self.assertEqual((item.owner, item.name, item.quantity), (self.user, "Milch", "2 Liter"))
+        self.assertContains(self.client.get(f"{self.url}?add=1"), "autofocus")
+        self.assertNotContains(self.client.get(self.url), "autofocus")
+
+    def test_blank_name_is_refused(self):
+        response = self._post("shopping_add", name="   ", quantity="2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(ShoppingItem.objects.exists())
+
+    def test_the_item_limit_is_enforced(self):
+        ShoppingItem.objects.bulk_create(
+            ShoppingItem(owner=self.user, name=f"Artikel {number}") for number in range(200)
+        )
+
+        response = self._post("shopping_add", name="Einer zu viel")
+
+        self.assertContains(response, "höchstens 200 Artikel")
+        self.assertEqual(ShoppingItem.objects.filter(owner=self.user).count(), 200)
+
+    def test_toggle_returns_to_the_aisle_when_ticking_and_to_the_row_when_unticking(self):
+        item = ShoppingItem.objects.create(owner=self.user, name="Brot")
+
+        response = self._post("shopping_toggle", item_id=item.pk)
+        self.assertRedirects(response, f"{self.url}#group-bakery", fetch_redirect_response=False)
+        item.refresh_from_db()
+        self.assertTrue(item.is_done)
+
+        response = self._post("shopping_toggle", item_id=item.pk)
+        self.assertRedirects(response, f"{self.url}#item-{item.pk}", fetch_redirect_response=False)
+        item.refresh_from_db()
+        self.assertFalse(item.is_done)
+
+    def test_adding_an_item_already_on_the_list_reopens_it_instead_of_duplicating(self):
+        item = ShoppingItem.objects.create(owner=self.user, name="Milch", quantity="1 Liter", is_done=True)
+
+        self._post("shopping_add", name="milch", quantity="")
+        item.refresh_from_db()
+        self.assertEqual((item.is_done, item.quantity), (False, "1 Liter"))
+
+        self._post("shopping_add", name="Milch", quantity="2 Liter")
+        item.refresh_from_db()
+        self.assertEqual(item.quantity, "2 Liter")
+        self.assertEqual(ShoppingItem.objects.count(), 1)
+
+    def test_open_items_are_grouped_by_aisle_in_store_order_and_ticked_ones_move_to_the_cart(self):
+        for name, done in (("Duschgel", False), ("Vollmilch", False), ("Bananen", False), ("Brot", True)):
+            ShoppingItem.objects.create(owner=self.user, name=name, is_done=done)
+
+        response = self.client.get(self.url)
+
+        groups = response.context["groups"]
+        self.assertEqual([group["key"] for group in groups], ["produce", "dairy", "household"])
+        self.assertEqual([item.emoji for group in groups for item in group["items"]], ["🍌", "🥛", "🧼"])
+        self.assertEqual([item.name for item in response.context["done_items"]], ["Brot"])
+        self.assertContains(response, "Im Wagen")
+        self.assertContains(response, 'aria-controls="shopping-suggestions"')
+        self.assertIn(
+            {"name": "Toilettenpapier", "emoji": "🧻", "aisle": "Drogerie & Haushalt"},
+            response.context["suggestions"],
+        )
+
+    def test_clear_done_keeps_open_items_and_other_users_items(self):
+        ShoppingItem.objects.create(owner=self.user, name="Gekauft", is_done=True)
+        ShoppingItem.objects.create(owner=self.user, name="Offen")
+        ShoppingItem.objects.create(owner=self.other, name="Fremd", is_done=True)
+
+        self._post("shopping_clear_done")
+
+        self.assertCountEqual(ShoppingItem.objects.values_list("name", flat=True), ["Offen", "Fremd"])
+
+    def test_items_of_others_stay_out_of_reach(self):
+        foreign = ShoppingItem.objects.create(owner=self.other, name="Toms Kaffee")
+
+        self.assertNotContains(self.client.get(self.url), "Toms Kaffee")
+        self._post("shopping_toggle", item_id=foreign.pk)
+        self._post("shopping_delete", item_id=foreign.pk)
+
+        foreign.refresh_from_db()
+        self.assertFalse(foreign.is_done)
+
+    def test_tampered_item_ids_redirect_instead_of_failing(self):
+        for item_id in ("abc", "9" * 5000, ""):
+            with self.subTest(item_id=item_id[:10]):
+                self.assertEqual(self._post("shopping_toggle", item_id=item_id).status_code, 302)
+                self.assertEqual(self._post("shopping_delete", item_id=item_id).status_code, 302)
+
+    def test_tools_page_links_the_list_and_counts_open_items(self):
+        ShoppingItem.objects.create(owner=self.user, name="Brot")
+        ShoppingItem.objects.create(owner=self.user, name="Butter", is_done=True)
+
+        response = self.client.get("/tools/")
+
+        self.assertContains(response, self.url)
+        self.assertContains(response, "1 offen")
+
+    def test_disabled_tools_flag_blocks_the_list(self):
+        SystemSettings.objects.update_or_create(pk=1, defaults={"tools_enabled": False})
+
+        self.assertEqual(self.client.get(self.url).status_code, 503)
+        self.assertEqual(self._post("shopping_add", name="Milch").status_code, 503)
+        self.assertFalse(ShoppingItem.objects.exists())
+
+
+class ShoppingCatalogTests(SimpleTestCase):
+    def test_the_last_word_of_a_compound_decides_the_aisle(self):
+        cases = {
+            "Erdbeermarmelade": ("pantry", "🍯"),
+            "Schweinefleisch": ("meat", "🥩"),
+            "Milchschokolade": ("sweets", "🍫"),
+            "Kaffeebohnen": ("drinks", "☕"),
+            "Kidneybohnen": ("pantry", "🥫"),
+            "Salatgurke": ("produce", "🥒"),
+            "Glühbirne": ("household", "💡"),
+            "Apfelsaft": ("drinks", "🧃"),
+            "Reis": ("pantry", "🍚"),
+            "Vanilleeis": ("frozen", "🍨"),
+            "Süßkartoffeln": ("produce", "🍠"),
+            "EIER": ("dairy", "🥚"),
+        }
+        for name, expected in cases.items():
+            with self.subTest(name=name):
+                self.assertEqual(classify_item(name), expected)
+
+    def test_unknown_items_land_in_other(self):
+        self.assertEqual(classify_item("Klebeband"), ("other", "🛒"))
+
+    def test_every_catalog_entry_classifies_into_its_own_aisle(self):
+        for category, entries in CATALOG.items():
+            for name, emoji, _stems in entries:
+                with self.subTest(name=name):
+                    self.assertEqual(classify_item(name), (category, emoji))
+
+    def test_every_suggested_product_lands_in_the_aisle_it_is_listed_under(self):
+        for category, names in PRODUCTS.items():
+            for name in (name.strip() for name in names.split(",")):
+                with self.subTest(name=name):
+                    self.assertEqual(classify_item(name)[0], category)
+
+    def test_suggestions_cover_compounds_with_their_own_emoji(self):
+        by_name = {suggestion["name"]: suggestion for suggestion in SUGGESTIONS}
+
+        self.assertEqual(by_name["Apfelsaft"], {"name": "Apfelsaft", "emoji": "🧃", "aisle": "Getränke"})
+        self.assertGreater(len(SUGGESTIONS), 300)
+        self.assertEqual(len(by_name), len(SUGGESTIONS))
 
 
 class HabitTrackerTests(TestCase):

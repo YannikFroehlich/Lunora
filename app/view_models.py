@@ -19,6 +19,7 @@ from app.models import (
     Note,
     NoteShare,
     Profile,
+    ShoppingItem,
     Task,
     UmlDiagram,
     VacationYear,
@@ -423,6 +424,13 @@ TOOLS = (
         "url_name": "habits",
     },
     {
+        "id": "shopping",
+        "title": "Einkaufszettel",
+        "description": "Aufschreiben, was fehlt, und im Laden abhaken.",
+        "icon": "fa-basket-shopping",
+        "url_name": "shopping_list",
+    },
+    {
         "id": "focus",
         "title": "Fokus-Timer",
         "description": "Konzentriert arbeiten in festen Intervallen mit kurzen und langen Pausen.",
@@ -453,8 +461,10 @@ def get_tools_context(user):
         VocabularyCard.objects.filter(vocabulary_list__owner=user).filter(due_filter(timezone.now())).count()
     )
     habit_count = Habit.objects.filter(owner=user).count()
+    open_shopping_items = ShoppingItem.objects.filter(owner=user, is_done=False).count()
     meta = {
         "habits": f"{habit_count} Gewohnheit(en)" if habit_count else "Noch keine Gewohnheiten",
+        "shopping": f"{open_shopping_items} offen" if open_shopping_items else "Nichts offen",
         "focus": "Läuft direkt im Browser",
         "uml": f"{diagram_count} Diagramm(e)" if diagram_count else "Noch keine Diagramme",
         "vocabulary": (
