@@ -6,6 +6,11 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- The shopping list can be shared: under "Gemeinsam nutzen" you name someone by e-mail or username,
+  and from then on both of you add, tick off, scan and delete on the same list. A shared list
+  refreshes itself every few seconds, so what one person ticks off in the store shows up for the
+  other. Members switch between their own list and shared ones at the top of the page, can leave a
+  list, and get an inbox notification (and e-mail) when a list is shared with them.
 - The shopping list scans barcodes: "Scannen" opens the phone camera (browsers with barcode
   detection, e.g. Chrome on Android; elsewhere the number under the barcode is typed in). In the store
   a scan ticks off the matching item ("Milch" for "Frische Vollmilch"), at home it puts the product on

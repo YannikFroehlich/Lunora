@@ -89,6 +89,7 @@ def run_scheduled_tasks(*, now=None):
         now=current_time,
         include_note_shares=feature_enabled("notes"),
         include_vocabulary_shares=feature_enabled("tools"),
+        include_shopping_shares=feature_enabled("tools"),
         include_weather=feature_enabled("weather"),
         include_task_assignments=feature_enabled("tasks"),
         include_habit_reminders=feature_enabled("tools"),

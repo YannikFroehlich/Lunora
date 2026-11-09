@@ -1728,6 +1728,79 @@ a.tool-card:hover {
   font-size: var(--text-xs);
 }
 
+/* Switches between the own list and lists shared with the user. */
+.shopping-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  width: fit-content;
+  max-width: 100%;
+  margin-bottom: 16px;
+  padding: 3px;
+  background: var(--surface-panel);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-sm);
+  backdrop-filter: blur(var(--glass-blur));
+}
+
+.shopping-tabs a {
+  padding: 6px 12px;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: var(--radius-xs);
+}
+
+.shopping-tabs a[aria-current="page"] {
+  color: var(--color-heading);
+  background: var(--surface-selected);
+}
+
+.shopping-share {
+  margin-top: 20px;
+  padding: 18px 20px;
+}
+
+.shopping-share h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-size: var(--text-lg);
+}
+
+.shopping-share p {
+  margin: 0 0 12px;
+  color: var(--color-muted);
+}
+
+.shopping-members {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.shopping-members li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.shopping-members form {
+  margin: 0;
+}
+
+.shopping-share-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
 /* ---- Habits ---------------------------------------------------------------------------------- */
 
 @media (min-width: 901px) {

@@ -13,10 +13,16 @@
         <div>
             <a class="tools-back-link" href="{% url 'tools' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Werkzeuge</a>
             <h1>Einkaufszettel</h1>
-            <p>Schreib auf, was fehlt, und hake es im Laden ab.</p>
+            <p>{% if is_own_list %}Schreib auf, was fehlt, und hake es im Laden ab.{% else %}Der Zettel von {{ list_owner_name }}. Ihr tragt beide ein und hakt beide ab.{% endif %}</p>
         </div>
         <i class="fa-solid fa-basket-shopping hero-branch" aria-hidden="true"></i>
     </header>
+
+    {% if list_tabs|length > 1 %}
+    <nav class="shopping-tabs" aria-label="Einkaufszettel">
+        {% for tab in list_tabs %}<a href="{{ tab.url }}"{% if tab.active %} aria-current="page"{% endif %}>{{ tab.label }}</a>{% endfor %}
+    </nav>
+    {% endif %}
 
     <section class="glass-panel uml-create-panel shopping-create-panel">
         <form class="vocab-create-form shopping-create-form" method="post">
@@ -41,6 +47,7 @@
         </form>
     </section>
 
+    <div class="shopping-live" data-shopping-live data-version="{{ list_version }}"{% if is_shared or not is_own_list %} data-poll-url="{{ poll_url }}"{% endif %}>
     {% if item_count %}
     <div class="shopping-toolbar">
         <span>{{ done_items|length }} von {{ item_count }} im Wagen</span>
@@ -79,9 +86,49 @@
         <p>Trag oben ein, was du brauchst, z. B. „Milch“ und „2 Liter“.</p>
     </div>
     {% endif %}
+    </div>
+
+    <section class="glass-panel shopping-share" aria-labelledby="shopping-share-title">
+        <h2 id="shopping-share-title"><i class="fa-solid fa-user-group" aria-hidden="true"></i> Gemeinsam nutzen</h2>
+        {% if is_own_list %}
+        <p>Teilst du den Zettel, tragt ihr beide ein und hakt beide ab. Was einer abhakt, sehen die anderen nach ein paar Sekunden.</p>
+        {% if members %}
+        <ul class="shopping-members">
+            {% for member in members %}
+            <li>
+                <span>{{ member.name }}</span>
+                <form method="post" data-confirm="{{ member.name }} wirklich vom Zettel entfernen?">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="shopping_unshare">
+                    <input type="hidden" name="user_id" value="{{ member.id }}">
+                    <button class="icon-button" type="submit" aria-label="{{ member.name }} entfernen" title="Entfernen"><i class="fa-solid fa-user-minus" aria-hidden="true"></i></button>
+                </form>
+            </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+        <form class="shopping-share-form" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="shopping_share">
+            <label class="vocab-field">
+                <span>E-Mail oder Benutzername</span>
+                <input type="text" name="identifier" maxlength="254" autocomplete="off" required>
+            </label>
+            <button class="ghost-button" type="submit"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i> Teilen</button>
+        </form>
+        {% if share_error %}<ul class="errorlist"><li>{{ share_error }}</li></ul>{% endif %}
+        {% else %}
+        <p>{{ list_owner_name }} teilt diesen Zettel mit dir{% if members|length > 1 %} und {{ members|length|add:"-1" }} weiteren{% endif %}.</p>
+        <form method="post" data-confirm="Den Zettel von {{ list_owner_name }} wirklich verlassen?">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="shopping_leave">
+            <button class="ghost-button" type="submit"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i> Zettel verlassen</button>
+        </form>
+        {% endif %}
+    </section>
 </section>
 
-<dialog class="glass-panel shopping-scanner" data-shopping-scanner data-scan-url="{% url 'shopping_scan' %}" aria-labelledby="shopping-scanner-title">
+<dialog class="glass-panel shopping-scanner" data-shopping-scanner data-scan-url="{% url 'shopping_scan' %}{{ list_query }}" aria-labelledby="shopping-scanner-title">
     {% csrf_token %}
     <div class="shopping-scanner-head">
         <h2 id="shopping-scanner-title">Strichcode scannen</h2>
