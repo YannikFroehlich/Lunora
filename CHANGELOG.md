@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Notes in folders no longer get cut off at the right edge of the sidebar when their title is long;
+  the title ends with "…" instead.
 - The shopping list can be shared: under "Gemeinsam nutzen" you name someone by e-mail or username,
   and from then on both of you add, tick off, scan and delete on the same list. A shared list
   refreshes itself every few seconds, so what one person ticks off in the store shows up for the

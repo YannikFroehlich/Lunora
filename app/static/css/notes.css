@@ -235,9 +235,12 @@
   background: color-mix(in srgb, var(--color-accent) 16%, transparent);
 }
 
+/* minmax(0, …): a long note title shortens with an ellipsis instead of widening the column past
+   the sidebar, where nested cards got cut off. */
 .notes-root-group,
 .note-folder-contents {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
 }
 
