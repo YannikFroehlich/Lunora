@@ -8,7 +8,7 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 - New tool "Einkaufszettel": a shopping list with optional quantities, tick items off in the store
   and clear the ticked ones in one go. Items get a matching emoji and are sorted by store aisle
-  (fruit & veg, dairy, drinks, …), ticked ones move to "Im Wagen", the name field suggests over 450
+  (fruit & veg, dairy, drinks, …), ticked ones move to "Im Wagen", the name field suggests over 1,000
   everyday products and brands with their emoji and aisle while typing, and adding something
   that's already on the list brings that row back instead of writing it twice.
 - More protection against abuse: specially built Markdown files can no longer tie up the server,

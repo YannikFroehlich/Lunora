@@ -28,13 +28,13 @@ CATALOG = {
         ("Äpfel", "🍎", "apfel äpfel"),
         ("Birnen", "🍐", "birne"),
         ("Bananen", "🍌", "banane"),
-        ("Orangen", "🍊", "orange apfelsine mandarine clementine grapefruit"),
+        ("Orangen", "🍊", "orange apfelsine mandarine clementine grapefruit blutorange"),
         ("Zitronen", "🍋", "zitrone limette"),
         ("Weintrauben", "🍇", "traube"),
         ("Erdbeeren", "🍓", "erdbeere"),
-        ("Himbeeren", "🍓", "beere himbeere"),
+        ("Himbeeren", "🍓", "beere himbeere stachelbeere"),
         ("Heidelbeeren", "🫐", "heidelbeere blaubeere brombeere"),
-        ("Johannisbeeren", "🍒", "johannisbeere preiselbeere cranberry"),
+        ("Johannisbeeren", "🍒", "johannisbeere preiselbeere cranberry cranberr"),
         ("Kirschen", "🍒", "kirsche"),
         ("Pfirsiche", "🍑", "pfirsich nektarine aprikose"),
         ("Pflaumen", "🫐", "pflaume zwetschge"),
@@ -42,148 +42,340 @@ CATALOG = {
         ("Rosinen", "🍇", "rosine"),
         ("Mango", "🥭", "mango"),
         ("Ananas", "🍍", "ananas"),
+        ("Kokosnuss", "🥥", "kokosnuss"),
+        ("Papaya", "🥭", "papaya maracuja passionsfrucht kaki litschi physalis"),
         ("Melone", "🍉", "melone"),
         ("Kiwis", "🥝", "kiwi"),
         ("Avocados", "🥑", "avocado"),
         ("Tomaten", "🍅", "tomate"),
         ("Gurke", "🥒", "gurke zucchini"),
+        ("Zuckerschoten", "🫛", "zuckerschote grüne_bohne edamame sprosse"),
         ("Paprika", "🫑", "paprika"),
-        ("Chili", "🌶️", "chili peperoni"),
+        ("Chili", "🌶️", "chili peperoni jalapeño jalapeno"),
         ("Karotten", "🥕", "karotte möhre"),
         ("Kartoffeln", "🥔", "kartoffel"),
         ("Süßkartoffeln", "🍠", "süßkartoffel"),
         ("Zwiebeln", "🧅", "zwiebel lauch porree schalotte"),
         ("Knoblauch", "🧄", "knoblauch"),
-        ("Brokkoli", "🥦", "brokkoli broccoli blumenkohl kohl wirsing"),
-        ("Salat", "🥬", "salat spinat rucola mangold"),
+        ("Brokkoli", "🥦", "brokkoli broccoli blumenkohl kohl wirsing chinakohl spitzkohl romanesco"),
+        ("Salat", "🥬", "salat spinat rucola mangold lollo"),
         ("Aubergine", "🍆", "aubergine"),
         ("Mais", "🌽", "mais"),
-        ("Champignons", "🍄", "pilz champignon pfifferling"),
-        ("Kräuter", "🌿", "kräuter basilikum petersilie schnittlauch minze koriander dill rosmarin thymian"),
+        ("Champignons", "🍄", "pilz champignon pfifferling seitling shiitake"),
+        (
+            "Kräuter",
+            "🌿",
+            (
+                "kräuter basilikum petersilie schnittlauch minze koriander dill rosmarin thymian kresse "
+                "salbei zitronengras suppengrün"
+            ),
+        ),
         (
             "Ingwer",
             "🫚",
             "ingwer",
         ),
-        ("Nüsse", "🥜", "nuss nüsse mandel cashew pistazie"),
+        ("Nüsse", "🥜", "nuss nüsse mandel cashew pistazie macadamia pinienkern kern samen"),
         ("Spargel", "🥬", "spargel sellerie fenchel"),
-        ("Radieschen", "🥕", "radieschen rettich bete"),
+        ("Radieschen", "🥕", "radieschen rettich bete pastinake wurzel topinambur"),
         ("Kürbis", "🎃", "kürbis hokkaido"),
+        ("Rhabarber", "🥬", "rhabarber chicorée radicchio pak_choi okra artischocke"),
     ),
     "bakery": (
-        ("Brot", "🍞", "brot toast zwieback"),
-        ("Brötchen", "🥖", "brötchen semmel baguette schrippe ciabatta buns"),
+        ("Brot", "🍞", "brot toast zwieback pumpernickel mestemacher sandwich"),
+        ("Brötchen", "🥖", "brötchen semmel baguette schrippe ciabatta buns bagel brioche"),
         ("Croissants", "🥐", "croissant"),
         ("Brezeln", "🥨", "brezel breze laugen"),
-        ("Kuchen", "🍰", "kuchen torte"),
+        ("Kuchen", "🍰", "kuchen torte schnecke plunder strudel bienenstich brownie stollen"),
         ("Muffins", "🧁", "muffin"),
         ("Donuts", "🍩", "donut berliner krapfen"),
         ("Wraps", "🫓", "wrap tortilla fladenbrot pita"),
     ),
     "dairy": (
-        ("Milch", "🥛", "milch alpro landliebe bärenmarke"),
-        ("Käse", "🧀", "käse gouda emmentaler parmesan mozzarella feta camembert brie halloumi philadelphia"),
-        ("Butter", "🧈", "butter margarine rama"),
+        (
+            "Milch",
+            "🥛",
+            (
+                "milch alpro landliebe bärenmarke oatly kondensmilch haferdrink sojadrink mandeldrink "
+                "reisdrink"
+            ),
+        ),
+        (
+            "Käse",
+            "🧀",
+            (
+                "käse gouda emmentaler parmesan mozzarella feta camembert brie halloumi philadelphia "
+                "mascarpone ricotta burrata tilsiter leerdammer babybel grünländer bresso exquisa "
+                "almette"
+            ),
+        ),
+        ("Butter", "🧈", "butter margarine rama kerrygold lätta becel"),
         ("Eier", "🥚", "eier"),
-        ("Joghurt", "🥛", "joghurt jogurt quark skyr kefir"),
-        ("Pudding", "🍮", "pudding milchreis"),
-        ("Tofu", "🧈", "tofu"),
-        ("Sahne", "🥛", "sahne schmand crème fraîche fraiche"),
+        ("Joghurt", "🥛", "joghurt jogurt quark skyr kefir ayran actimel activia danone ehrmann almighurt"),
+        ("Pudding", "🍮", "pudding milchreis pingui milchschnitte"),
+        ("Tofu", "🧈", "tofu seitan"),
+        ("Sahne", "🥛", "sahne schmand crème fraîche fraiche cremefine"),
+        (
+            "Kartoffelsalat",
+            "🥗",
+            ("kartoffelsalat nudelsalat fleischsalat eiersalat thunfischsalat krautsalat tzatziki hummus"),
+        ),
+        ("Blätterteig", "🥐", "teig"),
     ),
     "meat": (
-        ("Hähnchen", "🍗", "hähnchen hühnchen huhn chicken pute geflügel"),
-        ("Hackfleisch", "🥩", "hack fleisch rind schwein steak schnitzel gulasch frikadelle"),
-        ("Würstchen", "🌭", "wurst würstchen"),
-        ("Aufschnitt", "🥪", "salami schinken aufschnitt leberwurst leberkäse rügenwalder"),
+        ("Hähnchen", "🍗", "hähnchen hühnchen huhn chicken pute geflügel wiesenhof"),
+        (
+            "Hackfleisch",
+            "🥩",
+            (
+                "hack fleisch rind schwein steak schnitzel gulasch frikadelle roulade lamm kotelett "
+                "spareribs pork cevapcici gyros patties mett"
+            ),
+        ),
+        ("Würstchen", "🌭", "wurst würstchen krakauer meica böklunder"),
+        (
+            "Aufschnitt",
+            "🥪",
+            (
+                "salami schinken aufschnitt leberwurst leberkäse rügenwalder chorizo mortadella "
+                "fleischkäse corned_beef herta gutfried"
+            ),
+        ),
         ("Speck", "🥓", "speck bacon"),
-        ("Lachs", "🐟", "fisch lachs forelle hering kabeljau"),
+        (
+            "Lachs",
+            "🐟",
+            (
+                "fisch lachs forelle hering kabeljau matjes makrele sardine dorade zander pangasius "
+                "rollmops surimi"
+            ),
+        ),
         ("Garnelen", "🦐", "garnele shrimp krabbe"),
+        ("Muscheln", "🦪", "muschel"),
+        ("Calamari", "🦑", "calamari tintenfisch"),
     ),
     "pantry": (
         (
             "Nudeln",
             "🍝",
-            "nudel pasta spaghetti penne fusilli lasagne tortellini gnocchi barilla miracoli ravioli",
+            (
+                "nudel pasta spaghetti penne fusilli lasagne tortellini gnocchi barilla miracoli "
+                "ravioli spirelli farfalle tagliatelle makkaroni rigatoni spätzle ramen yum_yum "
+                "cannelloni"
+            ),
         ),
-        ("Reis", "🍚", "reis couscous bulgur quinoa"),
+        ("Reis", "🍚", "reis couscous bulgur quinoa polenta grieß hirse"),
         ("Mehl", "🌾", "mehl"),
         ("Zucker", "🍬", "zucker"),
-        ("Salz", "🧂", "salz pfeffer gewürz paprikapulver zimt curry oregano"),
-        ("Olivenöl", "🫒", "öl essig olive balsamico"),
-        ("Kidneybohnen", "🥫", "dose konserve bohne linse kichererbse passierte"),
-        ("Ketchup", "🥫", "soße sauce ketchup senf mayo pesto tomatenmark"),
-        ("Müsli", "🥣", "müsli flocken cornflakes granola kellogg"),
-        ("Marmelade", "🍯", "marmelade konfitüre honig nutella aufstrich erdnussbutter sirup"),
-        ("Gemüsebrühe", "🍲", "brühe suppe maggi knorr"),
-        ("Backpulver", "🧁", "backpulver hefe vanille stärke"),
+        (
+            "Salz",
+            "🧂",
+            (
+                "salz pfeffer gewürz paprikapulver zimt curry oregano muskatnuss lorbeer kümmel kurkuma "
+                "chiliflocken pulver ostmann"
+            ),
+        ),
+        ("Olivenöl", "🫒", "öl essig olive balsamico bertolli"),
+        (
+            "Kidneybohnen",
+            "🥫",
+            (
+                "dose konserve bohne linse kichererbse passierte passierte_tomate gehackte_tomate "
+                "dosentomate eintopf terrine erasco"
+            ),
+        ),
+        (
+            "Ketchup",
+            "🥫",
+            (
+                "soße sauce ketchup senf mayo pesto tomatenmark heinz develey kühne remoulade "
+                "hollandaise tabasco sriracha sambal teriyaki thomy currypaste"
+            ),
+        ),
+        (
+            "Müsli",
+            "🥣",
+            (
+                "müsli flocken cornflakes granola kellogg kölln seitenbacher porridge cini_minis "
+                "krispies smacks frosties"
+            ),
+        ),
+        (
+            "Marmelade",
+            "🍯",
+            (
+                "marmelade konfitüre honig nutella aufstrich erdnussbutter sirup gelee schwartau zentis "
+                "nudossi dicksaft nougat-creme nougatcreme schokocreme nusscreme"
+            ),
+        ),
+        ("Gemüsebrühe", "🍲", "brühe suppe maggi knorr brühwürfel"),
+        (
+            "Backpulver",
+            "🧁",
+            (
+                "backpulver hefe vanille stärke mischung puddingpulver gelatine tortenguss oblate "
+                "streusel kuvertüre kokosraspel natron backin oetker mondamin"
+            ),
+        ),
         ("Apfelmus", "🍎", "apfelmus"),
-        ("Sauerkraut", "🫙", "sauerkraut gewürzgurke kokosmilch"),
+        ("Sauerkraut", "🫙", "sauerkraut gewürzgurke kokosmilch antipasti kaper essiggurke cornichon"),
     ),
     "frozen": (
-        ("Pizza", "🍕", "pizza ristorante"),
-        ("Pommes", "🍟", "pommes krokette"),
+        ("Pizza", "🍕", "pizza ristorante flammkuchen wagner gustavo"),
+        ("Pommes", "🍟", "pommes krokette wedges rösti puffer nugget"),
+        ("Frühlingsrollen", "🥟", "frühlingsrolle dumpling"),
         ("Erbsen", "🫛", "erbse"),
-        ("Eis", "🍨", "eis eiscreme magnum langnese ben_&_jerry"),
+        ("Rahmspinat", "🥬", "rahmspinat gemüsepfanne"),
+        ("Eis", "🍨", "eis eiscreme magnum langnese ben_&_jerry cornetto nogger solero häagen schöller"),
         ("Eiswürfel", "🧊", "eiswürfel tiefkühl"),
-        ("Fischstäbchen", "🐟", "fischstäbchen"),
+        ("Fischstäbchen", "🐟", "fischstäbchen schlemmerfilet backfisch iglo frosta"),
     ),
     "sweets": (
         (
             "Schokolade",
             "🍫",
-            "schokolade schoko praline riegel milka ritter_sport bueno duplo hanuta knoppers toffifee merci raffaello rocher twix snickers mars kitkat",
+            (
+                "schokolade schoko praline riegel milka ritter_sport bueno duplo hanuta knoppers "
+                "toffifee merci raffaello rocher twix snickers mars kitkat küsschen lindt lindor "
+                "toblerone after_eight celebrations mon_chéri bounty milky m&m smarties maltesers "
+                "balisto yogurette schogetten moser_roth überraschung marzipan nougat corny"
+            ),
         ),
-        ("Kekse", "🍪", "keks cookie oreo leibniz prinzenrolle"),
+        (
+            "Kekse",
+            "🍪",
+            (
+                "keks cookie oreo leibniz prinzenrolle pick_up bahlsen lambertz spekulatius printen "
+                "dominostein"
+            ),
+        ),
         ("Waffeln", "🧇", "waffel"),
         (
             "Gummibärchen",
             "🍬",
-            "gummibär bonbon fruchtgummi lakritz kaugummi marshmallow haribo tic_tac mentos werther",
+            (
+                "gummibär bonbon fruchtgummi lakritz kaugummi marshmallow haribo tic_tac mentos werther "
+                "gummi nimm_2 maoam trolli katjes mamba hitschler fisherman ricola eukal wrigley "
+                "airwaves orbit hubba lakritzschnecke salmiak weingummi"
+            ),
         ),
-        ("Chips", "🍿", "chips flips popcorn pringles funny"),
+        ("Chips", "🍿", "chips flips popcorn pringles funny lay's chio lorenz pom-bär nacho bake_rolls"),
         ("Salzstangen", "🥨", "salzstange cracker"),
         ("Studentenfutter", "🥜", "studentenfutter"),
     ),
     "drinks": (
-        ("Wasser", "💧", "wasser sprudel volvic gerolsteiner"),
-        ("Orangensaft", "🧃", "saft schorle capri durstlöscher granini hohes_c"),
+        (
+            "Wasser",
+            "💧",
+            (
+                "wasser sprudel volvic gerolsteiner adelholzener apollinaris vilbeler evian pellegrino "
+                "vittel saskia selters"
+            ),
+        ),
+        (
+            "Orangensaft",
+            "🧃",
+            ("saft schorle capri durstlöscher granini hohes_c valensina rauch innocent true_fruits"),
+        ),
         (
             "Cola",
             "🥤",
-            "cola limo fanta sprite eistee energy smoothie spezi mezzo schweppes club-mate fritz-kola red_bull monster lipton",
+            (
+                "cola limo fanta sprite eistee energy smoothie spezi mezzo schweppes club-mate fritz- "
+                "kola red_bull monster lipton pepsi 7up mirinda bionade almdudler bitter_lemon "
+                "ginger_ale tonic pfanner arizona fuze rockstar club_mate"
+            ),
         ),
-        ("Kaffee", "☕", "kaffee espresso kaffeebohne kakao jacobs nescafé dallmayr tchibo nesquik"),
-        ("Tee", "🍵", "tee"),
-        ("Bier", "🍺", "bier radler krombacher beck's augustiner erdinger bitburger warsteiner radeberger"),
-        ("Wein", "🍷", "wein rosé"),
-        ("Sekt", "🥂", "sekt prosecco champagner"),
-        ("Schnaps", "🥃", "schnaps wodka whisky likör jägermeister aperol"),
+        (
+            "Kaffee",
+            "☕",
+            (
+                "kaffee espresso kaffeebohne kakao jacobs nescafé dallmayr tchibo nesquik lavazza "
+                "melitta eduscho senseo nespresso dolce_gusto cappuccino macchiato kaba ovomaltine"
+            ),
+        ),
+        ("Tee", "🍵", "tee teekanne meßmer pompadour teebeutel"),
+        (
+            "Bier",
+            "🍺",
+            (
+                "bier radler krombacher beck's augustiner erdinger bitburger warsteiner radeberger "
+                "becks veltins oettinger jever flensburger hasseröder köstritzer franziskaner pschorr "
+                "bräu tegernseer corona heineken desperados kölsch pils helles"
+            ),
+        ),
+        ("Wein", "🍷", "wein rosé riesling burgunder chardonnay merlot primitivo"),
+        ("Sekt", "🥂", "sekt prosecco champagner rotkäppchen freixenet mumm henkell hugo lillet spritz"),
+        (
+            "Schnaps",
+            "🥃",
+            (
+                "schnaps wodka whisky likör jägermeister aperol rum baileys amaretto ramazzotti sambuca "
+                "ouzo tequila doppelkorn berliner_luft asbach weinbrand edelkirsch pfeffi feigling "
+                "bombay gordon hendrick"
+            ),
+        ),
     ),
     "household": (
         (
             "Toilettenpapier",
             "🧻",
-            "toilettenpapier klopapier küchenrolle taschentuch taschentücher tempo zewa",
+            ("toilettenpapier klopapier küchenrolle taschentuch taschentücher tempo zewa kleenex hakle"),
         ),
-        ("Duschgel", "🧼", "seife duschgel shampoo spülung dove"),
+        (
+            "Duschgel",
+            "🧼",
+            (
+                "seife duschgel shampoo spülung dove head_&_shoulders pantene schauma garnier l'oréal "
+                "syoss balea haarkur haargel haarfarbe haargummi duschdas badezusatz schaumbad"
+            ),
+        ),
         (
             "Spülmittel",
             "🧽",
-            "spülmittel spülmaschine schwamm schwämme spültuch spültücher putzmittel reiniger pril somat finish domestos meister_proper swiffer",
+            (
+                "spülmittel spülmaschine schwamm schwämme spültuch spültücher putzmittel reiniger pril "
+                "somat finish domestos meister_proper swiffer bürste lappen tuch tücher entkalker "
+                "klarspüler maschinensalz regeneriersalz wc-stein sagrotan calgon handschuh "
+                "desinfektion"
+            ),
         ),
-        ("Waschmittel", "🧺", "waschmittel weichspüler ariel persil lenor"),
-        ("Zahnpasta", "🪥", "zahnpasta zahnbürste zahnseide elmex colgate"),
-        ("Sonnencreme", "🧴", "creme lotion deo watte tampon feuchttuch feuchttücher nivea labello"),
-        ("Rasierer", "🪒", "rasier"),
-        ("Müllbeutel", "🗑️", "müllbeutel mülltüte"),
-        ("Alufolie", "📜", "alufolie frischhaltefolie backpapier gefrierbeutel"),
-        ("Batterien", "🔋", "batterie"),
-        ("Glühbirnen", "💡", "glühbirne leuchtmittel"),
+        (
+            "Waschmittel",
+            "🧺",
+            (
+                "waschmittel weichspüler ariel persil lenor vanish perwoll frosch weißer_riese "
+                "waschpulver fleckentferner wäscheklammer"
+            ),
+        ),
+        (
+            "Zahnpasta",
+            "🪥",
+            (
+                "zahnpasta zahnbürste zahnseide elmex colgate odol listerine blend-a-med sensodyne "
+                "oral-b zahnstocher"
+            ),
+        ),
+        (
+            "Sonnencreme",
+            "🧴",
+            (
+                "creme lotion deo watte tampon feuchttuch feuchttücher nivea labello spray rexona "
+                "parfüm aftershave penaten lippenpflege mascara lippenstift nagellack binde slipeinlage "
+                "kondom durex babyöl strumpf"
+            ),
+        ),
+        ("Rasierer", "🪒", "rasier gillette wilkinson"),
+        ("Müllbeutel", "🗑️", "müllbeutel mülltüte gelber_sack gelbe_säcke"),
+        ("Kaffeefilter", "☕", "filter"),
+        ("Alufolie", "📜", "alufolie frischhaltefolie backpapier gefrierbeutel beutel papier"),
+        ("Batterien", "🔋", "batterie varta duracell"),
+        ("Glühbirnen", "💡", "glühbirne leuchtmittel lampe"),
         ("Teelichter", "🕯️", "teelicht kerze"),
-        ("Grillkohle", "🔥", "grillkohle streichholz streichhölzer"),
-        ("Windeln", "🍼", "windel babynahrung pampers"),
-        ("Katzenfutter", "🐾", "futter streu whiskas"),
-        ("Tabletten", "💊", "tablette medikament"),
+        ("Grillkohle", "🔥", "grillkohle streichholz streichhölzer anzünder feuerzeug holzkohle"),
+        ("Windeln", "🍼", "windel babynahrung pampers babybrei hipp"),
+        ("Katzenfutter", "🐾", "futter streu whiskas felix sheba pedigree frolic kauknochen leckerli"),
+        ("Tabletten", "💊", "tablette medikament hansaplast ibuprofen paracetamol aspirin magnesium vitamin"),
         ("Pflaster", "🩹", "pflaster"),
         ("Blumen", "💐", "blume"),
     ),
@@ -205,61 +397,125 @@ PRODUCTS = {
         Steinpilze, Pfifferlinge, Basilikum, Petersilie, Schnittlauch, Minze, Koriander, Dill,
         Rosmarin, Thymian, Ingwer, Sellerie, Staudensellerie, Fenchel, Rote Bete, Radieschen,
         Rettich, Spargel, Kürbis, Hokkaido, Walnüsse, Haselnüsse, Erdnüsse, Mandeln, Cashewkerne,
-        Pistazien, Rosinen
+        Pistazien, Rosinen, Blutorangen, Papaya, Maracuja, Kaki, Litschis, Physalis, Stachelbeeren,
+        Preiselbeeren, Getrocknete Cranberries, Rhabarber, Kokosnuss, Chicorée, Radicchio,
+        Lollo Rosso, Pak Choi, Chinakohl, Spitzkohl, Romanesco, Zuckerschoten, Grüne Bohnen,
+        Edamame, Okra, Artischocken, Pastinaken, Petersilienwurzel, Topinambur, Meerrettich,
+        Gemüsezwiebeln, Bärlauch, Kresse, Salbei, Zitronengras, Suppengrün, Jalapeños,
+        Fleischtomaten, Datteltomaten, Ochsenherztomaten, Kräuterseitlinge, Shiitake, Austernpilze,
+        Sojasprossen, Macadamia, Paranüsse, Pekannüsse, Pinienkerne, Sonnenblumenkerne, Kürbiskerne,
+        Chiasamen, Leinsamen, Getrocknete Aprikosen, Salatherzen, Bio-Bananen, Babykarotten
     """,
     "bakery": """
         Brot, Vollkornbrot, Roggenbrot, Toastbrot, Knäckebrot, Brötchen, Vollkornbrötchen,
         Aufbackbrötchen, Milchbrötchen, Laugenbrezeln, Baguette, Ciabatta, Croissants, Zwieback,
-        Kuchen, Muffins, Donuts, Berliner, Tortillas, Wraps, Fladenbrot, Pita, Burger Buns
+        Kuchen, Muffins, Donuts, Berliner, Tortillas, Wraps, Fladenbrot, Pita, Burger Buns,
+        Dinkelbrot, Mischbrot, Bauernbrot, Sauerteigbrot, Weißbrot, Sonnenblumenbrot, Pumpernickel,
+        Körnerbrötchen, Kaiserbrötchen, Laugenbrötchen, Laugenstangen, Franzbrötchen,
+        Schokocroissant, Zimtschnecken, Plunder, Apfelstrudel, Käsekuchen, Streuselkuchen,
+        Marmorkuchen, Bienenstich, Brownies, Lebkuchen, Stollen, Toastbrötchen, Sandwichtoast,
+        Golden Toast, Harry Brot, Mestemacher, Bagels, Brioche, Hamburgerbrötchen, Tortenboden
     """,
     "dairy": """
         Milch, Vollmilch, Fettarme Milch, H-Milch, Hafermilch, Mandelmilch, Sojamilch, Buttermilch,
-        Butter, Margarine, Eier, Joghurt, Naturjoghurt, Griechischer Joghurt, Fruchtjoghurt,
-        Quark, Magerquark, Skyr, Sahne, Schlagsahne, Saure Sahne, Schmand, Crème fraîche,
-        Frischkäse, Hüttenkäse, Mozzarella, Gouda, Emmentaler, Parmesan, Feta, Camembert, Brie,
-        Reibekäse, Scheibenkäse, Halloumi, Pudding, Milchreis, Kefir, Tofu, Rama, Philadelphia,
-        Alpro Haferdrink, Landliebe Milch, Bärenmarke
+        Butter, Margarine, Eier, Joghurt, Naturjoghurt, Griechischer Joghurt, Fruchtjoghurt, Quark,
+        Magerquark, Skyr, Sahne, Schlagsahne, Saure Sahne, Schmand, Crème fraîche, Frischkäse,
+        Hüttenkäse, Mozzarella, Gouda, Emmentaler, Parmesan, Feta, Camembert, Brie, Reibekäse,
+        Scheibenkäse, Halloumi, Pudding, Milchreis, Kefir, Tofu, Rama, Philadelphia,
+        Alpro Haferdrink, Landliebe Milch, Bärenmarke, Laktosefreie Milch, Barista Hafermilch,
+        Oatly, Ayran, Trinkjoghurt, Actimel, Activia, Danone, Ehrmann Almighurt, Müllermilch,
+        Grießpudding, Kinder Pingui, Milchschnitte, Frischmilch, Kaffeesahne, Kondensmilch,
+        Sprühsahne, Kochsahne, Cremefine, Mascarpone, Ricotta, Burrata, Hirtenkäse, Bergkäse,
+        Butterkäse, Tilsiter, Leerdammer, Babybel, Grünländer, Bresso, Exquisa, Almette,
+        Kräuterquark, Kräuterbutter, Weidebutter, Kerrygold, Lätta, Becel, Freilandeier,
+        Wachteleier, Räuchertofu, Seitan, Hummus, Tzatziki, Kartoffelsalat, Nudelsalat,
+        Fleischsalat, Eiersalat, Krautsalat, Blätterteig, Pizzateig, Hefeteig
     """,
     "meat": """
         Hähnchenbrust, Hähnchenschenkel, Putenbrust, Hackfleisch, Rinderhack, Gemischtes Hack,
         Rindersteak, Schweinefilet, Schnitzel, Gulasch, Bratwurst, Wiener Würstchen, Salami,
         Kochschinken, Aufschnitt, Leberwurst, Leberkäse, Speck, Bacon, Frikadellen, Lachs,
-        Räucherlachs, Thunfisch, Forelle, Garnelen, Hering, Kabeljau, Seelachs, Rügenwalder Mühle
+        Räucherlachs, Thunfisch, Forelle, Garnelen, Hering, Kabeljau, Seelachs, Rügenwalder Mühle,
+        Hähnchenbrustfilet, Hähnchenflügel, Chicken Wings, Putenschnitzel, Putenaufschnitt,
+        Rinderrouladen, Rinderfilet, Lammkoteletts, Kotelett, Schweinebauch, Nackensteaks,
+        Spareribs, Pulled Pork, Cevapcici, Gyros, Burger Patties, Hackbällchen, Zwiebelmett,
+        Grillwürstchen, Nürnberger Würstchen, Weißwurst, Currywurst, Bockwurst, Krakauer, Chorizo,
+        Serrano Schinken, Parmaschinken, Lachsschinken, Mortadella, Bierschinken, Teewurst,
+        Mettwurst, Fleischkäse, Corned Beef, Wiesenhof, Herta, Gutfried, Meica, Böklunder, Matjes,
+        Makrele, Sardinen, Dorade, Zander, Pangasius, Tintenfisch, Calamari, Muscheln, Lachsfilet,
+        Fischfilet, Rollmops, Surimi, Krabben, Shrimps
     """,
     "pantry": """
         Nudeln, Spaghetti, Penne, Fusilli, Lasagneplatten, Tortellini, Gnocchi, Reis, Basmatireis,
         Risottoreis, Couscous, Bulgur, Quinoa, Linsen, Kichererbsen, Kidneybohnen, Weiße Bohnen,
-        Tomatenmark, Mehl, Weizenmehl, Dinkelmehl, Paniermehl, Zucker, Puderzucker,
-        Vanillezucker, Salz, Pfeffer, Paprikapulver, Zimt, Curry, Oregano, Olivenöl, Rapsöl,
-        Sonnenblumenöl, Essig, Balsamico, Ketchup, Senf, Mayonnaise, Pesto, Tomatensoße,
-        Sojasoße, Gemüsebrühe, Hühnerbrühe, Müsli, Haferflocken, Cornflakes, Granola, Marmelade,
-        Honig, Nutella, Erdnussbutter, Ahornsirup, Backpulver, Hefe, Speisestärke, Apfelmus,
-        Sauerkraut, Gewürzgurken, Oliven, Kokosmilch, Barilla Spaghetti, Miracoli, Ravioli, Maggi,
-        Knorr Fix, Kellogg's Frosties
+        Tomatenmark, Mehl, Weizenmehl, Dinkelmehl, Paniermehl, Zucker, Puderzucker, Vanillezucker,
+        Salz, Pfeffer, Paprikapulver, Zimt, Curry, Oregano, Olivenöl, Rapsöl, Sonnenblumenöl, Essig,
+        Balsamico, Ketchup, Senf, Mayonnaise, Pesto, Tomatensoße, Sojasoße, Gemüsebrühe,
+        Hühnerbrühe, Müsli, Haferflocken, Cornflakes, Granola, Marmelade, Honig, Nutella,
+        Erdnussbutter, Ahornsirup, Backpulver, Hefe, Speisestärke, Apfelmus, Sauerkraut,
+        Gewürzgurken, Oliven, Kokosmilch, Barilla Spaghetti, Miracoli, Ravioli, Maggi, Knorr Fix,
+        Kellogg's Frosties, Vollkornnudeln, Spirelli, Farfalle, Tagliatelle, Makkaroni, Rigatoni,
+        Eiernudeln, Spätzle, Glasnudeln, Reisnudeln, Mie-Nudeln, Ramen, Instantnudeln, Yum Yum,
+        Cannelloni, Wildreis, Jasminreis, Parboiled Reis, Langkornreis, Polenta, Grieß, Hirse,
+        Rote Linsen, Passierte Tomaten, Gehackte Tomaten, Dosentomaten, Erbsensuppe, Linsensuppe,
+        Gulaschsuppe, Tomatensuppe, Eintopf, 5 Minuten Terrine, Erasco, Brühwürfel, Backmischung,
+        Puddingpulver, Gelatine, Tortenguss, Backoblaten, Zuckerstreusel, Schokostreusel, Kuvertüre,
+        Kokosraspeln, Trockenhefe, Natron, Backin, Dr. Oetker, Mondamin, Agavendicksaft,
+        Zuckerrübensirup, Gelee, Konfitüre, Schwartau, Zentis, Nuss-Nougat-Creme, Schokocreme,
+        Nudossi, Kölln Haferflocken, Seitenbacher, Knuspermüsli, Porridge, Cini Minis,
+        Choco Krispies, Smacks, Frosties, Heinz Ketchup, Develey, Kühne, Remoulade, Grillsoße,
+        BBQ-Soße, Currysoße, Hollandaise, Bratensoße, Löwensenf, Tabasco, Sriracha, Sambal Oelek,
+        Worcestersauce, Teriyaki-Soße, Currypaste, Pesto Rosso, Antipasti, Kapern, Essiggurken,
+        Cornichons, Meersalz, Jodsalz, Pfefferkörner, Muskatnuss, Lorbeerblätter, Kreuzkümmel,
+        Kurkuma, Chiliflocken, Knoblauchpulver, Currypulver, Ostmann, Thomy, Bertolli, Kokosöl,
+        Leinöl, Sesamöl, Bratöl, Apfelessig, Weißweinessig
     """,
     "frozen": """
         Pizza, Tiefkühlpizza, Pommes, Kroketten, Fischstäbchen, Eis, Vanilleeis, Eiswürfel,
-        Tiefkühlgemüse, Erbsen, Ristorante Pizza, Magnum, Langnese, Ben & Jerry's
+        Tiefkühlgemüse, Erbsen, Ristorante Pizza, Magnum, Langnese, Ben & Jerry's, Flammkuchen,
+        Wagner Pizza, Gustavo Gusto, Pommes Frites, Wedges, Rösti, Kartoffelpuffer, Chicken Nuggets,
+        Schlemmerfilet, Backfisch, Iglo, Frosta, Rahmspinat, Gemüsepfanne, Frühlingsrollen,
+        Dumplings, Eis am Stiel, Eiskonfekt, Cornetto, Nogger, Solero, Häagen-Dazs, Mövenpick Eis,
+        Schöller
     """,
     "sweets": """
-        Schokolade, Vollmilchschokolade, Zartbitterschokolade, Pralinen, Schokoriegel,
-        Müsliriegel, Kekse, Butterkekse, Waffeln, Gummibärchen, Fruchtgummi, Lakritz, Bonbons,
-        Kaugummi, Chips, Tortilla-Chips, Popcorn, Salzstangen, Erdnussflips, Cracker,
-        Studentenfutter, Marshmallows, Haribo Goldbären, Milka, Ritter Sport, Kinder Schokolade,
-        Kinder Bueno, Duplo, Hanuta, Knoppers, Toffifee, Merci, Raffaello, Ferrero Rocher, Twix,
-        Snickers, Mars, KitKat, Oreo, Leibniz Butterkeks, Prinzenrolle, Pringles,
-        Funny-Frisch Chips, Tic Tac, Mentos, Werther's Original
+        Schokolade, Vollmilchschokolade, Zartbitterschokolade, Pralinen, Schokoriegel, Müsliriegel,
+        Kekse, Butterkekse, Waffeln, Gummibärchen, Fruchtgummi, Lakritz, Bonbons, Kaugummi, Chips,
+        Tortilla-Chips, Popcorn, Salzstangen, Erdnussflips, Cracker, Studentenfutter, Marshmallows,
+        Haribo Goldbären, Milka, Ritter Sport, Kinder Schokolade, Kinder Bueno, Duplo, Hanuta,
+        Knoppers, Toffifee, Merci, Raffaello, Ferrero Rocher, Twix, Snickers, Mars, KitKat, Oreo,
+        Leibniz Butterkeks, Prinzenrolle, Pringles, Funny-Frisch Chips, Tic Tac, Mentos,
+        Werther's Original, Kinder Riegel, Kinder Überraschung, Ferrero Küsschen, Lindt, Lindor,
+        Toblerone, After Eight, Celebrations, Mon Chéri, Bounty, Milky Way, M&M's, Smarties,
+        Maltesers, Balisto, Yogurette, Schogetten, Moser Roth, Nimm 2, Maoam, Trolli, Katjes, Mamba,
+        Hitschler, Fisherman's Friend, Ricola, Em-eukal, Wrigley's, Airwaves, Orbit, Hubba Bubba,
+        Lakritzschnecken, Salmiak, Weingummi, Lay's, Chio Chips, Lorenz Crunchips, Pom-Bär, Nachos,
+        Bake Rolls, Reiswaffeln, Choco Leibniz, Pick Up, Bahlsen, Lambertz, Doppelkekse,
+        Spekulatius, Printen, Dominosteine, Marzipan, Nougat, Corny, Proteinriegel
     """,
     "drinks": """
         Wasser, Mineralwasser, Stilles Wasser, Sprudel, Apfelsaft, Orangensaft, Multivitaminsaft,
-        Traubensaft, Apfelschorle, Cola, Cola Zero, Limonade, Eistee, Energydrink, Smoothie,
-        Kaffee, Kaffeebohnen, Kaffeepads, Espresso, Tee, Grüner Tee, Früchtetee, Pfefferminztee,
-        Kräutertee, Kakao, Bier, Alkoholfreies Bier, Radler, Weißwein, Rotwein, Rosé, Sekt,
-        Prosecco, Wodka, Whisky, Paulaner Spezi, Spezi, Mezzo Mix, Coca-Cola, Coca-Cola Zero, Fanta,
-        Sprite, Schweppes, Club-Mate, Fritz-Kola, Red Bull, Monster Energy, Capri-Sun, Durstlöscher,
+        Traubensaft, Apfelschorle, Cola, Cola Zero, Limonade, Eistee, Energydrink, Smoothie, Kaffee,
+        Kaffeebohnen, Kaffeepads, Espresso, Tee, Grüner Tee, Früchtetee, Pfefferminztee, Kräutertee,
+        Kakao, Bier, Alkoholfreies Bier, Radler, Weißwein, Rotwein, Rosé, Sekt, Prosecco, Wodka,
+        Whisky, Paulaner Spezi, Spezi, Mezzo Mix, Coca-Cola, Coca-Cola Zero, Fanta, Sprite,
+        Schweppes, Club-Mate, Fritz-Kola, Red Bull, Monster Energy, Capri-Sun, Durstlöscher,
         Lipton Ice Tea, Granini, Hohes C, Volvic, Gerolsteiner, Krombacher, Beck's, Augustiner,
         Paulaner Weißbier, Erdinger, Bitburger, Warsteiner, Radeberger, Jacobs Krönung, Nescafé,
-        Dallmayr Prodomo, Tchibo Kaffee, Nesquik, Jägermeister, Aperol
+        Dallmayr Prodomo, Tchibo Kaffee, Nesquik, Jägermeister, Aperol, Pepsi, Pepsi Max, 7Up,
+        Mirinda, Afri Cola, Bionade, Almdudler, Bitter Lemon, Ginger Ale, Tonic Water,
+        Rhabarberschorle, Pfanner, Arizona, Fuze Tea, Rockstar, Club Mate, Adelholzener,
+        Apollinaris, Bad Vilbeler, Evian, San Pellegrino, Vittel, Saskia, Selters, Lavazza,
+        Melitta Kaffee, Eduscho, Senseo Pads, Nespresso, Dolce Gusto, Kaffeekapseln, Cappuccino,
+        Latte Macchiato, Instantkaffee, Eiskaffee, Teekanne, Meßmer, Pompadour, Rooibostee,
+        Teebeutel, Kaba, Ovomaltine, Valensina, Rauch, Innocent, True Fruits, Ananassaft,
+        Tomatensaft, Kirschsaft, Maracujasaft, Becks, Veltins, Oettinger, Jever, Flensburger,
+        Hasseröder, Köstritzer, Franziskaner, Hacker-Pschorr, Löwenbräu, Tegernseer, Corona,
+        Heineken, Desperados, Kölsch, Pils, Helles, Weizenbier, Rotkäppchen, Freixenet, Mumm,
+        Henkell, Champagner, Hugo, Lillet, Aperol Spritz, Riesling, Grauburgunder, Spätburgunder,
+        Chardonnay, Merlot, Primitivo, Glühwein, Rum, Baileys, Amaretto, Ramazzotti, Sambuca, Ouzo,
+        Tequila, Doppelkorn, Berliner Luft, Asbach, Weinbrand, Eckes Edelkirsch, Pfeffi,
+        Kleiner Feigling, Bombay Sapphire, Gordon's, Hendrick's
     """,
     "household": """
         Toilettenpapier, Küchenrolle, Taschentücher, Spülmittel, Spülmaschinentabs, Schwämme,
@@ -267,10 +523,24 @@ PRODUCTS = {
         Müllbeutel, Alufolie, Frischhaltefolie, Backpapier, Gefrierbeutel, Duschgel, Shampoo,
         Spülung, Handseife, Zahnpasta, Zahnbürste, Zahnseide, Deo, Rasierer, Rasierschaum,
         Bodylotion, Handcreme, Sonnencreme, Wattepads, Wattestäbchen, Tampons, Feuchttücher,
-        Windeln, Babynahrung, Katzenfutter, Hundefutter, Katzenstreu, Batterien, Glühbirnen,
-        Kerzen, Teelichter, Pflaster, Kopfschmerztabletten, Blumen, Grillkohle, Streichhölzer,
-        Tempo, Zewa, Ariel, Persil, Lenor, Pril, Somat, Finish, Domestos, Meister Proper, Swiffer,
-        Dove, Elmex, Colgate, Nivea, Labello, Pampers, Whiskas
+        Windeln, Babynahrung, Katzenfutter, Hundefutter, Katzenstreu, Batterien, Glühbirnen, Kerzen,
+        Teelichter, Pflaster, Kopfschmerztabletten, Blumen, Grillkohle, Streichhölzer, Tempo, Zewa,
+        Ariel, Persil, Lenor, Pril, Somat, Finish, Domestos, Meister Proper, Swiffer, Dove, Elmex,
+        Colgate, Nivea, Labello, Pampers, Whiskas, Spülbürste, Putzlappen, Mikrofasertücher,
+        Geschirrtücher, Toilettenreiniger, Entkalker, Essigreiniger, Backofenreiniger,
+        Abflussreiniger, Klarspüler, Spülmaschinensalz, Regeneriersalz, WC-Steine, Raumspray,
+        Sagrotan, Calgon, Vanish, Perwoll, Frosch, Weißer Riese, Vollwaschmittel, Colorwaschmittel,
+        Waschpulver, Fleckentferner, Wäscheklammern, Gummihandschuhe, Biomüllbeutel, Gelbe Säcke,
+        Staubsaugerbeutel, Kaffeefilter, Geschenkpapier, Druckerpapier, LED-Lampe, Varta, Duracell,
+        Grillanzünder, Feuerzeug, Holzkohle, Head & Shoulders, Pantene, Schauma, Garnier, L'Oréal,
+        Syoss, Balea, Haarkur, Haargel, Haarspray, Haarfarbe, Haargummis, Duschdas, Badezusatz,
+        Schaumbad, Flüssigseife, Rexona, Deoroller, Rasierklingen, Gillette, Wilkinson, Rasiergel,
+        Aftershave, Parfüm, Gesichtscreme, Penaten, Lippenpflege, Abschminktücher, Mascara,
+        Lippenstift, Nagellack, Nagellackentferner, Mundspülung, Odol, Listerine, Blend-a-med,
+        Sensodyne, Oral-B, Zahnstocher, Damenbinden, Slipeinlagen, Kondome, Durex, Kleenex, Hakle,
+        Hansaplast, Desinfektionsmittel, Ibuprofen, Paracetamol, Aspirin, Nasenspray,
+        Vitamintabletten, Magnesium, Babybrei, Hipp, Babyöl, Trockenfutter, Nassfutter, Felix,
+        Sheba, Pedigree, Frolic, Kauknochen, Hundeleckerli, Vogelfutter, Fischfutter, Blumenerde
     """,
 }
 

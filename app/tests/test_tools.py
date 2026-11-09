@@ -683,7 +683,8 @@ class ShoppingCatalogTests(SimpleTestCase):
 
         self.assertEqual(by_name["Apfelsaft"], {"name": "Apfelsaft", "emoji": "🧃", "aisle": "Getränke"})
         self.assertEqual(by_name["Paulaner Spezi"]["aisle"], "Getränke")
-        self.assertGreater(len(SUGGESTIONS), 450)
+        self.assertEqual(by_name["Haribo Goldbären"]["aisle"], "Süßes & Snacks")
+        self.assertGreater(len(SUGGESTIONS), 1000)
         self.assertEqual(len(by_name), len(SUGGESTIONS))
 
     def test_multi_word_stems_match_only_as_a_whole(self):
