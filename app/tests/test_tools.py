@@ -16,6 +16,7 @@ from app.models import (
     NotificationPreference,
     Profile,
     ShoppingItem,
+    ShoppingListShare,
     ShoppingProduct,
     SystemSettings,
     UmlDiagram,
@@ -854,6 +855,164 @@ class ShoppingScanTests(TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response["Content-Type"], "application/json")
         urlopen.assert_not_called()
+
+
+class SharedShoppingListTests(TestCase):
+    url = "/tools/shopping/"
+
+    def setUp(self):
+        cache.clear()
+        self.lea = User.objects.create_user(username="lea", email="lea@example.com", password="pw-12345!")
+        self.tom = User.objects.create_user(username="tom", email="tom@example.com", password="pw-12345!")
+        self.ida = User.objects.create_user(username="ida", email="ida@example.com", password="pw-12345!")
+        self.lea_url = f"{self.url}?list={self.lea.pk}"
+
+    def _share_with_tom(self):
+        self.client.force_login(self.lea)
+        return self.client.post(self.url, {"form_name": "shopping_share", "identifier": "TOM@example.com"})
+
+    def test_sharing_notifies_the_member_and_refuses_bad_recipients(self):
+        self.assertRedirects(self._share_with_tom(), self.url)
+
+        share = ShoppingListShare.objects.get()
+        self.assertEqual((share.owner, share.user), (self.lea, self.tom))
+        notification = UserNotification.objects.get(recipient=self.tom)
+        self.assertEqual(
+            (notification.kind, notification.url, notification.source_key),
+            (UserNotification.KIND_SHOPPING_SHARE, self.lea_url, f"shopping-share:{share.pk}"),
+        )
+        Profile.objects.update_or_create(user=self.tom, defaults={"notify_email": True})
+        self.assertEqual(send_pending_user_notification_emails(include_shopping_shares=False)["sent"], 0)
+        self.assertEqual(send_pending_user_notification_emails()["sent"], 1)
+        for identifier, error in (
+            ("tom", "bereits geteilt"),
+            ("lea@example.com", "nicht mit dir selbst"),
+            ("niemand", "Kein eindeutiges Konto"),
+        ):
+            with self.subTest(identifier=identifier):
+                response = self.client.post(
+                    self.url, {"form_name": "shopping_share", "identifier": identifier}
+                )
+                self.assertContains(response, error)
+        self.assertEqual(ShoppingListShare.objects.count(), 1)
+
+    def test_members_work_on_the_owners_list(self):
+        self._share_with_tom()
+        milk = ShoppingItem.objects.create(owner=self.lea, name="Milch")
+        ShoppingItem.objects.create(owner=self.tom, name="Toms eigener Kaffee")
+        self.client.force_login(self.tom)
+
+        response = self.client.get(self.lea_url)
+        self.assertContains(response, "Milch")
+        self.assertNotContains(response, "Toms eigener Kaffee")
+        self.assertContains(response, f'href="{self.lea_url}" aria-current="page"')
+        self.assertContains(response, f'data-scan-url="/tools/shopping/scan/?list={self.lea.pk}"')
+
+        response = self.client.post(self.lea_url, {"form_name": "shopping_add", "name": "Brot"})
+        self.assertRedirects(response, f"{self.lea_url}&add=1")
+        self.assertTrue(ShoppingItem.objects.filter(owner=self.lea, name="Brot").exists())
+        response = self.client.post(
+            self.lea_url, {"form_name": "shopping_toggle", "item_id": milk.pk, "done": "1"}
+        )
+        self.assertRedirects(response, f"{self.lea_url}#group-dairy", fetch_redirect_response=False)
+        milk.refresh_from_db()
+        self.assertTrue(milk.is_done)
+        self.client.post(self.lea_url, {"form_name": "shopping_clear_done"})
+        self.assertFalse(ShoppingItem.objects.filter(pk=milk.pk).exists())
+
+    def test_scanning_on_a_shared_list_ticks_the_owners_item(self):
+        self._share_with_tom()
+        milk = ShoppingItem.objects.create(owner=self.lea, name="Milch")
+        self.client.force_login(self.tom)
+
+        with patch("app.services.shopping_products.urlopen", return_value=off_milk_response()):
+            response = self.client.post(
+                f"/tools/shopping/scan/?list={self.lea.pk}", {"barcode": MILK, "mode": "shop"}
+            )
+
+        self.assertEqual(response.json()["status"], "ticked")
+        milk.refresh_from_db()
+        self.assertTrue(milk.is_done)
+        # The product is the scanner's, and the owner sees its details on the item too.
+        self.assertTrue(ShoppingProduct.objects.filter(owner=self.tom, barcode=MILK).exists())
+        self.client.force_login(self.lea)
+        self.assertContains(self.client.get(self.url), "nutri-score-b")
+
+    def test_ticking_sends_the_wanted_state_so_two_people_ticking_agree(self):
+        self.client.force_login(self.lea)
+        item = ShoppingItem.objects.create(owner=self.lea, name="Eier")
+
+        for _ in range(2):
+            self.client.post(self.url, {"form_name": "shopping_toggle", "item_id": item.pk, "done": "1"})
+
+        item.refresh_from_db()
+        self.assertTrue(item.is_done)
+
+    def test_lists_that_are_not_shared_stay_out_of_reach(self):
+        foreign = ShoppingItem.objects.create(owner=self.lea, name="Leas Kaffee")
+        self.client.force_login(self.ida)
+
+        response = self.client.get(self.lea_url, follow=True)
+        self.assertRedirects(response, self.url)
+        self.assertContains(response, "nicht (mehr) mit dir geteilt")
+        self.assertNotContains(response, "Leas Kaffee")
+        for url in (self.lea_url, self.url):
+            self.client.post(url, {"form_name": "shopping_toggle", "item_id": foreign.pk, "done": "1"})
+            self.client.post(url, {"form_name": "shopping_delete", "item_id": foreign.pk})
+        foreign.refresh_from_db()
+        self.assertFalse(foreign.is_done)
+        response = self.client.post(
+            f"/tools/shopping/scan/?list={self.lea.pk}", {"barcode": MILK, "mode": "add"}
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(self.client.get(f"{self.url}?list=abc").status_code, 302)
+
+    def test_only_the_owner_manages_members_and_members_can_leave(self):
+        self._share_with_tom()
+        ShoppingListShare.objects.create(owner=self.lea, user=self.ida)
+        self.client.force_login(self.tom)
+
+        self.client.post(self.lea_url, {"form_name": "shopping_unshare", "user_id": self.ida.pk})
+        self.client.post(self.lea_url, {"form_name": "shopping_share", "identifier": "tom@example.com"})
+        self.assertEqual(ShoppingListShare.objects.count(), 2)
+
+        response = self.client.post(self.lea_url, {"form_name": "shopping_leave"})
+        self.assertRedirects(response, self.url)
+        self.assertFalse(ShoppingListShare.objects.filter(user=self.tom).exists())
+        self.assertFalse(UserNotification.objects.filter(recipient=self.tom).exists())
+
+        self.client.force_login(self.lea)
+        self.client.post(self.url, {"form_name": "shopping_unshare", "user_id": self.ida.pk})
+        self.client.post(self.url, {"form_name": "shopping_unshare", "user_id": "x"})
+        self.assertFalse(ShoppingListShare.objects.exists())
+
+    def test_the_version_changes_with_the_list_and_only_shared_lists_poll(self):
+        self.client.force_login(self.lea)
+        page = self.client.get(self.url)
+        self.assertNotContains(page, "data-poll-url")
+
+        first = self.client.get(f"{self.url}?version=1").json()["version"]
+        self.assertEqual(self.client.get(f"{self.url}?version=1").json()["version"], first)
+        item = ShoppingItem.objects.create(owner=self.lea, name="Milch")
+        second = self.client.get(f"{self.url}?version=1").json()["version"]
+        self.assertNotEqual(second, first)
+        item.is_done = True
+        item.save()
+        self.assertNotEqual(self.client.get(f"{self.url}?version=1").json()["version"], second)
+
+        self._share_with_tom()
+        self.assertContains(self.client.get(self.url), f'data-poll-url="{self.url}?version=1"')
+        self.client.force_login(self.tom)
+        self.assertContains(self.client.get(self.lea_url), f'data-poll-url="{self.lea_url}&amp;version=1"')
+
+    def test_disabled_tools_flag_answers_the_poll_with_json(self):
+        SystemSettings.objects.update_or_create(pk=1, defaults={"tools_enabled": False})
+        self.client.force_login(self.lea)
+
+        response = self.client.get(f"{self.url}?version=1")
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response["Content-Type"], "application/json")
 
 
 class ShoppingCatalogTests(SimpleTestCase):

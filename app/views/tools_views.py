@@ -12,7 +12,16 @@ from django.views.decorators.http import require_http_methods, require_POST
 from app.forms import HabitForm, HabitReminderForm, ShoppingItemForm
 from app.models import Habit, ShoppingItem, UmlDiagram
 from app.services.habits import habit_items, toggle_habit_check
+from app.services.notes import display_name
 from app.services.shopping import SUGGESTIONS, classify_item, group_items
+from app.services.shopping_lists import (
+    end_shopping_list_share,
+    list_owner_for,
+    list_version,
+    share_shopping_list,
+    shopping_list_members,
+    shopping_list_owners,
+)
 from app.services.shopping_products import MAX_SHOPPING_ITEMS, attach_products, scan_barcode
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.uml_content import validate_uml_document
@@ -90,67 +99,106 @@ def habits(request):
     )
 
 
-def _posted_shopping_item(request):
-    """The posted item of this user; a tampered id counts as a missing item."""
+def _posted_shopping_item(request, list_owner):
+    """The posted item of the open list; a tampered id counts as a missing item."""
     try:
-        return ShoppingItem.objects.filter(owner=request.user, pk=request.POST.get("item_id")).first()
+        return ShoppingItem.objects.filter(owner=list_owner, pk=request.POST.get("item_id")).first()
     except ValueError:
         return None
+
+
+def _shopping_list_url(request, list_owner, query=""):
+    """The page of this list, keeping `?list=` on someone else's."""
+    params = [] if list_owner == request.user else [f"list={list_owner.pk}"]
+    params += [query] if query else []
+    return reverse("shopping_list") + ("?" + "&".join(params) if params else "")
 
 
 @login_required
 def shopping_list(request):
     if not feature_enabled("tools"):
-        return disabled_feature_response(request, "tools")
+        return disabled_feature_response(request, "tools", json_response="version" in request.GET)
 
-    page_url = reverse("shopping_list")
+    list_owner = list_owner_for(request.user, request.GET.get("list"))
+    if list_owner is None:
+        # A list that was never or is no longer shared with this user.
+        django_messages.info(request, "Dieser Einkaufszettel ist nicht (mehr) mit dir geteilt.")
+        return redirect("shopping_list")
+    is_own = list_owner == request.user
+    page_url = _shopping_list_url(request, list_owner)
     form_name = request.POST.get("form_name") if request.method == "POST" else None
     form = ShoppingItemForm()
+    share_error = None
     if form_name == "shopping_add":
         form = ShoppingItemForm(request.POST)
         if form.is_valid():
             # Adding something already on the list (e.g. picked again from the suggestions)
             # brings that row back instead of writing it twice.
             existing = ShoppingItem.objects.filter(
-                owner=request.user, name__iexact=form.cleaned_data["name"]
+                owner=list_owner, name__iexact=form.cleaned_data["name"]
             ).first()
             if existing is not None:
                 existing.is_done = False
                 existing.quantity = form.cleaned_data["quantity"] or existing.quantity
                 existing.save(update_fields=["is_done", "quantity"])
-                return redirect(f"{page_url}?add=1")
-            if ShoppingItem.objects.filter(owner=request.user).count() >= MAX_SHOPPING_ITEMS:
+                return redirect(_shopping_list_url(request, list_owner, "add=1"))
+            if ShoppingItem.objects.filter(owner=list_owner).count() >= MAX_SHOPPING_ITEMS:
                 form.add_error(None, f"Es passen höchstens {MAX_SHOPPING_ITEMS} Artikel auf den Zettel.")
             else:
                 item = form.save(commit=False)
-                item.owner = request.user
+                item.owner = list_owner
                 item.save()
-                return redirect(f"{page_url}?add=1")
+                return redirect(_shopping_list_url(request, list_owner, "add=1"))
     elif form_name == "shopping_toggle":
-        item = _posted_shopping_item(request)
+        item = _posted_shopping_item(request, list_owner)
         if item is None:
             return redirect(page_url)
-        item.is_done = not item.is_done
+        # The button sends the state it wants, so two people ticking the same item at once both
+        # end up with it ticked instead of one toggling it back.
+        wanted = request.POST.get("done")
+        item.is_done = wanted == "1" if wanted in ("0", "1") else not item.is_done
         item.save(update_fields=["is_done"])
         # A ticked item moves to "Im Wagen"; return to the aisle it came from, so a long list
         # doesn't jump around while shopping. An unticked one goes back to its own row.
         anchor = f"group-{classify_item(item.name)[0]}" if item.is_done else f"item-{item.pk}"
         return redirect(f"{page_url}#{anchor}")
     elif form_name == "shopping_delete":
-        item = _posted_shopping_item(request)
+        item = _posted_shopping_item(request, list_owner)
         if item is not None:
             item.delete()
         return redirect(page_url)
     elif form_name == "shopping_clear_done":
-        ShoppingItem.objects.filter(owner=request.user, is_done=True).delete()
+        ShoppingItem.objects.filter(owner=list_owner, is_done=True).delete()
         return redirect(page_url)
+    elif form_name == "shopping_share" and is_own:
+        share_error = share_shopping_list(request.user, request.POST.get("identifier", "")[:254])
+        if share_error is None:
+            django_messages.success(request, "Der Zettel ist jetzt geteilt.")
+            return redirect(page_url)
+    elif form_name == "shopping_unshare" and is_own:
+        try:
+            end_shopping_list_share(request.user.pk, int(request.POST.get("user_id", "")))
+        except ValueError:
+            pass
+        return redirect(page_url)
+    elif form_name == "shopping_leave" and not is_own:
+        end_shopping_list_share(list_owner.pk, request.user.pk)
+        return redirect("shopping_list")
+
+    items = list(ShoppingItem.objects.filter(owner=list_owner))
+    version = list_version(items)
+    if "version" in request.GET:
+        # The page polls this on a shared list to pick up the others' changes.
+        return JsonResponse({"version": version}, headers={"Cache-Control": "no-store"})
 
     # Only after adding: on a phone, focus on opening would cover the list with the keyboard.
     if request.GET.get("add"):
         form.fields["name"].widget.attrs["autofocus"] = True
 
-    items = list(ShoppingItem.objects.filter(owner=request.user))
-    attach_products(request.user, items)
+    members = shopping_list_members(list_owner)
+    # Product details come from whoever on the list scanned it, the viewer's own first.
+    product_users = list(dict.fromkeys([request.user, list_owner, *members]))
+    attach_products(product_users, items)
     groups, done_items = group_items(items)
     return render(
         request,
@@ -162,6 +210,22 @@ def shopping_list(request):
             "groups": groups,
             "done_items": done_items,
             "suggestions": SUGGESTIONS,
+            "list_owner_name": display_name(list_owner),
+            "is_own_list": is_own,
+            "list_query": "" if is_own else f"?list={list_owner.pk}",
+            "poll_url": f"{page_url}{'&' if '?' in page_url else '?'}version=1",
+            "list_tabs": [
+                {
+                    "label": "Mein Zettel" if owner == request.user else f"Von {display_name(owner)}",
+                    "url": _shopping_list_url(request, owner),
+                    "active": owner == list_owner,
+                }
+                for owner in shopping_list_owners(request.user)
+            ],
+            "members": [{"id": member.pk, "name": display_name(member)} for member in members],
+            "is_shared": bool(members),
+            "list_version": version,
+            "share_error": share_error,
         },
     )
 
@@ -172,11 +236,16 @@ def shopping_scan(request):
     """One barcode from the scanner dialog: ticks off or adds the product, as JSON."""
     if not feature_enabled("tools"):
         return disabled_feature_response(request, "tools", json_response=True)
+    list_owner = list_owner_for(request.user, request.GET.get("list"))
+    if list_owner is None:
+        message = "Dieser Einkaufszettel ist nicht (mehr) mit dir geteilt."
+        return JsonResponse({"status": "error", "message": message}, status=404)
     status, result = scan_barcode(
         request.user,
         request.POST.get("barcode", "")[:40],
         request.POST.get("mode", ""),
         request.POST.get("name", "")[:500],
+        list_owner=list_owner,
     )
     return JsonResponse(result, status=status)
 

@@ -46,6 +46,7 @@
 
   if (typeof document === "undefined") return;
   initScanner();
+  initLiveUpdates();
   const root = document.querySelector("[data-shopping-suggest]");
   const dataElement = document.getElementById("shopping-suggestion-data");
   if (!root || !dataElement) return;
@@ -143,6 +144,40 @@
       event.preventDefault();
     }
   });
+
+  // On a shared list, asks every few seconds whether anyone changed it and then swaps in the new
+  // list. Only the list region is replaced, so the add form keeps what is being typed.
+  function initLiveUpdates() {
+    const region = document.querySelector("[data-shopping-live][data-poll-url]");
+    if (!region) return;
+    let checking = false;
+
+    async function check() {
+      if (checking || document.visibilityState !== "visible" || document.querySelector("dialog[open]")) return;
+      checking = true;
+      try {
+        const response = await fetch(region.dataset.pollUrl, { credentials: "same-origin", cache: "no-store" });
+        if (!response.ok) return;
+        const { version } = await response.json();
+        if (version === region.dataset.version) return;
+        const page = await fetch(window.location.href, { credentials: "same-origin", cache: "no-store" });
+        if (!page.ok) return;
+        const fresh = new DOMParser()
+          .parseFromString(await page.text(), "text/html")
+          .querySelector("[data-shopping-live]");
+        if (!fresh) return;
+        region.replaceChildren(...fresh.childNodes);
+        region.dataset.version = fresh.dataset.version;
+      } catch {
+        // Offline or a hiccup; the next round tries again.
+      } finally {
+        checking = false;
+      }
+    }
+
+    setInterval(check, 5000);
+    document.addEventListener("visibilitychange", check);
+  }
 
   // Barcode scanner dialog: the camera through the browser's BarcodeDetector where there is one
   // (Chrome on Android), typing the number everywhere. Each code goes to the server, which looks

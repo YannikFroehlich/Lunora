@@ -31,6 +31,7 @@ from app.models import (
     NotificationPreference,
     Profile,
     ShoppingItem,
+    ShoppingListShare,
     ShoppingProduct,
     SystemSettings,
     Task,
@@ -1717,6 +1718,7 @@ class DataExportTests(TestCase):
         ShoppingItem.objects.create(owner=self.tom, name="Toms Kaffee")
         ShoppingProduct.objects.create(owner=self.lea, barcode="4000417025005", name="Vollmilch")
         ShoppingProduct.objects.create(owner=self.tom, barcode="4000417025005", name="Toms Milch")
+        ShoppingListShare.objects.create(owner=self.lea, user=self.tom)
         conversation = Conversation.objects.create(created_by=self.lea)
         ConversationMember.objects.create(conversation=conversation, user=self.lea)
         ConversationMember.objects.create(conversation=conversation, user=self.tom)
@@ -1755,6 +1757,7 @@ class DataExportTests(TestCase):
         self.assertEqual([(item["name"], item["quantity"]) for item in shopping], [("Milch", "2 Liter")])
         products = json.loads(archive.read("einkaufsprodukte.json"))
         self.assertEqual([product["name"] for product in products], ["Vollmilch"])
+        self.assertEqual(json.loads(archive.read("einkaufszettel-freigaben.json")), [self.tom.get_username()])
         account = archive.read("konto.json").decode("utf-8")
         self.assertIn('"display_name": "Lea"', account)
         self.assertNotIn("geheimer-token", account)

@@ -65,6 +65,7 @@ KIND_TO_CATEGORY = {
     UserNotification.KIND_NOTE_SHARE: NotificationPreference.CATEGORY_NOTES,
     UserNotification.KIND_WEATHER_ALERT: NotificationPreference.CATEGORY_WEATHER,
     UserNotification.KIND_VOCABULARY_SHARE: NotificationPreference.CATEGORY_TOOLS,
+    UserNotification.KIND_SHOPPING_SHARE: NotificationPreference.CATEGORY_TOOLS,
     UserNotification.KIND_HABIT_REMINDER: NotificationPreference.CATEGORY_TOOLS,
     UserNotification.KIND_CHAT_MENTION: NotificationPreference.CATEGORY_MESSAGES,
 }

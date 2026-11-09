@@ -172,14 +172,14 @@ def _stem(word):
     return match.group(1) if match else word
 
 
-def find_open_item(user, product):
+def find_open_item(list_owner, product):
     """The open list item a scanned product stands for.
 
     The item scanned with this barcode before wins; otherwise one whose words all appear in the
     product name ("Milch" for "Frische Vollmilch 3,5 %"), the longest such name first.
     ponytail: word-stem matching, misses synonyms ("Möhren" for "Karotten").
     """
-    items = list(ShoppingItem.objects.filter(owner=user, is_done=False))
+    items = list(ShoppingItem.objects.filter(owner=list_owner, is_done=False))
     for item in items:
         if item.barcode == product.barcode:
             return item
@@ -194,21 +194,21 @@ def find_open_item(user, product):
     return max(matches, key=lambda item: len(item.name), default=None)
 
 
-def add_product_to_list(user, product):
+def add_product_to_list(list_owner, product):
     """Puts a scanned product on the list (or reopens its row); returns the item."""
     item = (
-        ShoppingItem.objects.filter(owner=user, barcode=product.barcode).first()
-        or ShoppingItem.objects.filter(owner=user, name__iexact=product.name).first()
+        ShoppingItem.objects.filter(owner=list_owner, barcode=product.barcode).first()
+        or ShoppingItem.objects.filter(owner=list_owner, name__iexact=product.name).first()
     )
     if item is not None:
         item.is_done = False
         item.barcode = product.barcode
         item.save(update_fields=["is_done", "barcode"])
         return item
-    if ShoppingItem.objects.filter(owner=user).count() >= MAX_SHOPPING_ITEMS:
+    if ShoppingItem.objects.filter(owner=list_owner).count() >= MAX_SHOPPING_ITEMS:
         raise ProductLookupError(f"Es passen höchstens {MAX_SHOPPING_ITEMS} Artikel auf den Zettel.")
     return ShoppingItem.objects.create(
-        owner=user, name=product.name, quantity=product.package, barcode=product.barcode
+        owner=list_owner, name=product.name, quantity=product.package, barcode=product.barcode
     )
 
 
@@ -221,11 +221,14 @@ def product_summary(product):
     }
 
 
-def scan_barcode(user, raw_barcode, mode, name=""):
-    """Handles one scan; returns (HTTP status, JSON-ready result) for the scanner dialog.
+def scan_barcode(user, raw_barcode, mode, name="", list_owner=None):
+    """Handles one scan on `list_owner`'s list (default: the user's own); returns (HTTP status, result).
+
+    The product is stored for the user who scanned, the item changes on the list.
 
     "shop" ticks the matching open item off, "add" puts the product on the list.
     """
+    list_owner = list_owner or user
     barcode = normalize_barcode(raw_barcode)
     if barcode is None:
         return 400, {"status": "invalid", "message": "Das ist kein gültiger Strichcode (EAN)."}
@@ -240,7 +243,7 @@ def scan_barcode(user, raw_barcode, mode, name=""):
                 "message": "Dieses Produkt kennt Open Food Facts nicht. Wie heißt es?",
             }
         if mode == "add":
-            item = add_product_to_list(user, product)
+            item = add_product_to_list(list_owner, product)
             return 200, {
                 "status": "added",
                 "changed": True,
@@ -251,13 +254,13 @@ def scan_barcode(user, raw_barcode, mode, name=""):
         return 503, {"status": "error", "message": str(error)}
 
     result = {"product": product_summary(product)}
-    item = find_open_item(user, product)
+    item = find_open_item(list_owner, product)
     if item is not None:
         item.is_done = True
         item.barcode = product.barcode
         item.save(update_fields=["is_done", "barcode"])
         return 200, {**result, "status": "ticked", "changed": True, "message": f"„{item.name}“ abgehakt."}
-    if ShoppingItem.objects.filter(owner=user, barcode=product.barcode, is_done=True).exists():
+    if ShoppingItem.objects.filter(owner=list_owner, barcode=product.barcode, is_done=True).exists():
         return 200, {**result, "status": "done", "message": f"„{product.name}“ ist schon im Wagen."}
     return 200, {**result, "status": "missing", "message": f"„{product.name}“ steht nicht auf dem Zettel."}
 
@@ -266,13 +269,21 @@ def _number(value, unit):
     return f"{value:.0f}" if unit == "kcal" else f"{value:.1f}".replace(".", ",")
 
 
-def attach_products(user, items):
-    """Sets `product` and its `nutrition_rows` on every item that was scanned before."""
+def attach_products(users, items):
+    """Sets `product` and its `nutrition_rows` on every item that was scanned before.
+
+    Products come from `users` (everyone on a shared list); when several scanned the same barcode,
+    the earliest in `users` wins.
+    """
     barcodes = {item.barcode for item in items if item.barcode}
-    products = {
-        product.barcode: product
-        for product in ShoppingProduct.objects.filter(owner=user, barcode__in=barcodes)
-    }
+    rank = {user.pk: index for index, user in enumerate(users)}
+    products = {}
+    for product in sorted(
+        ShoppingProduct.objects.filter(owner__in=users, barcode__in=barcodes),
+        key=lambda product: rank[product.owner_id],
+        reverse=True,
+    ):
+        products[product.barcode] = product
     for item in items:
         item.product = products.get(item.barcode)
         if item.product is not None:

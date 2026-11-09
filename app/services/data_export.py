@@ -26,6 +26,7 @@ from app.models import (
     NoteTemplate,
     ScheduledChatMessage,
     ShoppingItem,
+    ShoppingListShare,
     ShoppingProduct,
     Task,
     TaskLabel,
@@ -117,6 +118,14 @@ def write_user_export(user, fileobj):
                     "name", "quantity", "is_done", "barcode", "created_at"
                 )
             ),
+        )
+        _add_json(
+            archive,
+            "einkaufszettel-freigaben.json",
+            [
+                share.user.get_username()
+                for share in ShoppingListShare.objects.filter(owner=user).select_related("user")
+            ],
         )
         _add_json(
             archive,

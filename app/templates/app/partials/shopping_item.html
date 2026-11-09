@@ -2,6 +2,7 @@
     <form method="post">
         {% csrf_token %}
         <input type="hidden" name="form_name" value="shopping_toggle">
+        <input type="hidden" name="done" value="{{ item.is_done|yesno:'0,1' }}">
         <input type="hidden" name="item_id" value="{{ item.pk }}">
         <button class="shopping-toggle" type="submit" aria-pressed="{{ item.is_done|yesno:'true,false' }}">
             <span class="shopping-box" aria-hidden="true"><i class="fa-solid fa-check"></i></span>

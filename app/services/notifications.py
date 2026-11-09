@@ -59,6 +59,7 @@ NOTIFICATION_PRESENTATION = {
     UserNotification.KIND_TASK_SHARE: ("fa-user-group", "Aufgabe", "task"),
     UserNotification.KIND_CHAT_MENTION: ("fa-at", "Chat", "message"),
     UserNotification.KIND_EVENT_COMMENT: ("fa-comments", "Termin", "calendar"),
+    UserNotification.KIND_SHOPPING_SHARE: ("fa-basket-shopping", "Einkauf", "tools"),
 }
 
 
@@ -286,6 +287,22 @@ def materialize_vocabulary_share_notifications(shares):
             }
         )
     return _create_missing_user_notifications(rows)
+
+
+def materialize_shopping_share_notification(share):
+    return _create_missing_user_notifications(
+        [
+            {
+                "recipient_id": share.user_id,
+                "actor_id": share.owner_id,
+                "kind": UserNotification.KIND_SHOPPING_SHARE,
+                "title": f"{_display_name(share.owner)} teilt den Einkaufszettel mit dir",
+                "body": "Ihr könnt jetzt beide eintragen und abhaken.",
+                "url": f"/tools/shopping/?list={share.owner_id}",
+                "source_key": f"shopping-share:{share.pk}",
+            }
+        ]
+    )
 
 
 def materialize_task_assignment_notifications(tasks):
@@ -1007,6 +1024,7 @@ def send_pending_user_notification_emails(
     now=None,
     include_note_shares=True,
     include_vocabulary_shares=True,
+    include_shopping_shares=True,
     include_weather=True,
     include_task_assignments=True,
     include_habit_reminders=True,
@@ -1020,6 +1038,8 @@ def send_pending_user_notification_emails(
         kinds.append(UserNotification.KIND_NOTE_SHARE)
     if include_vocabulary_shares:
         kinds.append(UserNotification.KIND_VOCABULARY_SHARE)
+    if include_shopping_shares:
+        kinds.append(UserNotification.KIND_SHOPPING_SHARE)
     if include_weather:
         kinds.append(UserNotification.KIND_WEATHER_ALERT)
     if include_task_assignments:

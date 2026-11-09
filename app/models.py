@@ -1118,6 +1118,25 @@ class ShoppingItem(models.Model):
         return self.name
 
 
+class ShoppingListShare(models.Model):
+    """Someone the owner shares their shopping list with; members add, tick and delete like the owner."""
+
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="shopping_list_shares"
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="shared_shopping_lists"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        constraints = [models.UniqueConstraint(fields=["owner", "user"], name="unique_shopping_list_share")]
+
+    def __str__(self):
+        return f"{self.owner} → {self.user}"
+
+
 class ShoppingProduct(models.Model):
     """A product its owner scanned once, from Open Food Facts or named by hand.
 
@@ -1223,6 +1242,7 @@ class UserNotification(models.Model):
     KIND_TASK_SHARE = "task_share"
     KIND_CHAT_MENTION = "chat_mention"
     KIND_EVENT_COMMENT = "event_comment"
+    KIND_SHOPPING_SHARE = "shopping_share"
     KIND_CHOICES = [
         (KIND_CALENDAR_REMINDER, "Kalendererinnerung"),
         (KIND_TASK_DUE, "Fällige Aufgabe"),
@@ -1239,6 +1259,7 @@ class UserNotification(models.Model):
         (KIND_TASK_SHARE, "Geteilte Aufgabe"),
         (KIND_CHAT_MENTION, "Chat-Erwähnung"),
         (KIND_EVENT_COMMENT, "Terminkommentar"),
+        (KIND_SHOPPING_SHARE, "Geteilter Einkaufszettel"),
     ]
 
     recipient = models.ForeignKey(
