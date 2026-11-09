@@ -6,6 +6,11 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Word import: form fields arrive as in the document. An unfilled content control (Word's grey
+  placeholder such as "Klicken oder tippen Sie hier …") becomes a blank `__________` to fill in
+  instead of grey text, filled-in controls keep their text, check boxes become ☐/☒, and legacy
+  form fields (text, check box, dropdown) keep their value. Table rows inside repeating sections
+  are no longer dropped.
 - New tool "Einkaufszettel": a shopping list with optional quantities, tick items off in the store
   and clear the ticked ones in one go. Items get a matching emoji and are sorted by store aisle
   (fruit & veg, dairy, drinks, …), ticked ones move to "Im Wagen", the name field suggests over 1,500

@@ -9,7 +9,7 @@ from django.urls import reverse
 from PIL import Image
 
 from app.models import Note, NoteAttachment, Profile
-from app.services.docx_import import _Converter, _note_image, docx_to_note
+from app.services.docx_import import FORM_GAP, _Converter, _note_image, docx_to_note
 from app.services.note_content import validate_note_document
 from app.services.notes import save_note
 
@@ -18,7 +18,8 @@ NS = (
     'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
     'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" '
     'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
-    'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"'
+    'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" '
+    'xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"'
 )
 
 STYLES = f"""<w:styles {NS}>
@@ -293,6 +294,97 @@ class DocxConversionTests(TestCase):
 
         validate_note_document(document)
         self.assertEqual([len(table["content"]) for table in document["content"]], [20, 20, 5])
+
+    def test_form_fields_keep_their_values_and_show_blanks_for_placeholders(self):
+        def control(content, placeholder=False, extra_pr=""):
+            pr = '<w:alias w:val="Eingabe"/><w:tag w:val="Eingabe"/>' + extra_pr
+            if placeholder:
+                pr += "<w:showingPlcHdr/>"
+            return f"<w:sdt><w:sdtPr>{pr}</w:sdtPr><w:sdtContent>{content}</w:sdtContent></w:sdt>"
+
+        def run(text, rpr=""):
+            return f'<w:r><w:rPr>{rpr}</w:rPr><w:t xml:space="preserve">{text}</w:t></w:r>'
+
+        def field(data, instruction, result=""):
+            return (
+                f'<w:r><w:fldChar w:fldCharType="begin"><w:ffData>{data}</w:ffData></w:fldChar></w:r>'
+                f'<w:r><w:instrText xml:space="preserve"> {instruction} </w:instrText></w:r>'
+                '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+                f'{result}<w:r><w:fldChar w:fldCharType="end"/></w:r>'
+            )
+
+        grey = '<w:rStyle w:val="Platzhaltertext"/><w:color w:val="808080"/><w:i/>'
+        body = "".join(
+            [
+                "<w:p>"
+                + run("Name: ")
+                + control(run("Name", grey), placeholder=True)
+                + run(" Klasse: ")
+                + control(run("10b"))
+                + run(" Datum: ")
+                + control(
+                    run("Datum", grey),
+                    placeholder=True,
+                    extra_pr='<w:date><w:dateFormat w:val="dd.MM.yyyy"/></w:date>',
+                )
+                + "</w:p>",
+                "<w:p>"
+                + control(run("☒"), extra_pr='<w14:checkbox><w14:checked w14:val="1"/></w14:checkbox>')
+                + run(" erledigt ")
+                + control('<w:r><w:sym w:font="Wingdings" w:char="F0A8"/></w:r>', extra_pr="<w14:checkbox/>")
+                + run(" offen")
+                + "</w:p>",
+                control(_para("Klicken oder tippen Sie hier, um Text einzugeben."), placeholder=True),
+                control(_para("Eingetragener Absatz")),
+                "<w:p>"
+                + run("Vorname: ")
+                + field("<w:textInput/>", "FORMTEXT", run(" " * 5))
+                + run(" Ort: ")
+                + field("<w:textInput/>", "FORMTEXT", run("Os") + run("nabrück", "<w:b/>"))
+                + run(" Haken: ")
+                + field('<w:checkBox><w:default w:val="1"/></w:checkBox>', "FORMCHECKBOX")
+                + run(" Farbe: ")
+                + field(
+                    '<w:ddList><w:result w:val="1"/><w:listEntry w:val="rot"/><w:listEntry w:val="blau"/></w:ddList>',
+                    "FORMDROPDOWN",
+                )
+                + "</w:p>",
+                "<w:tbl><w:tr>"
+                + _cell("Kopf")
+                + "</w:tr>"
+                + control("<w:tr>" + control(_cell("Wiederholt")) + "</w:tr>")
+                + "</w:tbl>",
+            ]
+        )
+
+        _title, document, _images, _skipped = docx_to_note(build_docx(body=body), "Arbeitsblatt")
+
+        validate_note_document(document)
+        texts = [
+            "".join(node.get("text", "") for node in block.get("content", []))
+            for block in document["content"]
+            if block["type"] == "paragraph"
+        ]
+        self.assertEqual(
+            texts,
+            [
+                f"Name: {FORM_GAP} Klasse: 10b Datum: {FORM_GAP}",
+                "☒ erledigt ☐ offen",
+                FORM_GAP,
+                "Eingetragener Absatz",
+                f"Vorname: {FORM_GAP} Ort: Osnabrück Haken: ☒ Farbe: blau",
+            ],
+        )
+        self.assertEqual(
+            [node.get("marks") for node in document["content"][0]["content"]],
+            [None],
+            "the blanks don't take over the grey placeholder style",
+        )
+        bold = [node["text"] for node in document["content"][4]["content"] if "bold" in _marks(node)]
+        self.assertEqual(bold, ["nabrück"], "a filled form field keeps its formatting")
+        table = document["content"][-1]
+        self.assertEqual(len(table["content"]), 2, "rows inside a repeating section are kept")
+        self.assertEqual(table["content"][1]["content"][0]["content"][0]["content"][0]["text"], "Wiederholt")
 
     def test_unusable_images_are_skipped_and_counted(self):
         rels_body = "<w:p>" + _drawing("rId1") + "</w:p>"
