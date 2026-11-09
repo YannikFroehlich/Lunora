@@ -25,6 +25,7 @@ from app.models import (
     HolidayOverride,
     NotificationPreference,
     Profile,
+    ShoppingItem,
     SystemSettings,
     Task,
     TaskLabel,
@@ -1094,6 +1095,17 @@ class HabitReminderForm(forms.ModelForm):
         model = Habit
         fields = ["reminder_time"]
         widgets = {"reminder_time": forms.TimeInput(attrs={"type": "time"}, format="%H:%M")}
+
+
+class ShoppingItemForm(forms.ModelForm):
+    class Meta:
+        model = ShoppingItem
+        fields = ["name", "quantity"]
+        labels = {"name": "Artikel", "quantity": "Menge"}
+        widgets = {
+            "name": forms.TextInput(attrs={"placeholder": "z. B. Milch", "autocomplete": "off"}),
+            "quantity": forms.TextInput(attrs={"placeholder": "optional", "autocomplete": "off"}),
+        }
 
 
 class VocabularyListForm(forms.ModelForm):

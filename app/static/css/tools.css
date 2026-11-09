@@ -1337,6 +1337,103 @@ a.tool-card:hover {
   }
 }
 
+/* ---- Shopping list --------------------------------------------------------------------------- */
+
+@media (min-width: 901px) {
+  .shopping-create-form {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 1fr) auto;
+  }
+}
+
+.shopping-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.shopping-toolbar form,
+.shopping-item form {
+  margin: 0;
+}
+
+.shopping-items {
+  margin: 12px 0 0;
+  padding: 6px 10px;
+  list-style: none;
+}
+
+.shopping-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  scroll-margin-top: 96px;
+}
+
+.shopping-item + .shopping-item {
+  border-top: 1px solid var(--color-line);
+}
+
+.shopping-item form:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.shopping-toggle {
+  display: flex;
+  width: 100%;
+  min-height: 48px;
+  align-items: center;
+  gap: 12px;
+  padding: 6px;
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+
+.shopping-box {
+  display: grid;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  color: transparent;
+  font-size: var(--text-xs);
+  border: 1.5px solid var(--color-muted);
+  border-radius: var(--radius-xs);
+}
+
+.shopping-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.shopping-toggle small {
+  flex: none;
+  max-width: 40%;
+  margin-left: auto;
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+
+.shopping-item.is-done .shopping-box {
+  color: var(--color-on-accent);
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.shopping-item.is-done .shopping-name {
+  color: var(--color-muted);
+  text-decoration: line-through;
+}
+
 /* ---- Habits ---------------------------------------------------------------------------------- */
 
 @media (min-width: 901px) {

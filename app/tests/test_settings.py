@@ -30,6 +30,7 @@ from app.models import (
     NoteAttachment,
     NotificationPreference,
     Profile,
+    ShoppingItem,
     SystemSettings,
     Task,
     UmlDiagram,
@@ -1711,6 +1712,8 @@ class DataExportTests(TestCase):
         HabitCheck.objects.create(habit=habit, date=datetime(2026, 10, 1).date())
         Habit.objects.create(owner=self.tom, title="Toms Gewohnheit")
         Bookmark.objects.create(owner=self.lea, title="Bank", url="https://bank.example.com")
+        ShoppingItem.objects.create(owner=self.lea, name="Milch", quantity="2 Liter")
+        ShoppingItem.objects.create(owner=self.tom, name="Toms Kaffee")
         conversation = Conversation.objects.create(created_by=self.lea)
         ConversationMember.objects.create(conversation=conversation, user=self.lea)
         ConversationMember.objects.create(conversation=conversation, user=self.tom)
@@ -1745,6 +1748,8 @@ class DataExportTests(TestCase):
             json.loads(archive.read("lesezeichen.json")),
             [{"title": "Bank", "url": "https://bank.example.com"}],
         )
+        shopping = json.loads(archive.read("einkaufszettel.json"))
+        self.assertEqual([(item["name"], item["quantity"]) for item in shopping], [("Milch", "2 Liter")])
         account = archive.read("konto.json").decode("utf-8")
         self.assertIn('"display_name": "Lea"', account)
         self.assertNotIn("geheimer-token", account)

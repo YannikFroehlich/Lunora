@@ -157,6 +157,7 @@ class PageAccessibilityMarkupTests(TestCase):
             "/search/?q=Pack",
             "/tools/",
             "/tools/habits/",
+            "/tools/shopping/",
             "/tools/focus/",
             "/tools/uml/",
             f"/tools/uml/{self.diagram.pk}/",

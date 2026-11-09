@@ -48,6 +48,7 @@ urlpatterns = [
     path("tasks/time/", view.task_time_report, name="task_time_report"),
     path("tools/", view.tools, name="tools"),
     path("tools/habits/", view.habits, name="habits"),
+    path("tools/shopping/", view.shopping_list, name="shopping_list"),
     path("tools/focus/", view.focus_timer, name="focus_timer"),
     path("tools/uml/", view.uml_diagrams, name="uml_diagrams"),
     path("tools/uml/<int:diagram_id>/", view.uml_diagram_editor, name="uml_diagram_editor"),

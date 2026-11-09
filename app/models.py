@@ -1100,6 +1100,22 @@ class Bookmark(models.Model):
         return self.title
 
 
+class ShoppingItem(models.Model):
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="shopping_items"
+    )
+    name = models.CharField(max_length=120)
+    quantity = models.CharField(max_length=40, blank=True)
+    is_done = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return self.name
+
+
 class AuditLogEntry(models.Model):
     """Security and administration events for the superuser-only audit log on /administration/.
 

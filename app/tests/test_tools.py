@@ -12,6 +12,7 @@ from app.models import (
     HabitCheck,
     NotificationPreference,
     Profile,
+    ShoppingItem,
     SystemSettings,
     UmlDiagram,
     UserNotification,
@@ -504,6 +505,96 @@ class VocabularySharingTests(TestCase):
         self.assertEqual(send_pending_user_notification_emails(include_vocabulary_shares=False)["sent"], 0)
         self.assertEqual(send_pending_user_notification_emails()["sent"], 1)
         self.assertIn("Vokabelliste", mail.outbox[0].subject)
+
+
+class ShoppingListTests(TestCase):
+    url = "/tools/shopping/"
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="lea", email="lea@example.com", password="pw-12345!")
+        self.other = User.objects.create_user(username="tom", email="tom@example.com", password="pw-12345!")
+        self.client.force_login(self.user)
+
+    def _post(self, form_name, **data):
+        return self.client.post(self.url, {"form_name": form_name, **data})
+
+    def test_add_stores_the_item_for_the_user_and_refocuses_the_field(self):
+        response = self._post("shopping_add", name="  Milch ", quantity="2 Liter")
+
+        self.assertRedirects(response, f"{self.url}?add=1")
+        item = ShoppingItem.objects.get()
+        self.assertEqual((item.owner, item.name, item.quantity), (self.user, "Milch", "2 Liter"))
+        self.assertContains(self.client.get(f"{self.url}?add=1"), "autofocus")
+        self.assertNotContains(self.client.get(self.url), "autofocus")
+
+    def test_blank_name_is_refused(self):
+        response = self._post("shopping_add", name="   ", quantity="2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(ShoppingItem.objects.exists())
+
+    def test_the_item_limit_is_enforced(self):
+        ShoppingItem.objects.bulk_create(
+            ShoppingItem(owner=self.user, name=f"Artikel {number}") for number in range(200)
+        )
+
+        response = self._post("shopping_add", name="Einer zu viel")
+
+        self.assertContains(response, "höchstens 200 Artikel")
+        self.assertEqual(ShoppingItem.objects.filter(owner=self.user).count(), 200)
+
+    def test_toggle_flips_the_item_and_returns_to_its_row(self):
+        item = ShoppingItem.objects.create(owner=self.user, name="Brot")
+
+        response = self._post("shopping_toggle", item_id=item.pk)
+        self.assertRedirects(response, f"{self.url}#item-{item.pk}", fetch_redirect_response=False)
+        item.refresh_from_db()
+        self.assertTrue(item.is_done)
+
+        self._post("shopping_toggle", item_id=item.pk)
+        item.refresh_from_db()
+        self.assertFalse(item.is_done)
+
+    def test_clear_done_keeps_open_items_and_other_users_items(self):
+        ShoppingItem.objects.create(owner=self.user, name="Gekauft", is_done=True)
+        ShoppingItem.objects.create(owner=self.user, name="Offen")
+        ShoppingItem.objects.create(owner=self.other, name="Fremd", is_done=True)
+
+        self._post("shopping_clear_done")
+
+        self.assertCountEqual(ShoppingItem.objects.values_list("name", flat=True), ["Offen", "Fremd"])
+
+    def test_items_of_others_stay_out_of_reach(self):
+        foreign = ShoppingItem.objects.create(owner=self.other, name="Toms Kaffee")
+
+        self.assertNotContains(self.client.get(self.url), "Toms Kaffee")
+        self._post("shopping_toggle", item_id=foreign.pk)
+        self._post("shopping_delete", item_id=foreign.pk)
+
+        foreign.refresh_from_db()
+        self.assertFalse(foreign.is_done)
+
+    def test_tampered_item_ids_redirect_instead_of_failing(self):
+        for item_id in ("abc", "9" * 5000, ""):
+            with self.subTest(item_id=item_id[:10]):
+                self.assertEqual(self._post("shopping_toggle", item_id=item_id).status_code, 302)
+                self.assertEqual(self._post("shopping_delete", item_id=item_id).status_code, 302)
+
+    def test_tools_page_links_the_list_and_counts_open_items(self):
+        ShoppingItem.objects.create(owner=self.user, name="Brot")
+        ShoppingItem.objects.create(owner=self.user, name="Butter", is_done=True)
+
+        response = self.client.get("/tools/")
+
+        self.assertContains(response, self.url)
+        self.assertContains(response, "1 offen")
+
+    def test_disabled_tools_flag_blocks_the_list(self):
+        SystemSettings.objects.update_or_create(pk=1, defaults={"tools_enabled": False})
+
+        self.assertEqual(self.client.get(self.url).status_code, 503)
+        self.assertEqual(self._post("shopping_add", name="Milch").status_code, 503)
+        self.assertFalse(ShoppingItem.objects.exists())
 
 
 class HabitTrackerTests(TestCase):

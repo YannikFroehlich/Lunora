@@ -1,0 +1,79 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}Einkaufszettel | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell tools-shell">
+    <header class="page-hero">
+        <div>
+            <a class="tools-back-link" href="{% url 'tools' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Werkzeuge</a>
+            <h1>Einkaufszettel</h1>
+            <p>Schreib auf, was fehlt, und hake es im Laden ab.</p>
+        </div>
+        <i class="fa-solid fa-basket-shopping hero-branch" aria-hidden="true"></i>
+    </header>
+
+    <section class="glass-panel uml-create-panel">
+        <form class="vocab-create-form shopping-create-form" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="shopping_add">
+            <label class="vocab-field vocab-field-wide">
+                <span>{{ shopping_form.name.label }}</span>
+                {{ shopping_form.name }}
+            </label>
+            <label class="vocab-field">
+                <span>{{ shopping_form.quantity.label }}</span>
+                {{ shopping_form.quantity }}
+            </label>
+            <button class="primary-button" type="submit"><i class="fa-solid fa-plus" aria-hidden="true"></i> Hinzufügen</button>
+            {% if shopping_form.errors %}<ul class="errorlist">{% for errors in shopping_form.errors.values %}{% for error in errors %}<li>{{ error }}</li>{% endfor %}{% endfor %}</ul>{% endif %}
+        </form>
+    </section>
+
+    {% if items %}
+    <div class="shopping-toolbar">
+        <span>{{ done_count }} von {{ items|length }} erledigt</span>
+        {% if done_count %}
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="shopping_clear_done">
+            <button class="ghost-button" type="submit"><i class="fa-solid fa-broom" aria-hidden="true"></i> Erledigte entfernen</button>
+        </form>
+        {% endif %}
+    </div>
+    <ul class="glass-panel shopping-items">
+        {% for item in items %}
+        <li class="shopping-item{% if item.is_done %} is-done{% endif %}" id="item-{{ item.pk }}">
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="shopping_toggle">
+                <input type="hidden" name="item_id" value="{{ item.pk }}">
+                <button class="shopping-toggle" type="submit" aria-pressed="{{ item.is_done|yesno:'true,false' }}">
+                    <span class="shopping-box" aria-hidden="true"><i class="fa-solid fa-check"></i></span>
+                    <span class="shopping-name">{{ item.name }}</span>
+                    {% if item.quantity %}<small>{{ item.quantity }}</small>{% endif %}
+                </button>
+            </form>
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="shopping_delete">
+                <input type="hidden" name="item_id" value="{{ item.pk }}">
+                <button class="icon-button" type="submit" aria-label="„{{ item.name }}“ löschen" title="Löschen"><i class="fa-regular fa-trash-can" aria-hidden="true"></i></button>
+            </form>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state-card uml-empty">
+        <i class="fa-solid fa-basket-shopping" aria-hidden="true"></i>
+        <strong>Der Zettel ist leer</strong>
+        <p>Trag oben ein, was du brauchst, z. B. „Milch“ und „2 Liter“.</p>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

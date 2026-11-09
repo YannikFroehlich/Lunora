@@ -25,6 +25,7 @@ from app.models import (
     NoteFolder,
     NoteTemplate,
     ScheduledChatMessage,
+    ShoppingItem,
     Task,
     TaskLabel,
     TaskList,
@@ -52,6 +53,7 @@ Dieses Archiv enthält alle Daten, die du in Lunora angelegt hast:
 - urlaub.json: Urlaubsjahre, Urlaube und eigene Feiertage
 - gewohnheiten.json: Gewohnheiten mit allen abgehakten Tagen
 - lesezeichen.json: Lesezeichen vom Dashboard
+- einkaufszettel.json: Artikel auf deinem Einkaufszettel
 
 Erstellt am {created}.
 """
@@ -105,6 +107,11 @@ def write_user_export(user, fileobj):
         _add_json(archive, "gewohnheiten.json", _habits(user))
         _add_json(
             archive, "lesezeichen.json", list(Bookmark.objects.filter(owner=user).values("title", "url"))
+        )
+        _add_json(
+            archive,
+            "einkaufszettel.json",
+            list(ShoppingItem.objects.filter(owner=user).values("name", "quantity", "is_done", "created_at")),
         )
         for diagram in UmlDiagram.objects.filter(owner=user):
             name = f"uml/{diagram.pk}-{slugify(diagram.title) or 'diagramm'}.json"
