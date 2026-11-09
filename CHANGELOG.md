@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Scanning in the store now also ticks off items written under another name for the same product:
+  "Möhren" for "Karotten", "Marmelade" for "Konfitüre", "Klopapier" for "Toilettenpapier".
 - The notes sidebar and its search results now show every note. Accounts with more than 200 notes
   used to lose the rest from the list without any hint.
 - Notes in folders no longer get cut off at the right edge of the sidebar when their title is long;

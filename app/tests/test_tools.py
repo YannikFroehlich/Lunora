@@ -35,7 +35,7 @@ from app.services.habits import (
 )
 from app.services.notifications import materialize_due_habit_reminders, send_pending_user_notification_emails
 from app.services.shopping import CATALOG, PRODUCTS, SUGGESTIONS, classify_item
-from app.services.shopping_products import normalize_barcode, parse_open_food_facts
+from app.services.shopping_products import find_open_item, normalize_barcode, parse_open_food_facts
 from app.services.uml_content import validate_uml_document
 from app.services.user_preferences import localtime_for_user
 from app.services.vocabulary import parse_bulk_cards, review_card
@@ -760,6 +760,27 @@ class ShoppingScanTests(TestCase):
         ShoppingItem.objects.create(owner=self.user, name="Vollmilch")
         self.assertEqual(self._scan().json()["status"], "ticked")
         self.assertTrue(ShoppingItem.objects.get(name="Vollmilch").is_done)
+
+    def test_items_match_products_sold_under_a_synonym(self, urlopen):
+        carrots = ShoppingItem.objects.create(owner=self.user, name="Möhren")
+        jam = ShoppingItem.objects.create(owner=self.user, name="Marmelade")
+        cabbage = ShoppingItem.objects.create(owner=self.user, name="Weißkohl")
+        organic = ShoppingItem.objects.create(owner=self.user, name="Bio Tomaten")
+
+        for product_name, expected in (
+            ("Karotten 1 kg", carrots),
+            ("Erdbeerkonfitüre", jam),
+            ("Weißkraut frisch", cabbage),
+            ("Bio Paradeiser", organic),
+            # Every word of the item has to be covered.
+            ("Paradeiser", None),
+            ("Gurken", None),
+        ):
+            with self.subTest(product_name):
+                product = ShoppingProduct(barcode=MILK, name=product_name)
+                self.assertEqual(find_open_item(self.user, product), expected)
+
+        self.assertEqual(self._scan(name="Karotten").json()["message"], "„Möhren“ abgehakt.")
 
     def test_scanning_at_home_puts_the_product_on_the_list_once(self, urlopen):
         urlopen.return_value = off_milk_response()
