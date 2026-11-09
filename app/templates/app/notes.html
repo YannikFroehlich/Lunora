@@ -340,7 +340,7 @@
         </div>
     </form>
     {% comment %}A nested form would be dropped by the parser, so the inputs above point here via form="…".{% endcomment %}
-    <form id="note-import-form" method="post" action="{% url 'note_import' %}" enctype="multipart/form-data" hidden>{% csrf_token %}</form>
+    <form id="note-import-form" method="post" action="{% url 'note_import' %}" enctype="multipart/form-data" hidden>{% csrf_token %}<input type="hidden" name="folder_id" value="" data-note-import-folder></form>
 </dialog>
 
 <dialog class="notes-dialog math-dialog" data-math-dialog>

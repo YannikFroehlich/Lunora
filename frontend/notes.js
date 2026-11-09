@@ -2018,6 +2018,9 @@ function initNotesApp() {
   function openTemplateDialog(folderId = null) {
     const parsedFolderId = Number.parseInt(folderId, 10);
     pendingFolderId = Number.isInteger(parsedFolderId) && parsedFolderId > 0 ? parsedFolderId : null;
+    // The Word import is a plain form post, so it takes the folder along in a hidden field.
+    const importFolder = templateDialog?.querySelector("[data-note-import-folder]");
+    if (importFolder) importFolder.value = pendingFolderId ?? "";
     templateDialog?.showModal();
   }
 

@@ -427,7 +427,11 @@ def note_import(request):
         django_messages.error(request, "Bitte wähle eine Word-Datei (.docx) aus.")
         return redirect("notes")
     try:
-        note, skipped_images = import_docx_upload(request.user, upload)
+        folder_id = _optional_positive_int(request.POST.get("folder_id"), "Der Ordner")
+        note, skipped_images = import_docx_upload(request.user, upload, folder_id=folder_id)
+    except NoteFolder.DoesNotExist:
+        django_messages.error(request, "Ordner nicht gefunden.")
+        return redirect("notes")
     except ValidationError as error:
         django_messages.error(request, f"„{upload.name}“: {' '.join(error.messages)}")
         return redirect("notes")

@@ -8,7 +8,7 @@ from django.test import TestCase
 from django.urls import reverse
 from PIL import Image
 
-from app.models import Note, NoteAttachment, Profile
+from app.models import Note, NoteAttachment, NoteFolder, NoteUserState, Profile
 from app.services.docx_import import _Converter, _note_image, docx_to_note
 from app.services.note_content import validate_note_document
 from app.services.notes import save_note
@@ -507,6 +507,26 @@ class DocxImportViewTests(TestCase):
             self.user, note.pk, title=note.title, document=note.document, base_revision=note.revision
         )
         self.assertEqual(saved.revision, note.revision + 1)
+
+    def test_import_from_a_folder_puts_the_note_into_it(self):
+        folder = NoteFolder.objects.create(owner=self.user, name="LF9")
+        other = User.objects.create_user(username="other", password="secret-12345")
+        foreign = NoteFolder.objects.create(owner=other, name="Fremd")
+
+        self.client.post(
+            "/notes/import/",
+            {"file": SimpleUploadedFile("Blatt.docx", build_docx()), "folder_id": str(folder.pk)},
+        )
+        response = self.client.post(
+            "/notes/import/",
+            {"file": SimpleUploadedFile("Blatt.docx", build_docx()), "folder_id": str(foreign.pk)},
+            follow=True,
+        )
+
+        note = Note.objects.get(owner=self.user)
+        self.assertEqual(NoteUserState.objects.get(note=note, user=self.user).folder, folder)
+        self.assertContains(response, "Ordner nicht gefunden.")
+        self.assertEqual(Note.objects.filter(owner=self.user).count(), 1, "a foreign folder imports nothing")
 
     def test_notes_page_import_rejects_other_files(self):
         response = self.client.post(
