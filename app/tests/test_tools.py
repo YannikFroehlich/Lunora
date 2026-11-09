@@ -648,6 +648,21 @@ class ShoppingCatalogTests(SimpleTestCase):
             with self.subTest(name=name):
                 self.assertEqual(classify_item(name), expected)
 
+    def test_emoji_fit_the_product_within_an_aisle(self):
+        cases = {
+            "Salami": "🥪",
+            "Bratwurst": "🌭",
+            "Himbeeren": "🍓",
+            "Heidelbeeren": "🫐",
+            "Zwieback": "🍞",
+            "Prosecco": "🥂",
+            "Alufolie": "📜",
+            "Müllbeutel": "🗑️",
+        }
+        for name, emoji in cases.items():
+            with self.subTest(name=name):
+                self.assertEqual(classify_item(name)[1], emoji)
+
     def test_unknown_items_land_in_other(self):
         self.assertEqual(classify_item("Klebeband"), ("other", "🛒"))
 
@@ -667,8 +682,14 @@ class ShoppingCatalogTests(SimpleTestCase):
         by_name = {suggestion["name"]: suggestion for suggestion in SUGGESTIONS}
 
         self.assertEqual(by_name["Apfelsaft"], {"name": "Apfelsaft", "emoji": "🧃", "aisle": "Getränke"})
-        self.assertGreater(len(SUGGESTIONS), 300)
+        self.assertEqual(by_name["Paulaner Spezi"]["aisle"], "Getränke")
+        self.assertEqual(by_name["Haribo Goldbären"]["aisle"], "Süßes & Snacks")
+        self.assertGreater(len(SUGGESTIONS), 1000)
         self.assertEqual(len(by_name), len(SUGGESTIONS))
+
+    def test_multi_word_stems_match_only_as_a_whole(self):
+        self.assertEqual(classify_item("Hohes C"), ("drinks", "🧃"))
+        self.assertEqual(classify_item("Weintrauben")[0], "produce")  # not "ben" of "Ben & Jerry's"
 
 
 class HabitTrackerTests(TestCase):
