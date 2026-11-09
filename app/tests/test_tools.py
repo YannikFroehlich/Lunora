@@ -664,7 +664,7 @@ class ShoppingCatalogTests(SimpleTestCase):
                 self.assertEqual(classify_item(name)[1], emoji)
 
     def test_unknown_items_land_in_other(self):
-        self.assertEqual(classify_item("Klebeband"), ("other", "🛒"))
+        self.assertEqual(classify_item("Gartenstuhl"), ("other", "🛒"))
 
     def test_every_catalog_entry_classifies_into_its_own_aisle(self):
         for category, entries in CATALOG.items():
@@ -690,6 +690,12 @@ class ShoppingCatalogTests(SimpleTestCase):
     def test_multi_word_stems_match_only_as_a_whole(self):
         self.assertEqual(classify_item("Hohes C"), ("drinks", "🧃"))
         self.assertEqual(classify_item("Weintrauben")[0], "produce")  # not "ben" of "Ben & Jerry's"
+
+    def test_leading_underscore_anchors_a_stem_at_a_word_start(self):
+        self.assertEqual(classify_item("Gin"), ("drinks", "🍸"))
+        self.assertEqual(classify_item("Dry Gin"), ("drinks", "🍸"))
+        self.assertEqual(classify_item("Werther's Original")[0], "sweets")
+        self.assertEqual(classify_item("Vita Malz"), ("drinks", "🍺"))
 
 
 class HabitTrackerTests(TestCase):
