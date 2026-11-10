@@ -161,7 +161,7 @@ def write_user_export(user, fileobj):
             archive,
             "wochenplan.json",
             [
-                {"date": entry.date, "recipe": entry.recipe.title}
+                {"date": entry.date, "recipe": entry.recipe.title, "servings": entry.servings}
                 for entry in MealPlanEntry.objects.filter(owner=user).select_related("recipe")
             ],
         )
@@ -197,6 +197,16 @@ def _expense_groups(user):
                         ],
                     }
                     for expense in group.expenses.all()
+                ],
+                "monthly": [
+                    {
+                        "title": rule.title,
+                        "amount": rule.amount,
+                        "day_of_month": rule.day_of_month,
+                        "next_on": rule.next_on,
+                        "paid_by": display_name(rule.paid_by) if rule.paid_by else None,
+                    }
+                    for rule in group.recurring_expenses.select_related("paid_by__profile")
                 ],
             }
         )

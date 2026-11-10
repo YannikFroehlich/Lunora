@@ -1,18 +1,23 @@
 from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
-from django.http import Http404
+from django.http import Http404, HttpResponse
 from django.shortcuts import redirect, render
+from django.utils.http import content_disposition_header
+from django.utils.text import slugify
 
 from app.forms import ExpenseForm
 from app.services.expenses import (
+    CENT,
     add_expense,
     add_member,
     balances,
     create_group,
     euro,
+    expenses_csv,
     group_for,
     group_members,
     leave_group,
+    post_due_recurring_expenses,
     record_settlement,
     settle_up_plan,
     user_groups,
@@ -66,6 +71,17 @@ def _person_label(user_id, names, viewer):
     return names.get(user_id, "Ehemaliges Mitglied")
 
 
+def _split_label(expense, names, viewer):
+    """Who shares the expense; with each person's amount when the split isn't equal."""
+    shares = list(expense.shares.all())
+    amounts = [share.amount for share in shares]
+    uneven = len(shares) > 1 and max(amounts) - min(amounts) > CENT
+    return ", ".join(
+        _person_label(share.user_id, names, viewer) + (f" {euro(share.amount)}" if uneven else "")
+        for share in shares
+    )
+
+
 @login_required
 def expense_group_detail(request, group_id):
     if not feature_enabled("tools"):
@@ -73,6 +89,13 @@ def expense_group_detail(request, group_id):
     group = group_for(request.user, group_id)
     if group is None:
         raise Http404
+    post_due_recurring_expenses(group=group)
+    if request.method == "GET" and request.GET.get("format") == "csv":
+        response = HttpResponse(expenses_csv(group), content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = content_disposition_header(
+            True, f"lunora-ausgaben-{slugify(group.name) or group.pk}.csv"
+        )
+        return response
     members = group_members(group)
     form = ExpenseForm(members=members, user=request.user)
 
@@ -80,12 +103,26 @@ def expense_group_detail(request, group_id):
     if form_name == "expense_add":
         form = ExpenseForm(request.POST, members=members, user=request.user)
         if form.is_valid():
-            error = add_expense(group, request.user, **form.cleaned_data)
+            data = form.cleaned_data
+            error = add_expense(
+                group,
+                request.user,
+                title=data["title"],
+                amount=data["amount"],
+                paid_by=data["paid_by"],
+                participants=data["participants"],
+                spent_on=data["spent_on"],
+                weights=data["weights"],
+                repeat_monthly=data["repeat_monthly"],
+            )
             if error:
                 django_messages.error(request, error)
             return redirect("expense_group_detail", group_id=group.pk)
     elif form_name == "expense_delete":
         group.expenses.filter(pk=posted_id(request, "expense_id")).delete()
+        return redirect("expense_group_detail", group_id=group.pk)
+    elif form_name == "expense_recurring_stop":
+        group.recurring_expenses.filter(pk=posted_id(request, "recurring_id")).delete()
         return redirect("expense_group_detail", group_id=group.pk)
     elif form_name == "expense_settle":
         member_by_id = {member.pk: member for member in members}
@@ -171,11 +208,20 @@ def expense_group_detail(request, group_id):
                     "amount_label": euro(expense.amount),
                     "date_label": format_user_date(expense.spent_on, request.user),
                     "paid_by": _person_label(expense.paid_by_id, names, request.user),
-                    "split": ", ".join(
-                        _person_label(share.user_id, names, request.user) for share in expense.shares.all()
-                    ),
+                    "split": _split_label(expense, names, request.user),
                 }
                 for expense in expenses
+            ],
+            "recurring": [
+                {
+                    "id": rule.pk,
+                    "title": rule.title,
+                    "amount_label": euro(rule.amount),
+                    "paid_by": _person_label(rule.paid_by_id, names, request.user),
+                    "day": rule.day_of_month,
+                    "next_label": format_user_date(rule.next_on, request.user),
+                }
+                for rule in group.recurring_expenses.all()
             ],
         },
     )

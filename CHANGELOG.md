@@ -6,6 +6,13 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Shared expenses can be split unevenly: by shares (e.g. 2 : 1) or by fixed amounts per person.
+  Uneven splits show each person's amount in the list.
+- Expenses can repeat every month (rent, subscriptions): Lunora adds them on their day, also
+  for months it missed, until someone stops them under "Jeden Monat".
+- A group's expenses download as a CSV file with one column per person.
+- Each planned meal in the weekly plan has its number of servings; "Zutaten der Woche auf den
+  Einkaufszettel" scales the quantities to the servings planned over the week.
 - When someone enters your password correctly but then a wrong two-factor code, you get a warning
   in the inbox and by e-mail (at most one per 15 minutes), even with e-mail notifications switched
   off. It means someone knows your password.

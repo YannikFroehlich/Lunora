@@ -1127,6 +1127,8 @@ class MealPlanEntry(models.Model):
     )
     recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE, related_name="plan_entries")
     date = models.DateField()
+    # Portions to cook that day; null means the recipe's own number.
+    servings = models.PositiveSmallIntegerField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -1239,6 +1241,35 @@ class ExpenseShare(models.Model):
 
     class Meta:
         ordering = ["id"]
+
+
+class RecurringExpense(models.Model):
+    """A monthly expense of a group, added on `next_on` by post_due_recurring_expenses.
+
+    `weights` maps user ids to the split ({"3": "1", "5": "1"} is equal), so equal splits,
+    shares and fixed amounts all split the same way: in proportion.
+    """
+
+    group = models.ForeignKey(ExpenseGroup, on_delete=models.CASCADE, related_name="recurring_expenses")
+    title = models.CharField(max_length=120)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    paid_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, blank=True, null=True, related_name="+"
+    )
+    weights = models.JSONField(default=dict)
+    # Kept apart from next_on, so a rule for the 31st returns to the 31st after a short month.
+    day_of_month = models.PositiveSmallIntegerField()
+    next_on = models.DateField()
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, blank=True, null=True, related_name="+"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["next_on", "id"]
+
+    def __str__(self):
+        return f"{self.title} ({self.amount}, monatlich)"
 
 
 class ShoppingProduct(models.Model):

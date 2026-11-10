@@ -31,11 +31,23 @@
                     <label class="vocab-field"><span>{{ form.spent_on.label }}</span>{{ form.spent_on }}</label>
                 </div>
                 <label class="vocab-field"><span>{{ form.paid_by.label }}</span>{{ form.paid_by }}</label>
-                <fieldset class="vocab-field expense-participants">
-                    <legend>{{ form.participants.label }}</legend>
-                    {% for choice in form.participants %}<label class="recipe-ingredient">{{ choice.tag }} <span>{{ choice.choice_label }}</span></label>{% endfor %}
+                <fieldset class="expense-split-mode">
+                    <legend>{{ form.split_mode.label }}</legend>
+                    {% for radio in form.split_mode %}<label class="expense-split-choice">{{ radio.tag }} <span>{{ radio.choice_label }}</span></label>{% endfor %}
                 </fieldset>
-                {% if form.errors %}<ul class="errorlist">{% for field in form %}{% for error in field.errors %}<li>{{ field.label }}: {{ error }}</li>{% endfor %}{% endfor %}</ul>{% endif %}
+                <fieldset class="expense-participants">
+                    <legend>{{ form.participants.label }}</legend>
+                    <p class="uml-muted expense-split-hint" data-split-hint="shares">Anteile pro Person, z. B. 2 und 1: die erste Person trägt doppelt so viel.</p>
+                    <p class="uml-muted expense-split-hint" data-split-hint="amounts">Beträge in € pro Person, zusammen genau die Ausgabe.</p>
+                    {% for choice, split in form.split_rows %}
+                    <div class="expense-participant">
+                        <label class="recipe-ingredient">{{ choice.tag }} <span>{{ choice.choice_label }}</span></label>
+                        {{ split }}
+                    </div>
+                    {% endfor %}
+                </fieldset>
+                <label class="recipe-ingredient">{{ form.repeat_monthly }} <span>{{ form.repeat_monthly.label }}</span></label>
+                {% if form.errors %}<ul class="errorlist">{% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}{% for field in form %}{% for error in field.errors %}<li>{{ field.label }}: {{ error }}</li>{% endfor %}{% endfor %}</ul>{% endif %}
                 <button class="primary-button" type="submit"><i class="fa-solid fa-plus" aria-hidden="true"></i> Eintragen</button>
             </form>
 
@@ -90,8 +102,34 @@
                 {% endif %}
             </section>
 
+            {% if recurring %}
+            <section class="glass-panel vocab-panel" aria-labelledby="expense-recurring-title">
+                <h2 id="expense-recurring-title">Jeden Monat</h2>
+                <ul class="expense-list">
+                    {% for rule in recurring %}
+                    <li>
+                        <span class="expense-text">
+                            <strong><i class="fa-solid fa-repeat" aria-hidden="true"></i> {{ rule.title }}</strong>
+                            <small>am {{ rule.day }}. · gezahlt: {{ rule.paid_by }} · nächste: {{ rule.next_label }}</small>
+                        </span>
+                        <strong class="expense-amount">{{ rule.amount_label }}</strong>
+                        <form method="post" data-confirm="„{{ rule.title }}“ nicht mehr jeden Monat eintragen?">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_name" value="expense_recurring_stop">
+                            <input type="hidden" name="recurring_id" value="{{ rule.id }}">
+                            <button class="icon-button" type="submit" aria-label="„{{ rule.title }}“ nicht mehr wiederholen" title="Nicht mehr wiederholen"><i class="fa-solid fa-stop" aria-hidden="true"></i></button>
+                        </form>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </section>
+            {% endif %}
+
             <section class="glass-panel vocab-panel" aria-labelledby="expense-list-title">
-                <h2 id="expense-list-title">Ausgaben</h2>
+                <div class="expense-list-head">
+                    <h2 id="expense-list-title">Ausgaben</h2>
+                    {% if expenses %}<a class="ghost-button" href="?format=csv" download><i class="fa-solid fa-file-csv" aria-hidden="true"></i> CSV</a>{% endif %}
+                </div>
                 {% if expenses %}
                 <ul class="expense-list">
                     {% for expense in expenses %}

@@ -37,7 +37,7 @@ from app.services.habits import (
 )
 from app.services.notifications import materialize_due_habit_reminders, send_pending_user_notification_emails
 from app.services.recipe_import import parse_recipe_page
-from app.services.recipes import ingredient_rows, parse_ingredient
+from app.services.recipes import ingredient_rows, parse_ingredient, scale_quantity
 from app.services.shopping import CATALOG, PRODUCTS, SUGGESTIONS, classify_item
 from app.services.shopping_products import find_open_item, normalize_barcode, parse_open_food_facts
 from app.services.uml_content import validate_uml_document
@@ -1444,6 +1444,16 @@ class RecipeTests(TestCase):
         self.assertEqual(self.client.get(self.url).status_code, 503)
 
 
+class ScaleQuantityTests(SimpleTestCase):
+    def test_every_number_is_scaled_and_written_the_german_way(self):
+        self.assertEqual(scale_quantity("1 1/2 TL", 2), "3 TL")
+        self.assertEqual(scale_quantity("2-3 Zehen", 2), "4-6 Zehen")
+        self.assertEqual(scale_quantity("ca. 500ml", 0.25), "ca. 125ml")
+        self.assertEqual(scale_quantity("3", 0.5), "1,5")
+        self.assertEqual(scale_quantity("25 g", 0.5), "13 g")
+        self.assertEqual(scale_quantity("", 2), "")
+
+
 class MealPlanTests(TestCase):
     def setUp(self):
         self.lea = User.objects.create_user(username="lea", email="lea@example.com", password="pw-12345!")
@@ -1508,6 +1518,24 @@ class MealPlanTests(TestCase):
         self.assertEqual(
             sorted(ShoppingItem.objects.filter(owner=self.lea).values_list("name", "quantity")),
             [("Eier", "2"), ("Lauch", "1"), ("Mehl", "200 g"), ("Milch", "500 ml")],
+        )
+
+    def test_planned_servings_scale_the_quantities_over_the_week(self):
+        stew = Recipe.objects.create(
+            owner=self.lea, title="Eintopf", servings=2, ingredients="200 g Linsen\n1 1/2 Zwiebeln\nSalz"
+        )
+        monday = MealPlanEntry.objects.create(owner=self.lea, recipe=stew, date=self.monday)
+        MealPlanEntry.objects.create(owner=self.lea, recipe=stew, date=self.monday + timedelta(days=3))
+
+        self._post({"form_name": "meal_plan_servings", "entry_id": monday.pk, "servings": "3"})
+        self._post({"form_name": "meal_plan_servings", "entry_id": monday.pk, "servings": "0"})
+        self._post({"form_name": "meal_plan_to_shopping"})
+
+        monday.refresh_from_db()
+        self.assertEqual(monday.servings, 3)
+        self.assertEqual(
+            sorted(ShoppingItem.objects.filter(owner=self.lea).values_list("name", "quantity")),
+            [("Linsen", "500 g"), ("Salz", ""), ("Zwiebeln", "3,75")],
         )
 
     def test_week_goes_on_a_shared_list_but_not_a_foreign_one(self):

@@ -283,6 +283,14 @@ def _handle_meal_plan_post(request, form_name, week_start):
             django_messages.error(request, error)
     elif form_name == "meal_plan_remove":
         MealPlanEntry.objects.filter(owner=request.user, pk=posted_id(request, "entry_id")).delete()
+    elif form_name == "meal_plan_servings":
+        servings = request.POST.get("servings", "")
+        if servings.isdigit() and 1 <= int(servings) <= 99:
+            MealPlanEntry.objects.filter(owner=request.user, pk=posted_id(request, "entry_id")).update(
+                servings=int(servings)
+            )
+        else:
+            django_messages.error(request, "Bitte zwischen 1 und 99 Portionen angeben.")
     elif form_name == "meal_plan_to_shopping":
         list_owner = list_owner_for(request.user, request.POST.get("list"))
         if list_owner is None:
