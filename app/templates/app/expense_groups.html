@@ -1,0 +1,56 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}Geteilte Ausgaben | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell tools-shell">
+    <header class="page-hero">
+        <div>
+            <a class="tools-back-link" href="{% url 'tools' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Werkzeuge</a>
+            <h1>Geteilte Ausgaben</h1>
+            <p>Für WG, Urlaub oder Ausflug: eintragen, wer was bezahlt hat, und am Ende fair ausgleichen.</p>
+        </div>
+        <i class="fa-solid fa-scale-balanced hero-branch" aria-hidden="true"></i>
+    </header>
+
+    <section class="glass-panel uml-create-panel">
+        <form class="vocab-create-form" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="expense_group_create">
+            <label class="vocab-field vocab-field-wide">
+                <span>Name der Gruppe</span>
+                <input type="text" name="name" maxlength="120" placeholder="z. B. WG Lindenstraße" autocomplete="off" required>
+            </label>
+            <button class="primary-button" type="submit"><i class="fa-solid fa-plus" aria-hidden="true"></i> Neue Gruppe</button>
+            {% if name_error %}<ul class="errorlist"><li>{{ name_error }}</li></ul>{% endif %}
+        </form>
+    </section>
+
+    {% if groups %}
+    <ul class="uml-diagram-list">
+        {% for item in groups %}
+        <li class="glass-panel uml-diagram-card">
+            <a class="uml-diagram-link" href="{% url 'expense_group_detail' item.id %}">
+                <span class="tool-card-icon" aria-hidden="true"><i class="fa-solid fa-scale-balanced"></i></span>
+                <span>
+                    <strong>{{ item.name }}</strong>
+                    <small>{{ item.member_count }} Mitglied(er) · dein Saldo: <span class="expense-balance{% if item.balance and item.balance > 0 %} is-positive{% elif item.balance %} is-negative{% endif %}">{{ item.balance_label }}</span></small>
+                </span>
+            </a>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state-card uml-empty">
+        <i class="fa-solid fa-scale-balanced" aria-hidden="true"></i>
+        <strong>Noch keine Gruppen</strong>
+        <p>Leg oben eine Gruppe an und füge die anderen per E-Mail oder Benutzername hinzu.</p>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

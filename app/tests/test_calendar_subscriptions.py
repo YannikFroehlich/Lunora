@@ -48,7 +48,7 @@ class CalendarSubscriptionFetchTests(TestCase):
         FakeHttpConnection.responses = []
         FakeHttpConnection.requests = []
         patcher = mock.patch.multiple(
-            "app.services.calendar_subscriptions.http.client",
+            "app.services.safe_fetch.http.client",
             HTTPSConnection=FakeHttpConnection,
             HTTPConnection=FakeHttpConnection,
         )
@@ -150,9 +150,9 @@ class CalendarSubscriptionDeadlineTests(TestCase):
         port = listener.getsockname()[1]
         started = time.monotonic()
         with (
-            mock.patch("app.services.calendar_subscriptions.FETCH_DEADLINE_SECONDS", 0.2),
+            mock.patch("app.services.safe_fetch.FETCH_DEADLINE_SECONDS", 0.2),
             mock.patch(
-                "app.services.calendar_subscriptions._public_connection",
+                "app.services.safe_fetch._public_connection",
                 lambda _address, timeout=None, _source=None: socket.create_connection(
                     ("127.0.0.1", port), timeout
                 ),
@@ -278,7 +278,7 @@ class CalendarSubscriptionSyncTests(TestCase):
         FakeHttpConnection.responses = [(302, {"Location": "http://[bad/"}, b"")]
         FakeHttpConnection.requests = []
         with mock.patch.multiple(
-            "app.services.calendar_subscriptions.http.client",
+            "app.services.safe_fetch.http.client",
             HTTPSConnection=FakeHttpConnection,
             HTTPConnection=FakeHttpConnection,
         ):

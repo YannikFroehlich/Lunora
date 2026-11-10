@@ -13,6 +13,7 @@ from django.utils import timezone
 from app.models import (
     Habit,
     HabitCheck,
+    MealPlanEntry,
     NotificationPreference,
     Profile,
     Recipe,
@@ -35,13 +36,14 @@ from app.services.habits import (
     longest_streak,
 )
 from app.services.notifications import materialize_due_habit_reminders, send_pending_user_notification_emails
+from app.services.recipe_import import parse_recipe_page
 from app.services.recipes import ingredient_rows, parse_ingredient
 from app.services.shopping import CATALOG, PRODUCTS, SUGGESTIONS, classify_item
 from app.services.shopping_products import find_open_item, normalize_barcode, parse_open_food_facts
 from app.services.uml_content import validate_uml_document
 from app.services.user_preferences import localtime_for_user
 from app.services.vocabulary import parse_bulk_cards, review_card
-from app.tests.helpers import FakeJsonResponse
+from app.tests.helpers import FakeHttpConnection, FakeJsonResponse
 
 
 def _uml_class(class_id, name, kind="class", **overrides):
@@ -1440,3 +1442,200 @@ class RecipeTests(TestCase):
 
         self.assertEqual(self.client.get("/tools/recipes/").status_code, 503)
         self.assertEqual(self.client.get(self.url).status_code, 503)
+
+
+class MealPlanTests(TestCase):
+    def setUp(self):
+        self.lea = User.objects.create_user(username="lea", email="lea@example.com", password="pw-12345!")
+        self.tom = User.objects.create_user(username="tom", email="tom@example.com", password="pw-12345!")
+        self.pancakes = Recipe.objects.create(
+            owner=self.lea, title="Pfannkuchen", ingredients="200 g Mehl\n2 Eier\n500 ml Milch"
+        )
+        self.soup = Recipe.objects.create(owner=self.lea, title="Suppe", ingredients="Teig:\n2 Eier\n1 Lauch")
+        self.client.force_login(self.lea)
+        self.monday = date(2026, 11, 9)
+
+    def _post(self, data):
+        return self.client.post("/tools/recipes/", {"week": "2026-W46", **data})
+
+    def test_planning_shows_the_recipe_on_its_day_and_redirects_to_the_week(self):
+        response = self._post(
+            {"form_name": "meal_plan_add", "recipe_id": self.pancakes.pk, "date": "2026-11-11"}
+        )
+
+        self.assertRedirects(response, "/tools/recipes/?week=2026-W46")
+        page = self.client.get("/tools/recipes/?week=2026-W46")
+        wednesday = page.context["plan_days"][2]
+        self.assertEqual(wednesday["name"], "Mittwoch")
+        self.assertEqual([entry.recipe for entry in wednesday["entries"]], [self.pancakes])
+        self.assertEqual(page.context["week_label"], "KW 46")
+
+    def test_foreign_recipes_cannot_be_planned_and_foreign_entries_not_removed(self):
+        foreign = Recipe.objects.create(owner=self.tom, title="Toms Chili")
+        toms_entry = MealPlanEntry.objects.create(owner=self.tom, recipe=foreign, date=self.monday)
+
+        self._post({"form_name": "meal_plan_add", "recipe_id": foreign.pk, "date": "2026-11-09"})
+        self._post({"form_name": "meal_plan_remove", "entry_id": toms_entry.pk})
+
+        self.assertFalse(MealPlanEntry.objects.filter(owner=self.lea).exists())
+        self.assertTrue(MealPlanEntry.objects.filter(pk=toms_entry.pk).exists())
+        self.assertNotContains(self.client.get("/tools/recipes/?week=2026-W46"), "Toms Chili")
+
+    def test_a_day_holds_at_most_six_recipes(self):
+        for _ in range(6):
+            MealPlanEntry.objects.create(owner=self.lea, recipe=self.soup, date=self.monday)
+
+        self._post({"form_name": "meal_plan_add", "recipe_id": self.pancakes.pk, "date": "2026-11-09"})
+
+        self.assertEqual(MealPlanEntry.objects.filter(owner=self.lea).count(), 6)
+
+    def test_week_goes_on_the_shopping_list_once_per_ingredient(self):
+        MealPlanEntry.objects.create(owner=self.lea, recipe=self.pancakes, date=self.monday)
+        MealPlanEntry.objects.create(
+            owner=self.lea, recipe=self.pancakes, date=self.monday + timedelta(days=3)
+        )
+        MealPlanEntry.objects.create(owner=self.lea, recipe=self.soup, date=self.monday + timedelta(days=6))
+        # Next week's plan stays out.
+        MealPlanEntry.objects.create(
+            owner=self.lea,
+            recipe=Recipe.objects.create(owner=self.lea, title="Reis", ingredients="Reis"),
+            date=self.monday + timedelta(days=7),
+        )
+
+        response = self._post({"form_name": "meal_plan_to_shopping"})
+
+        self.assertRedirects(response, "/tools/recipes/?week=2026-W46")
+        self.assertEqual(
+            sorted(ShoppingItem.objects.filter(owner=self.lea).values_list("name", "quantity")),
+            [("Eier", "2"), ("Lauch", "1"), ("Mehl", "200 g"), ("Milch", "500 ml")],
+        )
+
+    def test_week_goes_on_a_shared_list_but_not_a_foreign_one(self):
+        MealPlanEntry.objects.create(owner=self.lea, recipe=self.soup, date=self.monday)
+        ShoppingListShare.objects.create(owner=self.tom, user=self.lea)
+
+        self._post({"form_name": "meal_plan_to_shopping", "list": self.tom.pk})
+        self.assertEqual(ShoppingItem.objects.filter(owner=self.tom).count(), 2)
+
+        stranger = User.objects.create_user(username="sam", email="sam@example.com", password="pw-12345!")
+        self._post({"form_name": "meal_plan_to_shopping", "list": stranger.pk})
+        self.assertFalse(ShoppingItem.objects.filter(owner=stranger).exists())
+
+    def test_invalid_week_falls_back_to_the_current_week(self):
+        response = self.client.get("/tools/recipes/?week=2026-W99")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context["plan_days"]), 7)
+
+
+RECIPE_PAGE = """<html><head><title>Lasagne</title>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebSite", "name": "Kochseite"}</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@graph": [
+  {"@type": "BreadcrumbList"},
+  {"@type": ["Recipe", "NewsArticle"], "name": "Gem&uuml;se&shy;lasagne",
+   "recipeYield": ["4 Portionen", "4"],
+   "recipeIngredient": ["500 g Zucchini", "1 <b>Dose</b> Tomaten", ""],
+   "recipeInstructions": [
+     {"@type": "HowToSection", "name": "Soße", "itemListElement": [
+       {"@type": "HowToStep", "text": "Tomaten <i>einkochen</i>."}]},
+     {"@type": "HowToStep", "text": "Schichten &amp; backen."}]}
+]}
+</script></head><body>…</body></html>"""
+
+
+class RecipeImportParsingTests(SimpleTestCase):
+    def test_reads_the_recipe_out_of_a_json_ld_graph(self):
+        self.assertEqual(
+            parse_recipe_page(RECIPE_PAGE),
+            {
+                "title": "Gemüse\xadlasagne",
+                "servings": 4,
+                "ingredients": "500 g Zucchini\n1 Dose Tomaten",
+                "instructions": "Soße:\n\nTomaten einkochen.\n\nSchichten & backen.",
+            },
+        )
+
+    def test_plain_text_instructions_and_single_yield(self):
+        page = (
+            '<script type="application/ld+json">{"@type": "Recipe", "name": "Brot", "recipeYield": 1,'
+            ' "recipeIngredient": "500 g Mehl", "recipeInstructions": "Kneten.<br>Backen."}</script>'
+        )
+
+        self.assertEqual(
+            parse_recipe_page(page),
+            {
+                "title": "Brot",
+                "servings": 1,
+                "ingredients": "500 g Mehl",
+                "instructions": "Kneten.\n\nBacken.",
+            },
+        )
+
+    def test_pages_without_recipe_data_or_with_broken_json_give_none(self):
+        self.assertIsNone(parse_recipe_page("<html><h1>Kuchen</h1></html>"))
+        self.assertIsNone(
+            parse_recipe_page('<script type="application/ld+json">{"@type": "Recipe",</script>')
+        )
+        self.assertIsNone(
+            parse_recipe_page('<script type="application/ld+json">{"@type": "Recipe"}</script>')
+        )
+
+
+class RecipeImportViewTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.lea = User.objects.create_user(username="lea", email="lea@example.com", password="pw-12345!")
+        self.client.force_login(self.lea)
+        FakeHttpConnection.responses = []
+        FakeHttpConnection.requests = []
+        patcher = patch.multiple(
+            "app.services.safe_fetch.http.client",
+            HTTPSConnection=FakeHttpConnection,
+            HTTPConnection=FakeHttpConnection,
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _import(self, url="https://rezepte.example.com/lasagne"):
+        return self.client.post("/tools/recipes/", {"form_name": "recipe_import", "url": url})
+
+    def test_import_creates_the_recipe_with_its_source_and_opens_it(self):
+        FakeHttpConnection.responses = [(200, {}, RECIPE_PAGE.encode())]
+
+        response = self._import()
+
+        recipe = Recipe.objects.get(owner=self.lea)
+        self.assertRedirects(response, f"/tools/recipes/{recipe.pk}/")
+        self.assertEqual(recipe.title, "Gemüse\xadlasagne")
+        self.assertEqual(recipe.servings, 4)
+        self.assertEqual(recipe.source_url, "https://rezepte.example.com/lasagne")
+        self.assertContains(self.client.get(f"/tools/recipes/{recipe.pk}/"), "Quelle: rezepte.example.com")
+
+    def test_internal_addresses_are_refused_without_a_request(self):
+        for url in ["http://127.0.0.1/rezept", "http://intranet/rezept", "file:///etc/passwd"]:
+            with self.subTest(url=url):
+                response = self._import(url)
+                self.assertEqual(response.status_code, 200)
+                self.assertTrue(response.context["import_error"])
+        self.assertEqual(FakeHttpConnection.requests, [])
+        self.assertFalse(Recipe.objects.exists())
+
+    def test_page_without_recipe_shows_an_error_and_keeps_the_address(self):
+        FakeHttpConnection.responses = [(200, {}, b"<html><h1>Nur Text</h1></html>")]
+
+        response = self._import()
+
+        self.assertContains(response, "kein Rezept gefunden")
+        self.assertContains(response, 'value="https://rezepte.example.com/lasagne"')
+        self.assertFalse(Recipe.objects.exists())
+
+    def test_imports_are_throttled_per_user(self):
+        FakeHttpConnection.responses = [(404, {}, b"")] * 11
+
+        for _ in range(10):
+            self._import()
+        response = self._import()
+
+        self.assertContains(response, "Zu viele Importe")
+        self.assertEqual(len(FakeHttpConnection.requests), 10)

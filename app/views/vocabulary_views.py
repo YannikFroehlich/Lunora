@@ -27,11 +27,7 @@ from app.services.vocabulary import (
     share_list,
     with_card_counts,
 )
-
-
-def _posted_id(request, key):
-    value = request.POST.get(key, "")
-    return int(value) if value.isdigit() else None
+from app.views.navigation import posted_id
 
 
 def _form_error_message(form):
@@ -54,21 +50,21 @@ def vocabulary_lists(request):
             return redirect("vocabulary_list_detail", list_id=vocabulary_list.pk)
     elif form_name == "vocab_list_delete":
         deleted, _ = VocabularyList.objects.filter(
-            owner=request.user, pk=_posted_id(request, "list_id")
+            owner=request.user, pk=posted_id(request, "list_id")
         ).delete()
         if deleted:
             django_messages.success(request, "Vokabelliste gelöscht.")
         return redirect("vocabulary_lists")
     elif form_name == "vocab_list_copy":
         shared_list = get_object_or_404(
-            VocabularyList, shares__user=request.user, pk=_posted_id(request, "list_id")
+            VocabularyList, shares__user=request.user, pk=posted_id(request, "list_id")
         )
         copy = copy_list(shared_list, request.user)
         django_messages.success(request, "Liste in deine Vokabellisten übernommen.")
         return redirect("vocabulary_list_detail", list_id=copy.pk)
     elif form_name == "vocab_share_leave":
         VocabularyListShare.objects.filter(
-            user=request.user, vocabulary_list_id=_posted_id(request, "list_id")
+            user=request.user, vocabulary_list_id=posted_id(request, "list_id")
         ).delete()
         return redirect("vocabulary_lists")
 
@@ -161,7 +157,7 @@ def vocabulary_list_detail(request, list_id):
                 django_messages.success(request, f"{len(cards)} Vokabel(n) importiert.")
                 return redirect("vocabulary_list_detail", list_id=list_id)
         elif form_name == "vocab_card_edit":
-            card = get_object_or_404(vocabulary_list.cards, pk=_posted_id(request, "card_id"))
+            card = get_object_or_404(vocabulary_list.cards, pk=posted_id(request, "card_id"))
             edit_form = VocabularyCardForm(request.POST, instance=card)
             if edit_form.is_valid():
                 edit_form.save()
@@ -170,7 +166,7 @@ def vocabulary_list_detail(request, list_id):
                 django_messages.error(request, _form_error_message(edit_form))
             return redirect("vocabulary_list_detail", list_id=list_id)
         elif form_name == "vocab_card_delete":
-            vocabulary_list.cards.filter(pk=_posted_id(request, "card_id")).delete()
+            vocabulary_list.cards.filter(pk=posted_id(request, "card_id")).delete()
             return redirect("vocabulary_list_detail", list_id=list_id)
         elif form_name == "vocab_reset_progress":
             reset_progress(vocabulary_list)
@@ -184,7 +180,7 @@ def vocabulary_list_detail(request, list_id):
                 django_messages.success(request, f"Liste mit {display_name(share.user)} geteilt.")
             return redirect(f"{request.path}#teilen")
         elif form_name == "vocab_share_remove":
-            vocabulary_list.shares.filter(user_id=_posted_id(request, "user_id")).delete()
+            vocabulary_list.shares.filter(user_id=posted_id(request, "user_id")).delete()
             return redirect(f"{request.path}#teilen")
 
     now = timezone.now()

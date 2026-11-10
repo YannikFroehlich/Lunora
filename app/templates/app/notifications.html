@@ -19,7 +19,7 @@
         </span>
     </header>
 
-    <section class="glass-panel notification-panel">
+    <section class="glass-panel notification-panel" id="notification-panel" data-soft-region>
         <div class="notification-toolbar">
             <nav class="notification-filters" aria-label="Benachrichtigungen filtern">
                 <a class="notification-filter {% if selected_filter == 'unread' %}is-active{% endif %}" href="{% url 'notification_center' %}?status=unread">
@@ -43,7 +43,7 @@
         <div class="notification-list">
             {% for item in notification_page.object_list %}
             <article class="notification-row is-{{ item.tone }} {% if not item.notification.is_read %}is-unread{% endif %}">
-                <form class="notification-open-form" method="post" action="{% url 'notification_open' item.notification.id %}">
+                <form class="notification-open-form" method="post" data-no-soft action="{% url 'notification_open' item.notification.id %}">
                     {% csrf_token %}
                     <button class="notification-open-button" type="submit" aria-label="{{ item.notification.title }} öffnen">
                         <span class="notification-kind-icon" aria-hidden="true">

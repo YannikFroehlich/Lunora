@@ -20,7 +20,9 @@ from app.models import (
     CalendarSubscription,
     ChatMessage,
     ChatMessageAttachment,
+    ExpenseGroup,
     Habit,
+    MealPlanEntry,
     Note,
     NoteFolder,
     NoteTemplate,
@@ -40,6 +42,7 @@ from app.models import (
     VocabularyList,
 )
 from app.services.note_markdown import note_markdown_filename, render_note_markdown
+from app.services.notes import display_name
 
 README = """Lunora – Datenexport
 
@@ -57,6 +60,8 @@ Dieses Archiv enthält alle Daten, die du in Lunora angelegt hast:
 - gewohnheiten.json: Gewohnheiten mit allen abgehakten Tagen
 - lesezeichen.json: Lesezeichen vom Dashboard
 - einkaufszettel.json: Artikel auf deinem Einkaufszettel
+- rezepte.json, wochenplan.json: Rezepte und geplante Gerichte
+- ausgaben.json: Gruppen mit geteilten Ausgaben, Personen mit Anzeigenamen
 
 Erstellt am {created}.
 """
@@ -142,13 +147,60 @@ def write_user_export(user, fileobj):
             "rezepte.json",
             list(
                 Recipe.objects.filter(owner=user).values(
-                    "title", "servings", "ingredients", "instructions", "created_at", "updated_at"
+                    "title",
+                    "servings",
+                    "ingredients",
+                    "instructions",
+                    "source_url",
+                    "created_at",
+                    "updated_at",
                 )
             ),
         )
+        _add_json(
+            archive,
+            "wochenplan.json",
+            [
+                {"date": entry.date, "recipe": entry.recipe.title}
+                for entry in MealPlanEntry.objects.filter(owner=user).select_related("recipe")
+            ],
+        )
+        _add_json(archive, "ausgaben.json", _expense_groups(user))
         for diagram in UmlDiagram.objects.filter(owner=user):
             name = f"uml/{diagram.pk}-{slugify(diagram.title) or 'diagramm'}.json"
             _add_json(archive, name, {"title": diagram.title, "document": diagram.document})
+
+
+def _expense_groups(user):
+    """The user's expense groups with every expense, people by display name (others' e-mails stay out)."""
+    groups = []
+    for group in ExpenseGroup.objects.filter(members__user=user).prefetch_related(
+        "members__user__profile", "expenses__shares__user__profile", "expenses__paid_by__profile"
+    ):
+        groups.append(
+            {
+                "name": group.name,
+                "members": [display_name(member.user) for member in group.members.all()],
+                "expenses": [
+                    {
+                        "title": expense.title,
+                        "amount": expense.amount,
+                        "spent_on": expense.spent_on,
+                        "is_settlement": expense.is_settlement,
+                        "paid_by": display_name(expense.paid_by) if expense.paid_by else None,
+                        "shares": [
+                            {
+                                "person": display_name(share.user) if share.user else None,
+                                "amount": share.amount,
+                            }
+                            for share in expense.shares.all()
+                        ],
+                    }
+                    for expense in group.expenses.all()
+                ],
+            }
+        )
+    return groups
 
 
 def _add_json(archive, name, data):

@@ -6,6 +6,8 @@ that collide between forms on the same page (which sends <label for> to the wron
 fields without any accessible name.
 """
 
+from datetime import date
+from decimal import Decimal
 from html.parser import HTMLParser
 
 from django.contrib.auth.models import User
@@ -17,7 +19,9 @@ from app.models import (
     CalendarEventComment,
     Conversation,
     ConversationMember,
+    ExpenseGroupMember,
     Habit,
+    MealPlanEntry,
     Note,
     Profile,
     Recipe,
@@ -29,6 +33,7 @@ from app.models import (
     VocabularyList,
 )
 from app.services.chat import create_poll
+from app.services.expenses import add_expense, create_group
 from app.services.uml_content import empty_uml_document
 
 UNNAMED_INPUT_TYPES = {"hidden", "submit", "button", "reset", "image"}
@@ -145,6 +150,18 @@ class PageAccessibilityMarkupTests(TestCase):
         )
         self.vocabulary = VocabularyList.objects.create(owner=self.mira, title="Englisch")
         VocabularyCard.objects.create(vocabulary_list=self.vocabulary, term="Haus", translation="house")
+        MealPlanEntry.objects.create(owner=self.mira, recipe=self.recipe, date=date(2099, 3, 10))
+        self.expense_group, _error = create_group(self.mira, "WG")
+        ExpenseGroupMember.objects.create(group=self.expense_group, user=self.lukas)
+        add_expense(
+            self.expense_group,
+            self.mira,
+            title="Einkauf",
+            amount=Decimal("20.00"),
+            paid_by=self.mira,
+            participants=[self.mira, self.lukas],
+            spent_on=date(2099, 3, 10),
+        )
         self.client.login(username="mira@example.com", password="secret-12345")
 
     def pages(self):
@@ -171,6 +188,9 @@ class PageAccessibilityMarkupTests(TestCase):
             "/tools/shopping/",
             "/tools/recipes/",
             f"/tools/recipes/{self.recipe.pk}/",
+            "/tools/recipes/?week=2099-W11",
+            "/tools/expenses/",
+            f"/tools/expenses/{self.expense_group.pk}/",
             "/tools/focus/",
             "/tools/uml/",
             f"/tools/uml/{self.diagram.pk}/",

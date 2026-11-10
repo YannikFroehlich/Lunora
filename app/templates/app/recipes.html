@@ -29,6 +29,78 @@
             <button class="primary-button" type="submit"><i class="fa-solid fa-plus" aria-hidden="true"></i> Neues Rezept</button>
             {% if form.errors %}<ul class="errorlist">{% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}{% for error in form.title.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
         </form>
+        <form class="vocab-create-form recipe-import-form" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="recipe_import">
+            <label class="vocab-field vocab-field-wide">
+                <span>Oder aus dem Web übernehmen</span>
+                <input type="url" name="url" value="{{ import_url }}" maxlength="500" placeholder="https://… Adresse einer Rezeptseite" autocomplete="off" required>
+            </label>
+            <button class="ghost-button" type="submit"><i class="fa-solid fa-cloud-arrow-down" aria-hidden="true"></i> Importieren</button>
+            {% if import_error %}<ul class="errorlist"><li>{{ import_error }}</li></ul>{% endif %}
+        </form>
+    </section>
+
+    <section class="glass-panel meal-plan" id="meal-plan" aria-labelledby="meal-plan-title" data-soft-region>
+        <div class="meal-plan-head">
+            <h2 id="meal-plan-title">Wochenplan · {{ week_label }}</h2>
+            <nav class="meal-plan-nav" aria-label="Woche wechseln">
+                <a class="icon-button" href="?week={{ previous_week }}" aria-label="Vorherige Woche"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></a>
+                {% if not is_current_week %}<a class="ghost-button" href="{% url 'recipes' %}">Diese Woche</a>{% endif %}
+                <a class="icon-button" href="?week={{ next_week }}" aria-label="Nächste Woche"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></a>
+            </nav>
+        </div>
+        <ol class="meal-plan-days">
+            {% for day in plan_days %}
+            <li class="meal-plan-day{% if day.is_today %} is-today{% endif %}">
+                <h3>{{ day.name }} <small>{{ day.label }}</small></h3>
+                {% if day.entries %}
+                <ul class="meal-plan-entries">
+                    {% for entry in day.entries %}
+                    <li>
+                        <a href="{% url 'recipe_detail' entry.recipe_id %}">{{ entry.recipe.title }}</a>
+                        <form method="post">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_name" value="meal_plan_remove">
+                            <input type="hidden" name="week" value="{{ week }}">
+                            <input type="hidden" name="entry_id" value="{{ entry.id }}">
+                            <button class="icon-button" type="submit" aria-label="„{{ entry.recipe.title }}“ am {{ day.name }} entfernen" title="Entfernen"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                        </form>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+                {% if recipe_choices %}
+                <form class="meal-plan-add" method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="meal_plan_add">
+                    <input type="hidden" name="week" value="{{ week }}">
+                    <input type="hidden" name="date" value="{{ day.date|date:'Y-m-d' }}">
+                    <select name="recipe_id" aria-label="Rezept für {{ day.name }}" required>
+                        <option value="">Rezept …</option>
+                        {% for recipe in recipe_choices %}<option value="{{ recipe.id }}">{{ recipe.title }}</option>{% endfor %}
+                    </select>
+                    <button class="icon-button" type="submit" aria-label="Rezept für {{ day.name }} planen" title="Planen"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
+                </form>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ol>
+        {% if recipe_choices %}
+        <form class="meal-plan-shopping" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="meal_plan_to_shopping">
+            <input type="hidden" name="week" value="{{ week }}">
+            {% if shopping_lists|length > 1 %}
+            <select name="list" aria-label="Einkaufszettel">
+                {% for option in shopping_lists %}<option value="{{ option.value }}">{{ option.label }}</option>{% endfor %}
+            </select>
+            {% endif %}
+            <button class="primary-button" type="submit"><i class="fa-solid fa-basket-shopping" aria-hidden="true"></i> Zutaten der Woche auf den Einkaufszettel</button>
+        </form>
+        {% else %}
+        <p class="uml-muted">Lege zuerst ein Rezept an, dann kannst du es hier auf Tage verteilen.</p>
+        {% endif %}
     </section>
 
     {% if recipes %}

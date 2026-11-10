@@ -23,13 +23,15 @@ from app.services.calendar_service import (
     build_calendar_feed,
     can_view_event,
     delete_event_comment,
+    free_slots,
     move_calendar_event,
     series_scope_events,
     sync_event_reminders,
 )
 from app.services.calendar_subscriptions import can_refresh, sync_subscription
+from app.services.habits import WEEKDAY_SHORT
 from app.services.system_settings import disabled_feature_response, feature_enabled
-from app.services.user_preferences import format_user_date, format_user_time
+from app.services.user_preferences import format_user_date, format_user_time, localtime_for_user
 from app.view_models import get_calendar_context, get_calendar_event_detail_context
 
 # The calendars panel edits, refreshes and removes subscriptions; adding one stays in settings.
@@ -294,6 +296,47 @@ def calendar_availability(request):
         exclude_event_id=exclude_event,
     )
     response = JsonResponse({"ok": True, "users": users})
+    response["Cache-Control"] = "private, no-store"
+    return response
+
+
+@login_required
+@require_GET
+def calendar_free_slots(request):
+    """The next times at which the user and the people ticked in an event dialog are all free, for
+    the length entered there (JSON). Only times come back, nothing about the events in the way."""
+    if not feature_enabled("calendar_event_creation"):
+        return disabled_feature_response(request, "calendar_event_creation", json_response=True)
+    form = CalendarAvailabilityForm(request.GET, user=request.user)
+    if not form.is_valid() or "start_at" not in form.cleaned_data:
+        return JsonResponse({"ok": False, "slots": []}, status=400)
+    exclude_event = form.cleaned_data.get("exclude_event")
+    if exclude_event and not CalendarEvent.objects.filter(pk=exclude_event, user=request.user).exists():
+        exclude_event = None
+    start_at, end_at = form.cleaned_data["start_at"], form.cleaned_data["end_at"]
+    slots = free_slots(
+        request.user,
+        form.cleaned_data["attendees"],
+        end_at - start_at,
+        max(start_at, timezone.now()),
+        exclude_event_id=exclude_event,
+    )
+    payload = []
+    for begin, end in slots:
+        local_begin, local_end = (
+            localtime_for_user(begin, request.user),
+            localtime_for_user(end, request.user),
+        )
+        payload.append(
+            {
+                "date": local_begin.date().isoformat(),
+                "start_time": local_begin.strftime("%H:%M"),
+                "end_time": local_end.strftime("%H:%M"),
+                "label": f"{WEEKDAY_SHORT[local_begin.weekday()]} {format_user_date(local_begin, request.user)}, "
+                f"{format_user_time(local_begin, request.user)}–{format_user_time(local_end, request.user)}",
+            }
+        )
+    response = JsonResponse({"ok": True, "slots": payload})
     response["Cache-Control"] = "private, no-store"
     return response
 

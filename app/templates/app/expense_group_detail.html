@@ -1,0 +1,121 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}{{ group.name }} | Geteilte Ausgaben | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell tools-shell">
+    <div class="soft-contents" id="expense-group" data-soft-region>
+    <header class="page-hero">
+        <div>
+            <a class="tools-back-link" href="{% url 'expense_groups' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Alle Gruppen</a>
+            <h1>{{ group.name }}</h1>
+            <p>Dein Saldo: <strong class="expense-balance{% if own_balance and own_balance > 0 %} is-positive{% elif own_balance %} is-negative{% endif %}">{{ own_balance_label }}</strong>{% if own_balance and own_balance > 0 %} · du bekommst Geld zurück{% elif own_balance %} · du schuldest noch etwas{% endif %}</p>
+        </div>
+        <i class="fa-solid fa-scale-balanced hero-branch" aria-hidden="true"></i>
+    </header>
+
+    <div class="vocab-layout">
+        <section class="glass-panel vocab-panel" aria-labelledby="expense-add-title">
+            <h2 id="expense-add-title">Ausgabe eintragen</h2>
+            <form class="vocab-card-form" method="post">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="expense_add">
+                <label class="vocab-field"><span>{{ form.title.label }}</span>{{ form.title }}</label>
+                <div class="expense-form-row">
+                    <label class="vocab-field"><span>{{ form.amount.label }}</span>{{ form.amount }}</label>
+                    <label class="vocab-field"><span>{{ form.spent_on.label }}</span>{{ form.spent_on }}</label>
+                </div>
+                <label class="vocab-field"><span>{{ form.paid_by.label }}</span>{{ form.paid_by }}</label>
+                <fieldset class="vocab-field expense-participants">
+                    <legend>{{ form.participants.label }}</legend>
+                    {% for choice in form.participants %}<label class="recipe-ingredient">{{ choice.tag }} <span>{{ choice.choice_label }}</span></label>{% endfor %}
+                </fieldset>
+                {% if form.errors %}<ul class="errorlist">{% for field in form %}{% for error in field.errors %}<li>{{ field.label }}: {{ error }}</li>{% endfor %}{% endfor %}</ul>{% endif %}
+                <button class="primary-button" type="submit"><i class="fa-solid fa-plus" aria-hidden="true"></i> Eintragen</button>
+            </form>
+
+            <details class="vocab-details" id="expense-members">
+                <summary><i class="fa-solid fa-user-group" aria-hidden="true"></i> Mitglieder</summary>
+                <ul class="vocab-share-list">
+                    {% for member in members %}
+                    <li><span><i class="fa-regular fa-user" aria-hidden="true"></i> {{ member.name }}</span> <span class="expense-balance{% if member.balance and member.balance > 0 %} is-positive{% elif member.balance %} is-negative{% endif %}">{{ member.balance_label }}</span></li>
+                    {% endfor %}
+                </ul>
+                <form class="vocab-card-form" method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="expense_member_add">
+                    <label class="vocab-field">
+                        <span>E-Mail oder Benutzername</span>
+                        <input type="text" name="recipient" maxlength="254" autocomplete="off" required>
+                    </label>
+                    <button class="ghost-button" type="submit"><i class="fa-solid fa-user-plus" aria-hidden="true"></i> Hinzufügen</button>
+                </form>
+                <form class="vocab-danger-actions" method="post" data-no-soft data-confirm="Die Gruppe „{{ group.name }}“ verlassen?">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="expense_group_leave">
+                    <button class="ghost-button" type="submit"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i> Gruppe verlassen</button>
+                </form>
+            </details>
+        </section>
+
+        <div class="expense-column">
+            <section class="glass-panel vocab-panel" aria-labelledby="expense-settle-title">
+                <h2 id="expense-settle-title">Ausgleichen</h2>
+                {% if payments %}
+                <ul class="expense-payments">
+                    {% for payment in payments %}
+                    <li>
+                        <span>{{ payment.text }}</span>
+                        <strong>{{ payment.amount_label }}</strong>
+                        {% if payment.can_confirm %}
+                        <form method="post">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_name" value="expense_settle">
+                            <input type="hidden" name="debtor_id" value="{{ payment.debtor_id }}">
+                            <input type="hidden" name="creditor_id" value="{{ payment.creditor_id }}">
+                            <button class="ghost-button" type="submit" aria-label="Zahlung {{ payment.text }} über {{ payment.amount_label }} als erledigt eintragen"><i class="fa-solid fa-check" aria-hidden="true"></i> Bezahlt</button>
+                        </form>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+                <p class="uml-muted">So viele Zahlungen braucht es, damit alle bei null stehen. Wer bezahlt hat oder das Geld bekommen hat, trägt sie mit „Bezahlt“ ein.</p>
+                {% else %}
+                <p class="uml-muted">Alle sind ausgeglichen.</p>
+                {% endif %}
+            </section>
+
+            <section class="glass-panel vocab-panel" aria-labelledby="expense-list-title">
+                <h2 id="expense-list-title">Ausgaben</h2>
+                {% if expenses %}
+                <ul class="expense-list">
+                    {% for expense in expenses %}
+                    <li class="{% if expense.is_settlement %}is-settlement{% endif %}">
+                        <span class="expense-text">
+                            <strong>{% if expense.is_settlement %}<i class="fa-solid fa-handshake" aria-hidden="true"></i> {% endif %}{{ expense.title }}</strong>
+                            <small>{{ expense.date_label }} · {% if expense.is_settlement %}{{ expense.paid_by }} → {{ expense.split }}{% else %}gezahlt: {{ expense.paid_by }} · geteilt: {{ expense.split }}{% endif %}</small>
+                        </span>
+                        <strong class="expense-amount">{{ expense.amount_label }}</strong>
+                        <form method="post" data-confirm="„{{ expense.title }}“ löschen?">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_name" value="expense_delete">
+                            <input type="hidden" name="expense_id" value="{{ expense.id }}">
+                            <button class="icon-button" type="submit" aria-label="„{{ expense.title }}“ vom {{ expense.date_label }} löschen" title="Löschen"><i class="fa-regular fa-trash-can" aria-hidden="true"></i></button>
+                        </form>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="uml-muted">Noch keine Ausgaben. Trag links die erste ein.</p>
+                {% endif %}
+            </section>
+        </div>
+    </div>
+    </div>
+</section>
+{% endblock %}

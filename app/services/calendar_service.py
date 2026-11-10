@@ -22,6 +22,12 @@ LOCATION_MAP_SEARCH_URL = "https://www.openstreetmap.org/search?query={query}"
 # Upper bound for one availability lookup, so the endpoint can't be used to scan whole calendars.
 AVAILABILITY_MAX_SPAN = timedelta(days=31)
 AVAILABILITY_MAX_USERS = 50
+# "Freien Termin finden": weekdays, working hours in the organizer's time zone, two weeks ahead.
+SLOT_COUNT = 3
+SLOT_STEP = timedelta(minutes=30)
+SLOT_DAY_HOURS = (8, 18)
+SLOT_SEARCH_DAYS = 14
+SLOT_MAX_DURATION = timedelta(hours=10)
 
 # Subscribers only need recent history; everything ahead is always included.
 FEED_LOOKBACK_DAYS = 180
@@ -412,11 +418,7 @@ def attendee_availability(users, start_at, end_at, *, exclude_event_id=None):
     """
     users = list(users)
     user_ids = [user.pk for user in users]
-    events = CalendarEvent.objects.filter(start_at__lt=end_at, end_at__gt=start_at)
-    if not feature_enabled("calendar_subscriptions"):
-        events = events.filter(subscription=None)
-    if exclude_event_id:
-        events = events.exclude(pk=exclude_event_id)
+    events = _availability_events(start_at, end_at, exclude_event_id)
     busy = set(events.filter(user_id__in=user_ids).values_list("user_id", flat=True))
     busy.update(
         CalendarEventAttendee.objects.filter(
@@ -441,3 +443,77 @@ def attendee_availability(users, start_at, end_at, *, exclude_event_id=None):
         status = "away" if user.pk in away else "busy" if user.pk in busy else "free"
         result.append({"id": user.pk, "status": status, "label": labels[status]})
     return result
+
+
+def _availability_events(start_at, end_at, exclude_event_id=None):
+    """The events that make their owner (and accepted invitees) busy between the two instants."""
+    events = CalendarEvent.objects.filter(start_at__lt=end_at, end_at__gt=start_at)
+    if not feature_enabled("calendar_subscriptions"):
+        events = events.filter(subscription=None)
+    if exclude_event_id:
+        events = events.exclude(pk=exclude_event_id)
+    return events
+
+
+def free_slots(organizer, users, duration, earliest, *, exclude_event_id=None):
+    """The next SLOT_COUNT times, on different weekdays within SLOT_DAY_HOURS of the organizer's
+    local time and SLOT_SEARCH_DAYS from `earliest`, at which the organizer and `users` are all free
+    for `duration` (busy and away as in attendee_availability). Only start instants come back, never
+    anything about the events in the way.
+    """
+    if duration <= timedelta(0) or duration > SLOT_MAX_DURATION:
+        return []
+    people = {user.pk: user for user in [organizer, *users]}
+    horizon = earliest + timedelta(days=SLOT_SEARCH_DAYS)
+    events = _availability_events(earliest, horizon, exclude_event_id)
+    blocked = list(events.filter(user_id__in=people).values_list("start_at", "end_at"))
+    blocked += CalendarEventAttendee.objects.filter(
+        user_id__in=people, status=CalendarEventAttendee.STATUS_ACCEPTED, event__in=events
+    ).values_list("event__start_at", "event__end_at")
+    if feature_enabled("vacation_planner"):
+        first_day = earliest.date() - timedelta(days=1)
+        for period in VacationPeriod.objects.filter(
+            user_id__in=people, end_date__gte=first_day, start_date__lte=horizon.date() + timedelta(days=1)
+        ):
+            zone = get_user_zoneinfo(people[period.user_id])
+            blocked.append(
+                (
+                    datetime.combine(period.start_date, time.min, zone),
+                    datetime.combine(period.end_date + timedelta(days=1), time.min, zone),
+                )
+            )
+
+    zone = get_user_zoneinfo(organizer)
+    day_start, day_end = SLOT_DAY_HOURS
+    candidate = _round_up(earliest.astimezone(zone), SLOT_STEP)
+    slots = []
+    # ponytail: scans every blocked span per candidate (a few hundred at most in 14 days); sort and
+    # bisect if calendars ever get that busy.
+    while candidate < horizon and len(slots) < SLOT_COUNT:
+        opening = candidate.replace(hour=day_start, minute=0, second=0, microsecond=0)
+        closing = candidate.replace(hour=day_end, minute=0, second=0, microsecond=0)
+        if candidate.weekday() >= 5 or candidate + duration > closing:
+            candidate = _next_morning(candidate, day_start)
+            continue
+        if candidate < opening:
+            candidate = opening
+        end = candidate + duration
+        clash = max((stop for begin, stop in blocked if begin < end and stop > candidate), default=None)
+        if clash is not None:
+            candidate = _round_up(clash.astimezone(zone), SLOT_STEP)
+            continue
+        slots.append((candidate, end))
+        # Spread the suggestions over different days, so there is a real choice.
+        candidate = _next_morning(candidate, day_start)
+    return slots
+
+
+def _round_up(value, step):
+    """`value` (aware, local) moved up to the next multiple of `step` past midnight."""
+    midnight = value.replace(hour=0, minute=0, second=0, microsecond=0)
+    steps = -(-(value - midnight) // step)
+    return midnight + steps * step
+
+
+def _next_morning(value, hour):
+    return (value + timedelta(days=1)).replace(hour=hour, minute=0, second=0, microsecond=0)

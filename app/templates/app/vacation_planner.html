@@ -8,7 +8,10 @@
 {% endblock %}
 
 {% block content %}
-<section class="page-shell vacation-shell" data-vacation-preview-url="{% url 'vacation_preview' %}" data-vacation-year="{{ selected_year }}">
+<section class="page-shell vacation-shell" data-vacation-preview-url="{% url 'vacation_preview' %}">
+    {% comment %}Every planner form posts in the background and this region is swapped from the answer
+    (base.js); the context menu and the dialog stay outside it because vacation_planner.js holds them.{% endcomment %}
+    <div class="soft-contents" id="vacation-content" data-soft-region data-vacation-year="{{ selected_year }}">
     <header class="page-hero vacation-hero">
         <div>
             <span class="eyebrow"><i class="fa-solid fa-umbrella-beach" aria-hidden="true"></i> Urlaubsplaner</span>
@@ -377,6 +380,7 @@
                 {% endfor %}
             </div>
         </section>
+    </div>
     </div>
 
     <div class="vacation-context-menu" role="menu" aria-label="Kalendertag" data-calendar-menu hidden></div>

@@ -15,6 +15,7 @@ from app.models import (
     CalendarReminder,
     CalendarSubscription,
     Conversation,
+    ExpenseGroupMember,
     Habit,
     Note,
     NoteShare,
@@ -442,6 +443,13 @@ TOOLS = (
         "url_name": "recipes",
     },
     {
+        "id": "expenses",
+        "title": "Geteilte Ausgaben",
+        "description": "Gemeinsame Ausgaben eintragen, sehen, wer wem was schuldet, und ausgleichen.",
+        "icon": "fa-scale-balanced",
+        "url_name": "expense_groups",
+    },
+    {
         "id": "focus",
         "title": "Fokus-Timer",
         "description": "Konzentriert arbeiten in festen Intervallen mit kurzen und langen Pausen.",
@@ -474,10 +482,12 @@ def get_tools_context(user):
     habit_count = Habit.objects.filter(owner=user).count()
     open_shopping_items = ShoppingItem.objects.filter(owner=user, is_done=False).count()
     recipe_count = Recipe.objects.filter(owner=user).count()
+    expense_group_count = ExpenseGroupMember.objects.filter(user=user).count()
     meta = {
         "habits": f"{habit_count} Gewohnheit(en)" if habit_count else "Noch keine Gewohnheiten",
         "shopping": f"{open_shopping_items} offen" if open_shopping_items else "Nichts offen",
         "recipes": f"{recipe_count} Rezept(e)" if recipe_count else "Noch keine Rezepte",
+        "expenses": f"{expense_group_count} Gruppe(n)" if expense_group_count else "Noch keine Gruppen",
         "focus": "Läuft direkt im Browser",
         "uml": f"{diagram_count} Diagramm(e)" if diagram_count else "Noch keine Diagramme",
         "vocabulary": (

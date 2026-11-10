@@ -508,6 +508,12 @@
                 <legend>{{ event_form.attendees.label }}</legend>
                 <div class="recipient-checkbox-list">{{ event_form.attendees }}</div>
                 <small class="event-availability-hint" data-availability-hint aria-live="polite"></small>
+                <div class="event-slot-finder">
+                    <button class="ghost-button" type="button" data-slot-finder data-slots-url="{% url 'calendar_free_slots' %}">
+                        <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> Freien Termin finden
+                    </button>
+                    <div class="event-slot-list" data-slot-list aria-live="polite"></div>
+                </div>
                 {{ event_form.attendees.errors }}
             </fieldset>
 
@@ -603,6 +609,12 @@
                 <legend>{{ edit_form.attendees.label }}</legend>
                 <div class="recipient-checkbox-list">{{ edit_form.attendees }}</div>
                 <small class="event-availability-hint" data-availability-hint aria-live="polite"></small>
+                <div class="event-slot-finder">
+                    <button class="ghost-button" type="button" data-slot-finder data-slots-url="{% url 'calendar_free_slots' %}">
+                        <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> Freien Termin finden
+                    </button>
+                    <div class="event-slot-list" data-slot-list aria-live="polite"></div>
+                </div>
                 {{ edit_form.attendees.errors }}
             </fieldset>
 

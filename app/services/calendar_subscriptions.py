@@ -4,20 +4,15 @@ The subscription URL is a credential: a secret Google or iCloud address reads th
 It is never logged, exported or rendered, and no error message here ever contains it.
 """
 
-import http.client
-import ipaddress
 import logging
-import socket
-import threading
-import time
 from datetime import timedelta
-from urllib.parse import urljoin, urlsplit
 
 from django.db import transaction
 from django.db.models import F, Q
 from django.utils import timezone
 
 from app.models import CalendarEvent, CalendarSubscription
+from app.services import safe_fetch
 from app.services.data_import import ics_event_rows
 
 logger = logging.getLogger(__name__)
@@ -25,9 +20,6 @@ logger = logging.getLogger(__name__)
 MAX_SUBSCRIPTIONS = 10
 MAX_CALENDAR_BYTES = 5_000_000
 MAX_EVENTS = 5000
-MAX_REDIRECTS = 4
-FETCH_TIMEOUT_SECONDS = 10
-FETCH_DEADLINE_SECONDS = 30
 SYNC_INTERVAL = timedelta(minutes=30)
 # "Jetzt aktualisieren" fetches inside the request, so it is throttled per subscription.
 MANUAL_REFRESH_INTERVAL = timedelta(minutes=1)
@@ -35,13 +27,10 @@ MANUAL_REFRESH_INTERVAL = timedelta(minutes=1)
 MAX_SYNCS_PER_RUN = 20
 WINDOW_PAST = timedelta(days=180)
 WINDOW_FUTURE = timedelta(days=400)
-DEFAULT_PORTS = {"http": 80, "https": 443}
-REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 USER_AGENT = "Lunora-Kalender/1.0"
 
-
-class SubscriptionError(Exception):
-    """A failure whose German message is safe to show and store: it never contains the URL."""
+# The SSRF-safe fetcher's errors (app/services/safe_fetch.py) are safe to show and never hold the URL.
+SubscriptionError = safe_fetch.FetchError
 
 
 def normalize_url(raw_url):
@@ -50,138 +39,25 @@ def normalize_url(raw_url):
     url = (raw_url or "").strip()
     if url[:9].lower() == "webcal://":
         url = "https://" + url[9:]
-    try:
-        parts = urlsplit(url)
-        port = parts.port
-    except ValueError:
-        raise SubscriptionError("Die Adresse ist ungültig.") from None
-    if parts.scheme.lower() not in DEFAULT_PORTS or not parts.hostname:
+    if url and "://" in url and url.split("://", 1)[0].lower() not in safe_fetch.DEFAULT_PORTS:
         raise SubscriptionError("Bitte gib eine https-, http- oder webcal-Adresse ein.")
-    if parts.username or parts.password:
-        raise SubscriptionError("Die Adresse darf keine Zugangsdaten enthalten.")
-    if port not in (None, DEFAULT_PORTS[parts.scheme.lower()]):
-        raise SubscriptionError("Nur Adressen ohne eigenen Port werden unterstützt.")
-    host = _ascii_host(parts.hostname)
-    try:
-        is_public = ipaddress.ip_address(host).is_global
-    except ValueError:
-        is_public = "." in host and not host.endswith((".localhost", ".local", ".internal", ".lan"))
-    if not is_public:
-        raise SubscriptionError("Die Adresse muss auf einen öffentlichen Server zeigen.")
-    return url
-
-
-def _ascii_host(hostname):
-    try:
-        return hostname.rstrip(".").encode("idna").decode("ascii").lower()
-    except UnicodeError:
-        raise SubscriptionError("Die Adresse ist ungültig.") from None
-
-
-def _public_connection(address, timeout=None, source_address=None):
-    """socket.create_connection for http.client that only connects to public addresses. The check
-    runs on the addresses actually connected to, so a name re-resolving to 127.0.0.1 (DNS
-    rebinding) or a redirect to an internal host can't reach the server's own network."""
-    host, port = address
-    try:
-        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
-    except OSError:
-        raise SubscriptionError("Der Server der Adresse wurde nicht gefunden.") from None
-    if not infos or not all(ipaddress.ip_address(info[4][0]).is_global for info in infos):
-        raise SubscriptionError("Die Adresse muss auf einen öffentlichen Server zeigen.")
-    error = None
-    for family, socket_type, proto, _name, sockaddr in infos:
-        sock = socket.socket(family, socket_type, proto)
-        sock.settimeout(timeout)
-        try:
-            sock.connect(sockaddr)
-        except OSError as connect_error:
-            sock.close()
-            error = connect_error
-            continue
-        return sock
-    raise error
-
-
-class _DeadlineCut:
-    """Cuts a connection at the fetch deadline. Socket timeouts only limit single reads, so a server
-    sending one byte at a time could otherwise hold a fetch open for days, in the TLS handshake and
-    the headers as well as the body. Shuts down a dup of the socket because TLS wrapping detaches
-    the original."""
-
-    def __init__(self, deadline):
-        self.deadline = deadline
-        self.watched = None
-        self.timer = None
-
-    def connect(self, address, timeout=None, source_address=None):
-        sock = _public_connection(address, timeout, source_address)
-        self.watched = sock.dup()
-        self.timer = threading.Timer(max(self.deadline - time.monotonic(), 0), self._cut)
-        self.timer.daemon = True
-        self.timer.start()
-        return sock
-
-    def _cut(self):
-        try:
-            self.watched.shutdown(socket.SHUT_RDWR)
-        except OSError:  # Already closed.
-            pass
-
-    def release(self):
-        if self.timer:
-            self.timer.cancel()
-            self.watched.close()
+    return safe_fetch.normalize_url(url)
 
 
 def fetch_calendar(url):
-    """Download an iCalendar text, following up to MAX_REDIRECTS redirects (each one checked again)."""
-    deadline = time.monotonic() + FETCH_DEADLINE_SECONDS
-    for _redirect in range(MAX_REDIRECTS + 1):
-        url = normalize_url(url)
-        parts = urlsplit(url)
-        connection_class = (
-            http.client.HTTPSConnection if parts.scheme.lower() == "https" else http.client.HTTPConnection
-        )
-        # An explicit port, or http.client would read the end of an IPv6 literal as one.
-        connection = connection_class(
-            _ascii_host(parts.hostname), DEFAULT_PORTS[parts.scheme.lower()], timeout=FETCH_TIMEOUT_SECONDS
-        )
-        # http.client opens its socket through this attribute.
-        cut = _DeadlineCut(deadline)
-        connection._create_connection = cut.connect
-        path = (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
-        try:
-            connection.request(
-                "GET", path, headers={"User-Agent": USER_AGENT, "Accept": "text/calendar, */*"}
-            )
-            response = connection.getresponse()
-            if response.status in REDIRECT_STATUSES and response.getheader("Location"):
-                url = urljoin(url, response.getheader("Location"))
-                continue
-            if response.status != 200:
-                raise SubscriptionError(f"Der Kalender-Server antwortet mit Fehler {response.status}.")
-            return _read_calendar(response, deadline)
-        except (OSError, http.client.HTTPException):
-            raise SubscriptionError("Der Kalender-Server ist nicht erreichbar.") from None
-        finally:
-            connection.close()
-            cut.release()
-    raise SubscriptionError("Die Adresse leitet zu oft weiter.")
+    """Download an iCalendar text, following up to safe_fetch.MAX_REDIRECTS checked redirects."""
+    return safe_fetch.fetch(
+        normalize_url(url),
+        _read_calendar,
+        user_agent=USER_AGENT,
+        accept="text/calendar, */*",
+        server="Der Kalender-Server",
+    )
 
 
-def _read_calendar(response, deadline):
-    chunks = []
-    size = 0
-    while chunk := response.read(65536):
-        size += len(chunk)
-        if size > MAX_CALENDAR_BYTES:
-            raise SubscriptionError("Der Kalender ist größer als 5 MB.")
-        chunks.append(chunk)
-    # A connection cut at the deadline ends like a complete download.
-    if time.monotonic() > deadline:
-        raise SubscriptionError("Der Kalender-Server antwortet zu langsam.")
-    text = b"".join(chunks).decode("utf-8-sig", errors="replace")
+def _read_calendar(response):
+    body = safe_fetch.read_capped(response, MAX_CALENDAR_BYTES, "Der Kalender ist größer als 5 MB.")
+    text = body.decode("utf-8-sig", errors="replace")
     if "BEGIN:VCALENDAR" not in text:
         raise SubscriptionError("Unter der Adresse liegt kein iCal-Kalender.")
     return text

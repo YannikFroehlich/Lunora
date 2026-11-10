@@ -63,11 +63,13 @@
     }
   }
 
-  for (const form of document.querySelectorAll("[data-preview-form]")) {
-    const trigger = () => updatePreview(form);
-    form.querySelector('[name="start_date"]')?.addEventListener("change", trigger);
-    form.querySelector('[name="end_date"]')?.addEventListener("change", trigger);
-  }
+  // Delegated: the planner's forms are re-rendered after every in-place submit (base.js).
+  document.addEventListener("change", (event) => {
+    const form = event.target.closest?.("[data-preview-form]");
+    if (form && ["start_date", "end_date"].includes(event.target.name)) {
+      updatePreview(form);
+    }
+  });
 
   function focusPlannerArea(kind) {
     const target =
@@ -142,7 +144,7 @@
       return;
     }
     const url = new URL(link.href);
-    if (url.searchParams.get("year") !== shell.dataset.vacationYear) {
+    if (url.searchParams.get("year") !== document.querySelector("[data-vacation-year]")?.dataset.vacationYear) {
       return;
     }
     event.preventDefault();
@@ -153,8 +155,9 @@
   });
 
   // Calendar shortcuts: right-click a day, or drag across days, for a menu that opens the page's own
-  // forms in a dialog. The forms post as usual; their action gets #vacation-calendar, which the
-  // browser keeps across the redirect, so the page comes back to the calendar.
+  // forms in a dialog. There they sit outside the page's soft region, so they get data-soft to still
+  // post in the background (base.js closes the dialog and swaps the page); their action gets
+  // #vacation-calendar for the full-page fallback, which the browser keeps across the redirect.
   const menu = document.querySelector("[data-calendar-menu]");
   const dialog = document.querySelector("[data-calendar-dialog]");
   const dialogBody = dialog?.querySelector("[data-calendar-dialog-body]");
@@ -263,8 +266,16 @@
     moved.node.querySelectorAll("form[data-original-action]").forEach((form) => {
       form.setAttribute("action", form.dataset.originalAction);
       delete form.dataset.originalAction;
+      form.removeAttribute("data-soft");
     });
-    moved.placeholder.replaceWith(moved.node);
+    if (moved.placeholder.isConnected) {
+      moved.placeholder.replaceWith(moved.node);
+    } else {
+      // The page was swapped while the node sat in the dialog; it already holds a fresh copy.
+      moved.node.remove();
+      moved = null;
+      return;
+    }
     if (moved.node.tagName === "DETAILS") {
       moved.node.open = moved.wasOpen;
     }
@@ -285,6 +296,7 @@
     forms.forEach((form) => {
       form.dataset.originalAction = form.getAttribute("action");
       form.setAttribute("action", form.dataset.originalAction + CALENDAR_ANCHOR);
+      form.setAttribute("data-soft", "");
     });
     dialogBody.replaceChildren(node);
     dialog.querySelector("[data-calendar-dialog-title]").textContent = title;
@@ -398,6 +410,10 @@
         hideMenu();
         clearSelection();
       }
+    });
+    document.addEventListener("lunora:soft-update", () => {
+      hideMenu();
+      clearSelection();
     });
     window.addEventListener("scroll", hideMenu, { passive: true });
     window.addEventListener("resize", hideMenu);

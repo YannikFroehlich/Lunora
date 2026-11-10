@@ -15,3 +15,9 @@ def local_return_to(request):
     ):
         return return_to
     return None
+
+
+def posted_id(request, key):
+    """The POSTed primary key under `key`, or None when it isn't a plain number."""
+    value = request.POST.get(key, "")
+    return int(value) if value.isdigit() else None
