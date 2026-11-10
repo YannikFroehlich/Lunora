@@ -6,6 +6,11 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Ticking off, adding and deleting no longer reloads the whole page on the shopping list, tasks,
+  calendar, habits and the dashboard's task, habit, notification, shopping and bookmark widgets:
+  only the affected part updates, so scroll position, open details and the keyboard focus stay
+  where they were. Moving events and tasks by drag and drop in the calendar works the same way.
+  Other page changes fade over smoothly in browsers that support it.
 - The dashboard has a "Einkaufszettel" widget: open items in store-aisle order with their emoji
   and quantity, ticked off right there, and a plus button to write down what's missing without
   leaving the dashboard. It sits next to the statistics in the default layout; dashboards set up

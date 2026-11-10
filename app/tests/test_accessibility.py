@@ -42,6 +42,7 @@ class _MarkupCollector(HTMLParser):
         self.fields = []
         self.main_count = 0
         self.h1_count = 0
+        self.soft_regions_without_id = []
         self._label_depth = 0
         self._template_depth = 0
 
@@ -53,6 +54,9 @@ class _MarkupCollector(HTMLParser):
             return
         if attributes.get("id"):
             self.ids.append(attributes["id"])
+        # base.js swaps soft regions by id, so one without an id would silently never update.
+        if "data-soft-region" in attributes and not attributes.get("id"):
+            self.soft_regions_without_id.append(attributes.get("class") or tag)
         if tag == "main" or attributes.get("role") == "main":
             self.main_count += 1
         if tag == "h1":
@@ -190,6 +194,7 @@ class PageAccessibilityMarkupTests(TestCase):
             self.assertGreaterEqual(collector.h1_count, 1, f"{url}: a level-one heading")
             duplicates = sorted({value for value in collector.ids if collector.ids.count(value) > 1})
             self.assertEqual(duplicates, [], f"{url}: duplicate ids")
+            self.assertEqual(collector.soft_regions_without_id, [], f"{url}: soft regions without an id")
             unnamed = [
                 f"<{field['tag']} name={field['name']!r} id={field['id']!r}>"
                 for field in collector.fields

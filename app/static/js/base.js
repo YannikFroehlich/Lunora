@@ -578,10 +578,169 @@ document.addEventListener("submit", (event) => {
   if (message && !window.confirm(message)) event.preventDefault();
 });
 
+// Soft submits: a POST form inside a [data-soft-region] (or carrying data-soft itself) is sent in
+// the background instead of reloading the page. The server answers exactly as for a normal submit,
+// usually a redirect back to this page, and only the page's soft regions are swapped from that
+// answer (matched by id), so scroll position, focus, open <details> and half-typed text elsewhere
+// survive. Page scripts re-attach what they need on the "lunora:soft-update" event. A form outside
+// every region is reset after it succeeded and closes the <dialog> it sits in. Anything unexpected
+// (another page, an error, no redirect for a form outside the regions, no network) falls back to
+// the normal submit or a reload, which shows the same thing as before this existed.
+const SOFT_REGION = "[data-soft-region]";
+let softSequence = 0;
+
+function isSoftForm(form) {
+  return (
+    form.method === "post" && !form.target && (form.hasAttribute("data-soft") || Boolean(form.closest(SOFT_REGION)))
+  );
+}
+
+// Identifies a control across a swap even without an id: the same action, the same item ids
+// and the same field, e.g. the checkbox of task 12 after its row was re-rendered.
+function softFocusKey(element) {
+  const form = element.form || element.closest("form");
+  if (!form) return null;
+  const fields = [...form.querySelectorAll("input[type=hidden]")]
+    .filter((input) => input.name === "form_name" || input.name.endsWith("_id"))
+    .map((input) => `${input.name}=${input.value}`);
+  return [form.getAttribute("action") || "", ...fields, element.tagName, element.name || ""].join("&");
+}
+
+function swapSoftRegions(freshDocument) {
+  const active = document.activeElement;
+  const activeRegion = active?.closest?.(SOFT_REGION);
+  const activeKey = activeRegion ? softFocusKey(active) : null;
+
+  document.querySelectorAll(SOFT_REGION).forEach((region) => {
+    const fresh = region.id && freshDocument.getElementById(region.id);
+    if (!fresh) return;
+    const openDetails = [...region.querySelectorAll("details[open][id]")].map((details) => details.id);
+    const scrolled = [...region.querySelectorAll("[id]")]
+      .filter((element) => element.scrollTop)
+      .map((element) => [element.id, element.scrollTop]);
+    // The region element itself stays, so scripts holding it keep working; only its attributes
+    // and children follow the server.
+    [...region.attributes].forEach(({ name }) => {
+      if (!fresh.hasAttribute(name)) region.removeAttribute(name);
+    });
+    [...fresh.attributes].forEach(({ name, value }) => region.setAttribute(name, value));
+    region.replaceChildren(...fresh.childNodes);
+    openDetails.forEach((id) => {
+      const details = document.getElementById(id);
+      if (details) details.open = true;
+    });
+    scrolled.forEach(([id, top]) => {
+      const element = document.getElementById(id);
+      if (element) element.scrollTop = top;
+    });
+  });
+
+  // Focus was on something that is gone now: move it to the same control in the new markup, or
+  // at least into the region, so keyboard users don't restart at the top of the page.
+  if (activeRegion && !active.isConnected) {
+    let target = active.id ? document.getElementById(active.id) : null;
+    target ||= [...document.querySelectorAll(`${SOFT_REGION} :is(input, button, select, textarea, a[href])`)].find(
+      (candidate) => softFocusKey(candidate) === activeKey,
+    );
+    if (!target && activeRegion.isConnected && activeRegion.getClientRects().length) {
+      activeRegion.tabIndex = -1;
+      target = activeRegion;
+    }
+    target?.focus({ preventScroll: true });
+  }
+
+  const freshFlash = freshDocument.querySelector("[data-flash-stack]");
+  // Like a page load: the previous action's message goes, the new one (if any) comes.
+  document.querySelector("[data-flash-stack]")?.remove();
+  if (freshFlash) {
+    document.querySelector("main")?.prepend(freshFlash);
+    initFlashMessages();
+  }
+
+  document.dispatchEvent(new CustomEvent("lunora:soft-update"));
+}
+
+// The normal, full-page submit; the submit button's name/value goes last, so it wins over a
+// hidden field of the same name exactly as when the button itself is pressed.
+function nativeSubmit(form, submitter) {
+  if (submitter?.name) {
+    form.append(
+      Object.assign(document.createElement("input"), { type: "hidden", name: submitter.name, value: submitter.value }),
+    );
+  }
+  if (!form.isConnected) document.body.append(form);
+  HTMLFormElement.prototype.submit.call(form);
+}
+
+async function softSubmit(form, submitter) {
+  const body = new FormData(form, submitter);
+  const sequence = ++softSequence;
+  const inRegion = Boolean(form.closest(SOFT_REGION));
+  form.setAttribute("aria-busy", "true");
+  let response;
+  let html;
+  try {
+    response = await fetch(form.action, { method: "POST", body, credentials: "same-origin" });
+    html = await response.text();
+  } catch (_error) {
+    form.removeAttribute("aria-busy");
+    nativeSubmit(form, submitter);
+    return;
+  }
+  form.removeAttribute("aria-busy");
+
+  if (response.status >= 500) {
+    // The change may or may not have happened; show the page as it is now instead of repeating it.
+    window.location.reload();
+    return;
+  }
+  // Rejected requests (403, 404, …) changed nothing; the normal submit shows the error page.
+  if (!response.ok) {
+    nativeSubmit(form, submitter);
+    return;
+  }
+  const url = new URL(response.url);
+  if (url.pathname !== window.location.pathname) {
+    // Signed out, or the action leads to another page.
+    window.location.assign(response.url);
+    return;
+  }
+  // Without a redirect the server re-rendered the page with form errors and changed nothing.
+  // A form inside a region shows them after the swap; any other form shows them the normal way.
+  if (!response.redirected && !inRegion) {
+    nativeSubmit(form, submitter);
+    return;
+  }
+  // A later submit is on its way and its answer includes this one's change.
+  if (sequence !== softSequence) return;
+
+  if (response.redirected) {
+    form.closest("dialog")?.close();
+    if (!inRegion) form.reset();
+  }
+  swapSoftRegions(new DOMParser().parseFromString(html, "text/html"));
+  if (`${url.pathname}${url.search}` !== `${window.location.pathname}${window.location.search}`) {
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}`);
+  }
+}
+
+document.addEventListener("submit", (event) => {
+  const form = event.target;
+  if (event.defaultPrevented || !(form instanceof HTMLFormElement) || !isSoftForm(form)) return;
+  event.preventDefault();
+  // A second click while the first is still on its way would do the same thing twice.
+  if (form.getAttribute("aria-busy") === "true") return;
+  softSubmit(form, event.submitter);
+});
+
 // Filters and checkboxes that submit their form as soon as they change. Delegated, because the
 // Content-Security-Policy forbids inline handlers and live updates swap some of these controls.
+// requestSubmit() (unlike submit()) fires the submit event, which soft forms need.
 document.addEventListener("change", (event) => {
-  if (event.target.matches?.("[data-auto-submit]")) event.target.form?.submit();
+  const form = event.target.matches?.("[data-auto-submit]") && event.target.form;
+  if (!form) return;
+  if (isSoftForm(form)) form.requestSubmit();
+  else form.submit();
 });
 
 // Remember the last visited app sections in this browser, newest first, so the dashboard's

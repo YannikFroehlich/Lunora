@@ -1,11 +1,14 @@
 (function () {
-  const taskList = document.querySelector("[data-task-list]");
-  const filterButtons = Array.from(document.querySelectorAll("[data-task-filter]"));
-  const viewLinks = Array.from(document.querySelectorAll("[data-task-view-link]"));
+  // The list, board, counters and filters sit in soft regions (base.js) that are re-rendered after
+  // ticking a task off and the like; refreshElements() picks up the new elements, and every click
+  // inside them is delegated so it keeps working after a swap.
+  let taskList = document.querySelector("[data-task-list]");
+  let filterButtons = Array.from(document.querySelectorAll("[data-task-filter]"));
+  let viewLinks = Array.from(document.querySelectorAll("[data-task-view-link]"));
   const sortSelect = document.querySelector("[data-task-sort]");
   const resetButton = document.querySelector("[data-task-reset]");
-  const filterEmpty = document.querySelector("[data-task-filter-empty]");
-  const resultsStatus = document.querySelector("[data-task-results-status]");
+  let filterEmpty = document.querySelector("[data-task-filter-empty]");
+  let resultsStatus = document.querySelector("[data-task-results-status]");
   const dateField = document.querySelector(".task-date-field");
   const dateInput = document.querySelector(".task-date-field input[type='datetime-local']");
   const dateLabel = document.querySelector("[data-task-date-label]");
@@ -33,7 +36,7 @@
   let activeFilter = "all";
   let activeView = "all";
   let activeListId = "";
-  const taskBoard = document.querySelector("[data-task-board]");
+  let taskBoard = document.querySelector("[data-task-board]");
   const layoutButtons = Array.from(document.querySelectorAll("[data-task-layout]"));
   const LAYOUT_STORAGE_KEY = "lunora-task-layout";
   let activeLayout = "list";
@@ -207,35 +210,49 @@
     syncDragAffordance();
   }
 
-  filterButtons.forEach((button) => {
-    button.addEventListener("click", () => {
-      activeFilter = button.dataset.taskFilter || "all";
-      filterButtons.forEach((candidate) => {
-        const isActive = candidate === button;
-        candidate.classList.toggle("is-active", isActive);
-        candidate.setAttribute("aria-pressed", String(isActive));
-      });
-      applyTaskView();
-    });
-  });
+  function refreshElements() {
+    taskList = document.querySelector("[data-task-list]");
+    taskBoard = document.querySelector("[data-task-board]");
+    filterButtons = Array.from(document.querySelectorAll("[data-task-filter]"));
+    viewLinks = Array.from(document.querySelectorAll("[data-task-view-link]"));
+    filterEmpty = document.querySelector("[data-task-filter-empty]");
+    resultsStatus = document.querySelector("[data-task-results-status]");
+  }
 
-  function markActiveViewLink(activeLink) {
-    viewLinks.forEach((candidate) => {
-      const isActive = candidate === activeLink;
-      candidate.classList.toggle("is-active", isActive);
-      candidate.setAttribute("aria-pressed", String(isActive));
+  function syncFilterButtons() {
+    filterButtons.forEach((button) => {
+      const isActive = (button.dataset.taskFilter || "all") === activeFilter;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
     });
   }
 
-  viewLinks.forEach((link) => {
-    link.addEventListener("click", () => {
-      activeView = link.dataset.taskViewLink || "all";
-      activeListId = activeView === "list" ? link.dataset.taskViewList || "" : "";
-      markActiveViewLink(link);
-      applyTaskView();
+  function syncViewLinks() {
+    viewLinks.forEach((link) => {
+      const view = link.dataset.taskViewLink || "all";
+      const isActive = view === activeView && (view !== "list" || (link.dataset.taskViewList || "") === activeListId);
+      link.classList.toggle("is-active", isActive);
+      link.setAttribute("aria-pressed", String(isActive));
     });
+  }
+
+  document.addEventListener("click", (event) => {
+    const filterButton = event.target.closest("[data-task-filter]");
+    if (filterButton) {
+      activeFilter = filterButton.dataset.taskFilter || "all";
+      syncFilterButtons();
+      applyTaskView();
+      return;
+    }
+    const viewLink = event.target.closest("[data-task-view-link]");
+    if (viewLink) {
+      activeView = viewLink.dataset.taskViewLink || "all";
+      activeListId = activeView === "list" ? viewLink.dataset.taskViewList || "" : "";
+      syncViewLinks();
+      applyTaskView();
+    }
   });
-  markActiveViewLink(viewLinks.find((link) => link.dataset.taskViewLink === "all"));
+  syncViewLinks();
 
   function setLayout(layout) {
     activeLayout = layout === "board" && taskBoard ? "board" : "list";
@@ -276,25 +293,37 @@
       activeView = "all";
       activeListId = "";
       if (sortSelect) sortSelect.value = "due";
-      filterButtons.forEach((button) => {
-        const isActive = button.dataset.taskFilter === "all";
-        button.classList.toggle("is-active", isActive);
-        button.setAttribute("aria-pressed", String(isActive));
-      });
-      markActiveViewLink(viewLinks.find((link) => link.dataset.taskViewLink === "all"));
+      syncFilterButtons();
+      syncViewLinks();
       if (moreMenu) moreMenu.open = false;
       applyTaskView();
     });
   }
 
-  document.querySelectorAll("[data-task-subtask-toggle]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const group = button.closest("[data-task-group]");
-      if (!group) return;
-      const collapsed = group.classList.toggle("is-collapsed");
-      button.setAttribute("aria-expanded", String(!collapsed));
-    });
+  // Collapsed subtask groups by parent task id, so they stay collapsed when the list is re-rendered.
+  const collapsedGroups = new Set();
+
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-task-subtask-toggle]");
+    const group = button?.closest("[data-task-group]");
+    if (!group) return;
+    const collapsed = group.classList.toggle("is-collapsed");
+    button.setAttribute("aria-expanded", String(!collapsed));
+    const parentId = group.querySelector("[data-task-row]")?.dataset.taskId;
+    if (collapsed) collapsedGroups.add(parentId);
+    else collapsedGroups.delete(parentId);
   });
+
+  function restoreCollapsedGroups() {
+    collapsedGroups.forEach((parentId) => {
+      const group = taskList
+        ?.querySelector(`[data-task-row][data-task-id="${parentId}"]`)
+        ?.closest("[data-task-group]");
+      if (!group) return;
+      group.classList.add("is-collapsed");
+      group.querySelector("[data-task-subtask-toggle]")?.setAttribute("aria-expanded", "false");
+    });
+  }
 
   document.querySelectorAll(".task-color-grid").forEach((grid) => {
     const dots = Array.from(grid.querySelectorAll(".task-color-dot"));
@@ -350,6 +379,14 @@
     select.addEventListener("change", () => syncRecurrenceFields(select.form));
   });
 
+  // A task added in the background (soft submit) resets the form; reset fires no change events.
+  document.getElementById("task-add-form")?.addEventListener("reset", (event) => {
+    window.setTimeout(() => {
+      updateDateLabel();
+      syncRecurrenceFields(event.target);
+    }, 0);
+  });
+
   const editDialog = document.querySelector("[data-task-edit-dialog]");
 
   if (editDialog) {
@@ -403,23 +440,23 @@
       window.setTimeout(() => titleInput?.focus(), 0);
     };
 
-    document.querySelectorAll("[data-task-edit-open]").forEach((button) => {
-      button.addEventListener("click", () =>
-        openEditDialog({
-          taskId: button.dataset.taskId,
-          title: button.dataset.editTitle,
-          due: button.dataset.editDue,
-          list: button.dataset.editList,
-          priority: button.dataset.editPriority,
-          recurrence: button.dataset.editRecurrence,
-          interval: button.dataset.editInterval,
-          weekdays: button.dataset.editWeekdays,
-          labels: button.dataset.editLabels,
-          parent: button.dataset.editParent,
-          assignee: button.dataset.editAssignee,
-          shared: button.dataset.editShared,
-        }),
-      );
+    document.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-task-edit-open]");
+      if (!button) return;
+      openEditDialog({
+        taskId: button.dataset.taskId,
+        title: button.dataset.editTitle,
+        due: button.dataset.editDue,
+        list: button.dataset.editList,
+        priority: button.dataset.editPriority,
+        recurrence: button.dataset.editRecurrence,
+        interval: button.dataset.editInterval,
+        weekdays: button.dataset.editWeekdays,
+        labels: button.dataset.editLabels,
+        parent: button.dataset.editParent,
+        assignee: button.dataset.editAssignee,
+        shared: button.dataset.editShared,
+      });
     });
 
     editDialog.querySelectorAll("[data-task-edit-dialog-close]").forEach((button) => {
@@ -553,46 +590,47 @@
   // Board: drag a card into another column (mouse); the move buttons on each card do the same
   // with the keyboard or on touch screens.
   let draggedBoardCard = null;
-  const statusForm = document.getElementById("task-status-form");
 
-  if (taskBoard && statusForm) {
-    taskBoard.addEventListener("dragstart", (event) => {
-      const card = event.target.closest("[data-task-board-card]");
-      if (!card) return;
-      draggedBoardCard = card;
-      card.classList.add("is-dragging");
-      event.dataTransfer.effectAllowed = "move";
-      event.dataTransfer.setData("text/plain", card.dataset.taskId || "");
-    });
+  document.addEventListener("dragstart", (event) => {
+    const card = event.target.closest?.("[data-task-board-card]");
+    if (!card) return;
+    draggedBoardCard = card;
+    card.classList.add("is-dragging");
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", card.dataset.taskId || "");
+  });
 
-    taskBoard.addEventListener("dragend", () => {
-      draggedBoardCard?.classList.remove("is-dragging");
-      draggedBoardCard = null;
-      taskBoard.querySelectorAll(".is-drop-target").forEach((column) => column.classList.remove("is-drop-target"));
+  document.addEventListener("dragend", () => {
+    if (!draggedBoardCard) return;
+    draggedBoardCard.classList.remove("is-dragging");
+    draggedBoardCard = null;
+    document.querySelectorAll("[data-task-board-column].is-drop-target").forEach((column) => {
+      column.classList.remove("is-drop-target");
     });
+  });
 
-    taskBoard.addEventListener("dragover", (event) => {
-      const column = event.target.closest("[data-task-board-column]");
-      if (!draggedBoardCard || !column) return;
-      event.preventDefault();
-      taskBoard.querySelectorAll(".is-drop-target").forEach((candidate) => {
-        if (candidate !== column) candidate.classList.remove("is-drop-target");
-      });
-      column.classList.add("is-drop-target");
+  document.addEventListener("dragover", (event) => {
+    const column = draggedBoardCard && event.target.closest?.("[data-task-board-column]");
+    if (!column) return;
+    event.preventDefault();
+    document.querySelectorAll("[data-task-board-column].is-drop-target").forEach((candidate) => {
+      if (candidate !== column) candidate.classList.remove("is-drop-target");
     });
+    column.classList.add("is-drop-target");
+  });
 
-    taskBoard.addEventListener("drop", (event) => {
-      const column = event.target.closest("[data-task-board-column]");
-      if (!draggedBoardCard || !column) return;
-      event.preventDefault();
-      const status = column.dataset.taskBoardColumn;
-      if (status === draggedBoardCard.dataset.taskStatus) return;
-      column.querySelector("[data-task-board-drop]")?.appendChild(draggedBoardCard);
-      statusForm.querySelector("[data-task-status-id]").value = draggedBoardCard.dataset.taskId;
-      statusForm.querySelector("[data-task-status-value]").value = status;
-      statusForm.submit();
-    });
-  }
+  document.addEventListener("drop", (event) => {
+    const column = draggedBoardCard && event.target.closest?.("[data-task-board-column]");
+    const statusForm = document.getElementById("task-status-form");
+    if (!column || !statusForm) return;
+    event.preventDefault();
+    const status = column.dataset.taskBoardColumn;
+    if (status === draggedBoardCard.dataset.taskStatus) return;
+    column.querySelector("[data-task-board-drop]")?.appendChild(draggedBoardCard);
+    statusForm.querySelector("[data-task-status-id]").value = draggedBoardCard.dataset.taskId;
+    statusForm.querySelector("[data-task-status-value]").value = status;
+    statusForm.requestSubmit();
+  });
 
   // Keyboard alternative to dragging: Alt+ArrowUp/Down moves the focused task (manual sort) or list
   // one place; after the reload the moved item gets its focus back.
@@ -663,6 +701,18 @@
 
   // Sorting moves the rows in the DOM, which drops focus, so restore it afterwards.
   setLayout(activeLayout);
+
+  // After a soft submit swapped the list: apply the chosen layout, filter, view, sort and
+  // collapsed groups to the new rows, keeping the focus base.js just put back.
+  document.addEventListener("lunora:soft-update", () => {
+    const focused = document.activeElement;
+    refreshElements();
+    syncFilterButtons();
+    syncViewLinks();
+    setLayout(activeLayout);
+    restoreCollapsedGroups();
+    if (focused?.isConnected && document.activeElement !== focused) focused.focus({ preventScroll: true });
+  });
 
   try {
     const refocus = sessionStorage.getItem(REFOCUS_KEY);

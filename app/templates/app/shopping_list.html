@@ -25,7 +25,7 @@
     {% endif %}
 
     <section class="glass-panel uml-create-panel shopping-create-panel">
-        <form class="vocab-create-form shopping-create-form" method="post">
+        <form class="vocab-create-form shopping-create-form" method="post" data-soft>
             {% csrf_token %}
             <input type="hidden" name="form_name" value="shopping_add">
             <div class="shopping-name-field" data-shopping-suggest>
@@ -47,7 +47,7 @@
         </form>
     </section>
 
-    <div class="shopping-live" data-shopping-live data-version="{{ list_version }}"{% if is_shared or not is_own_list %} data-poll-url="{{ poll_url }}"{% endif %}>
+    <div class="shopping-live" id="shopping-live" data-soft-region data-shopping-live data-version="{{ list_version }}"{% if is_shared or not is_own_list %} data-poll-url="{{ poll_url }}"{% endif %}>
     {% if item_count %}
     <div class="shopping-toolbar">
         <span>{{ done_items|length }} von {{ item_count }} im Wagen</span>

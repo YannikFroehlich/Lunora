@@ -17,7 +17,7 @@
         <i class="hero-branch fa-solid fa-seedling" aria-hidden="true"></i>
     </header>
 
-    <div class="calendar-layout">
+    <div class="calendar-layout" id="calendar-layout" data-soft-region>
         <section class="glass-panel month-panel" aria-labelledby="calendar-month-title">
             <div class="month-toolbar">
                 <a class="icon-button" href="{{ prev_url }}" aria-label="{% if calendar_view == 'year' %}Vorheriges Jahr{% elif calendar_view == 'agenda' %}Vorherige vier Wochen{% elif calendar_view == 'week' %}Vorherige Woche{% elif calendar_view == 'three_days' %}Vorherige drei Tage{% elif calendar_view == 'day' %}Vorheriger Tag{% else %}Vorheriger Monat{% endif %}"><i class="fa-solid fa-chevron-left"></i></a>
@@ -429,7 +429,7 @@
             </button>
         </header>
 
-        <form class="event-create-form" method="post" data-event-create-form>
+        <form class="event-create-form" method="post" data-event-create-form data-soft>
             {% csrf_token %}
             <input type="hidden" name="form_name" value="calendar_event_add">
             {% if event_form.non_field_errors %}
@@ -534,7 +534,7 @@
             </button>
         </header>
 
-        <form class="event-create-form" method="post" data-event-edit-form>
+        <form class="event-create-form" method="post" data-event-edit-form data-soft>
             {% csrf_token %}
             <input type="hidden" name="form_name" value="calendar_event_edit">
             <input type="hidden" name="event_id" value="{{ editing_event_id|default:'' }}" data-event-edit-id-input>

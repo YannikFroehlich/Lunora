@@ -1,4 +1,5 @@
 {% url 'notification_center' as notification_center_url %}
+<div class="soft-contents" id="dashboard-body-notifications" data-soft-region>
 {% include "app/partials/dashboard_widget_head.html" with icon="fa-solid fa-bell" title="Hinweise" link_url=notification_center_url link_label="Postfach öffnen" %}
 <ul class="widget-list">
     {% for item in dashboard_notifications %}
@@ -20,3 +21,4 @@
     <li class="widget-empty"><i class="fa-regular fa-bell-slash" aria-hidden="true"></i> Keine neuen Hinweise.</li>
     {% endfor %}
 </ul>
+</div>

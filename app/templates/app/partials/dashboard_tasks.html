@@ -1,4 +1,5 @@
 {% url 'tasks' as tasks_url %}
+<div class="soft-contents" id="dashboard-body-tasks" data-soft-region>
 {% include "app/partials/dashboard_widget_head.html" with icon="fa-solid fa-list-check" title="Aufgaben" link_url=tasks_url link_label="Aufgaben öffnen" %}
 <ul class="widget-list">
     {% for task in dashboard_tasks %}
@@ -26,3 +27,4 @@
     <li class="widget-empty"><i class="fa-regular fa-circle-check" aria-hidden="true"></i> Keine offenen Aufgaben.</li>
     {% endfor %}
 </ul>
+</div>
