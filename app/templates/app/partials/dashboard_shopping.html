@@ -1,0 +1,49 @@
+{% url 'shopping_list' as shopping_url %}
+{% url 'home' as home_url %}
+{% include "app/partials/dashboard_widget_head.html" with icon="fa-solid fa-basket-shopping" title="Einkaufszettel" meta=dashboard_shopping.meta action_dialog="shopping-dialog" action_label="Artikel hinzufügen" link_url=shopping_url link_label="Einkaufszettel öffnen" %}
+<ul class="widget-list shopping-widget-list">
+    {% for item in dashboard_shopping.items %}
+    <li data-dashboard-item{% if forloop.counter > widget.options.limit %} hidden{% endif %}>
+        <span class="shopping-widget-emoji" aria-hidden="true">{{ item.emoji }}</span>
+        <span class="widget-list-content">
+            <strong>{{ item.name }}</strong>
+            {% if item.quantity %}<small>{{ item.quantity }}</small>{% endif %}
+        </span>
+        <form method="post" action="{{ shopping_url }}" class="widget-list-action">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="shopping_toggle">
+            <input type="hidden" name="item_id" value="{{ item.id }}">
+            <input type="hidden" name="done" value="1">
+            <input type="hidden" name="return_to" value="{{ home_url }}">
+            <button type="submit" class="notice-action" aria-label="„{{ item.name }}“ abhaken" title="Abhaken">
+                <i class="fa-solid fa-check" aria-hidden="true"></i>
+            </button>
+        </form>
+    </li>
+    {% empty %}
+    <li class="widget-empty"><i class="fa-solid fa-basket-shopping" aria-hidden="true"></i> <span>Nichts offen. Über das Plus oben rechts schreibst du auf, was fehlt.</span></li>
+    {% endfor %}
+</ul>
+<dialog class="widget-dialog" id="shopping-dialog" aria-labelledby="shopping-dialog-title">
+    <form method="post" action="{{ shopping_url }}" class="glass-panel widget-dialog-form">
+        {% csrf_token %}
+        <input type="hidden" name="form_name" value="shopping_add">
+        <input type="hidden" name="return_to" value="{{ home_url }}">
+        <div class="widget-dialog-head">
+            <h2 id="shopping-dialog-title">Auf den Einkaufszettel</h2>
+            <button class="icon-button" type="button" data-dialog-close aria-label="Schließen"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+        </div>
+        <label>
+            <span>Artikel</span>
+            <input type="text" name="name" maxlength="120" required autocomplete="off" placeholder="z. B. Milch">
+        </label>
+        <label>
+            <span>Menge</span>
+            <input type="text" name="quantity" maxlength="40" autocomplete="off" placeholder="optional">
+        </label>
+        <div class="widget-dialog-actions">
+            <button class="ghost-button" type="button" data-dialog-close>Abbrechen</button>
+            <button class="primary-button" type="submit">Hinzufügen</button>
+        </div>
+    </form>
+</dialog>

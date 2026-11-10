@@ -137,7 +137,8 @@ def shopping_list(request):
             # brings that row back instead of writing it twice.
             error = add_shopping_item(list_owner, form.cleaned_data["name"], form.cleaned_data["quantity"])
             if error is None:
-                return redirect(_shopping_list_url(request, list_owner, "add=1"))
+                # The dashboard widget's add dialog comes back to the dashboard.
+                return redirect(local_return_to(request) or _shopping_list_url(request, list_owner, "add=1"))
             form.add_error(None, error)
     elif form_name == "shopping_toggle":
         item = _posted_shopping_item(request, list_owner)
@@ -148,6 +149,8 @@ def shopping_list(request):
         wanted = request.POST.get("done")
         item.is_done = wanted == "1" if wanted in ("0", "1") else not item.is_done
         item.save(update_fields=["is_done"])
+        if return_to := local_return_to(request):
+            return redirect(return_to)
         # A ticked item moves to "Im Wagen"; return to the aisle it came from, so a long list
         # doesn't jump around while shopping. An unticked one goes back to its own row.
         anchor = f"group-{classify_item(item.name)[0]}" if item.is_done else f"item-{item.pk}"

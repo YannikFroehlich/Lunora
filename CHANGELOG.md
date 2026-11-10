@@ -6,6 +6,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- The dashboard has a "Einkaufszettel" widget: open items in store-aisle order with their emoji
+  and quantity, ticked off right there, and a plus button to write down what's missing without
+  leaving the dashboard. It sits next to the statistics in the default layout; dashboards set up
+  before get it at the end and can move or hide it under "Dashboard anpassen".
 - New tool "Rezepte": collect recipes with portions, ingredients (one per line, lines ending in ":"
   become sub-headings) and preparation. On a recipe, untick what's already at home and put the rest
   on your shopping list, or on a list shared with you, in one click. Quantities like "200 g" or
