@@ -9,6 +9,7 @@
 
 {% block content %}
 <section class="page-shell tools-shell">
+    <div class="soft-contents" id="recipe-detail" data-soft-region>
     <header class="page-hero">
         <div>
             <a class="tools-back-link" href="{% url 'recipes' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Alle Rezepte</a>
@@ -91,13 +92,14 @@
             </details>
 
             <div class="vocab-danger-actions">
-                <form method="post" data-confirm="Dieses Rezept wirklich löschen?">
+                <form method="post" data-no-soft data-confirm="Dieses Rezept wirklich löschen?">
                     {% csrf_token %}
                     <input type="hidden" name="form_name" value="recipe_delete">
                     <button class="ghost-button" type="submit"><i class="fa-regular fa-trash-can" aria-hidden="true"></i> Rezept löschen</button>
                 </form>
             </div>
         </section>
+    </div>
     </div>
 </section>
 {% endblock %}

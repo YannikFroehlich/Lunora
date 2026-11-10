@@ -9,6 +9,7 @@
 
 {% block content %}
 <section class="page-shell tools-shell">
+    <div class="soft-contents" id="vocab-detail" data-soft-region>
     <header class="page-hero">
         <div>
             <a class="tools-back-link" href="{% url 'vocabulary_lists' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Alle Listen</a>
@@ -184,26 +185,36 @@
             {% endif %}
         </section>
     </div>
+    </div>
 </section>
 {% endblock %}
 
 {% block page_js %}
 <script nonce="{{ csp_nonce }}">
     (function () {
-        const input = document.querySelector("[data-vocab-filter]");
-        const rows = Array.from(document.querySelectorAll("[data-vocab-search]"));
-        const empty = document.querySelector("[data-vocab-filter-empty]");
-        if (!input) return;
-        input.addEventListener("input", () => {
-            const query = input.value.trim().toLowerCase();
+        // Delegated and re-applied after in-place updates (base.js swaps the list), so the filter
+        // keeps working and keeps its text when a card is added, edited or deleted.
+        let query = "";
+        function applyFilter() {
+            const input = document.querySelector("[data-vocab-filter]");
+            const empty = document.querySelector("[data-vocab-filter-empty]");
+            if (!input) return;
+            input.value = query;
+            const needle = query.trim().toLowerCase();
             let visible = 0;
-            rows.forEach((row) => {
-                const match = !query || row.dataset.vocabSearch.includes(query);
+            document.querySelectorAll("[data-vocab-search]").forEach((row) => {
+                const match = !needle || row.dataset.vocabSearch.includes(needle);
                 row.hidden = !match;
                 if (match) visible += 1;
             });
-            empty.hidden = visible > 0;
+            if (empty) empty.hidden = visible > 0;
+        }
+        document.addEventListener("input", (event) => {
+            if (!event.target.matches("[data-vocab-filter]")) return;
+            query = event.target.value;
+            applyFilter();
         });
+        document.addEventListener("lunora:soft-update", applyFilter);
     })();
 </script>
 {% endblock %}

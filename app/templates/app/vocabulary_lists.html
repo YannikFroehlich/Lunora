@@ -39,6 +39,7 @@
         </form>
     </section>
 
+    <div class="soft-contents" id="vocab-lists" data-soft-region>
     {% if lists %}
     <ul class="uml-diagram-list">
         {% for item in lists %}
@@ -88,7 +89,7 @@
                 </span>
             </div>
             <div class="uml-diagram-actions">
-                <form method="post">
+                <form method="post" data-no-soft>
                     {% csrf_token %}
                     <input type="hidden" name="form_name" value="vocab_list_copy">
                     <input type="hidden" name="list_id" value="{{ item.id }}">
@@ -105,5 +106,6 @@
         {% endfor %}
     </ul>
     {% endif %}
+    </div>
 </section>
 {% endblock %}

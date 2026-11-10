@@ -585,13 +585,17 @@ document.addEventListener("submit", (event) => {
 // survive. Page scripts re-attach what they need on the "lunora:soft-update" event. A form outside
 // every region is reset after it succeeded and closes the <dialog> it sits in. Anything unexpected
 // (another page, an error, no redirect for a form outside the regions, no network) falls back to
-// the normal submit or a reload, which shows the same thing as before this existed.
+// the normal submit or a reload, which shows the same thing as before this existed. A form that
+// always leads to another page carries data-no-soft, so it isn't fetched once for nothing.
 const SOFT_REGION = "[data-soft-region]";
 let softSequence = 0;
 
 function isSoftForm(form) {
   return (
-    form.method === "post" && !form.target && (form.hasAttribute("data-soft") || Boolean(form.closest(SOFT_REGION)))
+    form.method === "post" &&
+    !form.target &&
+    !form.hasAttribute("data-no-soft") &&
+    (form.hasAttribute("data-soft") || Boolean(form.closest(SOFT_REGION)))
   );
 }
 

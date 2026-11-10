@@ -6,6 +6,11 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- The number of unread notifications on the bell now updates right after an action, e.g. when an
+  item is marked as read on the dashboard, instead of only on the next page load. Marking
+  notifications as read, adding, editing and deleting vocabulary, removing vocabulary lists and
+  editing recipes or putting them on the shopping list also no longer reload the page, and the
+  vocabulary filter keeps its text while doing so.
 - Ticking off, adding and deleting no longer reloads the whole page on the shopping list, tasks,
   calendar, habits and the dashboard's task, habit, notification, shopping and bookmark widgets:
   only the affected part updates, so scroll position, open details and the keyboard focus stay

@@ -71,11 +71,17 @@
     <a class="nav-orb {% if active_page == 'search' %}is-active{% endif %}" href="{% url 'global_search' %}" aria-label="Suche" aria-keyshortcuts="Control+K Meta+K" title="Suche (Strg+K)">
         <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
     </a>
-    <a class="nav-orb nav-notification-orb {% if active_page == 'notifications' %}is-active{% endif %}" href="{% url 'notification_center' %}" aria-label="Benachrichtigungen{% if unread_notification_count %}, {{ unread_notification_count }} ungelesen{% endif %}">
+    <a class="nav-orb nav-notification-orb {% if active_page == 'notifications' %}is-active{% endif %}" href="{% url 'notification_center' %}">
         <i class="fa-solid fa-bell" aria-hidden="true"></i>
-        {% if unread_notification_count %}
-        <span class="nav-notification-badge" aria-hidden="true">{% if unread_notification_count > 99 %}99+{% else %}{{ unread_notification_count }}{% endif %}</span>
-        {% endif %}
+        <span class="visually-hidden">Benachrichtigungen</span>
+        {% comment %}A soft region of its own, so in-place actions anywhere update the count; it sits
+        inside the link because a region drops its own focus ring.{% endcomment %}
+        <span class="soft-contents" id="nav-notification-count" data-soft-region>
+            {% if unread_notification_count %}
+            <span class="visually-hidden">{{ unread_notification_count }} ungelesen</span>
+            <span class="nav-notification-badge" aria-hidden="true">{% if unread_notification_count > 99 %}99+{% else %}{{ unread_notification_count }}{% endif %}</span>
+            {% endif %}
+        </span>
     </a>
     {% url 'settings' as settings_url %}
     <a class="nav-orb {% if active_page == 'settings' %}is-active{% endif %}" href="{% if active_page == 'settings' %}{{ settings_url }}{% else %}{{ settings_url }}?next={{ request.get_full_path|urlencode }}{% endif %}" aria-label="Einstellungen">
