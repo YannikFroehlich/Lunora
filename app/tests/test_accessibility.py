@@ -20,6 +20,7 @@ from app.models import (
     Habit,
     Note,
     Profile,
+    Recipe,
     ScheduledChatMessage,
     SystemSettings,
     Task,
@@ -129,6 +130,12 @@ class PageAccessibilityMarkupTests(TestCase):
         CalendarEventAttendee.objects.create(event=self.event, user=self.lukas, invited_by=self.mira)
         CalendarEventComment.objects.create(event=self.event, author=self.lukas, body="Ich komme mit.")
         Habit.objects.create(owner=self.mira, title="Lesen")
+        self.recipe = Recipe.objects.create(
+            owner=self.mira,
+            title="Pfannkuchen",
+            ingredients="Teig:\n200 g Mehl\n2 Eier",
+            instructions="Verrühren.",
+        )
         self.diagram = UmlDiagram.objects.create(
             owner=self.mira, title="Klassen", document=empty_uml_document()
         )
@@ -158,6 +165,8 @@ class PageAccessibilityMarkupTests(TestCase):
             "/tools/",
             "/tools/habits/",
             "/tools/shopping/",
+            "/tools/recipes/",
+            f"/tools/recipes/{self.recipe.pk}/",
             "/tools/focus/",
             "/tools/uml/",
             f"/tools/uml/{self.diagram.pk}/",

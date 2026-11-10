@@ -30,6 +30,7 @@ from app.models import (
     NoteAttachment,
     NotificationPreference,
     Profile,
+    Recipe,
     ShoppingItem,
     ShoppingListShare,
     ShoppingProduct,
@@ -1719,6 +1720,8 @@ class DataExportTests(TestCase):
         ShoppingProduct.objects.create(owner=self.lea, barcode="4000417025005", name="Vollmilch")
         ShoppingProduct.objects.create(owner=self.tom, barcode="4000417025005", name="Toms Milch")
         ShoppingListShare.objects.create(owner=self.lea, user=self.tom)
+        Recipe.objects.create(owner=self.lea, title="Pfannkuchen", ingredients="200 g Mehl")
+        Recipe.objects.create(owner=self.tom, title="Toms Rezept")
         conversation = Conversation.objects.create(created_by=self.lea)
         ConversationMember.objects.create(conversation=conversation, user=self.lea)
         ConversationMember.objects.create(conversation=conversation, user=self.tom)
@@ -1758,6 +1761,10 @@ class DataExportTests(TestCase):
         products = json.loads(archive.read("einkaufsprodukte.json"))
         self.assertEqual([product["name"] for product in products], ["Vollmilch"])
         self.assertEqual(json.loads(archive.read("einkaufszettel-freigaben.json")), [self.tom.get_username()])
+        recipes = json.loads(archive.read("rezepte.json"))
+        self.assertEqual(
+            [(item["title"], item["ingredients"]) for item in recipes], [("Pfannkuchen", "200 g Mehl")]
+        )
         account = archive.read("konto.json").decode("utf-8")
         self.assertIn('"display_name": "Lea"', account)
         self.assertNotIn("geheimer-token", account)

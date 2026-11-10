@@ -242,6 +242,23 @@ def find_open_item(list_owner, product):
     return max(matches, key=lambda item: len(item.name), default=None)
 
 
+def add_shopping_item(list_owner, name, quantity=""):
+    """Puts an item on the list; one already there comes back unticked instead of twice.
+
+    Returns an error message when the list is full, otherwise None.
+    """
+    existing = ShoppingItem.objects.filter(owner=list_owner, name__iexact=name).first()
+    if existing is not None:
+        existing.is_done = False
+        existing.quantity = quantity or existing.quantity
+        existing.save(update_fields=["is_done", "quantity"])
+        return None
+    if ShoppingItem.objects.filter(owner=list_owner).count() >= MAX_SHOPPING_ITEMS:
+        return f"Es passen höchstens {MAX_SHOPPING_ITEMS} Artikel auf den Zettel."
+    ShoppingItem.objects.create(owner=list_owner, name=name, quantity=quantity)
+    return None
+
+
 def add_product_to_list(list_owner, product):
     """Puts a scanned product on the list (or reopens its row); returns the item."""
     item = (

@@ -1100,6 +1100,23 @@ class Bookmark(models.Model):
         return self.title
 
 
+class Recipe(models.Model):
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="recipes")
+    title = models.CharField(max_length=120)
+    servings = models.PositiveSmallIntegerField(blank=True, null=True)
+    # One ingredient per line ("200 g Mehl"); a line ending in ":" heads a group. See app/services/recipes.py.
+    ingredients = models.TextField(blank=True)
+    instructions = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["title", "id"]
+
+    def __str__(self):
+        return self.title
+
+
 class ShoppingItem(models.Model):
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="shopping_items"

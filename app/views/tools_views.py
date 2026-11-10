@@ -9,10 +9,11 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods, require_POST
 
-from app.forms import HabitForm, HabitReminderForm, ShoppingItemForm
-from app.models import Habit, ShoppingItem, UmlDiagram
+from app.forms import HabitForm, HabitReminderForm, RecipeForm, ShoppingItemForm
+from app.models import Habit, Recipe, ShoppingItem, UmlDiagram
 from app.services.habits import habit_items, toggle_habit_check
 from app.services.notes import display_name
+from app.services.recipes import MAX_RECIPES, add_ingredients_to_list, ingredient_rows
 from app.services.shopping import SUGGESTIONS, classify_item, group_items
 from app.services.shopping_lists import (
     end_shopping_list_share,
@@ -22,7 +23,7 @@ from app.services.shopping_lists import (
     shopping_list_members,
     shopping_list_owners,
 )
-from app.services.shopping_products import MAX_SHOPPING_ITEMS, attach_products, scan_barcode
+from app.services.shopping_products import add_shopping_item, attach_products, scan_barcode
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.uml_content import validate_uml_document
 from app.services.user_preferences import format_user_datetime, localtime_for_user
@@ -134,21 +135,10 @@ def shopping_list(request):
         if form.is_valid():
             # Adding something already on the list (e.g. picked again from the suggestions)
             # brings that row back instead of writing it twice.
-            existing = ShoppingItem.objects.filter(
-                owner=list_owner, name__iexact=form.cleaned_data["name"]
-            ).first()
-            if existing is not None:
-                existing.is_done = False
-                existing.quantity = form.cleaned_data["quantity"] or existing.quantity
-                existing.save(update_fields=["is_done", "quantity"])
+            error = add_shopping_item(list_owner, form.cleaned_data["name"], form.cleaned_data["quantity"])
+            if error is None:
                 return redirect(_shopping_list_url(request, list_owner, "add=1"))
-            if ShoppingItem.objects.filter(owner=list_owner).count() >= MAX_SHOPPING_ITEMS:
-                form.add_error(None, f"Es passen höchstens {MAX_SHOPPING_ITEMS} Artikel auf den Zettel.")
-            else:
-                item = form.save(commit=False)
-                item.owner = list_owner
-                item.save()
-                return redirect(_shopping_list_url(request, list_owner, "add=1"))
+            form.add_error(None, error)
     elif form_name == "shopping_toggle":
         item = _posted_shopping_item(request, list_owner)
         if item is None:
@@ -248,6 +238,98 @@ def shopping_scan(request):
         list_owner=list_owner,
     )
     return JsonResponse(result, status=status)
+
+
+@login_required
+def recipes(request):
+    if not feature_enabled("tools"):
+        return disabled_feature_response(request, "tools")
+
+    form = RecipeForm()
+    form_name = request.POST.get("form_name") if request.method == "POST" else None
+    if form_name == "recipe_create":
+        form = RecipeForm(request.POST)
+        if Recipe.objects.filter(owner=request.user).count() >= MAX_RECIPES:
+            form.add_error(None, f"Du kannst höchstens {MAX_RECIPES} Rezepte speichern.")
+        elif form.is_valid():
+            recipe = form.save(commit=False)
+            recipe.owner = request.user
+            recipe.save()
+            return redirect("recipe_detail", recipe_id=recipe.pk)
+
+    return render(
+        request,
+        "app/recipes.html",
+        {
+            "active_page": "tools",
+            "form": form,
+            "recipes": [
+                {
+                    "id": recipe.pk,
+                    "title": recipe.title,
+                    "servings": recipe.servings,
+                    "ingredient_count": sum(
+                        "heading" not in row for row in ingredient_rows(recipe.ingredients)
+                    ),
+                }
+                for recipe in Recipe.objects.filter(owner=request.user)
+            ],
+        },
+    )
+
+
+@login_required
+def recipe_detail(request, recipe_id):
+    if not feature_enabled("tools"):
+        return disabled_feature_response(request, "tools")
+    recipe = get_object_or_404(Recipe, owner=request.user, pk=recipe_id)
+
+    form = RecipeForm(instance=recipe)
+    form_name = request.POST.get("form_name") if request.method == "POST" else None
+    if form_name == "recipe_update":
+        form = RecipeForm(request.POST, instance=recipe)
+        if form.is_valid():
+            form.save()
+            django_messages.success(request, "Rezept gespeichert.")
+            return redirect("recipe_detail", recipe_id=recipe.pk)
+    elif form_name == "recipe_delete":
+        recipe.delete()
+        django_messages.success(request, "Rezept gelöscht.")
+        return redirect("recipes")
+    elif form_name == "recipe_to_shopping":
+        list_owner = list_owner_for(request.user, request.POST.get("list"))
+        if list_owner is None:
+            django_messages.error(request, "Dieser Einkaufszettel ist nicht (mehr) mit dir geteilt.")
+            return redirect("recipe_detail", recipe_id=recipe.pk)
+        indexes = [int(value) for value in request.POST.getlist("ingredient") if value.isdigit()]
+        added, error = add_ingredients_to_list(recipe, indexes, list_owner)
+        if added:
+            django_messages.success(request, f"{added} Zutat(en) auf den Einkaufszettel gesetzt.")
+        if error:
+            django_messages.error(request, error)
+        elif not added:
+            django_messages.info(request, "Keine Zutat ausgewählt.")
+        return redirect("recipe_detail", recipe_id=recipe.pk)
+
+    list_owners = shopping_list_owners(request.user)
+    return render(
+        request,
+        "app/recipe_detail.html",
+        {
+            "active_page": "tools",
+            "recipe": recipe,
+            "form": form,
+            "ingredients": ingredient_rows(recipe.ingredients),
+            "shopping_lists": [
+                {
+                    "value": "" if owner == request.user else owner.pk,
+                    "label": "Mein Zettel" if owner == request.user else f"Zettel von {display_name(owner)}",
+                }
+                for owner in list_owners
+            ],
+            "edit_open": form.errors or not (recipe.ingredients or recipe.instructions),
+        },
+    )
 
 
 @login_required

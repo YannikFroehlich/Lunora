@@ -19,6 +19,7 @@ from app.models import (
     Note,
     NoteShare,
     Profile,
+    Recipe,
     ShoppingItem,
     Task,
     UmlDiagram,
@@ -431,6 +432,13 @@ TOOLS = (
         "url_name": "shopping_list",
     },
     {
+        "id": "recipes",
+        "title": "Rezepte",
+        "description": "Lieblingsrezepte sammeln und die Zutaten mit einem Klick auf den Einkaufszettel setzen.",
+        "icon": "fa-utensils",
+        "url_name": "recipes",
+    },
+    {
         "id": "focus",
         "title": "Fokus-Timer",
         "description": "Konzentriert arbeiten in festen Intervallen mit kurzen und langen Pausen.",
@@ -462,9 +470,11 @@ def get_tools_context(user):
     )
     habit_count = Habit.objects.filter(owner=user).count()
     open_shopping_items = ShoppingItem.objects.filter(owner=user, is_done=False).count()
+    recipe_count = Recipe.objects.filter(owner=user).count()
     meta = {
         "habits": f"{habit_count} Gewohnheit(en)" if habit_count else "Noch keine Gewohnheiten",
         "shopping": f"{open_shopping_items} offen" if open_shopping_items else "Nichts offen",
+        "recipes": f"{recipe_count} Rezept(e)" if recipe_count else "Noch keine Rezepte",
         "focus": "Läuft direkt im Browser",
         "uml": f"{diagram_count} Diagramm(e)" if diagram_count else "Noch keine Diagramme",
         "vocabulary": (

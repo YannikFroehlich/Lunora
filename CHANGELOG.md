@@ -6,6 +6,11 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- New tool "Rezepte": collect recipes with portions, ingredients (one per line, lines ending in ":"
+  become sub-headings) and preparation. On a recipe, untick what's already at home and put the rest
+  on your shopping list, or on a list shared with you, in one click. Quantities like "200 g" or
+  "1 Pck." go into the item's quantity, and an ingredient already on the list comes back instead of
+  being added twice.
 - Scanning in the store now also ticks off items written under another name for the same product:
   "Möhren" for "Karotten", "Marmelade" for "Konfitüre", "Klopapier" for "Toilettenpapier".
 - The notes sidebar and its search results now show every note. Accounts with more than 200 notes
