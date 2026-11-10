@@ -253,13 +253,35 @@ class ExpenseSplitTests(TestCase):
         self.assertEqual(Expense.objects.count(), 2)
 
     def test_csv_export_has_a_column_per_person_and_defuses_formulas(self):
-        self._add(title="=HYPERLINK(1)")
+        self._add(title="=HYPERLINK(1)", category="housing")
 
         response = self.client.get(self.url, {"format": "csv"})
 
         self.assertEqual(response["Content-Type"], "text/csv; charset=utf-8")
         lines = response.content.decode("utf-8").lstrip("﻿").splitlines()
         self.assertEqual(
-            lines[0], "Datum;Wofür;Art;Betrag;Bezahlt von;Anteil lea@example.com;Anteil tom@example.com"
+            lines[0],
+            "Datum;Wofür;Art;Kategorie;Betrag;Bezahlt von;Anteil lea@example.com;Anteil tom@example.com",
         )
-        self.assertEqual(lines[1], "31.01.2026;'=HYPERLINK(1);Ausgabe;30,00;lea@example.com;15,00;15,00")
+        self.assertEqual(
+            lines[1],
+            "31.01.2026;'=HYPERLINK(1);Ausgabe;Miete & Nebenkosten;30,00;lea@example.com;15,00;15,00",
+        )
+
+    def test_month_overview_sums_categories_without_settlements(self):
+        self._add(title="Einkauf", amount="30,00", category="groceries", spent_on="2026-11-03")
+        self._add(title="Kino", amount="10,00", category="leisure", spent_on="2026-11-20")
+        self._add(title="Alt", amount="99,00", category="leisure", spent_on="2026-10-31")
+        self.client.post(
+            self.url, {"form_name": "expense_settle", "debtor_id": self.tom.pk, "creditor_id": self.lea.pk}
+        )
+
+        overview = self.client.get(self.url, {"month": "2026-11"}).context["overview"]
+
+        self.assertEqual(overview["total_label"], "40,00 €")
+        self.assertEqual(overview["own_label"], "20,00 €")
+        self.assertEqual(
+            [(row["label"], row["total_label"], row["percent"]) for row in overview["categories"]],
+            [("Lebensmittel", "30,00 €", 75), ("Freizeit & Essen gehen", "10,00 €", 25)],
+        )
+        self.assertEqual(Expense.objects.get(title="Einkauf").category, "groceries")

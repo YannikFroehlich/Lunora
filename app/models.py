@@ -1212,8 +1212,29 @@ class Expense(models.Model):
     debtor with the creditor as the only share. People are SET_NULL, so a deleted account leaves
     the others' balances as they were."""
 
+    CATEGORY_CHOICES = [
+        ("groceries", "Lebensmittel"),
+        ("household", "Haushalt"),
+        ("housing", "Miete & Nebenkosten"),
+        ("transport", "Mobilität"),
+        ("leisure", "Freizeit & Essen gehen"),
+        ("travel", "Reisen"),
+        ("other", "Sonstiges"),
+    ]
+    CATEGORY_ICONS = {
+        "groceries": "fa-basket-shopping",
+        "household": "fa-broom",
+        "housing": "fa-house",
+        "transport": "fa-car",
+        "leisure": "fa-champagne-glasses",
+        "travel": "fa-plane",
+        "other": "fa-tag",
+    }
+
     group = models.ForeignKey(ExpenseGroup, on_delete=models.CASCADE, related_name="expenses")
     title = models.CharField(max_length=120)
+    # Settlements keep the default; the monthly overview leaves them out anyway.
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default="other")
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     paid_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, blank=True, null=True, related_name="+"
@@ -1252,6 +1273,7 @@ class RecurringExpense(models.Model):
 
     group = models.ForeignKey(ExpenseGroup, on_delete=models.CASCADE, related_name="recurring_expenses")
     title = models.CharField(max_length=120)
+    category = models.CharField(max_length=20, choices=Expense.CATEGORY_CHOICES, default="other")
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     paid_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, blank=True, null=True, related_name="+"

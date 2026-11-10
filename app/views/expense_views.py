@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
 from django.http import Http404, HttpResponse
@@ -6,6 +8,7 @@ from django.utils.http import content_disposition_header
 from django.utils.text import slugify
 
 from app.forms import ExpenseForm
+from app.models import Expense
 from app.services.expenses import (
     CENT,
     add_expense,
@@ -17,6 +20,7 @@ from app.services.expenses import (
     group_for,
     group_members,
     leave_group,
+    month_overview,
     post_due_recurring_expenses,
     record_settlement,
     settle_up_plan,
@@ -24,7 +28,8 @@ from app.services.expenses import (
 )
 from app.services.notes import display_name
 from app.services.system_settings import disabled_feature_response, feature_enabled
-from app.services.user_preferences import format_user_date, localtime_for_user
+from app.services.time_tracking import month_start_for
+from app.services.user_preferences import GERMAN_MONTH_NAMES, format_user_date, localtime_for_user
 from app.views.navigation import posted_id
 
 GROUP_NAME_MAX = 120
@@ -112,6 +117,7 @@ def expense_group_detail(request, group_id):
                 paid_by=data["paid_by"],
                 participants=data["participants"],
                 spent_on=data["spent_on"],
+                category=data["category"],
                 weights=data["weights"],
                 repeat_monthly=data["repeat_monthly"],
             )
@@ -165,6 +171,10 @@ def expense_group_detail(request, group_id):
 
     names = {member.pk: display_name(member) for member in members}
     balance_map = balances(group)
+    month_start = month_start_for(request.GET.get("month"), request.user)
+    overview = month_overview(group, month_start, request.user.pk)
+    previous_month = (month_start - timedelta(days=1)).replace(day=1)
+    next_month = (month_start + timedelta(days=31)).replace(day=1)
     expenses = group.expenses.prefetch_related("shares")
     return render(
         request,
@@ -205,6 +215,8 @@ def expense_group_detail(request, group_id):
                     "id": expense.pk,
                     "title": expense.title,
                     "is_settlement": expense.is_settlement,
+                    "category_label": expense.get_category_display(),
+                    "category_icon": Expense.CATEGORY_ICONS.get(expense.category, "fa-tag"),
                     "amount_label": euro(expense.amount),
                     "date_label": format_user_date(expense.spent_on, request.user),
                     "paid_by": _person_label(expense.paid_by_id, names, request.user),
@@ -212,6 +224,17 @@ def expense_group_detail(request, group_id):
                 }
                 for expense in expenses
             ],
+            "month_label": f"{GERMAN_MONTH_NAMES[month_start.month - 1]} {month_start.year}",
+            "previous_month": previous_month.strftime("%Y-%m"),
+            "next_month": next_month.strftime("%Y-%m"),
+            "overview": {
+                "total_label": euro(overview["total"]),
+                "own_label": euro(overview["own"]),
+                "categories": [
+                    {**category, "total_label": euro(category["total"])}
+                    for category in overview["categories"]
+                ],
+            },
             "recurring": [
                 {
                     "id": rule.pk,

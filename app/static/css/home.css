@@ -646,6 +646,14 @@
   display: flex;
 }
 
+.widget-balance.is-positive {
+  color: var(--color-success);
+}
+
+.widget-balance.is-negative {
+  color: var(--color-danger);
+}
+
 .widget-list-content {
   min-width: 0;
 }

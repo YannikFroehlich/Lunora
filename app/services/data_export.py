@@ -184,6 +184,7 @@ def _expense_groups(user):
                 "expenses": [
                     {
                         "title": expense.title,
+                        "category": expense.category,
                         "amount": expense.amount,
                         "spent_on": expense.spent_on,
                         "is_settlement": expense.is_settlement,

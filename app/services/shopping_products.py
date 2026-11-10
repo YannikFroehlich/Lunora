@@ -242,13 +242,17 @@ def find_open_item(list_owner, product):
     return max(matches, key=lambda item: len(item.name), default=None)
 
 
-def add_shopping_item(list_owner, name, quantity=""):
+def add_shopping_item(list_owner, name, quantity="", merge=None):
     """Puts an item on the list; one already there comes back unticked instead of twice.
 
+    `merge(old, new)` combines the quantities while the item is still open (recipes add theirs
+    up); without it, or for a ticked-off item, the new quantity replaces the old one.
     Returns an error message when the list is full, otherwise None.
     """
     existing = ShoppingItem.objects.filter(owner=list_owner, name__iexact=name).first()
     if existing is not None:
+        if merge and quantity and existing.quantity and not existing.is_done:
+            quantity = merge(existing.quantity, quantity)
         existing.is_done = False
         existing.quantity = quantity or existing.quantity
         existing.save(update_fields=["is_done", "quantity"])

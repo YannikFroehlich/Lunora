@@ -2140,6 +2140,25 @@ a.tool-card:hover {
   flex: 0 0 auto;
 }
 
+.recipe-servings-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.recipe-servings-form input {
+  width: 4.5em;
+  min-height: 38px;
+  padding: 6px 10px;
+  color: var(--color-text);
+  text-align: right;
+  background: var(--surface-control);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-sm);
+}
+
 .recipe-ingredient-heading {
   margin-top: 10px;
   color: var(--color-heading);
@@ -2249,6 +2268,14 @@ a.tool-card:hover {
   flex: 1;
 }
 
+.meal-plan-servings {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+}
+
 .meal-plan-servings input {
   width: 3.6em;
   min-height: 32px;
@@ -2347,6 +2374,35 @@ form:has([name="split_mode"][value="amounts"]:checked) [data-split-hint="amounts
   display: block;
   margin: 0 0 4px;
   font-size: var(--text-sm);
+}
+
+.expense-categories {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.expense-categories li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 10px;
+}
+
+.expense-category-bar {
+  grid-column: 1 / -1;
+  height: 6px;
+  overflow: hidden;
+  background: var(--surface-control);
+  border-radius: var(--radius-pill);
+}
+
+.expense-category-bar span {
+  display: block;
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: inherit;
 }
 
 .expense-list-head {

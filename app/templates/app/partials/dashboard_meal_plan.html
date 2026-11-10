@@ -1,0 +1,24 @@
+{% url 'recipes' as recipes_url %}
+{% include "app/partials/dashboard_widget_head.html" with icon="fa-solid fa-utensils" title="Heute gibt’s" link_url=recipes_url link_label="Wochenplan öffnen" %}
+<ul class="widget-list">
+    {% for meal in dashboard_meal_plan.today %}
+    <li>
+        <span class="event-dot tone-sand" aria-hidden="true"></span>
+        <span class="widget-list-content">
+            <strong><a href="{{ meal.url }}">{{ meal.title }}</a></strong>
+            {% if meal.servings %}<small>{{ meal.servings }} Portion(en)</small>{% endif %}
+        </span>
+    </li>
+    {% empty %}
+    <li class="widget-empty"><i class="fa-solid fa-utensils" aria-hidden="true"></i> <span>Für heute ist nichts geplant. <a href="{{ recipes_url }}">Zum Wochenplan</a></span></li>
+    {% endfor %}
+    {% if dashboard_meal_plan.tomorrow %}
+    <li>
+        <span class="event-dot tone-sand" aria-hidden="true"></span>
+        <span class="widget-list-content">
+            <small>Morgen</small>
+            <strong>{% for meal in dashboard_meal_plan.tomorrow %}<a href="{{ meal.url }}">{{ meal.title }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</strong>
+        </span>
+    </li>
+    {% endif %}
+</ul>

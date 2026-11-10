@@ -14,7 +14,15 @@
         <div>
             <a class="tools-back-link" href="{% url 'recipes' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Alle Rezepte</a>
             <h1>{{ recipe.title }}</h1>
-            {% if recipe.servings %}<p>Für {{ recipe.servings }} Portion(en)</p>{% endif %}
+            {% if recipe.servings %}
+            <form class="recipe-servings-form" method="get">
+                <label for="recipe-servings">Für</label>
+                <input id="recipe-servings" type="number" name="servings" min="1" max="99" required value="{{ servings }}">
+                <span>Portion(en)</span>
+                <button class="ghost-button" type="submit">Umrechnen</button>
+                {% if is_scaled %}<a href="{% url 'recipe_detail' recipe.id %}">Original ({{ recipe.servings }})</a>{% endif %}
+            </form>
+            {% endif %}
             {% if recipe.source_url %}<p><a href="{{ recipe.source_url }}" target="_blank" rel="noopener noreferrer nofollow"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Quelle: {{ source_host }}</a></p>{% endif %}
         </div>
         <i class="fa-solid fa-utensils hero-branch" aria-hidden="true"></i>
@@ -27,6 +35,7 @@
             <form class="recipe-shopping-form" method="post">
                 {% csrf_token %}
                 <input type="hidden" name="form_name" value="recipe_to_shopping">
+                {% if is_scaled %}<input type="hidden" name="servings" value="{{ servings }}">{% endif %}
                 <ul class="recipe-ingredients">
                     {% for row in ingredients %}
                     {% if row.heading %}

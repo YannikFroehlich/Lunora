@@ -21,6 +21,7 @@ from app.models import (
     ChatPoll,
     ChatPollOption,
     CustomHoliday,
+    Expense,
     Habit,
     HolidayOverride,
     NotificationPreference,
@@ -1193,6 +1194,9 @@ class ExpenseForm(forms.Form):
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
         input_formats=["%Y-%m-%d"],
     )
+    category = forms.ChoiceField(
+        label="Kategorie", choices=Expense.CATEGORY_CHOICES, initial="other", required=False
+    )
     paid_by = forms.ModelChoiceField(label="Bezahlt von", queryset=User.objects.none(), empty_label=None)
     participants = forms.ModelMultipleChoiceField(
         label="Geteilt zwischen", queryset=User.objects.none(), widget=forms.CheckboxSelectMultiple
@@ -1242,6 +1246,9 @@ class ExpenseForm(forms.Form):
 
     def clean_amount(self):
         return _parse_money(self.cleaned_data["amount"])
+
+    def clean_category(self):
+        return self.cleaned_data["category"] or "other"
 
     def clean(self):
         cleaned = super().clean()

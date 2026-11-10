@@ -30,6 +30,17 @@ _VULGAR_FRACTIONS = {"½": Fraction(1, 2), "⅓": Fraction(1, 3), "⅔": Fractio
 _VULGAR_FRACTIONS |= {"¾": Fraction(3, 4), "⅛": Fraction(1, 8)}
 _NAME_MAX = 120
 _QUANTITY_MAX = 40
+# Units that convert into each other when quantities are added up; any other unit only adds to itself.
+_UNIT_BASES = {"g": ("g", 1), "gr": ("g", 1), "gramm": ("g", 1), "kg": ("g", 1000), "kilo": ("g", 1000)}
+_UNIT_BASES |= {
+    "ml": ("ml", 1),
+    "cl": ("ml", 10),
+    "dl": ("ml", 100),
+    "l": ("ml", 1000),
+    "liter": ("ml", 1000),
+}
+_LARGE_UNITS = {"g": "kg", "ml": "l"}
+_PLAIN_QUANTITY_RE = re.compile(rf"^(?P<number>{_NUMBER})\s*(?P<unit>[^\d\s\-–/][^\d]*)?$")
 
 
 def parse_ingredient(line):
@@ -67,6 +78,29 @@ def scale_quantity(quantity, factor):
     return _NUMBER_RE.sub(lambda match: _number_label(_number_value(match[0]) * factor), quantity)
 
 
+def _amount(quantity):
+    """(value, unit key, unit text) of a plain "<number> <unit>" quantity; None for ranges, "ca." etc."""
+    match = _PLAIN_QUANTITY_RE.match(quantity.strip())
+    if match is None:
+        return None
+    unit = (match["unit"] or "").strip().rstrip(".")
+    base, scale = _UNIT_BASES.get(unit.lower(), (unit.lower(), 1))
+    return _number_value(match["number"]) * scale, base, base if unit.lower() in _UNIT_BASES else unit
+
+
+def add_quantities(first, second):
+    """ "200 g" + "300 g" → "500 g", "800 ml" + "0,5 l" → "1,3 l", "2" + "1" → "3"; quantities that
+    don't add up ("1 Zehe" + "2 Zehen", "2-3") are kept side by side as "1 Zehe + 2 Zehen"."""
+    one, other = _amount(first), _amount(second)
+    if one is None or other is None or one[1] != other[1]:
+        joined = f"{first} + {second}"
+        return joined if len(joined) <= _QUANTITY_MAX else second
+    total, unit = one[0] + other[0], one[2]
+    if unit in _LARGE_UNITS and total >= 1000:
+        total, unit = total / 1000, _LARGE_UNITS[unit]
+    return f"{_number_label(total)} {unit}".strip()
+
+
 def ingredient_rows(text):
     """The recipe's ingredient lines in order, each a heading or an ingredient with its list name.
 
@@ -89,6 +123,8 @@ def ingredient_rows(text):
                 "text": line,
                 "quantity": quantity[:_QUANTITY_MAX],
                 "name": item_name[:_NAME_MAX],
+                # The line without its quantity, preparation notes kept, for a rescaled display.
+                "label": name,
             }
         )
     return rows
@@ -103,7 +139,10 @@ def add_ingredients_to_list(recipe, line_indexes, list_owner, factor=1):
         if "heading" in row or row["index"] not in wanted:
             continue
         error = add_shopping_item(
-            list_owner, row["name"], scale_quantity(row["quantity"], factor)[:_QUANTITY_MAX]
+            list_owner,
+            row["name"],
+            scale_quantity(row["quantity"], factor)[:_QUANTITY_MAX],
+            merge=add_quantities,
         )
         if error:
             return added, error
@@ -138,8 +177,8 @@ def add_week_to_list(owner, week_start, list_owner):
 
     Returns (recipe count, error or None). A recipe with a number of servings is scaled to the
     servings planned for it over the whole week; one without counts once however often it is
-    planned. An ingredient several recipes share lands on the list once, because adding an item
-    already there brings that row back instead of writing a second one (quantities are not added up).
+    planned. An ingredient several recipes share lands on the list once with the quantities added
+    up (see add_quantities), so sending the same week twice doubles them.
     """
     recipes = {}
     planned_servings = defaultdict(int)

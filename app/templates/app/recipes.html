@@ -66,6 +66,7 @@
                             <input type="hidden" name="week" value="{{ week }}">
                             <input type="hidden" name="entry_id" value="{{ entry.id }}">
                             <input type="number" name="servings" min="1" max="99" required value="{{ entry.servings|default:entry.recipe.servings }}" data-auto-submit aria-label="Portionen für „{{ entry.recipe.title }}“ am {{ day.name }}" title="Portionen">
+                            <span aria-hidden="true">Port.</span>
                         </form>
                         {% endif %}
                         <form method="post">

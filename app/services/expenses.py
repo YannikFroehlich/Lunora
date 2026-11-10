@@ -108,11 +108,12 @@ def split_amount(amount, user_ids, weights=None):
     return [(user_id, share * CENT) for user_id, share in zip(user_ids, shares, strict=True)]
 
 
-def _create_expense(group, *, title, amount, paid_by_id, spent_on, created_by_id, weights):
+def _create_expense(group, *, title, category, amount, paid_by_id, spent_on, created_by_id, weights):
     """The expense plus its shares; `weights` is {user id: weight}."""
     expense = Expense.objects.create(
         group=group,
         title=title,
+        category=category,
         amount=amount,
         paid_by_id=paid_by_id,
         spent_on=spent_on,
@@ -127,7 +128,17 @@ def _create_expense(group, *, title, amount, paid_by_id, spent_on, created_by_id
 
 
 def add_expense(
-    group, actor, *, title, amount, paid_by, participants, spent_on, weights=None, repeat_monthly=False
+    group,
+    actor,
+    *,
+    title,
+    amount,
+    paid_by,
+    participants,
+    spent_on,
+    category="other",
+    weights=None,
+    repeat_monthly=False,
 ):
     """Records an expense; returns an error or None.
 
@@ -144,6 +155,7 @@ def add_expense(
         _create_expense(
             group,
             title=title,
+            category=category,
             amount=amount,
             paid_by_id=paid_by.pk,
             spent_on=spent_on,
@@ -154,6 +166,7 @@ def add_expense(
             RecurringExpense.objects.create(
                 group=group,
                 title=title,
+                category=category,
                 amount=amount,
                 paid_by=paid_by,
                 weights={str(user_id): str(weight) for user_id, weight in weights.items()},
@@ -193,6 +206,7 @@ def _post_recurring(rule):
         _create_expense(
             rule.group,
             title=rule.title,
+            category=rule.category,
             amount=rule.amount,
             paid_by_id=rule.paid_by_id,
             spent_on=due,
@@ -269,6 +283,33 @@ def settle_up_plan(balance_map):
     return payments
 
 
+def month_overview(group, month_start, user_id):
+    """The month's spending (settlements left out): total, the viewer's part of it, and the
+    categories largest first with their share of the total in percent."""
+    following = _next_month(month_start, 1)
+    expenses = group.expenses.filter(is_settlement=False, spent_on__gte=month_start, spent_on__lt=following)
+    totals = defaultdict(lambda: ZERO)
+    for row in expenses.values("category").annotate(total=Sum("amount")):
+        totals[row["category"]] += row["total"]
+    total = sum(totals.values(), ZERO)
+    own = ExpenseShare.objects.filter(expense__in=expenses, user_id=user_id).aggregate(total=Sum("amount"))
+    labels = dict(Expense.CATEGORY_CHOICES)
+    return {
+        "total": total,
+        "own": own["total"] or ZERO,
+        "categories": [
+            {
+                "key": key,
+                "label": labels.get(key, key),
+                "icon": Expense.CATEGORY_ICONS.get(key, "fa-tag"),
+                "total": amount,
+                "percent": round(amount * 100 / total) if total else 0,
+            }
+            for key, amount in sorted(totals.items(), key=lambda item: -item[1])
+        ],
+    }
+
+
 def _csv_cell(text):
     """Text from other members can't become a spreadsheet formula."""
     return f"'{text}" if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
@@ -292,7 +333,7 @@ def expenses_csv(group):
     buffer = io.StringIO()
     writer = csv.writer(buffer, delimiter=";")
     writer.writerow(
-        ["Datum", "Wofür", "Art", "Betrag", "Bezahlt von"]
+        ["Datum", "Wofür", "Art", "Kategorie", "Betrag", "Bezahlt von"]
         + [_csv_cell(f"Anteil {names.get(pk, 'Ehemaliges Mitglied')}") for pk in people]
     )
     for expense in expenses:
@@ -304,6 +345,7 @@ def expenses_csv(group):
                 expense.spent_on.strftime("%d.%m.%Y"),
                 _csv_cell(expense.title),
                 "Ausgleich" if expense.is_settlement else "Ausgabe",
+                "" if expense.is_settlement else expense.get_category_display(),
                 _decimal_label(expense.amount),
                 _csv_cell(names.get(expense.paid_by_id, "Ehemaliges Mitglied")),
             ]

@@ -1,0 +1,16 @@
+{% url 'expense_groups' as expenses_url %}
+{% include "app/partials/dashboard_widget_head.html" with icon="fa-solid fa-scale-balanced" title="Geteilte Ausgaben" link_url=expenses_url link_label="Alle Gruppen öffnen" %}
+<ul class="widget-list">
+    {% for group in dashboard_expenses %}
+    <li data-dashboard-item{% if forloop.counter > widget.options.limit %} hidden{% endif %}>
+        <span class="event-dot {% if group.balance and group.balance > 0 %}tone-green{% elif group.balance %}tone-red{% else %}tone-sand{% endif %}" aria-hidden="true"></span>
+        <span class="widget-list-content">
+            <strong><a href="{{ group.url }}">{{ group.name }}</a></strong>
+            <small>{% if group.balance and group.balance > 0 %}du bekommst Geld zurück{% elif group.balance %}du schuldest noch etwas{% else %}alles ausgeglichen{% endif %}</small>
+        </span>
+        <strong class="widget-balance{% if group.balance and group.balance > 0 %} is-positive{% elif group.balance %} is-negative{% endif %}">{{ group.label }}</strong>
+    </li>
+    {% empty %}
+    <li class="widget-empty"><i class="fa-solid fa-scale-balanced" aria-hidden="true"></i> <span>Noch keine Gruppe. <a href="{{ expenses_url }}">Jetzt anlegen</a></span></li>
+    {% endfor %}
+</ul>

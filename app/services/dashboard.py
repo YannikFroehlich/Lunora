@@ -136,6 +136,24 @@ DASHBOARD_WIDGETS = (
         template="app/partials/dashboard_bookmarks.html",
         class_name="bookmarks-panel",
     ),
+    # Two mediums side by side: one more full row at the end of the default layout.
+    DashboardWidget(
+        id="meal_plan",
+        label="Heute gibt’s",
+        template="app/partials/dashboard_meal_plan.html",
+        class_name="list-panel",
+        default_size="medium",
+        feature_flag="tools",
+    ),
+    DashboardWidget(
+        id="expenses",
+        label="Geteilte Ausgaben",
+        template="app/partials/dashboard_expenses.html",
+        class_name="list-panel",
+        default_size="medium",
+        options={"limit": 5},
+        feature_flag="tools",
+    ),
 )
 
 
@@ -309,7 +327,16 @@ def dashboard_presets():
             "icon": "fa-bullseye",
             "layout": _preset(
                 ["tasks", "habits", "clock", "upcoming_events", "notifications", "weather"],
-                ["welcome", "stats", "quick_actions", "recent_tools", "bookmarks", "shopping"],
+                [
+                    "welcome",
+                    "stats",
+                    "quick_actions",
+                    "recent_tools",
+                    "bookmarks",
+                    "shopping",
+                    "meal_plan",
+                    "expenses",
+                ],
                 {
                     "tasks": {"size": "large", "limit": 8},
                     "habits": {"size": "small", "limit": 5},
@@ -326,7 +353,16 @@ def dashboard_presets():
             "icon": "fa-compress",
             "layout": _preset(
                 ["clock", "tasks", "upcoming_events", "notifications", "weather", "quick_actions"],
-                ["welcome", "stats", "recent_tools", "habits", "bookmarks", "shopping"],
+                [
+                    "welcome",
+                    "stats",
+                    "recent_tools",
+                    "habits",
+                    "bookmarks",
+                    "shopping",
+                    "meal_plan",
+                    "expenses",
+                ],
                 {
                     "clock": {"size": "small"},
                     "tasks": {"size": "small", "limit": 3},
