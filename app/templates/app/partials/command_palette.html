@@ -36,6 +36,11 @@
                 <i class="fa-regular fa-clock" aria-hidden="true"></i><span>Zeiterfassung</span><small>Seite</small>
             </a>
             {% endif %}
+            {% if feature_flags.tasks or feature_flags.calendar_event_creation %}
+            <a class="command-palette-item" id="command-trash" role="option" href="{% url 'trash' %}" data-command-item data-keywords="gelöscht wiederherstellen rückgängig löschen">
+                <i class="fa-regular fa-trash-can" aria-hidden="true"></i><span>Papierkorb</span><small>Seite</small>
+            </a>
+            {% endif %}
             {% if feature_flags.weather %}
             <a class="command-palette-item" id="command-weather" role="option" href="{% url 'weather' %}" data-command-item data-keywords="vorhersage regen temperatur">
                 <i class="fa-solid fa-cloud-sun" aria-hidden="true"></i><span>Wetter</span><small>Seite</small>

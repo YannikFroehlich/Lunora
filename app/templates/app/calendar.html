@@ -36,6 +36,7 @@
                 </button>
                 {% endif %}
                 <a class="ghost-button" href="{{ today_url }}"><i class="fa-regular fa-calendar"></i> Heute</a>
+                {% if calendar_event_creation_enabled %}<a class="icon-button" href="{% url 'trash' %}" aria-label="Papierkorb" title="Papierkorb"><i class="fa-regular fa-trash-can" aria-hidden="true"></i></a>{% endif %}
             </div>
 
             {% if quick_add_form %}

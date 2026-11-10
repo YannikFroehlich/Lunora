@@ -1,0 +1,65 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}Papierkorb | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell tools-shell">
+    <header class="page-hero">
+        <div>
+            {% if shows_tasks %}<a class="tools-back-link" href="{% url 'tasks' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Aufgaben</a>{% endif %}
+            {% if shows_events %}<a class="tools-back-link" href="{% url 'calendar' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Kalender</a>{% endif %}
+            <h1>Papierkorb</h1>
+            <p>Gelöschte {% if shows_tasks %}Aufgaben{% if shows_events %} und {% endif %}{% endif %}{% if shows_events %}Termine{% endif %} bleiben {{ retention_days }} Tage hier, bevor sie endgültig verschwinden. Gelöschte Notizen findest du im Papierkorb der Notizen.</p>
+        </div>
+        <i class="fa-regular fa-trash-can hero-branch" aria-hidden="true"></i>
+    </header>
+
+    <div class="soft-contents" id="trash-list" data-soft-region>
+    {% if items %}
+    <form class="uml-diagram-actions" method="post" data-confirm="Alle Einträge im Papierkorb endgültig löschen?">
+        {% csrf_token %}
+        <input type="hidden" name="form_name" value="trash_empty">
+        <button class="ghost-button" type="submit"><i class="fa-solid fa-trash-can" aria-hidden="true"></i> Papierkorb leeren</button>
+    </form>
+    <ul class="uml-diagram-list">
+        {% for item in items %}
+        <li class="glass-panel uml-diagram-card">
+            <div class="uml-diagram-link">
+                <span class="tool-card-icon" aria-hidden="true"><i class="{{ item.icon }}"></i></span>
+                <span>
+                    <strong>{{ item.title }}</strong>
+                    <small>{{ item.kind_label }}{% if item.detail %} {{ item.detail }}{% endif %} · gelöscht {{ item.deleted_label }} · bleibt bis {{ item.expires_label }}</small>
+                </span>
+            </div>
+            <div class="uml-diagram-actions">
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="trash_restore">
+                    <input type="hidden" name="item_id" value="{{ item.id }}">
+                    <button class="ghost-button" type="submit" aria-label="„{{ item.title }}“ wiederherstellen"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Wiederherstellen</button>
+                </form>
+                <form method="post" data-confirm="„{{ item.title }}“ endgültig löschen? Das lässt sich nicht rückgängig machen.">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="trash_delete">
+                    <input type="hidden" name="item_id" value="{{ item.id }}">
+                    <button class="icon-button" type="submit" aria-label="„{{ item.title }}“ endgültig löschen" title="Endgültig löschen"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                </form>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state-card uml-empty">
+        <i class="fa-regular fa-trash-can" aria-hidden="true"></i>
+        <strong>Der Papierkorb ist leer</strong>
+        <p>Was du löschst, landet zuerst hier und lässt sich wiederherstellen.</p>
+    </div>
+    {% endif %}
+    </div>
+</section>
+{% endblock %}

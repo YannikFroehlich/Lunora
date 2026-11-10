@@ -76,6 +76,7 @@ from .tools_views import (
     uml_diagram_editor,
     uml_diagrams,
 )
+from .trash_views import trash
 from .vacation_planner_views import (
     custom_holiday_delete,
     custom_holiday_save,
@@ -155,6 +156,7 @@ __all__ = [
     "global_search",
     "tasks",
     "task_time_report",
+    "trash",
     "tools",
     "habits",
     "focus_timer",

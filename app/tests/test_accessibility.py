@@ -174,6 +174,7 @@ class PageAccessibilityMarkupTests(TestCase):
             f"/calendar/events/{self.event.pk}/",
             "/tasks/",
             "/tasks/time/",
+            "/trash/",
             "/notes/",
             f"/notes/{self.note.pk}/",
             "/messages/",

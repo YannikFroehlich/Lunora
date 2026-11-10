@@ -2041,3 +2041,27 @@ class NoteActivityNotification(models.Model):
 
     def __str__(self):
         return f"{self.get_kind_display()} für {self.recipient}"
+
+
+class TrashedItem(models.Model):
+    """A deleted task (with its subtasks) or a set of deleted events, kept as a Django serializer
+    snapshot so it can be restored for TRASH_RETENTION. The live rows are really deleted, so no query
+    on tasks or events needs a trash filter; app/services/trash.py restores and purges."""
+
+    KIND_TASK = "task"
+    KIND_EVENT = "event"
+    KIND_CHOICES = [(KIND_TASK, "Aufgabe"), (KIND_EVENT, "Termin")]
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="trashed_items")
+    kind = models.CharField(max_length=10, choices=KIND_CHOICES)
+    title = models.CharField(max_length=255)
+    item_count = models.PositiveIntegerField(default=1)
+    payload = models.JSONField(default=list)
+    deleted_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-deleted_at", "-id"]
+        indexes = [models.Index(fields=["user", "deleted_at"], name="app_trash_user_deleted")]
+
+    def __str__(self):
+        return f"{self.get_kind_display()} „{self.title}“ im Papierkorb"

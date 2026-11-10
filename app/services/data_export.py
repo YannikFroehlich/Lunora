@@ -36,6 +36,7 @@ from app.models import (
     TaskList,
     TaskTemplate,
     TaskTimeEntry,
+    TrashedItem,
     UmlDiagram,
     VacationPeriod,
     VacationYear,
@@ -53,6 +54,7 @@ Dieses Archiv enthält alle Daten, die du in Lunora angelegt hast:
 - notizen/anhaenge/: Dateien, die an deine Notizen angehängt sind
 - aufgaben.json: Aufgaben, Listen, Labels und deine erfasste Zeit
 - kalender.json: deine Termine, Erinnerungen und Kommentare an Terminen
+- papierkorb.json: gelöschte Aufgaben und Termine, die noch wiederhergestellt werden können
 - nachrichten.json, nachrichten/anhaenge/: Nachrichten (auch geplante und Umfragen) und Dateien, die du gesendet hast
 - vokabeln.json: Vokabellisten mit Lernfortschritt
 - uml/*.json: UML-Diagramme (lassen sich im Editor wieder importieren)
@@ -109,6 +111,7 @@ def write_user_export(user, fileobj):
         _add_json(archive, "notizen.json", _notes(user, archive))
         _add_json(archive, "aufgaben.json", _tasks(user))
         _add_json(archive, "kalender.json", _calendar(user))
+        _add_json(archive, "papierkorb.json", _trash(user))
         _add_json(archive, "nachrichten.json", _messages(user, archive))
         _add_json(archive, "vokabeln.json", _vocabulary(user))
         _add_json(archive, "urlaub.json", _vacation(user))
@@ -380,6 +383,34 @@ def _calendar(user):
             for comment in CalendarEventComment.objects.filter(author=user).select_related("event")
         ],
     }
+
+
+TRASH_EXPORT_FIELDS = (
+    "title",
+    "description",
+    "location",
+    "start_at",
+    "end_at",
+    "is_all_day",
+    "due_at",
+    "is_done",
+)
+
+
+def _trash(user):
+    # Only the deleted tasks and events themselves: the snapshot also holds other people's ids.
+    return [
+        {
+            "kind": item.kind,
+            "deleted_at": item.deleted_at,
+            "items": [
+                {name: row["fields"][name] for name in TRASH_EXPORT_FIELDS if name in row["fields"]}
+                for row in item.payload
+                if row.get("model") in {"app.task", "app.calendarevent"}
+            ],
+        }
+        for item in TrashedItem.objects.filter(user=user)
+    ]
 
 
 def _messages(user, archive):

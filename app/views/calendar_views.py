@@ -31,6 +31,7 @@ from app.services.calendar_service import (
 from app.services.calendar_subscriptions import can_refresh, sync_subscription
 from app.services.habits import WEEKDAY_SHORT
 from app.services.system_settings import disabled_feature_response, feature_enabled
+from app.services.trash import trash_events
 from app.services.user_preferences import format_user_date, format_user_time, localtime_for_user
 from app.view_models import get_calendar_context, get_calendar_event_detail_context
 
@@ -117,24 +118,27 @@ def calendar(request):
         if not calendar_event_creation_enabled:
             return disabled_feature_response(request, "calendar_event_creation")
         event = CalendarEvent.objects.filter(
-            pk=request.POST.get("event_id"), user=request.user, subscription=None
+            pk=request.POST.get("event_id") or 0, user=request.user, subscription=None
         ).first()
         if event is not None:
             # The edit dialog's delete button sends the chosen series scope along.
-            _total, deleted = series_scope_events(event, request.POST.get("scope")).delete()
-            event_count = deleted.get(CalendarEvent._meta.label, 0)
-            django_messages.success(request, "Termine gelöscht." if event_count > 1 else "Termin gelöscht.")
+            item = trash_events(request.user, series_scope_events(event, request.POST.get("scope")))
+            django_messages.success(
+                request,
+                "Termine in den Papierkorb gelegt."
+                if item.item_count > 1
+                else "Termin in den Papierkorb gelegt.",
+            )
         return redirect(request.get_full_path())
 
     if request.method == "POST" and request.POST.get("form_name") == "calendar_event_delete_series":
         if not calendar_event_creation_enabled:
             return disabled_feature_response(request, "calendar_event_creation")
         recurrence_id = request.POST.get("recurrence_id")
-        if recurrence_id:
-            CalendarEvent.objects.filter(
-                recurrence_id=recurrence_id, user=request.user, subscription=None
-            ).delete()
-            django_messages.success(request, "Terminserie gelöscht.")
+        if recurrence_id and trash_events(
+            request.user, CalendarEvent.objects.filter(recurrence_id=recurrence_id, user=request.user)
+        ):
+            django_messages.success(request, "Terminserie in den Papierkorb gelegt.")
         return redirect(request.get_full_path())
 
     if request.method == "POST" and request.POST.get("form_name") == "event_rsvp":
