@@ -9,7 +9,11 @@ from app.models import (
     CalendarEventAttendee,
     CalendarEventComment,
     CalendarReminder,
+    Habit,
+    HabitCheck,
+    MealPlanEntry,
     Profile,
+    Recipe,
     SystemSettings,
     Task,
     TaskComment,
@@ -18,6 +22,9 @@ from app.models import (
     TaskShare,
     TaskTimeEntry,
     TrashedItem,
+    VocabularyCard,
+    VocabularyList,
+    VocabularyListShare,
 )
 from app.services.data_export import _trash
 from app.services.trash import purge_expired_trash
@@ -201,7 +208,7 @@ class TrashTests(TestCase):
         self._restore(TrashedItem.objects.get())
         self.assertFalse(Task.objects.filter(pk=task.pk).exists())
 
-        SystemSettings.objects.filter(pk=1).update(calendar_event_creation_enabled=False)
+        SystemSettings.objects.filter(pk=1).update(calendar_event_creation_enabled=False, tools_enabled=False)
         self.assertEqual(self.client.get("/trash/").status_code, 503)
 
     def test_export_lists_trashed_rows_without_other_peoples_ids(self):
@@ -213,3 +220,59 @@ class TrashTests(TestCase):
         self.assertEqual(exported[0]["kind"], "task")
         self.assertEqual(exported[0]["items"][0]["title"], "Export")
         self.assertNotIn("assignee", exported[0]["items"][0])
+
+    def test_delete_message_offers_undo_that_returns_to_the_page(self):
+        task = Task.objects.create(user=self.user, title="Zurückholen")
+
+        response = self.client.post("/tasks/", {"form_name": "task_delete", "task_id": task.pk}, follow=True)
+
+        item = TrashedItem.objects.get()
+        self.assertContains(response, 'value="trash_restore"')
+        self.assertContains(response, f'name="item_id" value="{item.pk}"')
+        self.assertContains(response, 'name="return_to" value="/tasks/"')
+        # The undo tag must not spoil the message's level class.
+        self.assertContains(response, 'class="flash-message is-success"')
+
+        response = self.client.post(
+            "/trash/", {"form_name": "trash_restore", "item_id": item.pk, "return_to": "/tasks/"}
+        )
+
+        self.assertRedirects(response, "/tasks/")
+        self.assertTrue(Task.objects.filter(pk=task.pk).exists())
+
+    def test_deleted_habit_comes_back_with_its_ticked_days(self):
+        habit = Habit.objects.create(owner=self.user, title="Lesen")
+        HabitCheck.objects.create(habit=habit, date=timezone.localdate())
+
+        self.client.post("/tools/habits/", {"form_name": "habit_delete", "habit_id": habit.pk})
+
+        self.assertFalse(Habit.objects.exists())
+        self.assertContains(self.client.get("/trash/"), "mit 1 abgehaktem Tag")
+        self._restore(TrashedItem.objects.get(kind="habit"))
+        self.assertEqual(HabitCheck.objects.get().habit_id, habit.pk)
+
+    def test_deleted_vocabulary_list_comes_back_with_cards_and_remaining_shares(self):
+        vocabulary_list = VocabularyList.objects.create(owner=self.user, title="Spanisch")
+        card = VocabularyCard.objects.create(
+            vocabulary_list=vocabulary_list, term="casa", translation="Haus", box=3
+        )
+        VocabularyListShare.objects.create(vocabulary_list=vocabulary_list, user=self.other)
+
+        self.client.post(
+            "/tools/vocabulary/", {"form_name": "vocab_list_delete", "list_id": vocabulary_list.pk}
+        )
+        self.other.delete()
+        self._restore(TrashedItem.objects.get(kind="vocabulary"))
+
+        self.assertEqual(VocabularyCard.objects.get(pk=card.pk).box, 3)
+        self.assertFalse(VocabularyListShare.objects.exists())
+
+    def test_deleted_recipe_comes_back_into_the_meal_plan(self):
+        recipe = Recipe.objects.create(owner=self.user, title="Linseneintopf", servings=2)
+        MealPlanEntry.objects.create(owner=self.user, recipe=recipe, date=timezone.localdate())
+
+        response = self.client.post(f"/tools/recipes/{recipe.pk}/", {"form_name": "recipe_delete"})
+
+        self.assertRedirects(response, "/tools/recipes/", fetch_redirect_response=False)
+        self._restore(TrashedItem.objects.get(kind="recipe"))
+        self.assertEqual(MealPlanEntry.objects.get().recipe_id, recipe.pk)

@@ -34,6 +34,7 @@ import yaml from "highlight.js/lib/languages/yaml";
 
 import { checklistProgress } from "./checklist-utils.js";
 import { normalizeLinkHref } from "./link-utils.js";
+import { editingLabel } from "./presence-utils.js";
 import { eventToShortcut, findShortcutConflict, mergeShortcuts, shortcutMatches } from "./shortcut-utils.js";
 import { SLASH_MENU_ITEMS, filterSlashMenuItems } from "./slash-menu.js";
 
@@ -1827,6 +1828,7 @@ function initNotesApp() {
 
   function markDirty() {
     if (applying || !note?.can_edit || note?.is_deleted) return;
+    noteLocalEdit();
     editGeneration += 1;
     dirty = true;
     setSaveStatus("Ungespeichert");
@@ -3308,14 +3310,23 @@ function initNotesApp() {
   const PRESENCE_PING_INTERVAL_MS = 15000;
   const presenceStack = document.querySelector("[data-note-presence]");
   let kickedOut = false;
+  let editedSincePing = false;
+  let reportedEditing = false;
+
+  // The first keystroke after a quiet spell pings at once, so the others see "bearbeitet gerade"
+  // without waiting for the next round; later ones ride along with the regular ping.
+  function noteLocalEdit() {
+    editedSincePing = true;
+    if (!reportedEditing) pingPresence();
+  }
 
   function renderPresence(viewers) {
     if (!presenceStack) return;
     presenceStack.innerHTML = "";
     viewers.forEach((viewer) => {
       const span = document.createElement("span");
-      span.className = "avatar small";
-      span.title = viewer.name;
+      span.className = viewer.editing ? "avatar small is-editing" : "avatar small";
+      span.title = viewer.editing ? `${viewer.name} bearbeitet gerade` : viewer.name;
       if (viewer.avatar_url) {
         const img = document.createElement("img");
         img.src = viewer.avatar_url;
@@ -3326,6 +3337,13 @@ function initNotesApp() {
       }
       presenceStack.append(span);
     });
+    const label = editingLabel(viewers);
+    if (label) {
+      const text = document.createElement("span");
+      text.className = "note-presence-label";
+      text.textContent = label;
+      presenceStack.append(text);
+    }
     presenceStack.hidden = viewers.length === 0;
   }
 
@@ -3347,7 +3365,12 @@ function initNotesApp() {
 
   async function pingPresence() {
     if (!note || kickedOut) return;
-    const { response, data } = await requestJson(`/notes/api/${note.id}/presence/`, { method: "POST" });
+    const editing = editedSincePing;
+    editedSincePing = false;
+    reportedEditing = editing;
+    const { response, data } = await requestJson(`/notes/api/${note.id}/presence/${editing ? "?editing=1" : ""}`, {
+      method: "POST",
+    });
     if (response.status === 404) {
       kickedOut = true;
       window.alert("Diese Notiz ist nicht mehr verfügbar – sie wurde gelöscht oder die Freigabe wurde entfernt.");

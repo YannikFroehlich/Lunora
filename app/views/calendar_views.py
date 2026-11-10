@@ -34,6 +34,7 @@ from app.services.system_settings import disabled_feature_response, feature_enab
 from app.services.trash import trash_events
 from app.services.user_preferences import format_user_date, format_user_time, localtime_for_user
 from app.view_models import get_calendar_context, get_calendar_event_detail_context
+from app.views.trash_views import trashed_message
 
 # The calendars panel edits, refreshes and removes subscriptions; adding one stays in settings.
 CALENDAR_PAGE_SUBSCRIPTION_FORMS = {
@@ -123,8 +124,9 @@ def calendar(request):
         if event is not None:
             # The edit dialog's delete button sends the chosen series scope along.
             item = trash_events(request.user, series_scope_events(event, request.POST.get("scope")))
-            django_messages.success(
+            trashed_message(
                 request,
+                item,
                 "Termine in den Papierkorb gelegt."
                 if item.item_count > 1
                 else "Termin in den Papierkorb gelegt.",
@@ -135,10 +137,12 @@ def calendar(request):
         if not calendar_event_creation_enabled:
             return disabled_feature_response(request, "calendar_event_creation")
         recurrence_id = request.POST.get("recurrence_id")
-        if recurrence_id and trash_events(
-            request.user, CalendarEvent.objects.filter(recurrence_id=recurrence_id, user=request.user)
+        if recurrence_id and (
+            item := trash_events(
+                request.user, CalendarEvent.objects.filter(recurrence_id=recurrence_id, user=request.user)
+            )
         ):
-            django_messages.success(request, "Terminserie in den Papierkorb gelegt.")
+            trashed_message(request, item, "Terminserie in den Papierkorb gelegt.")
         return redirect(request.get_full_path())
 
     if request.method == "POST" and request.POST.get("form_name") == "event_rsvp":

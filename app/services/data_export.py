@@ -54,7 +54,7 @@ Dieses Archiv enthält alle Daten, die du in Lunora angelegt hast:
 - notizen/anhaenge/: Dateien, die an deine Notizen angehängt sind
 - aufgaben.json: Aufgaben, Listen, Labels und deine erfasste Zeit
 - kalender.json: deine Termine, Erinnerungen und Kommentare an Terminen
-- papierkorb.json: gelöschte Aufgaben und Termine, die noch wiederhergestellt werden können
+- papierkorb.json: Gelöschtes (Aufgaben, Termine, Gewohnheiten, Vokabellisten, Rezepte), das noch wiederhergestellt werden kann
 - nachrichten.json, nachrichten/anhaenge/: Nachrichten (auch geplante und Umfragen) und Dateien, die du gesendet hast
 - vokabeln.json: Vokabellisten mit Lernfortschritt
 - uml/*.json: UML-Diagramme (lassen sich im Editor wieder importieren)
@@ -394,11 +394,18 @@ TRASH_EXPORT_FIELDS = (
     "is_all_day",
     "due_at",
     "is_done",
+    "cadence",
+    "source_language",
+    "target_language",
+    "servings",
+    "ingredients",
+    "instructions",
 )
+TRASH_EXPORT_MODELS = {"app.task", "app.calendarevent", "app.habit", "app.vocabularylist", "app.recipe"}
 
 
 def _trash(user):
-    # Only the deleted tasks and events themselves: the snapshot also holds other people's ids.
+    # Only the deleted things themselves: the snapshot also holds other people's ids.
     return [
         {
             "kind": item.kind,
@@ -406,7 +413,7 @@ def _trash(user):
             "items": [
                 {name: row["fields"][name] for name in TRASH_EXPORT_FIELDS if name in row["fields"]}
                 for row in item.payload
-                if row.get("model") in {"app.task", "app.calendarevent"}
+                if row.get("model") in TRASH_EXPORT_MODELS
             ],
         }
         for item in TrashedItem.objects.filter(user=user)

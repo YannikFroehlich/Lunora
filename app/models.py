@@ -1891,6 +1891,8 @@ class NoteViewerPresence(models.Model):
     note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name="viewer_presence")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="note_presence")
     present_until = models.DateTimeField()
+    # Typed in the note since the previous ping; shown to the others as "bearbeitet gerade".
+    is_editing = models.BooleanField(default=False)
 
     class Meta:
         constraints = [
@@ -2044,13 +2046,23 @@ class NoteActivityNotification(models.Model):
 
 
 class TrashedItem(models.Model):
-    """A deleted task (with its subtasks) or a set of deleted events, kept as a Django serializer
-    snapshot so it can be restored for TRASH_RETENTION. The live rows are really deleted, so no query
+    """Something deleted (a task with its subtasks, events, a habit, a vocabulary list, a recipe), kept
+    as a Django serializer snapshot so it can be restored for TRASH_RETENTION. item_count is the
+    number shown next to it (tasks, events, ticked days, cards). The live rows are really deleted, so no query
     on tasks or events needs a trash filter; app/services/trash.py restores and purges."""
 
     KIND_TASK = "task"
     KIND_EVENT = "event"
-    KIND_CHOICES = [(KIND_TASK, "Aufgabe"), (KIND_EVENT, "Termin")]
+    KIND_HABIT = "habit"
+    KIND_VOCABULARY = "vocabulary"
+    KIND_RECIPE = "recipe"
+    KIND_CHOICES = [
+        (KIND_TASK, "Aufgabe"),
+        (KIND_EVENT, "Termin"),
+        (KIND_HABIT, "Gewohnheit"),
+        (KIND_VOCABULARY, "Vokabelliste"),
+        (KIND_RECIPE, "Rezept"),
+    ]
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="trashed_items")
     kind = models.CharField(max_length=10, choices=KIND_CHOICES)

@@ -37,11 +37,14 @@ from app.services.shopping_lists import (
 )
 from app.services.shopping_products import add_shopping_item, attach_products, scan_barcode
 from app.services.system_settings import disabled_feature_response, feature_enabled
-from app.services.time_tracking import week_start_for
+from app.services.tasks import visible_tasks
+from app.services.time_tracking import running_entry, start_timer, stop_timer, week_start_for
+from app.services.trash import trash_habit, trash_recipe
 from app.services.uml_content import validate_uml_document
 from app.services.user_preferences import format_user_date, format_user_datetime, localtime_for_user
 from app.view_models import get_tools_context
 from app.views.navigation import local_return_to, posted_id
+from app.views.trash_views import trashed_message
 
 UML_TITLE_MAX_LENGTH = UmlDiagram._meta.get_field("title").max_length
 
@@ -102,8 +105,8 @@ def habits(request):
             )
         return redirect("habits")
     elif form_name == "habit_delete":
-        if Habit.objects.filter(owner=request.user, pk=request.POST.get("habit_id") or 0).delete()[0]:
-            django_messages.success(request, "Gewohnheit gelöscht.")
+        if item := trash_habit(request.user, request.POST.get("habit_id") or 0):
+            trashed_message(request, item, "Gewohnheit in den Papierkorb gelegt.")
         return redirect("habits")
 
     return render(
@@ -417,8 +420,7 @@ def recipe_detail(request, recipe_id):
             django_messages.success(request, "Rezept gespeichert.")
             return redirect("recipe_detail", recipe_id=recipe.pk)
     elif form_name == "recipe_delete":
-        recipe.delete()
-        django_messages.success(request, "Rezept gelöscht.")
+        trashed_message(request, trash_recipe(request.user, recipe), "Rezept in den Papierkorb gelegt.")
         return redirect("recipes")
     elif form_name == "recipe_to_shopping":
         list_owner = list_owner_for(request.user, request.POST.get("list"))
@@ -460,8 +462,29 @@ def recipe_detail(request, recipe_id):
 @login_required
 def focus_timer(request):
     if not feature_enabled("tools"):
-        return disabled_feature_response(request, "tools")
-    return render(request, "app/focus_timer.html", {"active_page": "tools"})
+        return disabled_feature_response(request, "tools", json_response=request.method == "POST")
+    tasks_enabled = feature_enabled("tasks")
+    if request.method == "POST":
+        # focus_timer.js books a running focus block on the chosen task's time tracking.
+        if not tasks_enabled:
+            return disabled_feature_response(request, "tasks", json_response=True)
+        task = visible_tasks(request.user).filter(pk=posted_id(request, "task_id"), is_done=False).first()
+        if task is None:
+            return JsonResponse({"error": "Diese Aufgabe wurde nicht gefunden."}, status=404)
+        if request.POST.get("action") == "start":
+            start_timer(request.user, task)
+        else:
+            # Only the block's own timer stops; one started elsewhere on another task keeps running.
+            entry = running_entry(request.user)
+            if entry is not None and entry.task_id == task.pk:
+                stop_timer(request.user)
+        return JsonResponse({"ok": True})
+    focus_tasks = (
+        list(visible_tasks(request.user).filter(is_done=False).order_by("title")[:200])
+        if tasks_enabled
+        else None
+    )
+    return render(request, "app/focus_timer.html", {"active_page": "tools", "focus_tasks": focus_tasks})
 
 
 @login_required

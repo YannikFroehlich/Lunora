@@ -1476,6 +1476,16 @@ a.tool-card:hover {
   border-radius: var(--radius-sm);
 }
 
+.shopping-offline {
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  background: color-mix(in srgb, var(--color-warning) 16%, var(--surface-panel));
+  border: 1px solid color-mix(in srgb, var(--color-warning) 40%, transparent);
+  border-radius: var(--radius-sm);
+}
+
 .shopping-item {
   display: flex;
   align-items: center;
@@ -2083,6 +2093,10 @@ a.tool-card:hover {
   flex-wrap: wrap;
   justify-content: center;
   gap: 10px;
+}
+
+.focus-task {
+  width: min(100%, 320px);
 }
 
 .focus-settings {
