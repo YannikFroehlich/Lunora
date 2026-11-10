@@ -19,7 +19,7 @@
     </header>
 
     <section class="glass-panel uml-create-panel">
-        <form class="vocab-create-form habit-create-form" method="post">
+        <form class="vocab-create-form habit-create-form" method="post" data-soft>
             {% csrf_token %}
             <input type="hidden" name="form_name" value="habit_add">
             <label class="vocab-field vocab-field-wide">
@@ -43,6 +43,7 @@
         </form>
     </section>
 
+    <div class="soft-contents" id="habit-list" data-soft-region>
     {% if habits %}
     <ul class="uml-diagram-list">
         {% for habit in habits %}
@@ -86,7 +87,7 @@
                 <input type="hidden" name="habit_id" value="{{ habit.id }}">
                 <button class="icon-button" type="submit" aria-label="„{{ habit.title }}“ löschen" title="Löschen"><i class="fa-regular fa-trash-can" aria-hidden="true"></i></button>
             </form>
-            <details class="habit-stats">
+            <details class="habit-stats" id="habit-stats-{{ habit.id }}">
                 <summary><i class="fa-solid fa-chart-simple" aria-hidden="true"></i> Statistik</summary>
                 <dl class="habit-stat-numbers">
                     <div><dt>Abgehakt im letzten Jahr</dt><dd>{{ habit.stats.total }}</dd></div>
@@ -107,5 +108,6 @@
         <p>Lege oben deine erste an, z. B. „10 Minuten lesen“ oder „Sport“ einmal pro Woche.</p>
     </div>
     {% endif %}
+    </div>
 </section>
 {% endblock %}

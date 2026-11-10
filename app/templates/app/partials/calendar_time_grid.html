@@ -49,7 +49,7 @@ view_models.py). Own events carry the move data calendar.js drags them with.
             {% endfor %}
         </div>
 
-        <div class="week-row week-body" data-week-body>
+        <div class="week-row week-body" id="calendar-week-body" data-week-body>
             <div class="week-gutter week-hours" aria-hidden="true">
                 {% for hour in calendar_grid.hours %}<span>{{ hour }}</span>{% endfor %}
             </div>

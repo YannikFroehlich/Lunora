@@ -12,7 +12,7 @@
         </button>
     </form>
     {% if item.product.brand or item.product.package or item.product.nutri_score or item.nutrition_rows %}
-    <details class="shopping-product">
+    <details class="shopping-product" id="item-{{ item.pk }}-product">
         <summary>
             {% if item.product.nutri_score %}<span class="nutri-score nutri-score-{{ item.product.nutri_score }}" title="Nutri-Score {{ item.product.nutri_score|upper }}">{{ item.product.nutri_score|upper }}</span>{% endif %}
             <span>{{ item.product.brand }}{% if item.product.brand and item.product.package %} · {% endif %}{{ item.product.package }}{% if not item.product.brand and not item.product.package %}Nährwerte{% endif %}</span>

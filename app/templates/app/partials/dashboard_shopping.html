@@ -1,5 +1,6 @@
 {% url 'shopping_list' as shopping_url %}
 {% url 'home' as home_url %}
+<div class="soft-contents" id="dashboard-body-shopping" data-soft-region>
 {% include "app/partials/dashboard_widget_head.html" with icon="fa-solid fa-basket-shopping" title="Einkaufszettel" meta=dashboard_shopping.meta action_dialog="shopping-dialog" action_label="Artikel hinzufügen" link_url=shopping_url link_label="Einkaufszettel öffnen" %}
 <ul class="widget-list shopping-widget-list">
     {% for item in dashboard_shopping.items %}
@@ -47,3 +48,4 @@
         </div>
     </form>
 </dialog>
+</div>

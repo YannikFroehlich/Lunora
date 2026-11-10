@@ -1,4 +1,5 @@
 {% url 'habits' as habits_url %}
+<div class="soft-contents" id="dashboard-body-habits" data-soft-region>
 {% include "app/partials/dashboard_widget_head.html" with icon="fa-solid fa-seedling" title="Gewohnheiten" link_url=habits_url link_label="Gewohnheiten öffnen" %}
 <ul class="widget-list">
     {% for habit in dashboard_habits %}
@@ -29,3 +30,4 @@
     <li class="widget-empty"><i class="fa-solid fa-seedling" aria-hidden="true"></i> <span>Noch keine Gewohnheiten. <a href="{{ habits_url }}">Jetzt anlegen</a></span></li>
     {% endfor %}
 </ul>
+</div>

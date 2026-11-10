@@ -9,6 +9,22 @@ const slotAt = (column, clientY) => {
   return Math.min(Math.max(slot, 0), DAY_MINUTES - SLOT_MINUTES);
 };
 
+// Drag-and-drop results are posted as an ordinary form; data-soft lets base.js send it in the
+// background and re-render only the calendar. The form is removed again once the post is under way.
+const postSoft = (action, fields) => {
+  const form = document.createElement("form");
+  form.method = "post";
+  form.action = action;
+  form.dataset.soft = "";
+  const values = { csrfmiddlewaretoken: document.querySelector("meta[name='csrf-token']")?.content || "", ...fields };
+  Object.entries(values).forEach(([name, value]) => {
+    form.append(Object.assign(document.createElement("input"), { type: "hidden", name, value }));
+  });
+  document.body.append(form);
+  form.requestSubmit();
+  form.remove();
+};
+
 const clock = (minute) => {
   // The time input has no 24:00, so a range up to midnight ends one minute before it.
   const value = Math.min(minute, DAY_MINUTES - 1);
@@ -82,12 +98,14 @@ if (eventDialog) {
     window.setTimeout(() => titleInput?.focus(), 0);
   };
 
-  document.querySelectorAll("[data-event-dialog-open]").forEach((button) => {
-    button.addEventListener("click", () => openEventDialog());
-  });
-
-  document.querySelectorAll("[data-event-date]").forEach((button) => {
-    button.addEventListener("click", () => openEventDialog(button.dataset.eventDate));
+  // Delegated: day buttons are re-rendered when an action updates the calendar in place.
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("[data-event-dialog-open]")) {
+      openEventDialog();
+      return;
+    }
+    const dayButton = event.target.closest("[data-event-date]");
+    if (dayButton) openEventDialog(dayButton.dataset.eventDate);
   });
 
   eventDialog.querySelectorAll("[data-event-dialog-close]").forEach((button) => {
@@ -328,24 +346,24 @@ if (editDialog) {
     window.setTimeout(() => titleInput?.focus(), 0);
   };
 
-  document.querySelectorAll("[data-event-edit-open]").forEach((button) => {
-    button.addEventListener("click", () =>
-      openEditDialog({
-        eventId: button.dataset.eventId,
-        title: button.dataset.editTitle,
-        date: button.dataset.editDate,
-        endDate: button.dataset.editEndDate,
-        start: button.dataset.editStart,
-        end: button.dataset.editEnd,
-        allDay: button.dataset.editAllDay,
-        category: button.dataset.editCategory,
-        location: button.dataset.editLocation,
-        attendees: button.dataset.editAttendees,
-        reminder: button.dataset.editReminder,
-        series: button.dataset.editSeries,
-        detailUrl: button.dataset.detailUrl,
-      }),
-    );
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-event-edit-open]");
+    if (!button) return;
+    openEditDialog({
+      eventId: button.dataset.eventId,
+      title: button.dataset.editTitle,
+      date: button.dataset.editDate,
+      endDate: button.dataset.editEndDate,
+      start: button.dataset.editStart,
+      end: button.dataset.editEnd,
+      allDay: button.dataset.editAllDay,
+      category: button.dataset.editCategory,
+      location: button.dataset.editLocation,
+      attendees: button.dataset.editAttendees,
+      reminder: button.dataset.editReminder,
+      series: button.dataset.editSeries,
+      detailUrl: button.dataset.detailUrl,
+    });
   });
 
   editDialog.querySelectorAll("[data-event-edit-dialog-close]").forEach((button) => {
@@ -379,23 +397,23 @@ if (weekView && weekBody) {
   const hourHeight = column ? column.getBoundingClientRect().height / 24 : 0;
   weekBody.scrollTop = ((Number(weekView.dataset.scrollMinute) || 0) / 60) * hourHeight;
 
-  const nowLine = weekBody.querySelector("[data-week-now]");
-  if (nowLine) {
-    const startMinute = Number(nowLine.style.getPropertyValue("--start")) || 0;
-    const loadedAt = Date.now();
-    window.setInterval(() => {
-      const minute = startMinute + Math.floor((Date.now() - loadedAt) / 60000);
-      nowLine.hidden = minute >= 24 * 60;
-      nowLine.style.setProperty("--start", minute);
-    }, 60000);
-  }
+  // The line is looked up each minute: an in-place update renders it anew at the server's minute.
+  window.setInterval(() => {
+    const nowLine = document.querySelector("[data-week-now]");
+    if (!nowLine) return;
+    if (!nowLine.dataset.baseMinute) {
+      nowLine.dataset.baseMinute = Number(nowLine.style.getPropertyValue("--start")) || 0;
+      nowLine.dataset.baseAt = Date.now() - 60000;
+    }
+    const minute = Number(nowLine.dataset.baseMinute) + Math.floor((Date.now() - nowLine.dataset.baseAt) / 60000);
+    nowLine.hidden = minute >= DAY_MINUTES;
+    nowLine.style.setProperty("--start", minute);
+  }, 60000);
 }
 
 // Drag a task chip onto another day to move its due date (keeping the time), or onto the week's time
 // grid to give it that time too. The drop posts a normal task_reschedule form that returns here.
-const draggableTasks = document.querySelectorAll("[data-task-drag]");
-
-if (draggableTasks.length) {
+{
   const dropTarget = "[data-week-column], .calendar-day[data-date], .week-all-day-cell[data-date]";
   let draggedTask = null;
   let dropMark = null;
@@ -424,18 +442,19 @@ if (draggableTasks.length) {
     dropMark = target;
   };
 
-  draggableTasks.forEach((chip) => {
-    chip.addEventListener("dragstart", (event) => {
-      draggedTask = chip;
-      chip.classList.add("is-dragging");
-      event.dataTransfer.effectAllowed = "move";
-      event.dataTransfer.setData("text/plain", chip.dataset.taskDrag);
-    });
-    chip.addEventListener("dragend", () => {
-      chip.classList.remove("is-dragging");
-      draggedTask = null;
-      clearDropMark();
-    });
+  document.addEventListener("dragstart", (event) => {
+    const chip = event.target.closest?.("[data-task-drag]");
+    if (!chip) return;
+    draggedTask = chip;
+    chip.classList.add("is-dragging");
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", chip.dataset.taskDrag);
+  });
+  document.addEventListener("dragend", () => {
+    if (!draggedTask) return;
+    draggedTask.classList.remove("is-dragging");
+    draggedTask = null;
+    clearDropMark();
   });
 
   document.addEventListener("dragover", (event) => {
@@ -455,7 +474,6 @@ if (draggableTasks.length) {
     }
     event.preventDefault();
     const fields = {
-      csrfmiddlewaretoken: document.querySelector("meta[name='csrf-token']")?.content || "",
       form_name: "task_reschedule",
       task_id: draggedTask.dataset.taskDrag,
       due_date: target.dataset.date,
@@ -469,18 +487,7 @@ if (draggableTasks.length) {
     if (unchanged) {
       return;
     }
-    const form = document.createElement("form");
-    form.method = "post";
-    form.action = draggedTask.action;
-    Object.entries(fields).forEach(([name, value]) => {
-      const input = document.createElement("input");
-      input.type = "hidden";
-      input.name = name;
-      input.value = value;
-      form.append(input);
-    });
-    document.body.append(form);
-    form.submit();
+    postSoft(draggedTask.action, fields);
   });
 }
 
@@ -488,9 +495,7 @@ if (draggableTasks.length) {
 // time; the strip at the bottom of a timed event stretches its end. Moves keep the event's length and a
 // multi-day event moves by as many days as it was dragged. A plain click still opens the edit dialog.
 // Touch screens keep scrolling and edit through the dialog instead.
-const movableEvents = document.querySelectorAll("[data-event-move]");
-
-if (movableEvents.length) {
+{
   const MOVE_STEP = 15;
   const DRAG_THRESHOLD = 4;
   const dayTargets = ".calendar-day[data-date], .week-all-day-cell[data-date]";
@@ -580,24 +585,11 @@ if (movableEvents.length) {
   };
 
   const submitMove = (fields) => {
-    const form = document.createElement("form");
-    form.method = "post";
-    form.action = `${window.location.pathname}${window.location.search}`;
-    const values = {
-      csrfmiddlewaretoken: document.querySelector("meta[name='csrf-token']")?.content || "",
+    postSoft(`${window.location.pathname}${window.location.search}`, {
       form_name: "calendar_event_move",
       event_id: drag.chip.dataset.eventMove,
       ...fields,
-    };
-    Object.entries(values).forEach(([name, value]) => {
-      const input = document.createElement("input");
-      input.type = "hidden";
-      input.name = name;
-      input.value = value;
-      form.append(input);
     });
-    document.body.append(form);
-    form.submit();
   };
 
   const stopDrag = () => {

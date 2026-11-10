@@ -799,6 +799,33 @@ button:disabled,
   -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 
+/* Page loads that still happen (links, forms outside soft regions) cross-fade instead of flashing,
+   where the browser supports it. */
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition {
+    navigation: auto;
+  }
+}
+
+/* Soft submits (base.js): a form waiting for its answer dims and takes no second click; a region
+   that took the focus after a swap shows no ring around the whole area. A region marked
+   .soft-contents only wraps existing layout children and adds no box of its own. */
+form[aria-busy="true"] {
+  opacity: 0.6;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+[data-soft-region]:focus,
+[data-soft-region]:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.soft-contents {
+  display: contents;
+}
+
 /* While a modal dialog is open the page behind it doesn't scroll (wheel, touch or keys); the dialog
    keeps scrolling itself. Non-modal dialogs (dialog.show()) don't match :modal and leave the page
    alone. On a page that scrolls, scrollbar-gutter keeps the room of the scrollbar that goes away, so
