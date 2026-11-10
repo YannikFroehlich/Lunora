@@ -12,6 +12,14 @@ from app.services.trash import (
     restore_item,
     trash_items,
 )
+from app.views.navigation import local_return_to
+
+# base.html shows a "Rückgängig" button on messages tagged with this prefix plus the item id.
+UNDO_TAG = "trash-undo-"
+
+
+def trashed_message(request, item, text):
+    django_messages.success(request, text, extra_tags=f"{UNDO_TAG}{item.pk}")
 
 
 @login_required
@@ -32,7 +40,8 @@ def trash(request):
                 django_messages.success(
                     request, f"{item.get_kind_display()} „{item.title}“ wiederhergestellt."
                 )
-        return redirect("trash")
+        # The "Rückgängig" button of a delete message brings the user back to where they deleted.
+        return redirect(local_return_to(request) or "trash")
     if form_name == "trash_delete":
         if delete_item(request.user, item_id):
             django_messages.success(request, "Endgültig gelöscht.")
@@ -46,10 +55,7 @@ def trash(request):
         request,
         "app/trash.html",
         {
-            "active_page": "tasks" if "task" in kinds else "calendar",
             "items": trash_items(request.user),
             "retention_days": TRASH_RETENTION.days,
-            "shows_tasks": "task" in kinds,
-            "shows_events": "event" in kinds,
         },
     )

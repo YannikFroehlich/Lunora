@@ -332,7 +332,10 @@ function initFlashMessages() {
     if (message.dataset.flashTimerReady === "true") return;
 
     message.dataset.flashTimerReady = "true";
-    const timeout = message.classList.contains("is-error") ? 7000 : 4200;
+    // An undo button needs time to be found and reached.
+    let timeout = 4200;
+    if (message.classList.contains("is-error")) timeout = 7000;
+    if (message.querySelector(".flash-undo")) timeout = 10000;
     window.setTimeout(() => removeMessage(message), timeout);
   });
 }

@@ -1950,6 +1950,18 @@ class NotePresenceTests(TestCase):
         self.assertEqual(viewers[0]["user_id"], self.reader.id)
         self.assertEqual(viewers[0]["name"], "Reader")
 
+    def test_editors_typing_shows_as_editing_but_readers_cannot_claim_it(self):
+        self.client.post(f"{self.presence_url()}?editing=1")
+        self.reader_client.post(f"{self.presence_url()}?editing=1")
+
+        owner_seen = self.reader_client.post(self.presence_url()).json()["viewers"][0]
+        self.assertTrue(owner_seen["editing"])
+        reader_seen = self.client.post(self.presence_url()).json()["viewers"][0]
+        self.assertFalse(reader_seen["editing"])
+
+        # A ping without fresh keystrokes ends "bearbeitet gerade".
+        self.assertFalse(self.reader_client.post(self.presence_url()).json()["viewers"][0]["editing"])
+
     def test_ping_reports_current_note_revision(self):
         response = self.client.post(self.presence_url())
         self.assertEqual(response.json()["revision"], self.note.revision)

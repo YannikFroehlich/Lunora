@@ -822,7 +822,11 @@ def note_presence_api(request, note_id):
         clear_note_presence(note, request.user)
         return JsonResponse({"ok": True})
     return JsonResponse(
-        {"ok": True, "viewers": ping_note_presence(note, request.user), "revision": note.revision}
+        {
+            "ok": True,
+            "viewers": ping_note_presence(note, request.user, editing=request.GET.get("editing") == "1"),
+            "revision": note.revision,
+        }
     )
 
 

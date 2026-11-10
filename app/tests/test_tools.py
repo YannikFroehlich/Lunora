@@ -21,6 +21,8 @@ from app.models import (
     ShoppingListShare,
     ShoppingProduct,
     SystemSettings,
+    Task,
+    TaskTimeEntry,
     UmlDiagram,
     UserNotification,
     VocabularyCard,
@@ -1314,6 +1316,55 @@ class HabitTrackerTests(TestCase):
         self.assertEqual(self.client.get("/tools/habits/").status_code, 503)
         self.assertEqual(self.client.get("/tools/focus/").status_code, 503)
         self.assertNotContains(self.client.get("/home/"), "Gewohnheiten")
+
+
+class FocusTimerTrackingTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="lea", email="lea@example.com", password="pw-12345!")
+        Profile.objects.create(user=self.user, display_name="Lea", timezone_name="Europe/Berlin")
+        self.task = Task.objects.create(user=self.user, title="Bericht schreiben")
+        self.client.force_login(self.user)
+
+    def _track(self, action, task):
+        return self.client.post("/tools/focus/", {"action": action, "task_id": task.pk})
+
+    def test_page_offers_open_tasks_to_book_focus_time_on(self):
+        Task.objects.create(user=self.user, title="Schon erledigt", is_done=True)
+
+        response = self.client.get("/tools/focus/")
+
+        self.assertContains(response, f'<option value="{self.task.pk}">Bericht schreiben</option>', html=True)
+        self.assertNotContains(response, "Schon erledigt")
+
+    def test_a_focus_block_starts_and_stops_the_task_timer(self):
+        self.assertEqual(self._track("start", self.task).json(), {"ok": True})
+        entry = TaskTimeEntry.objects.get(task=self.task)
+        self.assertIsNone(entry.ended_at)
+
+        TaskTimeEntry.objects.filter(pk=entry.pk).update(started_at=timezone.now() - timedelta(minutes=25))
+        self._track("stop", self.task)
+
+        entry.refresh_from_db()
+        self.assertIsNotNone(entry.ended_at)
+
+    def test_stop_leaves_a_timer_on_another_task_running(self):
+        other_task = Task.objects.create(user=self.user, title="Anderes")
+        self._track("start", other_task)
+
+        self._track("stop", self.task)
+
+        self.assertIsNone(TaskTimeEntry.objects.get(task=other_task).ended_at)
+
+    def test_foreign_tasks_and_disabled_tasks_are_refused(self):
+        stranger = User.objects.create_user(username="tom", email="tom@example.com", password="pw-12345!")
+        foreign = Task.objects.create(user=stranger, title="Fremd")
+        self.assertEqual(self._track("start", foreign).status_code, 404)
+
+        SystemSettings.objects.update_or_create(pk=1, defaults={"tasks_enabled": False})
+
+        self.assertEqual(self._track("start", self.task).status_code, 503)
+        self.assertNotContains(self.client.get("/tools/focus/"), "data-focus-task")
+        self.assertFalse(TaskTimeEntry.objects.exists())
 
 
 class RecipeIngredientParsingTests(SimpleTestCase):

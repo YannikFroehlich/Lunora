@@ -47,6 +47,7 @@
   if (typeof document === "undefined") return;
   initScanner();
   initLiveUpdates();
+  initOfflineToggles();
   const root = document.querySelector("[data-shopping-suggest]");
   const dataElement = document.getElementById("shopping-suggestion-data");
   if (!root || !dataElement) return;
@@ -160,14 +161,7 @@
         if (!response.ok) return;
         const { version } = await response.json();
         if (version === region.dataset.version) return;
-        const page = await fetch(window.location.href, { credentials: "same-origin", cache: "no-store" });
-        if (!page.ok) return;
-        const fresh = new DOMParser()
-          .parseFromString(await page.text(), "text/html")
-          .querySelector("[data-shopping-live]");
-        if (!fresh) return;
-        region.replaceChildren(...fresh.childNodes);
-        region.dataset.version = fresh.dataset.version;
+        await reloadList();
       } catch {
         // Offline or a hiccup; the next round tries again.
       } finally {
@@ -177,6 +171,142 @@
 
     setInterval(check, 5000);
     document.addEventListener("visibilitychange", check);
+  }
+
+  // Swaps in the list as the server has it now, with changes still waiting to be sent on top.
+  async function reloadList() {
+    const region = document.querySelector("[data-shopping-live]");
+    const page = await fetch(window.location.href, { credentials: "same-origin", cache: "no-store" });
+    if (!region || !page.ok) return;
+    const fresh = new DOMParser().parseFromString(await page.text(), "text/html").querySelector("[data-shopping-live]");
+    if (!fresh) return;
+    region.replaceChildren(...fresh.childNodes);
+    region.dataset.version = fresh.dataset.version;
+    applyQueued();
+  }
+
+  // Ticking items off works without a connection (a supermarket basement): the change shows on the
+  // page at once, waits in localStorage and is sent once the network is back. A toggle posts the
+  // state it wants, so sending it late (or twice) can't flip an item back.
+  const QUEUE_KEY = "lunora.shoppingQueue";
+  let flushing = false;
+
+  // The list's address without a #aisle anchor, so a queued change matches the page it came from.
+  function listUrl(href) {
+    const url = new URL(href, window.location.href);
+    url.hash = "";
+    return url.href;
+  }
+
+  function readQueue() {
+    try {
+      const queue = JSON.parse(localStorage.getItem(QUEUE_KEY) || "[]");
+      return Array.isArray(queue) ? queue : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function writeQueue(queue) {
+    try {
+      localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+    } catch {
+      // Blocked storage: the change still goes out while the page stays open.
+    }
+  }
+
+  function showToggle(itemId, done) {
+    const row = document.getElementById(`item-${itemId}`);
+    const form = row?.querySelector('input[name="form_name"][value="shopping_toggle"]')?.form;
+    if (!form) return;
+    row.classList.toggle("is-done", done);
+    form.elements.done.value = done ? "0" : "1";
+    form.querySelector(".shopping-toggle")?.setAttribute("aria-pressed", String(done));
+  }
+
+  function showPending(count) {
+    let note = document.querySelector("[data-shopping-offline]");
+    if (!count) {
+      note?.remove();
+      return;
+    }
+    if (!note) {
+      note = document.createElement("p");
+      note.className = "shopping-offline";
+      note.dataset.shoppingOffline = "";
+      note.setAttribute("role", "status");
+      document.querySelector("[data-shopping-live]")?.before(note);
+    }
+    note.textContent = `Kein Netz: ${count} ${count === 1 ? "Änderung wird" : "Änderungen werden"} gesendet, sobald du wieder online bist.`;
+  }
+
+  function applyQueued() {
+    const queue = readQueue().filter((entry) => entry.url === listUrl(window.location.href));
+    queue.forEach((entry) => showToggle(entry.itemId, entry.done));
+    showPending(readQueue().length);
+  }
+
+  async function flush() {
+    const queue = readQueue();
+    if (flushing || !queue.length) return;
+    flushing = true;
+    let sent = 0;
+    try {
+      while (queue.length) {
+        const entry = queue[0];
+        const body = new FormData();
+        body.append("csrfmiddlewaretoken", document.querySelector("[name=csrfmiddlewaretoken]")?.value || "");
+        body.append("form_name", "shopping_toggle");
+        body.append("item_id", entry.itemId);
+        body.append("done", entry.done ? "1" : "0");
+        const response = await fetch(entry.url, { method: "POST", body, credentials: "same-origin" });
+        // A removed item (404) can't be ticked anymore; anything else is tried again later.
+        if (!response.ok && response.status !== 404) break;
+        queue.shift();
+        writeQueue(queue);
+        sent += 1;
+      }
+    } catch {
+      // Still offline; the next attempt follows on "online" or the next round.
+    } finally {
+      flushing = false;
+    }
+    showPending(queue.length);
+    if (sent && !queue.length) {
+      const focusedId = document.activeElement?.closest?.(".shopping-item")?.id;
+      await reloadList().catch(() => {});
+      if (focusedId) document.querySelector(`#${CSS.escape(focusedId)} .shopping-toggle`)?.focus();
+    }
+  }
+
+  function initOfflineToggles() {
+    if (!document.querySelector("[data-shopping-live]")) return;
+    // Capture phase, so this runs before base.js's soft submit, which would need the network.
+    document.addEventListener(
+      "submit",
+      (event) => {
+        const form = event.target;
+        if (!(form instanceof HTMLFormElement) || form.elements.form_name?.value !== "shopping_toggle") return;
+        event.preventDefault();
+        event.stopPropagation();
+        const entry = {
+          url: listUrl(form.action),
+          itemId: form.elements.item_id.value,
+          done: form.elements.done.value === "1",
+        };
+        const queue = readQueue().filter((queued) => queued.url !== entry.url || queued.itemId !== entry.itemId);
+        queue.push(entry);
+        writeQueue(queue);
+        showToggle(entry.itemId, entry.done);
+        if (!navigator.onLine) showPending(queue.length);
+        flush();
+      },
+      { capture: true },
+    );
+    window.addEventListener("online", flush);
+    setInterval(flush, 15000);
+    applyQueued();
+    flush();
   }
 
   // Barcode scanner dialog: the camera through the browser's BarcodeDetector where there is one

@@ -12,6 +12,7 @@ from app.forms import VocabularyCardForm, VocabularyListForm
 from app.models import VocabularyCard, VocabularyList, VocabularyListShare
 from app.services.notes import display_name
 from app.services.system_settings import disabled_feature_response, feature_enabled
+from app.services.trash import trash_vocabulary_list
 from app.services.user_preferences import format_user_datetime
 from app.services.vocabulary import (
     LEITNER_INTERVAL_DAYS,
@@ -28,6 +29,7 @@ from app.services.vocabulary import (
     with_card_counts,
 )
 from app.views.navigation import posted_id
+from app.views.trash_views import trashed_message
 
 
 def _form_error_message(form):
@@ -49,11 +51,8 @@ def vocabulary_lists(request):
             vocabulary_list.save()
             return redirect("vocabulary_list_detail", list_id=vocabulary_list.pk)
     elif form_name == "vocab_list_delete":
-        deleted, _ = VocabularyList.objects.filter(
-            owner=request.user, pk=posted_id(request, "list_id")
-        ).delete()
-        if deleted:
-            django_messages.success(request, "Vokabelliste gelöscht.")
+        if item := trash_vocabulary_list(request.user, posted_id(request, "list_id")):
+            trashed_message(request, item, "Vokabelliste in den Papierkorb gelegt.")
         return redirect("vocabulary_lists")
     elif form_name == "vocab_list_copy":
         shared_list = get_object_or_404(

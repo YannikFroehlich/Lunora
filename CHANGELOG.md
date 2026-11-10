@@ -6,6 +6,16 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- The message after deleting something has a "Rückgängig" button that brings it straight back,
+  without a detour through the trash.
+- Habits (with their ticked days), vocabulary lists (with cards and learning progress) and recipes
+  (with their places in the meal plan) now go to the trash too and can be restored for 30 days.
+- The focus timer can book its focus blocks on a task: choose it under "Fokus-Zeit buchen auf",
+  and the task's time tracking runs while you focus. Breaks don't count.
+- The shopping list can be ticked off without a connection: the change shows at once and is sent
+  as soon as the network is back.
+- In a shared note, people who are typing right now are marked and named ("Mira bearbeitet
+  gerade") next to the avatars of everyone who has the note open.
 - Deleted tasks and events go to a trash first ("Papierkorb", linked from the tasks page and the
   calendar) and can be restored there for 30 days, with subtasks, comments, shares, tracked time,
   invitees and their answers. A restored task whose list or label was deleted meanwhile comes back

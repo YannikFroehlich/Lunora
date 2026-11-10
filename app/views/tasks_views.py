@@ -60,6 +60,7 @@ from app.services.time_tracking import (
 from app.services.trash import trash_task
 from app.services.user_preferences import format_user_datetime
 from app.views.navigation import local_return_to
+from app.views.trash_views import trashed_message
 
 
 @login_required
@@ -197,8 +198,8 @@ def tasks(request):
             django_messages.success(request, "Vorlage gelöscht.")
         return redirect(request.get_full_path())
     elif form_name == "task_delete":
-        if trash_task(request.user, request.POST.get("task_id") or 0):
-            django_messages.success(request, "Aufgabe in den Papierkorb gelegt.")
+        if item := trash_task(request.user, request.POST.get("task_id") or 0):
+            trashed_message(request, item, "Aufgabe in den Papierkorb gelegt.")
         return redirect(request.get_full_path())
     elif form_name == "task_edit":
         editing_task_id = request.POST.get("task_id")

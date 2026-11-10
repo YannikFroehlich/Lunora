@@ -106,9 +106,19 @@
     {% if messages %}
     <div class="flash-stack" aria-live="polite" aria-atomic="true" aria-label="Statusmeldungen" data-flash-stack>
         {% for message in messages %}
-        <div class="flash-message is-{{ message.tags|default:'info' }}" role="{% if 'error' in message.tags %}alert{% else %}status{% endif %}" data-flash-message>
-            <i class="fa-solid {% if 'error' in message.tags %}fa-circle-exclamation{% elif 'success' in message.tags %}fa-circle-check{% else %}fa-circle-info{% endif %}" aria-hidden="true"></i>
+        <div class="flash-message is-{{ message.level_tag|default:'info' }}" role="{% if message.level_tag == 'error' %}alert{% else %}status{% endif %}" data-flash-message>
+            <i class="fa-solid {% if message.level_tag == 'error' %}fa-circle-exclamation{% elif message.level_tag == 'success' %}fa-circle-check{% else %}fa-circle-info{% endif %}" aria-hidden="true"></i>
             <span>{{ message }}</span>
+            {% if message.extra_tags|slice:":11" == "trash-undo-" %}
+            {# trashed_message in trash_views.py: the tag carries the TrashedItem id. #}
+            <form class="flash-undo" method="post" action="{% url 'trash' %}" data-soft>
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="trash_restore">
+                <input type="hidden" name="item_id" value="{{ message.extra_tags|slice:'11:' }}">
+                <input type="hidden" name="return_to" value="{{ request.get_full_path }}">
+                <button class="flash-undo-button" type="submit">Rückgängig</button>
+            </form>
+            {% endif %}
             <button class="flash-close" type="button" aria-label="Meldung schließen" data-flash-dismiss>
                 <i class="fa-solid fa-xmark" aria-hidden="true"></i>
             </button>

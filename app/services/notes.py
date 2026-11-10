@@ -105,18 +105,23 @@ def list_note_presence(note, *, exclude_user=None):
             "name": display_name(row.user),
             "initials": Conversation.initials_for_user(row.user),
             "avatar_url": _profile_image_url(row.user),
+            "editing": row.is_editing,
         }
         for row in rows
         if row.user_id in accessible_user_ids
     ]
 
 
-def ping_note_presence(note, user):
+def ping_note_presence(note, user, *, editing=False):
     now = timezone.now()
     NoteViewerPresence.objects.update_or_create(
         note=note,
         user=user,
-        defaults={"present_until": now + timedelta(seconds=NOTE_PRESENCE_TTL_SECONDS)},
+        defaults={
+            "present_until": now + timedelta(seconds=NOTE_PRESENCE_TTL_SECONDS),
+            # Readers can't type, whatever their client claims.
+            "is_editing": editing and can_edit_note(note, user),
+        },
     )
     NoteViewerPresence.objects.filter(note=note, present_until__lt=now).delete()
     return list_note_presence(note, exclude_user=user)

@@ -11,10 +11,8 @@
 <section class="page-shell tools-shell">
     <header class="page-hero">
         <div>
-            {% if shows_tasks %}<a class="tools-back-link" href="{% url 'tasks' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Aufgaben</a>{% endif %}
-            {% if shows_events %}<a class="tools-back-link" href="{% url 'calendar' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Kalender</a>{% endif %}
             <h1>Papierkorb</h1>
-            <p>Gelöschte {% if shows_tasks %}Aufgaben{% if shows_events %} und {% endif %}{% endif %}{% if shows_events %}Termine{% endif %} bleiben {{ retention_days }} Tage hier, bevor sie endgültig verschwinden. Gelöschte Notizen findest du im Papierkorb der Notizen.</p>
+            <p>Gelöschte Aufgaben, Termine, Gewohnheiten, Vokabellisten und Rezepte bleiben {{ retention_days }} Tage hier, bevor sie endgültig verschwinden. Gelöschte Notizen findest du im Papierkorb der Notizen.</p>
         </div>
         <i class="fa-regular fa-trash-can hero-branch" aria-hidden="true"></i>
     </header>

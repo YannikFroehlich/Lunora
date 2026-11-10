@@ -44,6 +44,7 @@
   const countLabel = root.querySelector("[data-focus-count]");
   const live = root.querySelector("[data-focus-live]");
   const settingsForm = root.querySelector("[data-focus-settings]");
+  const taskSelect = root.querySelector("[data-focus-task]");
   const circumference = 2 * Math.PI * Number(progress.getAttribute("r"));
   const pageTitle = document.title;
 
@@ -66,7 +67,10 @@
 
   function store() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ settings, day: new Date().toDateString(), completedToday }));
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ settings, day: new Date().toDateString(), completedToday, taskId: taskSelect?.value || "" }),
+      );
     } catch (_error) {
       // Private windows may block storage; the timer still works for this visit.
     }
@@ -120,11 +124,46 @@
     }
   }
 
+  // ---- Time tracking: a running focus block books its time on the chosen task -------------------
+
+  let trackedTaskId = null;
+
+  function trackingBody(action, taskId) {
+    const body = new FormData();
+    body.append("csrfmiddlewaretoken", root.querySelector("[name=csrfmiddlewaretoken]")?.value || "");
+    body.append("action", action);
+    body.append("task_id", taskId);
+    return body;
+  }
+
+  function startTracking() {
+    if (phase !== "focus" || !taskSelect?.value) return;
+    trackedTaskId = taskSelect.value;
+    fetch(root.dataset.trackUrl, {
+      method: "POST",
+      body: trackingBody("start", trackedTaskId),
+      credentials: "same-origin",
+    }).catch(() => {});
+  }
+
+  function stopTracking({ leaving = false } = {}) {
+    if (trackedTaskId === null) return;
+    const body = trackingBody("stop", trackedTaskId);
+    trackedTaskId = null;
+    // A closing tab may cancel a fetch; a beacon still arrives.
+    if (leaving && navigator.sendBeacon) {
+      navigator.sendBeacon(root.dataset.trackUrl, body);
+    } else {
+      fetch(root.dataset.trackUrl, { method: "POST", body, credentials: "same-origin" }).catch(() => {});
+    }
+  }
+
   function stop() {
     if (endsAt !== null) remaining = Math.max(0, (endsAt - Date.now()) / 1000);
     endsAt = null;
     clearInterval(timerId);
     timerId = null;
+    stopTracking();
   }
 
   function advance({ finished }) {
@@ -157,6 +196,7 @@
     // Measuring against an end timestamp keeps the timer exact while the tab is throttled.
     endsAt = Date.now() + remaining * 1000;
     timerId = setInterval(tick, 250);
+    startTracking();
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission().catch(() => {});
     }
@@ -192,6 +232,21 @@
   window.addEventListener("beforeunload", (event) => {
     if (endsAt !== null) event.preventDefault();
   });
+
+  window.addEventListener("pagehide", () => stopTracking({ leaving: true }));
+
+  if (taskSelect) {
+    if (stored.taskId && taskSelect.querySelector(`option[value="${CSS.escape(String(stored.taskId))}"]`)) {
+      taskSelect.value = stored.taskId;
+    }
+    taskSelect.addEventListener("change", () => {
+      store();
+      // Switching tasks mid-block books the rest of it on the new one.
+      if (endsAt === null) return;
+      stopTracking();
+      startTracking();
+    });
+  }
 
   render();
 })();

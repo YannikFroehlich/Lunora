@@ -747,6 +747,17 @@
   margin-left: 0;
 }
 
+.note-presence-stack .avatar.is-editing {
+  border-color: var(--color-accent);
+}
+
+.note-presence-label {
+  margin-left: 8px;
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
 .note-presence-stack .avatar img {
   display: block;
   width: 100%;
