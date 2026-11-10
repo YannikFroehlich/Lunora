@@ -17,6 +17,7 @@ from app.services.notifications import (
     send_weekly_summaries,
 )
 from app.services.system_settings import feature_enabled
+from app.services.trash import purge_expired_trash
 from app.services.web_push import (
     materialize_web_push_weather_alerts,
     send_pending_web_push_notifications,
@@ -105,6 +106,7 @@ def run_scheduled_tasks(*, now=None):
     )
     web_push_result = _guarded("web_push", send_pending_web_push_notifications, now=current_time)
     audit_log_result = _guarded("audit_log", lambda: {"purged": purge_old_entries(now=current_time)})
+    trash_result = _guarded("trash", lambda: {"purged": purge_expired_trash(now=current_time)})
     return {
         "reminder_emails": reminder_result,
         "event_invitation_emails": invitation_result,
@@ -119,4 +121,5 @@ def run_scheduled_tasks(*, now=None):
         "notification_emails": notification_email_result,
         "web_push": web_push_result,
         "audit_log": audit_log_result,
+        "trash": trash_result,
     }

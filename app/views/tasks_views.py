@@ -27,7 +27,6 @@ from app.services.tasks import (
     create_task_from_template,
     create_task_label,
     create_task_list,
-    delete_task,
     delete_task_comment,
     delete_task_label,
     delete_task_list,
@@ -58,6 +57,7 @@ from app.services.time_tracking import (
     toggle_timer,
     week_start_for,
 )
+from app.services.trash import trash_task
 from app.services.user_preferences import format_user_datetime
 from app.views.navigation import local_return_to
 
@@ -197,8 +197,8 @@ def tasks(request):
             django_messages.success(request, "Vorlage gelöscht.")
         return redirect(request.get_full_path())
     elif form_name == "task_delete":
-        if delete_task(request.user, request.POST.get("task_id")):
-            django_messages.success(request, "Aufgabe gelöscht.")
+        if trash_task(request.user, request.POST.get("task_id") or 0):
+            django_messages.success(request, "Aufgabe in den Papierkorb gelegt.")
         return redirect(request.get_full_path())
     elif form_name == "task_edit":
         editing_task_id = request.POST.get("task_id")

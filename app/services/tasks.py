@@ -319,11 +319,6 @@ def reschedule_task(user, task_id, *, due_date, due_time=None, now=None):
     return task
 
 
-def delete_task(user, task_id):
-    deleted, _details = Task.objects.filter(user=user, pk=task_id).delete()
-    return bool(deleted)
-
-
 def _reindex_tasks(tasks):
     for index, task in enumerate(tasks, start=1):
         task.position = index * TASK_POSITION_STEP

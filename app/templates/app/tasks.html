@@ -169,6 +169,7 @@
             <div class="panel-title task-panel-title">
                 <h2>Aufgaben</h2>
                 <a class="ghost-button task-time-link" href="{% url 'task_time_report' %}"><i class="fa-regular fa-clock" aria-hidden="true"></i> Zeiterfassung</a>
+                <a class="ghost-button" href="{% url 'trash' %}"><i class="fa-regular fa-trash-can" aria-hidden="true"></i> Papierkorb</a>
             </div>
             <div class="soft-contents" id="task-running-timer" data-soft-region>
             {% include "app/partials/task_running_timer.html" %}

@@ -47,6 +47,7 @@ urlpatterns = [
     path("calendar/feed/<str:token>.ics", view.calendar_feed, name="calendar_feed"),
     path("tasks/", view.tasks, name="tasks"),
     path("tasks/time/", view.task_time_report, name="task_time_report"),
+    path("trash/", view.trash, name="trash"),
     path("tools/", view.tools, name="tools"),
     path("tools/habits/", view.habits, name="habits"),
     path("tools/shopping/", view.shopping_list, name="shopping_list"),

@@ -6,6 +6,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Deleted tasks and events go to a trash first ("Papierkorb", linked from the tasks page and the
+  calendar) and can be restored there for 30 days, with subtasks, comments, shares, tracked time,
+  invitees and their answers. A restored task whose list or label was deleted meanwhile comes back
+  without it.
 - Recipes add their quantities up on the shopping list: 200 g Mehl from one recipe and 300 g from
   another become 500 g (g/kg and ml/l convert); quantities that don't fit together stay side by
   side ("1 Zehe + 2 Zehen"). A ticked-off item starts over with the new quantity.
