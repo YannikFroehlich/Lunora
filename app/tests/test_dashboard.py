@@ -11,8 +11,12 @@ from app.models import (
     Bookmark,
     CalendarEvent,
     CalendarReminder,
+    ExpenseGroup,
+    ExpenseGroupMember,
+    MealPlanEntry,
     Note,
     Profile,
+    Recipe,
     ShoppingItem,
     SystemSettings,
     Task,
@@ -26,7 +30,8 @@ from app.services.dashboard import (
     normalize_dashboard_layout,
     validate_dashboard_layout,
 )
-from app.services.user_preferences import get_user_zoneinfo
+from app.services.expenses import add_expense
+from app.services.user_preferences import get_user_zoneinfo, localtime_for_user
 
 
 class DashboardCustomizationTests(TestCase):
@@ -90,6 +95,8 @@ class DashboardCustomizationTests(TestCase):
             "habits",
             "bookmarks",
             "shopping",
+            "meal_plan",
+            "expenses",
         ]
         self.profile.dashboard_layout = self._layout(order=order)
         self.profile.save(update_fields=["dashboard_layout"])
@@ -302,6 +309,8 @@ class DashboardCustomizationTests(TestCase):
                 "habits",
                 "bookmarks",
                 "shopping",
+                "meal_plan",
+                "expenses",
             ],
             hidden=["clock", "weather"],
             widgets={
@@ -691,3 +700,38 @@ class DashboardShoppingWidgetTests(TestCase):
         response = self.client.get("/home/")
         self.assertEqual(response.context["dashboard_shopping"], {})
         self.assertNotContains(response, 'id="shopping-dialog"')
+
+
+class DashboardMealAndExpenseWidgetTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="lea", email="lea@example.com", password="pw-12345!")
+        Profile.objects.create(user=self.user, display_name="Lea")
+        self.client.force_login(self.user)
+
+    def test_widgets_show_todays_meal_and_the_balance_per_group(self):
+        today = localtime_for_user(profile_or_user=self.user).date()
+        recipe = Recipe.objects.create(owner=self.user, title="Linseneintopf", servings=2)
+        MealPlanEntry.objects.create(owner=self.user, recipe=recipe, date=today, servings=4)
+        tom = User.objects.create_user(username="tom", email="tom@example.com", password="pw-12345!")
+        group = ExpenseGroup.objects.create(name="WG")
+        ExpenseGroupMember.objects.create(group=group, user=self.user)
+        ExpenseGroupMember.objects.create(group=group, user=tom)
+        add_expense(
+            group,
+            tom,
+            title="Miete",
+            amount=Decimal("90.00"),
+            paid_by=tom,
+            participants=[self.user, tom],
+            spent_on=today,
+        )
+
+        response = self.client.get("/home/")
+
+        self.assertEqual(
+            response.context["dashboard_meal_plan"]["today"],
+            [{"title": "Linseneintopf", "url": f"/tools/recipes/{recipe.pk}/?servings=4", "servings": 4}],
+        )
+        self.assertContains(response, "Linseneintopf")
+        self.assertEqual(response.context["dashboard_expenses"][0]["label"], "-45,00 €")
+        self.assertContains(response, "du schuldest noch etwas")

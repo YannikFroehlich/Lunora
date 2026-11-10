@@ -21,6 +21,7 @@ from app.models import (
     ChatPoll,
     ChatPollOption,
     CustomHoliday,
+    Expense,
     Habit,
     HolidayOverride,
     NotificationPreference,
@@ -51,6 +52,7 @@ from app.services.calendar_service import (
 from app.services.calendar_subscriptions import MAX_SUBSCRIPTIONS, SubscriptionError, normalize_url
 from app.services.chat import SCHEDULE_MAX_AHEAD, SCHEDULE_MIN_LEAD
 from app.services.chat_files import CHAT_VOICE_MAX_SECONDS, validate_chat_upload
+from app.services.expenses import euro
 from app.services.habits import WEEKDAY_SHORT
 from app.services.image_uploads import PROFILE_IMAGE_ACCEPT, validate_profile_image_file
 from app.services.notes import display_name
@@ -1144,8 +1146,38 @@ class VocabularyCardForm(forms.ModelForm):
         }
 
 
+def _parse_decimal(raw):
+    """German or English decimal text ("1.234,50", "1234.50", "1,5") as a Decimal, or None."""
+    raw = (raw or "").strip().replace("€", "").replace(" ", "")
+    if "," in raw:
+        raw = raw.replace(".", "").replace(",", ".")
+    try:
+        value = Decimal(raw)
+    except ArithmeticError:
+        return None
+    return value if value.is_finite() else None
+
+
+def _parse_money(raw):
+    """A euro amount between 0,01 € and 100.000 € with at most two decimals, else ValidationError."""
+    amount = _parse_decimal(raw)
+    if amount is None:
+        raise forms.ValidationError("Bitte einen Betrag wie 12,50 eingeben.")
+    if amount != amount.quantize(Decimal("0.01")):
+        raise forms.ValidationError("Bitte einen Betrag mit höchstens zwei Nachkommastellen eingeben.")
+    if not Decimal("0.01") <= amount <= Decimal("100000"):
+        raise forms.ValidationError("Der Betrag muss zwischen 0,01 € und 100.000 € liegen.")
+    return amount
+
+
 class ExpenseForm(forms.Form):
-    """One expense of a group; payer and participants are offered from the group's members only."""
+    """One expense of a group; payer and participants are offered from the group's members only.
+
+    `split_mode` "shares" and "amounts" read one `split_<user id>` field per ticked person;
+    `cleaned_data["weights"]` then holds {user id: Decimal} (None for an equal split).
+    """
+
+    SPLIT_CHOICES = [("equal", "Gleich"), ("shares", "Nach Anteilen"), ("amounts", "Feste Beträge")]
 
     title = forms.CharField(
         label="Wofür",
@@ -1162,40 +1194,102 @@ class ExpenseForm(forms.Form):
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
         input_formats=["%Y-%m-%d"],
     )
+    category = forms.ChoiceField(
+        label="Kategorie", choices=Expense.CATEGORY_CHOICES, initial="other", required=False
+    )
     paid_by = forms.ModelChoiceField(label="Bezahlt von", queryset=User.objects.none(), empty_label=None)
     participants = forms.ModelMultipleChoiceField(
         label="Geteilt zwischen", queryset=User.objects.none(), widget=forms.CheckboxSelectMultiple
     )
+    split_mode = forms.ChoiceField(
+        label="Aufteilung", choices=SPLIT_CHOICES, initial="equal", required=False, widget=forms.RadioSelect
+    )
+    repeat_monthly = forms.BooleanField(label="Jeden Monat wiederholen", required=False)
 
     def __init__(self, *args, members=(), user=None, **kwargs):
         super().__init__(*args, **kwargs)
-        member_ids = [member.pk for member in members]
+        member_ids = sorted(member.pk for member in members)
         queryset = User.objects.filter(pk__in=member_ids).select_related("profile").order_by("pk")
         for name in ("paid_by", "participants"):
             self.fields[name].queryset = queryset
             self.fields[name].label_from_instance = display_name
+        names = {member.pk: display_name(member) for member in members}
+        for member_id in member_ids:
+            label = f"Anteil oder Betrag von {names[member_id]}"
+            self.fields[f"split_{member_id}"] = forms.CharField(
+                label=label,
+                required=False,
+                max_length=12,
+                widget=forms.TextInput(
+                    attrs={
+                        "inputmode": "decimal",
+                        "autocomplete": "off",
+                        "class": "expense-split-input",
+                        "aria-label": label,
+                        "placeholder": "1",
+                    }
+                ),
+            )
+        self.member_ids = member_ids
         if not self.is_bound:
             self.initial.setdefault("paid_by", user.pk if user else None)
             self.initial.setdefault("participants", member_ids)
             self.initial.setdefault("spent_on", localtime_for_user(profile_or_user=user).date())
 
+    def split_rows(self):
+        """(participant checkbox, split field) per member, for the template."""
+        checkboxes = {str(choice.data["value"]): choice for choice in self["participants"]}
+        return [(checkboxes[str(pk)], self[f"split_{pk}"]) for pk in self.member_ids]
+
     def clean_title(self):
         return self.cleaned_data["title"].strip()
 
     def clean_amount(self):
-        raw = self.cleaned_data["amount"].strip().replace("€", "").replace(" ", "")
-        # "1.234,50" and "1234.50" both mean 1234.50.
-        if "," in raw:
-            raw = raw.replace(".", "").replace(",", ".")
-        try:
-            amount = Decimal(raw)
-        except ArithmeticError:
-            raise forms.ValidationError("Bitte einen Betrag wie 12,50 eingeben.") from None
-        if not amount.is_finite() or amount != amount.quantize(Decimal("0.01")):
-            raise forms.ValidationError("Bitte einen Betrag mit höchstens zwei Nachkommastellen eingeben.")
-        if not Decimal("0.01") <= amount <= Decimal("100000"):
-            raise forms.ValidationError("Der Betrag muss zwischen 0,01 € und 100.000 € liegen.")
-        return amount
+        return _parse_money(self.cleaned_data["amount"])
+
+    def clean_category(self):
+        return self.cleaned_data["category"] or "other"
+
+    def clean(self):
+        cleaned = super().clean()
+        cleaned["weights"] = None
+        mode = cleaned.get("split_mode")
+        participants = cleaned.get("participants")
+        if mode not in ("shares", "amounts") or not participants:
+            return cleaned
+        weights = {}
+        for person in participants:
+            field = f"split_{person.pk}"
+            raw = cleaned.get(field, "")
+            if not raw.strip():
+                self.add_error(field, "Bitte für jede ausgewählte Person einen Wert eintragen.")
+                continue
+            if mode == "amounts":
+                try:
+                    weights[person.pk] = _parse_money(raw)
+                except forms.ValidationError as error:
+                    self.add_error(field, error)
+                continue
+            share = _parse_decimal(raw)
+            if (
+                share is None
+                or not Decimal("0") < share <= Decimal("1000")
+                or share != share.quantize(Decimal("0.01"))
+            ):
+                self.add_error(field, "Anteile sind Zahlen wie 1, 2 oder 1,5.")
+            else:
+                weights[person.pk] = share
+        if len(weights) < len(participants):
+            return cleaned
+        amount = cleaned.get("amount")
+        if mode == "amounts" and amount is not None and sum(weights.values()) != amount:
+            self.add_error(
+                None,
+                f"Die Beträge ergeben {euro(sum(weights.values()))}, die Ausgabe ist {euro(amount)}.",
+            )
+            return cleaned
+        cleaned["weights"] = weights
+        return cleaned
 
 
 class RecipeForm(forms.ModelForm):

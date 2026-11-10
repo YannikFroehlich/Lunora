@@ -17,6 +17,7 @@ from app.models import (
     Conversation,
     ExpenseGroupMember,
     Habit,
+    MealPlanEntry,
     Note,
     NoteShare,
     Profile,
@@ -42,6 +43,7 @@ from app.services.dashboard import (
     default_dashboard_layout,
     normalize_dashboard_layout,
 )
+from app.services.expenses import balances, euro, user_groups
 from app.services.habits import habit_items
 from app.services.message_queries import unread_total_for_user
 from app.services.notifications import dashboard_latest_notifications
@@ -110,6 +112,10 @@ def get_dashboard_context(user=None):
     dashboard_stats = _dashboard_stats(user, now, flags) if user and "stats" in visible_widget_ids else {}
     dashboard_habits = habit_items(user, now.date()) if user and "habits" in visible_widget_ids else []
     dashboard_shopping = _dashboard_shopping(user) if user and "shopping" in visible_widget_ids else {}
+    dashboard_meal_plan = (
+        _dashboard_meal_plan(user, now.date()) if user and "meal_plan" in visible_widget_ids else {}
+    )
+    dashboard_expenses = _dashboard_expenses(user) if user and "expenses" in visible_widget_ids else []
     dashboard_bookmarks = (
         [
             {"id": item.pk, "title": item.title, "url": item.url, "host": urlparse(item.url).hostname or ""}
@@ -148,6 +154,8 @@ def get_dashboard_context(user=None):
         "dashboard_habits": dashboard_habits,
         "dashboard_bookmarks": dashboard_bookmarks,
         "dashboard_shopping": dashboard_shopping,
+        "dashboard_meal_plan": dashboard_meal_plan,
+        "dashboard_expenses": dashboard_expenses,
         "bookmark_form": BookmarkForm(),
         "clock": {
             "time": format_user_time(now, user),
@@ -498,6 +506,39 @@ def get_tools_context(user):
     }
     tools = [{**tool, "meta": meta.get(tool["id"])} for tool in TOOLS]
     return {"active_page": "tools", "tools": tools}
+
+
+def _dashboard_meal_plan(user, today):
+    """What the user planned to cook today, with tomorrow's plan as a look ahead."""
+
+    def planned(day):
+        return [
+            {
+                "title": entry.recipe.title,
+                "url": reverse("recipe_detail", args=[entry.recipe_id])
+                + (f"?servings={entry.servings}" if entry.servings else ""),
+                "servings": entry.servings or entry.recipe.servings,
+            }
+            for entry in MealPlanEntry.objects.filter(owner=user, date=day).select_related("recipe")
+        ]
+
+    return {"today": planned(today), "tomorrow": planned(today + timedelta(days=1))}
+
+
+def _dashboard_expenses(user):
+    """The user's balance in each expense group, groups they owe in first."""
+    items = []
+    for group in user_groups(user):
+        balance = balances(group).get(user.pk)
+        items.append(
+            {
+                "name": group.name,
+                "url": reverse("expense_group_detail", args=[group.pk]),
+                "balance": balance,
+                "label": euro(balance) if balance else "ausgeglichen",
+            }
+        )
+    return sorted(items, key=lambda item: item["balance"] or 0)[:MAX_WIDGET_ITEMS]
 
 
 def _dashboard_shopping(user):

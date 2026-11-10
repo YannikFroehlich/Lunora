@@ -1,5 +1,6 @@
 import json
 from datetime import date, timedelta
+from fractions import Fraction
 from urllib.parse import urlsplit
 
 from django.contrib import messages as django_messages
@@ -22,6 +23,7 @@ from app.services.recipes import (
     ingredient_rows,
     meal_plan_week,
     plan_recipe,
+    scale_quantity,
 )
 from app.services.safe_fetch import FetchError
 from app.services.shopping import SUGGESTIONS, classify_item, group_items
@@ -283,6 +285,14 @@ def _handle_meal_plan_post(request, form_name, week_start):
             django_messages.error(request, error)
     elif form_name == "meal_plan_remove":
         MealPlanEntry.objects.filter(owner=request.user, pk=posted_id(request, "entry_id")).delete()
+    elif form_name == "meal_plan_servings":
+        servings = request.POST.get("servings", "")
+        if servings.isdigit() and 1 <= int(servings) <= 99:
+            MealPlanEntry.objects.filter(owner=request.user, pk=posted_id(request, "entry_id")).update(
+                servings=int(servings)
+            )
+        else:
+            django_messages.error(request, "Bitte zwischen 1 und 99 Portionen angeben.")
     elif form_name == "meal_plan_to_shopping":
         list_owner = list_owner_for(request.user, request.POST.get("list"))
         if list_owner is None:
@@ -382,11 +392,21 @@ def recipes(request):
     )
 
 
+def _wanted_servings(recipe, raw):
+    """The servings to show the recipe for, or None for its own number (or when it has none)."""
+    if not recipe.servings or not (raw or "").isdigit() or not 1 <= int(raw) <= 99:
+        return None
+    return None if int(raw) == recipe.servings else int(raw)
+
+
 @login_required
 def recipe_detail(request, recipe_id):
     if not feature_enabled("tools"):
         return disabled_feature_response(request, "tools")
     recipe = get_object_or_404(Recipe, owner=request.user, pk=recipe_id)
+    servings = _wanted_servings(recipe, request.POST.get("servings") or request.GET.get("servings"))
+    factor = Fraction(servings, recipe.servings) if servings else 1
+    detail_url = reverse("recipe_detail", args=[recipe.pk]) + (f"?servings={servings}" if servings else "")
 
     form = RecipeForm(instance=recipe)
     form_name = request.POST.get("form_name") if request.method == "POST" else None
@@ -404,16 +424,16 @@ def recipe_detail(request, recipe_id):
         list_owner = list_owner_for(request.user, request.POST.get("list"))
         if list_owner is None:
             django_messages.error(request, "Dieser Einkaufszettel ist nicht (mehr) mit dir geteilt.")
-            return redirect("recipe_detail", recipe_id=recipe.pk)
+            return redirect(detail_url)
         indexes = [int(value) for value in request.POST.getlist("ingredient") if value.isdigit()]
-        added, error = add_ingredients_to_list(recipe, indexes, list_owner)
+        added, error = add_ingredients_to_list(recipe, indexes, list_owner, factor)
         if added:
             django_messages.success(request, f"{added} Zutat(en) auf den Einkaufszettel gesetzt.")
         if error:
             django_messages.error(request, error)
         elif not added:
             django_messages.info(request, "Keine Zutat ausgewählt.")
-        return redirect("recipe_detail", recipe_id=recipe.pk)
+        return redirect(detail_url)
 
     return render(
         request,
@@ -423,7 +443,14 @@ def recipe_detail(request, recipe_id):
             "recipe": recipe,
             "source_host": urlsplit(recipe.source_url).hostname if recipe.source_url else "",
             "form": form,
-            "ingredients": ingredient_rows(recipe.ingredients),
+            "ingredients": [
+                {**row, "text": f"{scale_quantity(row['quantity'], factor)} {row['label']}"}
+                if factor != 1 and row.get("quantity")
+                else row
+                for row in ingredient_rows(recipe.ingredients)
+            ],
+            "servings": servings or recipe.servings,
+            "is_scaled": factor != 1,
             "shopping_lists": _shopping_list_options(request.user),
             "edit_open": form.errors or not (recipe.ingredients or recipe.instructions),
         },

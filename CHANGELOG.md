@@ -6,6 +6,23 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Recipes add their quantities up on the shopping list: 200 g Mehl from one recipe and 300 g from
+  another become 500 g (g/kg and ml/l convert); quantities that don't fit together stay side by
+  side ("1 Zehe + 2 Zehen"). A ticked-off item starts over with the new quantity.
+- A recipe page converts to other servings ("Für 6 Portion(en)"), and the converted quantities go
+  on the shopping list.
+- Shared expenses have categories, and a group page shows each month's spending per category
+  with your part of it. The CSV export has a category column.
+- New dashboard widgets: "Heute gibt's" with today's (and tomorrow's) meals from the weekly plan,
+  and "Geteilte Ausgaben" with your balance per group.
+- The servings field in the weekly plan is labelled.
+- Shared expenses can be split unevenly: by shares (e.g. 2 : 1) or by fixed amounts per person.
+  Uneven splits show each person's amount in the list.
+- Expenses can repeat every month (rent, subscriptions): Lunora adds them on their day, also
+  for months it missed, until someone stops them under "Jeden Monat".
+- A group's expenses download as a CSV file with one column per person.
+- Each planned meal in the weekly plan has its number of servings; "Zutaten der Woche auf den
+  Einkaufszettel" scales the quantities to the servings planned over the week.
 - When someone enters your password correctly but then a wrong two-factor code, you get a warning
   in the inbox and by e-mail (at most one per 15 minutes), even with e-mail notifications switched
   off. It means someone knows your password.

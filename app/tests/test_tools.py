@@ -37,7 +37,7 @@ from app.services.habits import (
 )
 from app.services.notifications import materialize_due_habit_reminders, send_pending_user_notification_emails
 from app.services.recipe_import import parse_recipe_page
-from app.services.recipes import ingredient_rows, parse_ingredient
+from app.services.recipes import add_quantities, ingredient_rows, parse_ingredient, scale_quantity
 from app.services.shopping import CATALOG, PRODUCTS, SUGGESTIONS, classify_item
 from app.services.shopping_products import find_open_item, normalize_barcode, parse_open_food_facts
 from app.services.uml_content import validate_uml_document
@@ -1413,6 +1413,39 @@ class RecipeTests(TestCase):
         }
         self.assertEqual(items, {"mehl": ("200 g", False), "Eier": ("2", False)})
 
+    def test_open_items_add_quantities_up_but_ticked_ones_start_over(self):
+        ShoppingItem.objects.create(owner=self.lea, name="Mehl", quantity="300 g")
+        ShoppingItem.objects.create(owner=self.lea, name="Eier", quantity="6", is_done=True)
+
+        self.client.post(self.url, {"form_name": "recipe_to_shopping", "ingredient": ["1", "2"]})
+
+        self.assertEqual(
+            sorted(ShoppingItem.objects.values_list("name", "quantity", "is_done")),
+            [("Eier", "2", False), ("Mehl", "500 g", False)],
+        )
+
+    def test_recipe_is_shown_and_shopped_for_other_servings(self):
+        self.recipe.servings = 2
+        self.recipe.save(update_fields=["servings"])
+
+        response = self.client.get(self.url, {"servings": "3"})
+        self.assertContains(response, "<span>300 g Mehl</span>", html=True)
+        self.assertContains(response, "<span>3 Eier</span>", html=True)
+        self.assertContains(response, 'name="servings" value="3"')
+        # Out of range or the recipe's own number: the recipe as written.
+        self.assertContains(
+            self.client.get(self.url, {"servings": "500"}), "<span>200 g Mehl</span>", html=True
+        )
+
+        response = self.client.post(
+            self.url, {"form_name": "recipe_to_shopping", "ingredient": ["1", "2"], "servings": "3"}
+        )
+
+        self.assertRedirects(response, f"{self.url}?servings=3")
+        self.assertEqual(
+            sorted(ShoppingItem.objects.values_list("name", "quantity")), [("Eier", "3"), ("Mehl", "300 g")]
+        )
+
     def test_ingredients_go_on_a_shared_list_only_when_it_is_shared(self):
         data = {"form_name": "recipe_to_shopping", "ingredient": ["2"], "list": str(self.tom.pk)}
 
@@ -1442,6 +1475,28 @@ class RecipeTests(TestCase):
 
         self.assertEqual(self.client.get("/tools/recipes/").status_code, 503)
         self.assertEqual(self.client.get(self.url).status_code, 503)
+
+
+class ScaleQuantityTests(SimpleTestCase):
+    def test_every_number_is_scaled_and_written_the_german_way(self):
+        self.assertEqual(scale_quantity("1 1/2 TL", 2), "3 TL")
+        self.assertEqual(scale_quantity("2-3 Zehen", 2), "4-6 Zehen")
+        self.assertEqual(scale_quantity("ca. 500ml", 0.25), "ca. 125ml")
+        self.assertEqual(scale_quantity("3", 0.5), "1,5")
+        self.assertEqual(scale_quantity("25 g", 0.5), "13 g")
+        self.assertEqual(scale_quantity("", 2), "")
+
+
+class AddQuantitiesTests(SimpleTestCase):
+    def test_same_units_add_up_and_others_stay_side_by_side(self):
+        self.assertEqual(add_quantities("200 g", "300 g"), "500 g")
+        self.assertEqual(add_quantities("800 ml", "0,5 l"), "1,3 l")
+        self.assertEqual(add_quantities("600 g", "0,5 kg"), "1,1 kg")
+        self.assertEqual(add_quantities("2 EL", "1 EL"), "3 EL")
+        self.assertEqual(add_quantities("1 1/2 TL", "1/2 TL"), "2 TL")
+        self.assertEqual(add_quantities("1 Zehe", "2 Zehen"), "1 Zehe + 2 Zehen")
+        self.assertEqual(add_quantities("2-3", "1"), "2-3 + 1")
+        self.assertEqual(add_quantities("1 Packung Bio-Hafermilch, ungesüßt", "2 Liter"), "2 Liter")
 
 
 class MealPlanTests(TestCase):
@@ -1489,7 +1544,7 @@ class MealPlanTests(TestCase):
 
         self.assertEqual(MealPlanEntry.objects.filter(owner=self.lea).count(), 6)
 
-    def test_week_goes_on_the_shopping_list_once_per_ingredient(self):
+    def test_week_goes_on_the_shopping_list_once_per_ingredient_with_quantities_added_up(self):
         MealPlanEntry.objects.create(owner=self.lea, recipe=self.pancakes, date=self.monday)
         MealPlanEntry.objects.create(
             owner=self.lea, recipe=self.pancakes, date=self.monday + timedelta(days=3)
@@ -1507,7 +1562,25 @@ class MealPlanTests(TestCase):
         self.assertRedirects(response, "/tools/recipes/?week=2026-W46")
         self.assertEqual(
             sorted(ShoppingItem.objects.filter(owner=self.lea).values_list("name", "quantity")),
-            [("Eier", "2"), ("Lauch", "1"), ("Mehl", "200 g"), ("Milch", "500 ml")],
+            [("Eier", "4"), ("Lauch", "1"), ("Mehl", "200 g"), ("Milch", "500 ml")],
+        )
+
+    def test_planned_servings_scale_the_quantities_over_the_week(self):
+        stew = Recipe.objects.create(
+            owner=self.lea, title="Eintopf", servings=2, ingredients="200 g Linsen\n1 1/2 Zwiebeln\nSalz"
+        )
+        monday = MealPlanEntry.objects.create(owner=self.lea, recipe=stew, date=self.monday)
+        MealPlanEntry.objects.create(owner=self.lea, recipe=stew, date=self.monday + timedelta(days=3))
+
+        self._post({"form_name": "meal_plan_servings", "entry_id": monday.pk, "servings": "3"})
+        self._post({"form_name": "meal_plan_servings", "entry_id": monday.pk, "servings": "0"})
+        self._post({"form_name": "meal_plan_to_shopping"})
+
+        monday.refresh_from_db()
+        self.assertEqual(monday.servings, 3)
+        self.assertEqual(
+            sorted(ShoppingItem.objects.filter(owner=self.lea).values_list("name", "quantity")),
+            [("Linsen", "500 g"), ("Salz", ""), ("Zwiebeln", "3,75")],
         )
 
     def test_week_goes_on_a_shared_list_but_not_a_foreign_one(self):
