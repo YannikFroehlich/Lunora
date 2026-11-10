@@ -2114,3 +2114,44 @@ a.tool-card:hover {
     grid-template-columns: 1fr;
   }
 }
+
+.recipe-shopping-form {
+  display: grid;
+  gap: 12px;
+}
+
+.recipe-ingredients {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recipe-ingredient {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 0;
+  cursor: pointer;
+}
+
+.recipe-ingredient input {
+  flex: 0 0 auto;
+}
+
+.recipe-ingredient-heading {
+  margin-top: 10px;
+  color: var(--color-heading);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.recipe-instructions {
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.recipe-instructions p + p {
+  margin-top: 0.8em;
+}

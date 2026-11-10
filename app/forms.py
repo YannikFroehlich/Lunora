@@ -25,6 +25,7 @@ from app.models import (
     HolidayOverride,
     NotificationPreference,
     Profile,
+    Recipe,
     ShoppingItem,
     SystemSettings,
     Task,
@@ -1140,6 +1141,34 @@ class VocabularyCardForm(forms.ModelForm):
             "term": forms.TextInput(attrs={"autocomplete": "off"}),
             "translation": forms.TextInput(attrs={"autocomplete": "off"}),
             "note": forms.TextInput(attrs={"autocomplete": "off", "placeholder": "optional"}),
+        }
+
+
+class RecipeForm(forms.ModelForm):
+    servings = forms.IntegerField(
+        label="Portionen", required=False, min_value=1, max_value=99, widget=forms.NumberInput()
+    )
+    ingredients = forms.CharField(
+        label="Zutaten",
+        required=False,
+        max_length=5000,
+        widget=forms.Textarea(
+            attrs={
+                "rows": 10,
+                "placeholder": "Eine Zutat pro Zeile, z. B.\n200 g Mehl\n2 Eier\nFür die Soße:\n1 Becher Sahne",
+            }
+        ),
+    )
+    instructions = forms.CharField(
+        label="Zubereitung", required=False, max_length=20000, widget=forms.Textarea(attrs={"rows": 12})
+    )
+
+    class Meta:
+        model = Recipe
+        fields = ["title", "servings", "ingredients", "instructions"]
+        labels = {"title": "Titel"}
+        widgets = {
+            "title": forms.TextInput(attrs={"placeholder": "z. B. Gemüselasagne", "autocomplete": "off"})
         }
 
 

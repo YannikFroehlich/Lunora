@@ -1,0 +1,56 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}Rezepte | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell tools-shell">
+    <header class="page-hero">
+        <div>
+            <a class="tools-back-link" href="{% url 'tools' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Werkzeuge</a>
+            <h1>Rezepte</h1>
+            <p>Lieblingsrezepte sammeln und die Zutaten auf den Einkaufszettel setzen.</p>
+        </div>
+        <i class="fa-solid fa-utensils hero-branch" aria-hidden="true"></i>
+    </header>
+
+    <section class="glass-panel uml-create-panel">
+        <form class="vocab-create-form" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="recipe_create">
+            <label class="vocab-field vocab-field-wide">
+                <span>{{ form.title.label }}</span>
+                {{ form.title }}
+            </label>
+            <button class="primary-button" type="submit"><i class="fa-solid fa-plus" aria-hidden="true"></i> Neues Rezept</button>
+            {% if form.errors %}<ul class="errorlist">{% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}{% for error in form.title.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
+        </form>
+    </section>
+
+    {% if recipes %}
+    <ul class="uml-diagram-list">
+        {% for item in recipes %}
+        <li class="glass-panel uml-diagram-card">
+            <a class="uml-diagram-link" href="{% url 'recipe_detail' item.id %}">
+                <span class="tool-card-icon" aria-hidden="true"><i class="fa-solid fa-utensils"></i></span>
+                <span>
+                    <strong>{{ item.title }}</strong>
+                    <small>{{ item.ingredient_count }} Zutat(en){% if item.servings %} · {{ item.servings }} Portion(en){% endif %}</small>
+                </span>
+            </a>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state-card uml-empty">
+        <i class="fa-solid fa-utensils" aria-hidden="true"></i>
+        <strong>Noch keine Rezepte</strong>
+        <p>Lege oben dein erstes Rezept an und trag danach Zutaten und Zubereitung ein.</p>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

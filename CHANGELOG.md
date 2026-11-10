@@ -6,6 +6,19 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- The dashboard has a "Einkaufszettel" widget: open items in store-aisle order with their emoji
+  and quantity, ticked off right there, and a plus button to write down what's missing without
+  leaving the dashboard. It sits next to the statistics in the default layout; dashboards set up
+  before get it at the end and can move or hide it under "Dashboard anpassen".
+- New tool "Rezepte": collect recipes with portions, ingredients (one per line, lines ending in ":"
+  become sub-headings) and preparation. On a recipe, untick what's already at home and put the rest
+  on your shopping list, or on a list shared with you, in one click. Quantities like "200 g" or
+  "1 Pck." go into the item's quantity, and an ingredient already on the list comes back instead of
+  being added twice.
+- Scanning in the store now also ticks off items written under another name for the same product:
+  "Möhren" for "Karotten", "Marmelade" for "Konfitüre", "Klopapier" for "Toilettenpapier".
+- The notes sidebar and its search results now show every note. Accounts with more than 200 notes
+  used to lose the rest from the list without any hint.
 - Notes in folders no longer get cut off at the right edge of the sidebar when their title is long;
   the title ends with "…" instead.
 - The shopping list can be shared: under "Gemeinsam nutzen" you name someone by e-mail or username,

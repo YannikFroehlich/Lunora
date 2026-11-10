@@ -105,6 +105,17 @@ DASHBOARD_WIDGETS = (
         default_size="medium",
         options={"period": "week"},
     ),
+    # Large, next to the medium stats: the 4x4 square fills the half row beside stats and the one
+    # below it (recent tools + bookmarks backfill there), so the default layout stays hole-free.
+    DashboardWidget(
+        id="shopping",
+        label="Einkaufszettel",
+        template="app/partials/dashboard_shopping.html",
+        class_name="list-panel",
+        default_size="large",
+        options={"limit": 8},
+        feature_flag="tools",
+    ),
     DashboardWidget(
         id="quick_actions",
         label="Schnellzugriff",
@@ -298,7 +309,7 @@ def dashboard_presets():
             "icon": "fa-bullseye",
             "layout": _preset(
                 ["tasks", "habits", "clock", "upcoming_events", "notifications", "weather"],
-                ["welcome", "stats", "quick_actions", "recent_tools", "bookmarks"],
+                ["welcome", "stats", "quick_actions", "recent_tools", "bookmarks", "shopping"],
                 {
                     "tasks": {"size": "large", "limit": 8},
                     "habits": {"size": "small", "limit": 5},
@@ -315,7 +326,7 @@ def dashboard_presets():
             "icon": "fa-compress",
             "layout": _preset(
                 ["clock", "tasks", "upcoming_events", "notifications", "weather", "quick_actions"],
-                ["welcome", "stats", "recent_tools", "habits", "bookmarks"],
+                ["welcome", "stats", "recent_tools", "habits", "bookmarks", "shopping"],
                 {
                     "clock": {"size": "small"},
                     "tasks": {"size": "small", "limit": 3},

@@ -24,6 +24,7 @@ from app.models import (
     Note,
     NoteFolder,
     NoteTemplate,
+    Recipe,
     ScheduledChatMessage,
     ShoppingItem,
     ShoppingListShare,
@@ -133,6 +134,15 @@ def write_user_export(user, fileobj):
             list(
                 ShoppingProduct.objects.filter(owner=user).values(
                     "barcode", "name", "brand", "package", "nutri_score", "nutrition", "created_at"
+                )
+            ),
+        )
+        _add_json(
+            archive,
+            "rezepte.json",
+            list(
+                Recipe.objects.filter(owner=user).values(
+                    "title", "servings", "ingredients", "instructions", "created_at", "updated_at"
                 )
             ),
         )

@@ -19,6 +19,7 @@ from app.models import (
     Note,
     NoteShare,
     Profile,
+    Recipe,
     ShoppingItem,
     Task,
     UmlDiagram,
@@ -43,6 +44,7 @@ from app.services.dashboard import (
 from app.services.habits import habit_items
 from app.services.message_queries import unread_total_for_user
 from app.services.notifications import dashboard_latest_notifications
+from app.services.shopping import group_items
 from app.services.system_settings import feature_enabled, feature_flags
 from app.services.tasks import dashboard_open_tasks, dashboard_today_tasks, visible_tasks
 from app.services.user_preferences import (
@@ -106,6 +108,7 @@ def get_dashboard_context(user=None):
         dashboard_notifications = []
     dashboard_stats = _dashboard_stats(user, now, flags) if user and "stats" in visible_widget_ids else {}
     dashboard_habits = habit_items(user, now.date()) if user and "habits" in visible_widget_ids else []
+    dashboard_shopping = _dashboard_shopping(user) if user and "shopping" in visible_widget_ids else {}
     dashboard_bookmarks = (
         [
             {"id": item.pk, "title": item.title, "url": item.url, "host": urlparse(item.url).hostname or ""}
@@ -143,6 +146,7 @@ def get_dashboard_context(user=None):
         "dashboard_stats": dashboard_stats,
         "dashboard_habits": dashboard_habits,
         "dashboard_bookmarks": dashboard_bookmarks,
+        "dashboard_shopping": dashboard_shopping,
         "bookmark_form": BookmarkForm(),
         "clock": {
             "time": format_user_time(now, user),
@@ -431,6 +435,13 @@ TOOLS = (
         "url_name": "shopping_list",
     },
     {
+        "id": "recipes",
+        "title": "Rezepte",
+        "description": "Lieblingsrezepte sammeln und die Zutaten mit einem Klick auf den Einkaufszettel setzen.",
+        "icon": "fa-utensils",
+        "url_name": "recipes",
+    },
+    {
         "id": "focus",
         "title": "Fokus-Timer",
         "description": "Konzentriert arbeiten in festen Intervallen mit kurzen und langen Pausen.",
@@ -462,9 +473,11 @@ def get_tools_context(user):
     )
     habit_count = Habit.objects.filter(owner=user).count()
     open_shopping_items = ShoppingItem.objects.filter(owner=user, is_done=False).count()
+    recipe_count = Recipe.objects.filter(owner=user).count()
     meta = {
         "habits": f"{habit_count} Gewohnheit(en)" if habit_count else "Noch keine Gewohnheiten",
         "shopping": f"{open_shopping_items} offen" if open_shopping_items else "Nichts offen",
+        "recipes": f"{recipe_count} Rezept(e)" if recipe_count else "Noch keine Rezepte",
         "focus": "Läuft direkt im Browser",
         "uml": f"{diagram_count} Diagramm(e)" if diagram_count else "Noch keine Diagramme",
         "vocabulary": (
@@ -475,6 +488,13 @@ def get_tools_context(user):
     }
     tools = [{**tool, "meta": meta.get(tool["id"])} for tool in TOOLS]
     return {"active_page": "tools", "tools": tools}
+
+
+def _dashboard_shopping(user):
+    """The user's own open shopping items in store-aisle order, as on the shopping list itself."""
+    groups, _done = group_items(list(ShoppingItem.objects.filter(owner=user, is_done=False)))
+    items = [item for group in groups for item in group["items"]]
+    return {"items": items[:MAX_WIDGET_ITEMS], "meta": f"{len(items)} offen" if items else ""}
 
 
 def _dashboard_weather_placeholder(user=None):

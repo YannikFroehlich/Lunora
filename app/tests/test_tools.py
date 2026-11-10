@@ -15,6 +15,7 @@ from app.models import (
     HabitCheck,
     NotificationPreference,
     Profile,
+    Recipe,
     ShoppingItem,
     ShoppingListShare,
     ShoppingProduct,
@@ -34,8 +35,9 @@ from app.services.habits import (
     longest_streak,
 )
 from app.services.notifications import materialize_due_habit_reminders, send_pending_user_notification_emails
+from app.services.recipes import ingredient_rows, parse_ingredient
 from app.services.shopping import CATALOG, PRODUCTS, SUGGESTIONS, classify_item
-from app.services.shopping_products import normalize_barcode, parse_open_food_facts
+from app.services.shopping_products import find_open_item, normalize_barcode, parse_open_food_facts
 from app.services.uml_content import validate_uml_document
 from app.services.user_preferences import localtime_for_user
 from app.services.vocabulary import parse_bulk_cards, review_card
@@ -761,6 +763,27 @@ class ShoppingScanTests(TestCase):
         self.assertEqual(self._scan().json()["status"], "ticked")
         self.assertTrue(ShoppingItem.objects.get(name="Vollmilch").is_done)
 
+    def test_items_match_products_sold_under_a_synonym(self, urlopen):
+        carrots = ShoppingItem.objects.create(owner=self.user, name="Möhren")
+        jam = ShoppingItem.objects.create(owner=self.user, name="Marmelade")
+        cabbage = ShoppingItem.objects.create(owner=self.user, name="Weißkohl")
+        organic = ShoppingItem.objects.create(owner=self.user, name="Bio Tomaten")
+
+        for product_name, expected in (
+            ("Karotten 1 kg", carrots),
+            ("Erdbeerkonfitüre", jam),
+            ("Weißkraut frisch", cabbage),
+            ("Bio Paradeiser", organic),
+            # Every word of the item has to be covered.
+            ("Paradeiser", None),
+            ("Gurken", None),
+        ):
+            with self.subTest(product_name):
+                product = ShoppingProduct(barcode=MILK, name=product_name)
+                self.assertEqual(find_open_item(self.user, product), expected)
+
+        self.assertEqual(self._scan(name="Karotten").json()["message"], "„Möhren“ abgehakt.")
+
     def test_scanning_at_home_puts_the_product_on_the_list_once(self, urlopen):
         urlopen.return_value = off_milk_response()
 
@@ -1289,3 +1312,131 @@ class HabitTrackerTests(TestCase):
         self.assertEqual(self.client.get("/tools/habits/").status_code, 503)
         self.assertEqual(self.client.get("/tools/focus/").status_code, 503)
         self.assertNotContains(self.client.get("/home/"), "Gewohnheiten")
+
+
+class RecipeIngredientParsingTests(SimpleTestCase):
+    def test_quantity_and_unit_are_split_from_the_name(self):
+        cases = {
+            "200 g Mehl": ("200 g", "Mehl"),
+            "500ml Milch": ("500ml", "Milch"),
+            "1 1/2 TL Zimt": ("1 1/2 TL", "Zimt"),
+            "2-3 Zehen Knoblauch": ("2-3 Zehen", "Knoblauch"),
+            "½ Bund Petersilie": ("½ Bund", "Petersilie"),
+            "1 Pck. Vanillezucker": ("1 Pck.", "Vanillezucker"),
+            "2 Liter Wasser": ("2 Liter", "Wasser"),
+            "2 Eier": ("2", "Eier"),
+            "- 3 Glasnudeln": ("3", "Glasnudeln"),
+            "Salz und Pfeffer": ("", "Salz und Pfeffer"),
+        }
+        for line, expected in cases.items():
+            with self.subTest(line=line):
+                self.assertEqual(parse_ingredient(line), expected)
+
+    def test_rows_keep_headings_and_drop_preparation_notes_from_the_list_name(self):
+        rows = ingredient_rows("Für den Teig:\n\n2 Zwiebeln, gewürfelt\nSahne (30 %)")
+
+        self.assertEqual(rows[0], {"index": 0, "heading": "Für den Teig"})
+        self.assertEqual((rows[1]["index"], rows[1]["name"], rows[1]["quantity"]), (2, "Zwiebeln", "2"))
+        self.assertEqual(rows[1]["text"], "2 Zwiebeln, gewürfelt")
+        self.assertEqual(rows[2]["name"], "Sahne")
+
+
+class RecipeTests(TestCase):
+    def setUp(self):
+        self.lea = User.objects.create_user(username="lea", email="lea@example.com", password="pw-12345!")
+        self.tom = User.objects.create_user(username="tom", email="tom@example.com", password="pw-12345!")
+        self.recipe = Recipe.objects.create(
+            owner=self.lea, title="Pfannkuchen", ingredients="Teig:\n200 g Mehl\n2 Eier\n1 Prise Salz"
+        )
+        self.client.force_login(self.lea)
+        self.url = f"/tools/recipes/{self.recipe.pk}/"
+
+    def test_create_opens_the_new_recipe_with_the_editor_open(self):
+        response = self.client.post("/tools/recipes/", {"form_name": "recipe_create", "title": " Lasagne "})
+
+        recipe = Recipe.objects.get(title="Lasagne")
+        self.assertRedirects(response, f"/tools/recipes/{recipe.pk}/")
+        self.assertEqual(recipe.owner, self.lea)
+        self.assertContains(
+            self.client.get(f"/tools/recipes/{recipe.pk}/"), '<details class="vocab-details" open>'
+        )
+
+    def test_list_shows_only_own_recipes_with_ingredient_count(self):
+        Recipe.objects.create(owner=self.tom, title="Toms Chili")
+
+        response = self.client.get("/tools/recipes/")
+
+        self.assertContains(response, "Pfannkuchen")
+        self.assertContains(response, "3 Zutat(en)")
+        self.assertNotContains(response, "Toms Chili")
+
+    def test_other_users_recipes_are_not_found(self):
+        foreign = Recipe.objects.create(owner=self.tom, title="Toms Chili")
+
+        self.assertEqual(self.client.get(f"/tools/recipes/{foreign.pk}/").status_code, 404)
+        response = self.client.post(f"/tools/recipes/{foreign.pk}/", {"form_name": "recipe_delete"})
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(Recipe.objects.filter(pk=foreign.pk).exists())
+
+    def test_update_and_delete(self):
+        response = self.client.post(
+            self.url,
+            {
+                "form_name": "recipe_update",
+                "title": "Crêpes",
+                "servings": "4",
+                "ingredients": "Mehl",
+                "instructions": "",
+            },
+        )
+        self.assertRedirects(response, self.url)
+        self.recipe.refresh_from_db()
+        self.assertEqual((self.recipe.title, self.recipe.servings), ("Crêpes", 4))
+
+        response = self.client.post(self.url, {"form_name": "recipe_delete"})
+        self.assertRedirects(response, "/tools/recipes/")
+        self.assertFalse(Recipe.objects.exists())
+
+    def test_chosen_ingredients_go_on_the_own_list_and_reopen_existing_rows(self):
+        ShoppingItem.objects.create(owner=self.lea, name="mehl", is_done=True)
+
+        # Line 0 is the heading, 3 (the salt) was unticked; a tampered value is ignored.
+        response = self.client.post(
+            self.url, {"form_name": "recipe_to_shopping", "ingredient": ["0", "1", "2", "x"]}
+        )
+
+        self.assertRedirects(response, self.url)
+        items = {
+            item.name: (item.quantity, item.is_done) for item in ShoppingItem.objects.filter(owner=self.lea)
+        }
+        self.assertEqual(items, {"mehl": ("200 g", False), "Eier": ("2", False)})
+
+    def test_ingredients_go_on_a_shared_list_only_when_it_is_shared(self):
+        data = {"form_name": "recipe_to_shopping", "ingredient": ["2"], "list": str(self.tom.pk)}
+
+        self.client.post(self.url, data)
+        self.assertFalse(ShoppingItem.objects.exists())
+
+        ShoppingListShare.objects.create(owner=self.tom, user=self.lea)
+        self.assertContains(self.client.get(self.url), "Zettel von")
+        self.client.post(self.url, data)
+        self.assertEqual(list(ShoppingItem.objects.values_list("owner", "name")), [(self.tom.pk, "Eier")])
+
+    def test_a_full_list_stops_with_a_message(self):
+        ShoppingItem.objects.bulk_create(
+            ShoppingItem(owner=self.lea, name=f"Artikel {n}") for n in range(199)
+        )
+
+        response = self.client.post(
+            self.url, {"form_name": "recipe_to_shopping", "ingredient": ["1", "2", "3"]}, follow=True
+        )
+
+        self.assertContains(response, "1 Zutat(en) auf den Einkaufszettel gesetzt.")
+        self.assertContains(response, "höchstens 200 Artikel")
+        self.assertEqual(ShoppingItem.objects.filter(owner=self.lea).count(), 200)
+
+    def test_disabled_tools_flag_returns_503(self):
+        SystemSettings.objects.update_or_create(pk=1, defaults={"tools_enabled": False})
+
+        self.assertEqual(self.client.get("/tools/recipes/").status_code, 503)
+        self.assertEqual(self.client.get(self.url).status_code, 503)

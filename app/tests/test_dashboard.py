@@ -13,6 +13,7 @@ from app.models import (
     CalendarReminder,
     Note,
     Profile,
+    ShoppingItem,
     SystemSettings,
     Task,
     UserNotification,
@@ -88,6 +89,7 @@ class DashboardCustomizationTests(TestCase):
             "stats",
             "habits",
             "bookmarks",
+            "shopping",
         ]
         self.profile.dashboard_layout = self._layout(order=order)
         self.profile.save(update_fields=["dashboard_layout"])
@@ -222,6 +224,19 @@ class DashboardCustomizationTests(TestCase):
                 self.assertEqual(validate_dashboard_layout(preset["layout"]), (True, ""))
                 self.assertEqual(normalize_dashboard_layout(preset["layout"]), preset["layout"])
 
+    def test_default_and_preset_layouts_fill_whole_rows(self):
+        # Cells per footprint on the 8-wide grid; full-width strips are rows of their own.
+        area = {"small": 4, "medium": 8, "large": 16}
+        for preset in dashboard_presets():
+            layout = preset["layout"]
+            with self.subTest(preset=preset["id"]):
+                sizes = [
+                    layout["widgets"][widget_id]["size"]
+                    for widget_id in layout["order"]
+                    if widget_id not in layout["hidden"]
+                ]
+                self.assertEqual(sum(area.get(size, 0) for size in sizes) % 16, 0, sizes)
+
     def test_saved_hidden_layout_is_ignored_when_customization_is_disabled(self):
         SystemSettings.objects.create(dashboard_customization_enabled=False)
         self.profile.dashboard_layout = self._layout(hidden=list(DASHBOARD_WIDGET_IDS))
@@ -286,6 +301,7 @@ class DashboardCustomizationTests(TestCase):
                 "stats",
                 "habits",
                 "bookmarks",
+                "shopping",
             ],
             hidden=["clock", "weather"],
             widgets={
@@ -574,9 +590,9 @@ class DashboardBookmarkWidgetTests(TestCase):
             response, 'data-dialog-open="bookmark-dialog" aria-label="Lesezeichen hinzufügen"'
         )
         html = response.content.decode()
-        dialog = html.split('<dialog class="bookmark-dialog" id="bookmark-dialog"', 1)[1].split(
-            "</dialog>", 1
-        )[0]
+        dialog = html.split('<dialog class="widget-dialog" id="bookmark-dialog"', 1)[1].split("</dialog>", 1)[
+            0
+        ]
         self.assertIn('value="bookmark_add"', dialog)
         self.assertIn('name="title"', dialog)
         self.assertIn('name="url"', dialog)
@@ -610,3 +626,68 @@ class DashboardBookmarkWidgetTests(TestCase):
                 self.client.post("/home/bookmarks/", {"form_name": "bookmark_add", "title": "X", "url": url})
         self.assertFalse(Bookmark.objects.exists())
         self.assertEqual(self.client.get("/home/bookmarks/").status_code, 405)
+
+
+class DashboardShoppingWidgetTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="mira", email="mira@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=self.user, display_name="Mira")
+        self.client.force_login(self.user)
+
+    def test_open_items_are_listed_in_aisle_order_without_ticked_or_foreign_ones(self):
+        ShoppingItem.objects.create(owner=self.user, name="Milch", quantity="2 Liter")
+        ShoppingItem.objects.create(owner=self.user, name="Äpfel")
+        ShoppingItem.objects.create(owner=self.user, name="Brot", is_done=True)
+        other = User.objects.create_user(username="lukas", password="secret-12345")
+        ShoppingItem.objects.create(owner=other, name="Lukas' Kaffee")
+
+        response = self.client.get("/home/")
+
+        items = response.context["dashboard_shopping"]["items"]
+        self.assertEqual([item.name for item in items], ["Äpfel", "Milch"])
+        self.assertContains(response, "2 offen")
+        self.assertContains(response, "2 Liter")
+        self.assertNotContains(response, "Lukas&#x27; Kaffee")
+        self.assertContains(response, 'data-dialog-open="shopping-dialog" aria-label="Artikel hinzufügen"')
+
+    def test_tick_and_add_from_the_dashboard_return_to_it(self):
+        item = ShoppingItem.objects.create(owner=self.user, name="Milch")
+
+        response = self.client.post(
+            "/tools/shopping/",
+            {"form_name": "shopping_toggle", "item_id": item.pk, "done": "1", "return_to": "/home/"},
+        )
+        self.assertRedirects(response, "/home/", fetch_redirect_response=False)
+        item.refresh_from_db()
+        self.assertTrue(item.is_done)
+
+        response = self.client.post(
+            "/tools/shopping/",
+            {"form_name": "shopping_add", "name": "Butter", "quantity": "", "return_to": "/home/"},
+        )
+        self.assertRedirects(response, "/home/", fetch_redirect_response=False)
+        self.assertTrue(ShoppingItem.objects.filter(owner=self.user, name="Butter").exists())
+
+        # A foreign return_to falls back to the shopping list itself.
+        response = self.client.post(
+            "/tools/shopping/",
+            {"form_name": "shopping_add", "name": "Eier", "return_to": "https://evil.example.com/"},
+        )
+        self.assertRedirects(response, "/tools/shopping/?add=1", fetch_redirect_response=False)
+
+    def test_widget_and_its_query_are_skipped_when_hidden_or_tools_are_off(self):
+        layout = default_dashboard_layout()
+        layout["hidden"] = ["shopping"]
+        profile = self.user.profile
+        profile.dashboard_layout = layout
+        profile.save()
+        self.assertEqual(self.client.get("/home/").context["dashboard_shopping"], {})
+
+        profile.dashboard_layout = default_dashboard_layout()
+        profile.save()
+        SystemSettings.objects.update_or_create(pk=1, defaults={"tools_enabled": False})
+        response = self.client.get("/home/")
+        self.assertEqual(response.context["dashboard_shopping"], {})
+        self.assertNotContains(response, 'id="shopping-dialog"')

@@ -172,12 +172,60 @@ def _stem(word):
     return match.group(1) if match else word
 
 
+# Two names for the same product. A scan ticks the item off, so related products ("Schmand" for
+# "Sahne") don't belong here, nor words hiding inside others ("Pasta" in "Zahnpasta").
+SYNONYM_GROUPS = (
+    "karotte möhre mohrrübe rüebli",
+    "kartoffel erdapfel erdäpfel",
+    "tomate paradeiser",
+    "aubergine melanzani",
+    "blumenkohl karfiol",
+    "rosenkohl kohlsprossen",
+    "rotkohl rotkraut blaukraut",
+    "weißkohl weißkraut",
+    "zucchini zucchetti",
+    "rucola rauke",
+    "feldsalat nüsslisalat",
+    "frühlingszwiebel lauchzwiebel",
+    "champignon egerling",
+    "orange apfelsine",
+    "aprikose marille",
+    "pflaume zwetschge zwetsche zwetschke",
+    "heidelbeere blaubeere",
+    "johannisbeere ribisel",
+    "hackfleisch faschiertes",
+    "hähnchen hühnchen",
+    "frikadelle bulette fleischpflanzerl",
+    "fleischwurst lyoner",
+    "leberkäse fleischkäse",
+    "sahne obers",
+    "schlagsahne schlagobers",
+    "pfannkuchen eierkuchen palatschinke",
+    "marmelade konfitüre",
+    "paniermehl semmelbrösel",
+    "puderzucker staubzucker",
+    "toilettenpapier klopapier",
+    "küchenrolle küchenpapier haushaltsrolle",
+    "zahnpasta zahncreme",
+    "duschgel duschbad",
+    "mülltüte müllbeutel müllsack müllsäcke",
+    "alufolie aluminiumfolie",
+    "frischhaltefolie klarsichtfolie",
+)
+_SYNONYMS = {
+    stem: group
+    for group in (tuple(_stem(word.casefold()) for word in line.split()) for line in SYNONYM_GROUPS)
+    for stem in group
+}
+
+
 def find_open_item(list_owner, product):
     """The open list item a scanned product stands for.
 
-    The item scanned with this barcode before wins; otherwise one whose words all appear in the
-    product name ("Milch" for "Frische Vollmilch 3,5 %"), the longest such name first.
-    ponytail: word-stem matching, misses synonyms ("Möhren" for "Karotten").
+    The item scanned with this barcode before wins; otherwise one whose words, or their synonyms,
+    all appear in the product name ("Milch" for "Frische Vollmilch 3,5 %", "Möhren" for "Karotten"),
+    the longest such name first.
+    ponytail: fixed synonym table for whole words, so "Speisemöhren" on the list won't find "Karotten".
     """
     items = list(ShoppingItem.objects.filter(owner=list_owner, is_done=False))
     for item in items:
@@ -189,9 +237,26 @@ def find_open_item(list_owner, product):
         if item.barcode:
             continue
         stems = [_stem(word) for word in re.findall(r"\w{3,}", item.name.casefold())]
-        if stems and all(stem in text for stem in stems):
+        if stems and all(any(name in text for name in _SYNONYMS.get(stem, (stem,))) for stem in stems):
             matches.append(item)
     return max(matches, key=lambda item: len(item.name), default=None)
+
+
+def add_shopping_item(list_owner, name, quantity=""):
+    """Puts an item on the list; one already there comes back unticked instead of twice.
+
+    Returns an error message when the list is full, otherwise None.
+    """
+    existing = ShoppingItem.objects.filter(owner=list_owner, name__iexact=name).first()
+    if existing is not None:
+        existing.is_done = False
+        existing.quantity = quantity or existing.quantity
+        existing.save(update_fields=["is_done", "quantity"])
+        return None
+    if ShoppingItem.objects.filter(owner=list_owner).count() >= MAX_SHOPPING_ITEMS:
+        return f"Es passen höchstens {MAX_SHOPPING_ITEMS} Artikel auf den Zettel."
+    ShoppingItem.objects.create(owner=list_owner, name=name, quantity=quantity)
+    return None
 
 
 def add_product_to_list(list_owner, product):

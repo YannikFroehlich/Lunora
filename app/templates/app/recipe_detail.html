@@ -1,0 +1,103 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}{{ recipe.title }} | Rezepte | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell tools-shell">
+    <header class="page-hero">
+        <div>
+            <a class="tools-back-link" href="{% url 'recipes' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Alle Rezepte</a>
+            <h1>{{ recipe.title }}</h1>
+            {% if recipe.servings %}<p>Für {{ recipe.servings }} Portion(en)</p>{% endif %}
+        </div>
+        <i class="fa-solid fa-utensils hero-branch" aria-hidden="true"></i>
+    </header>
+
+    <div class="vocab-layout">
+        <section class="glass-panel vocab-panel" aria-labelledby="recipe-ingredients-title">
+            <h2 id="recipe-ingredients-title">Zutaten</h2>
+            {% if ingredients %}
+            <form class="recipe-shopping-form" method="post">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="recipe_to_shopping">
+                <ul class="recipe-ingredients">
+                    {% for row in ingredients %}
+                    {% if row.heading %}
+                    <li class="recipe-ingredient-heading">{{ row.heading }}</li>
+                    {% else %}
+                    <li>
+                        <label class="recipe-ingredient">
+                            <input type="checkbox" name="ingredient" value="{{ row.index }}" checked>
+                            <span>{{ row.text }}</span>
+                        </label>
+                    </li>
+                    {% endif %}
+                    {% endfor %}
+                </ul>
+                <p class="uml-muted">Abwählen, was du schon zu Hause hast.</p>
+                {% if shopping_lists|length > 1 %}
+                <label class="vocab-field">
+                    <span>Einkaufszettel</span>
+                    <select name="list">
+                        {% for option in shopping_lists %}<option value="{{ option.value }}">{{ option.label }}</option>{% endfor %}
+                    </select>
+                </label>
+                {% endif %}
+                <button class="primary-button" type="submit"><i class="fa-solid fa-basket-shopping" aria-hidden="true"></i> Auf den Einkaufszettel</button>
+                <a class="ghost-button" href="{% url 'shopping_list' %}">Zum Einkaufszettel</a>
+            </form>
+            {% else %}
+            <p class="uml-muted">Noch keine Zutaten eingetragen.</p>
+            {% endif %}
+        </section>
+
+        <section class="glass-panel vocab-panel" aria-labelledby="recipe-instructions-title">
+            <h2 id="recipe-instructions-title">Zubereitung</h2>
+            {% if recipe.instructions %}
+            <div class="recipe-instructions">{{ recipe.instructions|linebreaks }}</div>
+            {% else %}
+            <p class="uml-muted">Noch keine Zubereitung eingetragen.</p>
+            {% endif %}
+
+            <details class="vocab-details" {% if edit_open %}open{% endif %}>
+                <summary><i class="fa-solid fa-pen" aria-hidden="true"></i> Rezept bearbeiten</summary>
+                <form class="vocab-edit-form" method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="recipe_update">
+                    <label class="vocab-field">
+                        <span>{{ form.title.label }}</span>
+                        {{ form.title }}
+                    </label>
+                    <label class="vocab-field">
+                        <span>{{ form.servings.label }}</span>
+                        {{ form.servings }}
+                    </label>
+                    <label class="vocab-field">
+                        <span>{{ form.ingredients.label }} – eine pro Zeile, Zeilen mit „:“ am Ende werden Zwischenüberschriften</span>
+                        {{ form.ingredients }}
+                    </label>
+                    <label class="vocab-field">
+                        <span>{{ form.instructions.label }}</span>
+                        {{ form.instructions }}
+                    </label>
+                    {% if form.errors %}<ul class="errorlist">{% for field in form %}{% for error in field.errors %}<li>{{ field.label }}: {{ error }}</li>{% endfor %}{% endfor %}</ul>{% endif %}
+                    <button class="primary-button" type="submit"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Speichern</button>
+                </form>
+            </details>
+
+            <div class="vocab-danger-actions">
+                <form method="post" data-confirm="Dieses Rezept wirklich löschen?">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="recipe_delete">
+                    <button class="ghost-button" type="submit"><i class="fa-regular fa-trash-can" aria-hidden="true"></i> Rezept löschen</button>
+                </form>
+            </div>
+        </section>
+    </div>
+</section>
+{% endblock %}

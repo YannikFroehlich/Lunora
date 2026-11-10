@@ -60,6 +60,8 @@ from .tasks_views import task_time_report, tasks
 from .tools_views import (
     focus_timer,
     habits,
+    recipe_detail,
+    recipes,
     shopping_list,
     shopping_scan,
     tools,
@@ -174,6 +176,8 @@ __all__ = [
     "LunoraPasswordResetCompleteView",
     "register",
     "settings",
+    "recipe_detail",
+    "recipes",
     "shopping_list",
     "shopping_scan",
     "weather",
