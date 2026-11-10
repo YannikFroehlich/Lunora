@@ -292,6 +292,22 @@ class TwoFactorTests(TestCase):
         self.assertContains(response, "Zu viele falsche Codes")
         self.assertNotIn("_auth_user_id", self.client.session)
 
+    def test_attempt_is_counted_before_the_code_is_checked(self):
+        # Parallel requests must see each other's attempts, so the count can't wait for the check.
+        self._enable()
+        self._password_step()
+        key = f"two-factor-attempts:{self.user.pk}"
+        seen = []
+
+        def verify(_profile, _code):
+            seen.append(cache.get(key))
+            return False
+
+        with patch("app.views.auth_views.two_factor.verify_login_code", side_effect=verify):
+            self.client.post("/login/zwei-faktor/", {"code": "123456"})
+
+        self.assertEqual(seen, [1])
+
     def test_code_page_without_password_step_redirects_to_login(self):
         self.assertRedirects(self.client.get("/login/zwei-faktor/"), "/login/")
 

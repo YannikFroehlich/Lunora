@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Fixed: the lock after five wrong two-factor codes could be outrun by sending many codes at
+  once. Every attempt now counts before it is checked.
 - New tool "Geteilte Ausgaben": a group for the flat, a holiday or a trip notes who paid what and
   splits it equally between the people chosen. Everyone sees their balance and the few payments
   that settle the group; "Bezahlt" records one once it has happened. Members add others by e-mail
