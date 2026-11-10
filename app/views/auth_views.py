@@ -19,6 +19,7 @@ from django.urls import reverse_lazy
 from app.forms import LOGIN_ATTEMPT_LIMIT, LOGIN_ATTEMPT_LOCKOUT_SECONDS, EmailLoginForm, RegistrationForm
 from app.models import AuditLogEntry, Profile
 from app.services import audit_log, two_factor
+from app.services.notifications import materialize_failed_two_factor_notification
 from app.services.system_settings import normal_user_login_enabled, user_can_login
 from app.services.throttle import count_hit
 from app.services.turnstile import verify_registration_token
@@ -69,8 +70,9 @@ def login_two_factor(request):
     error = ""
     if request.method == "POST":
         # Throttled per account, not per session: restarting the password step must not reset it.
+        # Counted before checking, so parallel requests can't all pass a not-yet-updated counter.
         attempts_key = _two_factor_attempts_key(pending["user_id"])
-        if cache.get(attempts_key, 0) >= LOGIN_ATTEMPT_LIMIT:
+        if count_hit(attempts_key, LOGIN_ATTEMPT_LOCKOUT_SECONDS) > LOGIN_ATTEMPT_LIMIT:
             error = "Zu viele falsche Codes. Bitte warte einige Minuten und versuche es erneut."
         else:
             with transaction.atomic():
@@ -91,10 +93,11 @@ def login_two_factor(request):
                 del request.session[TWO_FACTOR_SESSION_KEY]
                 login(request, profile.user, backend=pending["backend"])
                 return redirect(pending["next"])
-            count_hit(attempts_key, LOGIN_ATTEMPT_LOCKOUT_SECONDS)
             audit_log.record(
                 AuditLogEntry.ACTION_TWO_FACTOR_FAILED, request, actor=profile.user if profile else None
             )
+            if profile:
+                materialize_failed_two_factor_notification(profile.user)
             error = "Der Code ist ungültig oder wurde bereits verwendet."
 
     return render(request, "app/login_two_factor.html", {"error": error})

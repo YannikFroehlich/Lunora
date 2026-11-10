@@ -6,6 +6,13 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- When someone enters your password correctly but then a wrong two-factor code, you get a warning
+  in the inbox and by e-mail (at most one per 15 minutes), even with e-mail notifications switched
+  off. It means someone knows your password.
+- Turning two-factor login on signs out all your other devices, so sessions that only needed the
+  password don't stay open.
+- Fixed: the lock after five wrong two-factor codes could be outrun by sending many codes at
+  once. Every attempt now counts before it is checked.
 - New tool "Geteilte Ausgaben": a group for the flat, a holiday or a trip notes who paid what and
   splits it equally between the people chosen. Everyone sees their balance and the few payments
   that settle the group; "Bezahlt" records one once it has happened. Members add others by e-mail

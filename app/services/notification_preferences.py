@@ -69,6 +69,8 @@ KIND_TO_CATEGORY = {
     UserNotification.KIND_EXPENSE_GROUP: NotificationPreference.CATEGORY_TOOLS,
     UserNotification.KIND_HABIT_REMINDER: NotificationPreference.CATEGORY_TOOLS,
     UserNotification.KIND_CHAT_MENTION: NotificationPreference.CATEGORY_MESSAGES,
+    # No category: nobody can switch security warnings off.
+    UserNotification.KIND_SECURITY_ALERT: None,
 }
 
 
@@ -105,6 +107,9 @@ def preference_channel_enabled(preference_map, user_id, category, channel):
 
 
 def notification_channel_enabled(user, kind, channel, *, preference_map=None):
+    if kind == UserNotification.KIND_SECURITY_ALERT:
+        # Someone else knowing your password is never noise, so the master switches don't apply.
+        return True
     category = category_for_notification_kind(kind)
     preferences = preference_map
     if preferences is None:

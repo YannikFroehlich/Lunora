@@ -9,8 +9,9 @@ from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, SimpleTestCase, TestCase, override_settings
 
-from app.models import Note, NoteAttachment, Profile, Task, UserSession
+from app.models import Note, NoteAttachment, Profile, Task, UserNotification, UserSession
 from app.services import two_factor
+from app.services.notifications import send_pending_user_notification_emails
 from app.services.user_sessions import device_label
 from app.tests.helpers import FakeJsonResponse
 
@@ -291,6 +292,57 @@ class TwoFactorTests(TestCase):
 
         self.assertContains(response, "Zu viele falsche Codes")
         self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_attempt_is_counted_before_the_code_is_checked(self):
+        # Parallel requests must see each other's attempts, so the count can't wait for the check.
+        self._enable()
+        self._password_step()
+        key = f"two-factor-attempts:{self.user.pk}"
+        seen = []
+
+        def verify(_profile, _code):
+            seen.append(cache.get(key))
+            return False
+
+        with patch("app.views.auth_views.two_factor.verify_login_code", side_effect=verify):
+            self.client.post("/login/zwei-faktor/", {"code": "123456"})
+
+        self.assertEqual(seen, [1])
+
+    def test_wrong_code_warns_the_owner_once_per_window_even_with_email_off(self):
+        self._enable()
+        self.profile.notify_email = False
+        self.profile.save(update_fields=["notify_email"])
+        for _ in range(2):
+            self._password_step()
+            self.client.post("/login/zwei-faktor/", {"code": "abcdef"})
+
+        alerts = UserNotification.objects.filter(
+            recipient=self.user, kind=UserNotification.KIND_SECURITY_ALERT
+        )
+        self.assertEqual(alerts.count(), 1)
+        send_pending_user_notification_emails(include_note_shares=False, include_weather=False)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("falschem Bestätigungscode", mail.outbox[0].subject)
+
+        viewer = Client()
+        viewer.force_login(self.user)
+        self.assertContains(viewer.get("/notifications/"), "falschem Bestätigungscode")
+
+    def test_enabling_signs_out_other_devices(self):
+        phone = Client()
+        phone.force_login(self.user)
+        phone.get("/home/")
+        self.client.force_login(self.user)
+        self.client.get("/home/")
+        self.client.post("/settings/", {"form_name": "two_factor_setup"})
+        secret = self.client.session["two_factor_setup_secret"]
+
+        code = two_factor.totp_code(secret, two_factor.current_step())
+        self.client.post("/settings/", {"form_name": "two_factor_enable", "code": code})
+
+        self.assertRedirects(phone.get("/home/"), "/login/?next=/home/")
+        self.assertEqual(self.client.get("/home/").status_code, 200)
 
     def test_code_page_without_password_step_redirects_to_login(self):
         self.assertRedirects(self.client.get("/login/zwei-faktor/"), "/login/")
