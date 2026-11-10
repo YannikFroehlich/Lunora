@@ -1348,6 +1348,7 @@ class UserNotification(models.Model):
     KIND_EVENT_COMMENT = "event_comment"
     KIND_SHOPPING_SHARE = "shopping_share"
     KIND_EXPENSE_GROUP = "expense_group"
+    KIND_SECURITY_ALERT = "security_alert"
     KIND_CHOICES = [
         (KIND_CALENDAR_REMINDER, "Kalendererinnerung"),
         (KIND_TASK_DUE, "Fällige Aufgabe"),
@@ -1366,6 +1367,7 @@ class UserNotification(models.Model):
         (KIND_EVENT_COMMENT, "Terminkommentar"),
         (KIND_SHOPPING_SHARE, "Geteilter Einkaufszettel"),
         (KIND_EXPENSE_GROUP, "Geteilte Ausgaben"),
+        (KIND_SECURITY_ALERT, "Sicherheitswarnung"),
     ]
 
     recipient = models.ForeignKey(

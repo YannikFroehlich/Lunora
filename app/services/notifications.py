@@ -42,6 +42,8 @@ from app.services.weather_service import get_weather_alert_for_location, weather
 logger = logging.getLogger(__name__)
 
 WEATHER_ALERT_COOLDOWN = timedelta(hours=6)
+# At most one "wrong second factor" warning per account in this window, however many codes are tried.
+SECURITY_ALERT_WINDOW = timedelta(minutes=15)
 
 NOTIFICATION_PRESENTATION = {
     UserNotification.KIND_CALENDAR_REMINDER: ("fa-calendar-check", "Kalender", "calendar"),
@@ -61,6 +63,7 @@ NOTIFICATION_PRESENTATION = {
     UserNotification.KIND_EVENT_COMMENT: ("fa-comments", "Termin", "calendar"),
     UserNotification.KIND_SHOPPING_SHARE: ("fa-basket-shopping", "Einkauf", "tools"),
     UserNotification.KIND_EXPENSE_GROUP: ("fa-scale-balanced", "Ausgaben", "tools"),
+    UserNotification.KIND_SECURITY_ALERT: ("fa-shield-halved", "Sicherheit", "security"),
 }
 
 
@@ -318,6 +321,26 @@ def materialize_expense_group_notification(member, actor):
                 "body": "Ihr könnt jetzt gemeinsame Ausgaben eintragen und ausgleichen.",
                 "url": f"/tools/expenses/{member.group_id}/",
                 "source_key": f"expense-group:{member.group_id}:{member.user_id}",
+            }
+        ]
+    )
+
+
+def materialize_failed_two_factor_notification(user, *, now=None):
+    """Warn `user` that someone typed their password correctly but then a wrong two-factor code."""
+    window = int((now or timezone.now()).timestamp() // SECURITY_ALERT_WINDOW.total_seconds())
+    return _create_missing_user_notifications(
+        [
+            {
+                "recipient_id": user.pk,
+                "kind": UserNotification.KIND_SECURITY_ALERT,
+                "title": "Anmeldeversuch mit falschem Bestätigungscode",
+                "body": (
+                    "Jemand hat dein Passwort richtig eingegeben, aber einen falschen Code aus der "
+                    "Authenticator-App. Warst du das nicht, ändere bitte sofort dein Passwort."
+                ),
+                "url": "/settings/#settings-security",
+                "source_key": f"two-factor-failed:{user.pk}:{window}",
             }
         ]
     )
@@ -1076,16 +1099,16 @@ def send_pending_user_notification_emails(
         kinds.append(UserNotification.KIND_CHAT_MENTION)
     if include_event_comments:
         kinds.append(UserNotification.KIND_EVENT_COMMENT)
-    if not kinds:
-        return {"sent": 0, "failed": 0, "disabled": True}
+    # Security warnings belong to no feature, so no flag can switch them off.
+    kinds.append(UserNotification.KIND_SECURITY_ALERT)
 
     notifications = list(
         UserNotification.objects.filter(
             kind__in=kinds,
             email_notified_at__isnull=True,
             recipient__is_active=True,
-            recipient__profile__notify_email=True,
         )
+        .filter(Q(recipient__profile__notify_email=True) | Q(kind=UserNotification.KIND_SECURITY_ALERT))
         .exclude(recipient__email="")
         .select_related("recipient", "recipient__profile")
         .order_by("created_at", "id")

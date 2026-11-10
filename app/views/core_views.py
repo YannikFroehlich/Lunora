@@ -372,7 +372,12 @@ def _handle_two_factor_form(request, profile, form_name):
         session.pop(TWO_FACTOR_SETUP_SESSION_KEY, None)
         session[TWO_FACTOR_NEW_CODES_SESSION_KEY] = codes
         audit_log.record(AuditLogEntry.ACTION_TWO_FACTOR_ENABLED, request)
-        django_messages.success(request, "Zwei-Faktor-Anmeldung aktiviert.")
+        # Sessions signed in with the password alone would otherwise outlive the switch to 2FA.
+        signed_out = revoke_other_sessions(request.user, current_key=session.session_key)
+        message = "Zwei-Faktor-Anmeldung aktiviert."
+        if signed_out:
+            message += f" {signed_out} andere Sitzung(en) abgemeldet."
+        django_messages.success(request, message)
     elif form_name in {"two_factor_disable", "two_factor_recovery_codes"} and profile.totp_enabled_at:
         # Re-entering the password keeps someone at an unlocked, signed-in device from switching 2FA off.
         if not request.user.check_password(request.POST.get("password", "")):
