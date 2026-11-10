@@ -15,6 +15,7 @@
             <a class="tools-back-link" href="{% url 'recipes' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Alle Rezepte</a>
             <h1>{{ recipe.title }}</h1>
             {% if recipe.servings %}<p>Für {{ recipe.servings }} Portion(en)</p>{% endif %}
+            {% if recipe.source_url %}<p><a href="{{ recipe.source_url }}" target="_blank" rel="noopener noreferrer nofollow"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Quelle: {{ source_host }}</a></p>{% endif %}
         </div>
         <i class="fa-solid fa-utensils hero-branch" aria-hidden="true"></i>
     </header>

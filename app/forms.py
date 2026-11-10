@@ -1144,6 +1144,60 @@ class VocabularyCardForm(forms.ModelForm):
         }
 
 
+class ExpenseForm(forms.Form):
+    """One expense of a group; payer and participants are offered from the group's members only."""
+
+    title = forms.CharField(
+        label="Wofür",
+        max_length=120,
+        widget=forms.TextInput(attrs={"placeholder": "z. B. Wocheneinkauf", "autocomplete": "off"}),
+    )
+    amount = forms.CharField(
+        label="Betrag in €",
+        max_length=12,
+        widget=forms.TextInput(attrs={"inputmode": "decimal", "placeholder": "0,00", "autocomplete": "off"}),
+    )
+    spent_on = forms.DateField(
+        label="Datum",
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        input_formats=["%Y-%m-%d"],
+    )
+    paid_by = forms.ModelChoiceField(label="Bezahlt von", queryset=User.objects.none(), empty_label=None)
+    participants = forms.ModelMultipleChoiceField(
+        label="Geteilt zwischen", queryset=User.objects.none(), widget=forms.CheckboxSelectMultiple
+    )
+
+    def __init__(self, *args, members=(), user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        member_ids = [member.pk for member in members]
+        queryset = User.objects.filter(pk__in=member_ids).select_related("profile").order_by("pk")
+        for name in ("paid_by", "participants"):
+            self.fields[name].queryset = queryset
+            self.fields[name].label_from_instance = display_name
+        if not self.is_bound:
+            self.initial.setdefault("paid_by", user.pk if user else None)
+            self.initial.setdefault("participants", member_ids)
+            self.initial.setdefault("spent_on", localtime_for_user(profile_or_user=user).date())
+
+    def clean_title(self):
+        return self.cleaned_data["title"].strip()
+
+    def clean_amount(self):
+        raw = self.cleaned_data["amount"].strip().replace("€", "").replace(" ", "")
+        # "1.234,50" and "1234.50" both mean 1234.50.
+        if "," in raw:
+            raw = raw.replace(".", "").replace(",", ".")
+        try:
+            amount = Decimal(raw)
+        except ArithmeticError:
+            raise forms.ValidationError("Bitte einen Betrag wie 12,50 eingeben.") from None
+        if not amount.is_finite() or amount != amount.quantize(Decimal("0.01")):
+            raise forms.ValidationError("Bitte einen Betrag mit höchstens zwei Nachkommastellen eingeben.")
+        if not Decimal("0.01") <= amount <= Decimal("100000"):
+            raise forms.ValidationError("Der Betrag muss zwischen 0,01 € und 100.000 € liegen.")
+        return amount
+
+
 class RecipeForm(forms.ModelForm):
     servings = forms.IntegerField(
         label="Portionen", required=False, min_value=1, max_value=99, widget=forms.NumberInput()

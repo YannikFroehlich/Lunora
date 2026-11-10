@@ -1,5 +1,6 @@
 import json
-from datetime import date
+from datetime import date, timedelta
+from urllib.parse import urlsplit
 
 from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
@@ -10,10 +11,19 @@ from django.urls import reverse
 from django.views.decorators.http import require_http_methods, require_POST
 
 from app.forms import HabitForm, HabitReminderForm, RecipeForm, ShoppingItemForm
-from app.models import Habit, Recipe, ShoppingItem, UmlDiagram
+from app.models import Habit, MealPlanEntry, Recipe, ShoppingItem, UmlDiagram
 from app.services.habits import habit_items, toggle_habit_check
 from app.services.notes import display_name
-from app.services.recipes import MAX_RECIPES, add_ingredients_to_list, ingredient_rows
+from app.services.recipe_import import fetch_recipe_for
+from app.services.recipes import (
+    MAX_RECIPES,
+    add_ingredients_to_list,
+    add_week_to_list,
+    ingredient_rows,
+    meal_plan_week,
+    plan_recipe,
+)
+from app.services.safe_fetch import FetchError
 from app.services.shopping import SUGGESTIONS, classify_item, group_items
 from app.services.shopping_lists import (
     end_shopping_list_share,
@@ -25,10 +35,11 @@ from app.services.shopping_lists import (
 )
 from app.services.shopping_products import add_shopping_item, attach_products, scan_barcode
 from app.services.system_settings import disabled_feature_response, feature_enabled
+from app.services.time_tracking import week_start_for
 from app.services.uml_content import validate_uml_document
-from app.services.user_preferences import format_user_datetime, localtime_for_user
+from app.services.user_preferences import format_user_date, format_user_datetime, localtime_for_user
 from app.view_models import get_tools_context
-from app.views.navigation import local_return_to
+from app.views.navigation import local_return_to, posted_id
 
 UML_TITLE_MAX_LENGTH = UmlDiagram._meta.get_field("title").max_length
 
@@ -243,13 +254,82 @@ def shopping_scan(request):
     return JsonResponse(result, status=status)
 
 
+def _shopping_list_options(user):
+    return [
+        {
+            "value": "" if owner == user else owner.pk,
+            "label": "Mein Zettel" if owner == user else f"Zettel von {display_name(owner)}",
+        }
+        for owner in shopping_list_owners(user)
+    ]
+
+
+def _week_value(day):
+    return "{}-W{:02d}".format(*day.isocalendar()[:2])
+
+
+def _handle_meal_plan_post(request, form_name, week_start):
+    """The meal plan's form branches on the recipes page; returns the redirect to the shown week."""
+    week_url = f"{reverse('recipes')}?week={_week_value(week_start)}"
+    if form_name == "meal_plan_add":
+        recipe = Recipe.objects.filter(owner=request.user, pk=posted_id(request, "recipe_id")).first()
+        try:
+            day = date.fromisoformat(request.POST.get("date", ""))
+        except ValueError:
+            day = None
+        if recipe is None or day is None:
+            django_messages.error(request, "Bitte ein Rezept und einen Tag wählen.")
+        elif error := plan_recipe(request.user, recipe, day):
+            django_messages.error(request, error)
+    elif form_name == "meal_plan_remove":
+        MealPlanEntry.objects.filter(owner=request.user, pk=posted_id(request, "entry_id")).delete()
+    elif form_name == "meal_plan_to_shopping":
+        list_owner = list_owner_for(request.user, request.POST.get("list"))
+        if list_owner is None:
+            django_messages.error(request, "Dieser Einkaufszettel ist nicht (mehr) mit dir geteilt.")
+            return redirect(week_url)
+        count, error = add_week_to_list(request.user, week_start, list_owner)
+        if error:
+            django_messages.error(request, error)
+        elif count:
+            django_messages.success(
+                request, f"Zutaten aus {count} Rezept(en) auf den Einkaufszettel gesetzt."
+            )
+        else:
+            django_messages.info(request, "Für diese Woche ist noch nichts geplant.")
+    return redirect(week_url)
+
+
+def _import_recipe(user, raw_url):
+    """Creates the recipe found at `raw_url`; returns (recipe, None) or (None, error message)."""
+    if Recipe.objects.filter(owner=user).count() >= MAX_RECIPES:
+        return None, f"Du kannst höchstens {MAX_RECIPES} Rezepte speichern."
+    try:
+        url, fields = fetch_recipe_for(user, raw_url)
+    except FetchError as error:
+        return None, str(error)
+    form = RecipeForm({**fields, "servings": fields["servings"] or ""})
+    if not form.is_valid():
+        return None, "Das Rezept auf der Seite ließ sich nicht übernehmen."
+    recipe = form.save(commit=False)
+    recipe.owner = user
+    recipe.source_url = url
+    recipe.save()
+    return recipe, None
+
+
 @login_required
 def recipes(request):
     if not feature_enabled("tools"):
         return disabled_feature_response(request, "tools")
 
     form = RecipeForm()
+    import_url = ""
+    import_error = ""
     form_name = request.POST.get("form_name") if request.method == "POST" else None
+    week_start = week_start_for(request.POST.get("week") or request.GET.get("week"), request.user)
+    if form_name and form_name.startswith("meal_plan_"):
+        return _handle_meal_plan_post(request, form_name, week_start)
     if form_name == "recipe_create":
         form = RecipeForm(request.POST)
         if Recipe.objects.filter(owner=request.user).count() >= MAX_RECIPES:
@@ -259,13 +339,34 @@ def recipes(request):
             recipe.owner = request.user
             recipe.save()
             return redirect("recipe_detail", recipe_id=recipe.pk)
+    elif form_name == "recipe_import":
+        import_url = request.POST.get("url", "").strip()[:500]
+        recipe, import_error = _import_recipe(request.user, import_url)
+        if recipe:
+            django_messages.success(request, "Rezept importiert. Prüf kurz Zutaten und Zubereitung.")
+            return redirect("recipe_detail", recipe_id=recipe.pk)
 
+    today = localtime_for_user(profile_or_user=request.user).date()
+    plan_days = meal_plan_week(request.user, week_start)
+    for day in plan_days:
+        day["label"] = format_user_date(day["date"], request.user, include_year=False)
+        day["is_today"] = day["date"] == today
     return render(
         request,
         "app/recipes.html",
         {
             "active_page": "tools",
             "form": form,
+            "import_url": import_url,
+            "import_error": import_error,
+            "plan_days": plan_days,
+            "week": _week_value(week_start),
+            "week_label": f"KW {week_start.isocalendar()[1]}",
+            "previous_week": _week_value(week_start - timedelta(days=7)),
+            "next_week": _week_value(week_start + timedelta(days=7)),
+            "is_current_week": week_start <= today < week_start + timedelta(days=7),
+            "shopping_lists": _shopping_list_options(request.user),
+            "recipe_choices": Recipe.objects.filter(owner=request.user).only("id", "title"),
             "recipes": [
                 {
                     "id": recipe.pk,
@@ -314,22 +415,16 @@ def recipe_detail(request, recipe_id):
             django_messages.info(request, "Keine Zutat ausgewählt.")
         return redirect("recipe_detail", recipe_id=recipe.pk)
 
-    list_owners = shopping_list_owners(request.user)
     return render(
         request,
         "app/recipe_detail.html",
         {
             "active_page": "tools",
             "recipe": recipe,
+            "source_host": urlsplit(recipe.source_url).hostname if recipe.source_url else "",
             "form": form,
             "ingredients": ingredient_rows(recipe.ingredients),
-            "shopping_lists": [
-                {
-                    "value": "" if owner == request.user else owner.pk,
-                    "label": "Mein Zettel" if owner == request.user else f"Zettel von {display_name(owner)}",
-                }
-                for owner in list_owners
-            ],
+            "shopping_lists": _shopping_list_options(request.user),
             "edit_open": form.errors or not (recipe.ingredients or recipe.instructions),
         },
     )

@@ -1107,6 +1107,8 @@ class Recipe(models.Model):
     # One ingredient per line ("200 g Mehl"); a line ending in ":" heads a group. See app/services/recipes.py.
     ingredients = models.TextField(blank=True)
     instructions = models.TextField(blank=True)
+    # The page an imported recipe came from (http/https only, checked by safe_fetch.normalize_url).
+    source_url = models.URLField(max_length=500, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -1115,6 +1117,24 @@ class Recipe(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class MealPlanEntry(models.Model):
+    """One recipe planned for one day of the owner's meal plan; a day may hold several."""
+
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="meal_plan_entries"
+    )
+    recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE, related_name="plan_entries")
+    date = models.DateField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["date", "created_at", "id"]
+        indexes = [models.Index(fields=["owner", "date"], name="app_mealplan_owner_date")]
+
+    def __str__(self):
+        return f"{self.date}: {self.recipe}"
 
 
 class ShoppingItem(models.Model):
@@ -1152,6 +1172,73 @@ class ShoppingListShare(models.Model):
 
     def __str__(self):
         return f"{self.owner} → {self.user}"
+
+
+class ExpenseGroup(models.Model):
+    """People sharing costs. Every member has the same rights; see app/services/expenses.py."""
+
+    name = models.CharField(max_length=120)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, blank=True, null=True, related_name="+"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name", "id"]
+
+    def __str__(self):
+        return self.name
+
+
+class ExpenseGroupMember(models.Model):
+    group = models.ForeignKey(ExpenseGroup, on_delete=models.CASCADE, related_name="members")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="expense_memberships"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        constraints = [models.UniqueConstraint(fields=["group", "user"], name="unique_expense_group_member")]
+
+    def __str__(self):
+        return f"{self.group} · {self.user}"
+
+
+class Expense(models.Model):
+    """Paid by one person, owed in `shares`. A settlement ("Ausgleich") is an expense paid by the
+    debtor with the creditor as the only share. People are SET_NULL, so a deleted account leaves
+    the others' balances as they were."""
+
+    group = models.ForeignKey(ExpenseGroup, on_delete=models.CASCADE, related_name="expenses")
+    title = models.CharField(max_length=120)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    paid_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, blank=True, null=True, related_name="+"
+    )
+    spent_on = models.DateField()
+    is_settlement = models.BooleanField(default=False)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, blank=True, null=True, related_name="+"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-spent_on", "-created_at", "-id"]
+
+    def __str__(self):
+        return f"{self.title} ({self.amount})"
+
+
+class ExpenseShare(models.Model):
+    expense = models.ForeignKey(Expense, on_delete=models.CASCADE, related_name="shares")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, blank=True, null=True, related_name="+"
+    )
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        ordering = ["id"]
 
 
 class ShoppingProduct(models.Model):
@@ -1260,6 +1347,7 @@ class UserNotification(models.Model):
     KIND_CHAT_MENTION = "chat_mention"
     KIND_EVENT_COMMENT = "event_comment"
     KIND_SHOPPING_SHARE = "shopping_share"
+    KIND_EXPENSE_GROUP = "expense_group"
     KIND_CHOICES = [
         (KIND_CALENDAR_REMINDER, "Kalendererinnerung"),
         (KIND_TASK_DUE, "Fällige Aufgabe"),
@@ -1277,6 +1365,7 @@ class UserNotification(models.Model):
         (KIND_CHAT_MENTION, "Chat-Erwähnung"),
         (KIND_EVENT_COMMENT, "Terminkommentar"),
         (KIND_SHOPPING_SHARE, "Geteilter Einkaufszettel"),
+        (KIND_EXPENSE_GROUP, "Geteilte Ausgaben"),
     ]
 
     recipient = models.ForeignKey(

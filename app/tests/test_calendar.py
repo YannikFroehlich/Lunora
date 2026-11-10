@@ -1394,3 +1394,98 @@ class CalendarEventCommentTests(TestCase):
 
         self.assertEqual(send_pending_user_notification_emails()["sent"], 1)
         self.assertEqual(mail.outbox[0].to, ["mira@example.com"])
+
+
+class CalendarFreeSlotTests(TestCase):
+    def setUp(self):
+        self.berlin = ZoneInfo("Europe/Berlin")
+        self.mira = User.objects.create_user(
+            username="mira@example.com", email="mira@example.com", password="secret-12345"
+        )
+        self.lukas = User.objects.create_user(
+            username="lukas@example.com", email="lukas@example.com", password="secret-12345"
+        )
+        for user, name in ((self.mira, "Mira"), (self.lukas, "Lukas")):
+            Profile.objects.create(user=user, display_name=name, timezone_name="Europe/Berlin")
+        self.client.login(username="mira@example.com", password="secret-12345")
+        # Monday, 9 March 2099, 09:10 Berlin time.
+        self.monday = datetime(2099, 3, 9, 9, 10, tzinfo=self.berlin)
+
+    def at(self, day_offset, hour, minute=0):
+        return (self.monday + timedelta(days=day_offset)).replace(hour=hour, minute=minute)
+
+    def event(self, user, start, hours=1):
+        return CalendarEvent.objects.create(
+            user=user, title="Belegt", start_at=start, end_at=start + timedelta(hours=hours)
+        )
+
+    def slots(self, users=(), duration=timedelta(hours=1)):
+        from app.services.calendar_service import free_slots
+
+        return free_slots(self.mira, users, duration, self.monday)
+
+    def test_first_free_half_hour_after_both_calendars_then_one_per_day(self):
+        self.event(self.mira, self.at(0, 9, 30), hours=2)  # 09:30–11:30
+        self.event(self.lukas, self.at(0, 11, 30))  # 11:30–12:30
+        self.event(self.mira, self.at(1, 8), hours=10)  # all of Tuesday
+        CalendarEventAttendee.objects.create(
+            event=self.event(self.mira, self.at(2, 8), hours=0.5),
+            user=self.lukas,
+            status=CalendarEventAttendee.STATUS_ACCEPTED,
+        )
+
+        slots = self.slots([self.lukas])
+
+        self.assertEqual(
+            slots,
+            [
+                (self.at(0, 12, 30), self.at(0, 13, 30)),
+                (self.at(2, 8, 30), self.at(2, 9, 30)),
+                (self.at(3, 8), self.at(3, 9)),
+            ],
+        )
+
+    def test_weekends_evenings_and_vacations_are_skipped(self):
+        VacationPeriod.objects.create(
+            user=self.lukas, name="tarifurlaub", start_date=date(2099, 3, 10), end_date=date(2099, 3, 13)
+        )
+
+        slots = self.slots([self.lukas], duration=timedelta(hours=9))
+
+        # Monday from 09:30 leaves 8.5 hours; Tuesday to Friday Lukas is away; the weekend is off.
+        self.assertEqual([begin for begin, _end in slots], [self.at(7, 8), self.at(8, 8), self.at(9, 8)])
+
+    def test_events_longer_than_a_working_day_get_no_suggestions(self):
+        self.assertEqual(self.slots(duration=timedelta(hours=11)), [])
+
+    def test_endpoint_returns_only_times_for_the_entered_length(self):
+        self.event(self.lukas, self.at(0, 10), hours=3)  # 10:00–13:00, a private appointment
+
+        response = self.client.get(
+            "/calendar/availability/slots/",
+            {
+                "event_date": "2099-03-09",
+                "start_time": "10:00",
+                "end_time": "10:30",
+                "attendees": [self.lukas.pk],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Cache-Control"], "private, no-store")
+        first = response.json()["slots"][0]
+        self.assertEqual(
+            first,
+            {
+                "date": "2099-03-09",
+                "start_time": "13:00",
+                "end_time": "13:30",
+                "label": "Mo 09.03.2099, 13:00–13:30",
+            },
+        )
+        self.assertNotIn("Belegt", response.content.decode())
+
+    def test_endpoint_needs_a_complete_time(self):
+        response = self.client.get("/calendar/availability/slots/", {"event_date": "2099-03-09"})
+
+        self.assertEqual(response.status_code, 400)

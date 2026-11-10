@@ -763,6 +763,21 @@ document.querySelectorAll("form.event-create-form").forEach((form) => {
     form.querySelectorAll(".availability-badge").forEach((badge) => badge.remove());
   };
 
+  // The dialog's date/time fields and ticked people, as both endpoints read them.
+  const timeParams = () => {
+    const params = new URLSearchParams();
+    ["event_date", "end_date", "start_time", "end_time"].forEach((name) => {
+      const value = form.querySelector(`[name='${name}']`)?.value;
+      if (value) params.set(name, value);
+    });
+    if (form.querySelector("input[name='is_all_day']")?.checked) params.set("is_all_day", "on");
+    if (eventIdInput?.value) params.set("exclude_event", eventIdInput.value);
+    form
+      .querySelectorAll("input[name='attendees']:checked")
+      .forEach((input) => params.append("attendees", input.value));
+    return params;
+  };
+
   const refreshAvailability = async () => {
     if (!fieldset) return;
     const checked = [...form.querySelectorAll("input[name='attendees']:checked")];
@@ -772,14 +787,7 @@ document.querySelectorAll("form.event-create-form").forEach((form) => {
       if (hint) hint.textContent = "";
       return;
     }
-    const params = new URLSearchParams();
-    ["event_date", "end_date", "start_time", "end_time"].forEach((name) => {
-      const value = form.querySelector(`[name='${name}']`)?.value;
-      if (value) params.set(name, value);
-    });
-    if (form.querySelector("input[name='is_all_day']")?.checked) params.set("is_all_day", "on");
-    if (eventIdInput?.value) params.set("exclude_event", eventIdInput.value);
-    checked.forEach((input) => params.append("attendees", input.value));
+    const params = timeParams();
     try {
       const response = await fetch(`${fieldset.dataset.availabilityUrl}?${params}`, {
         headers: { Accept: "application/json" },
@@ -817,6 +825,68 @@ document.querySelectorAll("form.event-create-form").forEach((form) => {
     window.clearTimeout(timer);
     timer = window.setTimeout(refreshAvailability, 250);
   };
+
+  // "Freien Termin finden": the next times at which the user and everyone ticked are free, for the
+  // length entered; picking one fills the date and times, and the badges refresh.
+  const slotFinder = form.querySelector("[data-slot-finder]");
+  const slotList = form.querySelector("[data-slot-list]");
+  const slotMessage = (text) => {
+    const message = document.createElement("small");
+    message.textContent = text;
+    slotList.replaceChildren(message);
+  };
+  const applySlot = (slot) => {
+    const set = (name, value) => {
+      const input = form.querySelector(`[name='${name}']`);
+      if (input) input.value = value;
+    };
+    set("event_date", slot.date);
+    set("end_date", "");
+    set("start_time", slot.start_time);
+    set("end_time", slot.end_time);
+    const allDay = form.querySelector("input[name='is_all_day']");
+    if (allDay?.checked) {
+      allDay.checked = false;
+      allDay.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    slotList.replaceChildren();
+    scheduleRefresh();
+    form.querySelector("[name='start_time']")?.focus();
+  };
+  slotFinder?.addEventListener("click", async () => {
+    slotMessage("Suche freie Termine …");
+    try {
+      const response = await fetch(`${slotFinder.dataset.slotsUrl}?${timeParams()}`, {
+        headers: { Accept: "application/json" },
+        credentials: "same-origin",
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        slotMessage("Trag zuerst Datum und Uhrzeit ein; die Länge des Termins zählt.");
+        return;
+      }
+      if (!data.slots.length) {
+        slotMessage(
+          form.querySelector("input[name='is_all_day']")?.checked
+            ? "Für ganztägige Termine gibt es keine Vorschläge."
+            : "In den nächsten zwei Wochen ist werktags zwischen 8 und 18 Uhr nichts gemeinsam frei.",
+        );
+        return;
+      }
+      slotList.replaceChildren(
+        ...data.slots.map((slot) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "ghost-button event-slot";
+          button.textContent = slot.label;
+          button.addEventListener("click", () => applySlot(slot));
+          return button;
+        }),
+      );
+    } catch {
+      slotMessage("Vorschläge konnten nicht geladen werden.");
+    }
+  });
 
   form.addEventListener("input", (event) => {
     if (event.target === locationInput) {

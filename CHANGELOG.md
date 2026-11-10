@@ -6,6 +6,21 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- New tool "Geteilte Ausgaben": a group for the flat, a holiday or a trip notes who paid what and
+  splits it equally between the people chosen. Everyone sees their balance and the few payments
+  that settle the group; "Bezahlt" records one once it has happened. Members add others by e-mail
+  or username (they get an inbox notification and e-mail) and can leave once they are settled.
+- Recipes have a weekly meal plan: put recipes on the days of the week and send all their
+  ingredients to the shopping list in one click. An ingredient several recipes share lands on the
+  list once.
+- Recipes can be imported from a recipe website: paste the address and Lunora takes over title,
+  portions, ingredients and steps, with a link back to the source. This works for the many sites
+  that describe their recipes for search engines; the page is fetched by the Lunora server.
+- "Freien Termin finden" in the event dialog suggests the next times on three different weekdays
+  between 8 and 18 o'clock when you and everyone invited are free, for the length entered.
+  Choosing one fills in date and time. Nobody sees anything about the others' appointments.
+- The vacation planner no longer reloads the page when saving or deleting vacations and holidays,
+  also from the calendar's right-click dialog.
 - The number of unread notifications on the bell now updates right after an action, e.g. when an
   item is marked as read on the dashboard, instead of only on the next page load. Marking
   notifications as read, adding, editing and deleting vocabulary, removing vocabulary lists and

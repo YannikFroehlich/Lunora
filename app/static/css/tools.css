@@ -2155,3 +2155,182 @@ a.tool-card:hover {
 .recipe-instructions p + p {
   margin-top: 0.8em;
 }
+
+.meal-plan {
+  margin-top: 20px;
+  padding: 20px;
+}
+
+.meal-plan-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.meal-plan-head h2 {
+  color: var(--color-heading);
+}
+
+.meal-plan-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.meal-plan-days {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.meal-plan-day {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 12px;
+  background: var(--surface-control);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+}
+
+.meal-plan-day.is-today {
+  border-color: color-mix(in srgb, var(--color-accent) 60%, transparent);
+}
+
+.meal-plan-day h3 {
+  color: var(--color-heading);
+  font-size: var(--text-md);
+}
+
+.meal-plan-day h3 small {
+  color: var(--color-muted);
+  font-weight: 400;
+}
+
+.meal-plan-entries {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.meal-plan-entries li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.meal-plan-entries a {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--color-text);
+}
+
+.meal-plan-entries form,
+.meal-plan-add,
+.meal-plan-shopping {
+  margin: 0;
+}
+
+.meal-plan-add {
+  display: flex;
+  gap: 6px;
+}
+
+.meal-plan-add select {
+  flex: 1;
+  min-width: 0;
+}
+
+.meal-plan-shopping {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.recipe-import-form {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-line);
+}
+
+.expense-column {
+  display: grid;
+  gap: 20px;
+}
+
+.expense-form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.expense-participants {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.expense-participants legend {
+  margin-bottom: 4px;
+}
+
+.expense-balance.is-positive {
+  color: var(--color-success);
+}
+
+.expense-balance.is-negative {
+  color: var(--color-danger);
+}
+
+.expense-payments,
+.expense-list {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.expense-payments li,
+.expense-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.expense-payments li > span,
+.expense-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.expense-payments form,
+.expense-list form {
+  margin: 0;
+}
+
+.expense-text {
+  display: grid;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}
+
+.expense-text small {
+  color: var(--color-muted);
+}
+
+.expense-list li.is-settlement .expense-amount {
+  color: var(--color-muted);
+}

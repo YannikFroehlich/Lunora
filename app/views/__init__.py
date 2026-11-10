@@ -8,8 +8,15 @@ from .auth_views import (
     login_two_factor,
     register,
 )
-from .calendar_views import calendar, calendar_availability, calendar_event_detail, calendar_feed
+from .calendar_views import (
+    calendar,
+    calendar_availability,
+    calendar_event_detail,
+    calendar_feed,
+    calendar_free_slots,
+)
 from .core_views import dashboard_bookmarks, dashboard_layout_update, data_export, healthz, home, settings
+from .expense_views import expense_group_detail, expense_groups
 from .message_views import chat_attachment_download, chat_typing_ping, messages, messages_live_updates
 from .note_views import (
     note_action_api,
@@ -92,6 +99,7 @@ from .weather_views import dashboard_weather, weather, weather_map_tile, weather
 __all__ = [
     "calendar",
     "calendar_availability",
+    "calendar_free_slots",
     "calendar_event_detail",
     "calendar_feed",
     "administration",
@@ -178,6 +186,8 @@ __all__ = [
     "settings",
     "recipe_detail",
     "recipes",
+    "expense_groups",
+    "expense_group_detail",
     "shopping_list",
     "shopping_scan",
     "weather",

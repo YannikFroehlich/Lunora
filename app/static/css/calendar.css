@@ -541,6 +541,23 @@ fieldset.event-form-field > legend {
   margin-top: 6px;
 }
 
+.event-slot-finder {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.event-slot-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.event-slot-list:empty {
+  display: none;
+}
+
 .availability-badge {
   margin-left: auto;
   padding: 1px 8px;
