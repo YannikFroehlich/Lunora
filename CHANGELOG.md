@@ -6,6 +6,11 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- New accounts must confirm their e-mail address: registration sends a link, and signing in only
+  works after it was opened (trying earlier sends the link again). Confirming sends a welcome mail;
+  a completed password reset counts as confirmation too.
+- Every successful sign-in sends an e-mail with time, device and IP address, so a login by
+  someone else doesn't go unnoticed.
 - The message after deleting something has a "Rückgängig" button that brings it straight back,
   without a detour through the trash.
 - Habits (with their ticked days), vocabulary lists (with cards and learning progress) and recipes

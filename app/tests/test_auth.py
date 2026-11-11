@@ -1,3 +1,4 @@
+import re
 from importlib import import_module
 from unittest.mock import patch
 from urllib.error import URLError
@@ -375,6 +376,103 @@ SAFARI_IPHONE = (
     "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 "
     "(KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
 )
+
+
+@override_settings(CLOUDFLARE_TURNSTILE_REQUIRED=False)
+class EmailConfirmationTests(TestCase):
+    password = "sicheres-passwort-42"
+
+    def setUp(self):
+        cache.clear()
+
+    def _register(self):
+        return self.client.post(
+            "/register/",
+            {
+                "name": "Mira",
+                "email": "mira@example.com",
+                "password1": self.password,
+                "password2": self.password,
+            },
+        )
+
+    def _login(self):
+        return self.client.post("/login/", {"username": "mira@example.com", "password": self.password})
+
+    def _link_path(self, message):
+        return re.search(r"http://testserver(/register/confirm/\S+/)", message.body).group(1)
+
+    def test_registration_sends_link_and_blocks_login_until_confirmed(self):
+        self._register()
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["mira@example.com"])
+        link = self._link_path(mail.outbox[0])
+
+        response = self._login()
+        self.assertContains(response, "Bitte bestätige zuerst deine E-Mail-Adresse")
+        self.assertFalse(response.wsgi_request.user.is_authenticated)
+        self.assertEqual(len(mail.outbox), 2)  # the link is sent again
+
+        response = self.client.get(link)
+        self.assertContains(response, "E-Mail bestätigt")
+        self.assertEqual(mail.outbox[-1].subject, "Willkommen bei Lunora")
+        self.assertFalse(User.objects.get(email="mira@example.com").profile.email_confirmation_pending)
+
+        self.assertRedirects(self._login(), "/home/", fetch_redirect_response=False)
+
+        # A used link doesn't work twice, and the second visit sends no welcome mail.
+        sent = len(mail.outbox)
+        self.assertEqual(self.client.get(link).status_code, 400)
+        self.assertEqual(len(mail.outbox), sent)
+
+    def test_resending_the_link_is_throttled(self):
+        self._register()
+        for _ in range(5):
+            self._login()
+        self.assertEqual(len(mail.outbox), 4)  # registration plus three resends
+
+    def test_tampered_link_is_rejected(self):
+        self._register()
+        link = self._link_path(mail.outbox[0])
+        self.assertEqual(self.client.get(link[:-3] + "xx/").status_code, 400)
+        self.assertTrue(User.objects.get(email="mira@example.com").profile.email_confirmation_pending)
+
+    def test_password_reset_confirms_the_address(self):
+        self._register()
+        self.client.post("/password-reset/", {"email": "mira@example.com"})
+        reset_path = re.search(r"http://testserver(/reset/\S+/)", mail.outbox[-1].body).group(1)
+        response = self.client.get(reset_path, follow=True)
+        self.client.post(
+            response.redirect_chain[-1][0],
+            {"new_password1": "neues-passwort-77", "new_password2": "neues-passwort-77"},
+        )
+        self.assertFalse(User.objects.get(email="mira@example.com").profile.email_confirmation_pending)
+
+    def test_successful_login_mails_a_security_notice(self):
+        user = User.objects.create_user(
+            username="lea@example.com", email="lea@example.com", password="pw-12345!"
+        )
+        Profile.objects.create(user=user, display_name="Lea")
+        self.client.post(
+            "/login/",
+            {"username": "lea@example.com", "password": "pw-12345!"},
+            HTTP_USER_AGENT="Mozilla/5.0 (Windows NT 10.0) Gecko/20100101 Firefox/130.0",
+        )
+
+        notification = UserNotification.objects.get(recipient=user, kind=UserNotification.KIND_SECURITY_ALERT)
+        self.assertIn("Firefox unter Windows", notification.body)
+        self.assertIsNotNone(notification.read_at)
+        send_pending_user_notification_emails()
+        self.assertEqual(mail.outbox[-1].subject, "Lunora: Neue Anmeldung bei deinem Konto")
+        self.assertEqual(mail.outbox[-1].to, ["lea@example.com"])
+
+    def test_wrong_password_sends_no_login_notice(self):
+        user = User.objects.create_user(
+            username="lea@example.com", email="lea@example.com", password="pw-12345!"
+        )
+        Profile.objects.create(user=user, display_name="Lea")
+        self.client.post("/login/", {"username": "lea@example.com", "password": "falsch"})
+        self.assertFalse(UserNotification.objects.filter(recipient=user).exists())
 
 
 class DeviceSessionTests(TestCase):

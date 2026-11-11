@@ -135,6 +135,7 @@ class EmailLoginForm(AuthenticationForm):
         return identifier
 
     def confirm_login_allowed(self, user):
+        from app.services import email_verification
         from app.services.system_settings import user_can_login
 
         super().confirm_login_allowed(user)
@@ -142,6 +143,13 @@ class EmailLoginForm(AuthenticationForm):
             raise forms.ValidationError(
                 "Der Login ist vorübergehend deaktiviert.",
                 code="login_disabled",
+            )
+        # Only reached with the right password, so this doesn't reveal which addresses have accounts.
+        if email_verification.is_pending(user):
+            email_verification.resend_confirmation_email(self.request, user)
+            raise forms.ValidationError(
+                "Bitte bestätige zuerst deine E-Mail-Adresse. Wir haben dir den Link noch einmal geschickt.",
+                code="email_unconfirmed",
             )
 
 
@@ -346,7 +354,7 @@ class RegistrationForm(UserCreationForm):
         user.first_name = name
         if commit:
             user.save()
-            Profile.objects.create(user=user, display_name=name)
+            Profile.objects.create(user=user, display_name=name, email_confirmation_pending=True)
         return user
 
 

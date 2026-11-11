@@ -18,11 +18,15 @@ from django.urls import reverse_lazy
 
 from app.forms import LOGIN_ATTEMPT_LIMIT, LOGIN_ATTEMPT_LOCKOUT_SECONDS, EmailLoginForm, RegistrationForm
 from app.models import AuditLogEntry, Profile
-from app.services import audit_log, two_factor
-from app.services.notifications import materialize_failed_two_factor_notification
+from app.services import audit_log, email_verification, two_factor
+from app.services.notifications import (
+    materialize_failed_two_factor_notification,
+    materialize_login_notification,
+)
 from app.services.system_settings import normal_user_login_enabled, user_can_login
 from app.services.throttle import count_hit
 from app.services.turnstile import verify_registration_token
+from app.services.user_sessions import device_label
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +35,15 @@ TWO_FACTOR_PENDING_SECONDS = 5 * 60
 PASSWORD_RESET_EMAIL_LIMIT = 3
 PASSWORD_RESET_IP_LIMIT = 10
 PASSWORD_RESET_WINDOW_SECONDS = 60 * 60
+
+
+def _notify_login(request, user):
+    """Mail the user about this sign-in (through the inbox, delivered by run_automations)."""
+    materialize_login_notification(
+        user,
+        device=device_label(request.headers.get("User-Agent", "")),
+        ip_address=audit_log.client_ip(request),
+    )
 
 
 class LunoraLoginView(LoginView):
@@ -46,7 +59,9 @@ class LunoraLoginView(LoginView):
     def form_valid(self, form):
         user = form.get_user()
         if not two_factor.is_enabled(user):
-            return super().form_valid(form)
+            response = super().form_valid(form)
+            _notify_login(self.request, user)
+            return response
         # Password is correct, but the session stays anonymous until the second factor is checked.
         self.request.session[TWO_FACTOR_SESSION_KEY] = {
             "user_id": user.pk,
@@ -92,6 +107,7 @@ def login_two_factor(request):
                 cache.delete(attempts_key)
                 del request.session[TWO_FACTOR_SESSION_KEY]
                 login(request, profile.user, backend=pending["backend"])
+                _notify_login(request, profile.user)
                 return redirect(pending["next"])
             audit_log.record(
                 AuditLogEntry.ACTION_TWO_FACTOR_FAILED, request, actor=profile.user if profile else None
@@ -149,6 +165,7 @@ class LunoraPasswordResetConfirmView(PasswordResetConfirmView):
     def form_valid(self, form):
         response = super().form_valid(form)
         audit_log.record(AuditLogEntry.ACTION_PASSWORD_RESET, self.request, actor=form.user)
+        email_verification.mark_confirmed(form.user)
         return response
 
 
@@ -175,8 +192,8 @@ def register(request):
         if form_is_valid and turnstile_is_valid:
             user = form.save()
             audit_log.record(AuditLogEntry.ACTION_REGISTER, request, actor=user)
-            login(request, user)
-            return redirect("home")
+            email_verification.send_confirmation_email(request, user)
+            return render(request, "app/register_confirm.html", {"state": "sent", "email": user.email})
     else:
         form = RegistrationForm()
 
@@ -190,3 +207,11 @@ def register(request):
             ),
         },
     )
+
+
+def register_confirm(request, uidb64, token):
+    user = email_verification.confirm(uidb64, token)
+    if user is None:
+        return render(request, "app/register_confirm.html", {"state": "invalid"}, status=400)
+    email_verification.send_welcome_email(request, user)
+    return render(request, "app/register_confirm.html", {"state": "confirmed"})

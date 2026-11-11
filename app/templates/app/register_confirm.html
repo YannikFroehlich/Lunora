@@ -1,0 +1,26 @@
+{% extends 'app/base.html' %}
+
+{% block title %}E-Mail bestätigen | Lunora{% endblock %}
+
+{% block content %}
+<section class="auth-shell">
+    <div class="glass-panel auth-panel">
+        <div class="auth-brand">
+            {% include "app/partials/logo_mark.html" with logo_class="auth-brand-logo" %}
+            <span>Lunora</span>
+        </div>
+        {% if state == "sent" %}
+        <h1>Fast geschafft</h1>
+        <p>Wir haben einen Bestätigungslink an <strong>{{ email }}</strong> geschickt. Öffne ihn, um dein Konto freizuschalten – danach kannst du dich anmelden.</p>
+        <div class="api-notice">Die E-Mail kann ein paar Minuten brauchen. Nichts angekommen? Schau im Spam-Ordner nach oder melde dich an: Dann schicken wir den Link noch einmal.</div>
+        {% elif state == "confirmed" %}
+        <h1>E-Mail bestätigt</h1>
+        <p>Dein Konto ist freigeschaltet. Du kannst dich jetzt anmelden.</p>
+        {% else %}
+        <h1>Link ungültig</h1>
+        <p>Dieser Bestätigungslink ist abgelaufen oder wurde bereits verwendet. Melde dich an, um einen neuen Link zu bekommen.</p>
+        {% endif %}
+        <p class="auth-switch"><a href="{% url 'login' %}">Zur Anmeldung</a></p>
+    </div>
+</section>
+{% endblock %}

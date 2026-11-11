@@ -7,6 +7,7 @@ from .auth_views import (
     LunoraPasswordResetView,
     login_two_factor,
     register,
+    register_confirm,
 )
 from .calendar_views import (
     calendar,
@@ -185,6 +186,7 @@ __all__ = [
     "LunoraPasswordResetConfirmView",
     "LunoraPasswordResetCompleteView",
     "register",
+    "register_confirm",
     "settings",
     "recipe_detail",
     "recipes",
