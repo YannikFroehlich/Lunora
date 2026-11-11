@@ -22,10 +22,11 @@ dürfen nicht angefasst werden. Abweichend von der Anleitung unten gilt:
 - **cloudflared:** Der Dienst kommt aus `deploy/cloudflared.service` statt aus
   `cloudflared service install` (siehe „Cloudflare“). Der Tunnel-Token liegt nur in
   `/etc/cloudflared/token`.
-- **E-Mail:** Noch ohne SMTP-Passwort, deshalb läuft das Console-Backend (Mails landen im
-  Journal von `lunora-web`/`lunora-automations`, Passwort-Reset per Mail geht nicht). Weil
-  Django 6.1 das bei `check --deploy` als Fehler meldet, steht in `/etc/lunora/lunora.env`
-  `DJANGO_SILENCED_SYSTEM_CHECKS=mail.E001`. Beim Einrichten von SMTP diese Zeile entfernen.
+- **E-Mail:** Seit 11. November 2026 per SMTP über STRATO (`smtp.strato.de:587`, STARTTLS,
+  `webmaster@yfserver.de`); `DJANGO_SILENCED_SYSTEM_CHECKS=mail.E001` ist entfernt. Werte mit
+  Leerzeichen oder `<…>` wie `DJANGO_DEFAULT_FROM_EMAIL` in Anführungszeichen setzen, sonst bricht
+  `source /etc/lunora/lunora.env` in den Prüfbefehlen ab. Test:
+  `manage.py sendtestemail webmaster@yfserver.de` (Env wie unter „Prüfungen“ laden).
 - **Vorheriger LAN-Betrieb (26.–27. Oktober 2026):** Die damalige Env liegt als
   `/etc/lunora/lunora.env.lan-backup` auf dem Server.
 
@@ -33,7 +34,7 @@ dürfen nicht angefasst werden. Abweichend von der Anleitung unten gilt:
 
 - Django Secret Key (neu und zufällig)
 - PostgreSQL-Passwort für die Rolle `lunora` (neu und zufällig)
-- STRATO-SMTP-Passwort für `webmaster@yfserver.de`
+- STRATO-SMTP-Passwort für `webmaster@yfserver.de` (gesetzt)
 - Cloudflare-Turnstile-Site-Key und -Secret für `lunora.yfserver.de`
 - Cloudflare-Tunnel-Token; er liegt ausschließlich in `/etc/cloudflared/token`
   und wird über `--token-file` geladen
