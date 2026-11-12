@@ -6,6 +6,13 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Fixed: shopping list items ticked off without a connection now stay ticked when the page is
+  opened again while still offline, and are sent right away once it loads with a connection. The
+  "im Wagen" count follows each tick at once, too.
+- Fixed: on medium-wide windows the tasks toolbar ("Board", "Sortieren", the menu) was cut off and
+  the task list could slide sideways after deleting a task. The toolbar now wraps.
+- Fixed: the task counts next to "Eingang" and your lists update at once after adding, finishing
+  or deleting a task.
 - New accounts must confirm their e-mail address: registration sends a link, and signing in only
   works after it was opened (trying earlier sends the link again). Confirming sends a welcome mail;
   a completed password reset counts as confirmation too.

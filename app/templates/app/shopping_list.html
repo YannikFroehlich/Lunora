@@ -50,7 +50,7 @@
     <div class="shopping-live" id="shopping-live" data-soft-region data-shopping-live data-version="{{ list_version }}"{% if is_shared or not is_own_list %} data-poll-url="{{ poll_url }}"{% endif %}>
     {% if item_count %}
     <div class="shopping-toolbar">
-        <span>{{ done_items|length }} von {{ item_count }} im Wagen</span>
+        <span data-shopping-count>{{ done_items|length }} von {{ item_count }} im Wagen</span>
         {% if done_items %}
         <form method="post">
             {% csrf_token %}

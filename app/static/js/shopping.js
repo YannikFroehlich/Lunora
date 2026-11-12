@@ -45,6 +45,12 @@
   globalThis.LunoraShopping = { normalize, singular, rankSuggestions };
 
   if (typeof document === "undefined") return;
+  // Ticking items off works without a connection (a supermarket basement): the change shows on the
+  // page at once, waits in localStorage and is sent once the network is back. A toggle posts the
+  // state it wants, so sending it late (or twice) can't flip an item back.
+  // Declared before the init calls below, which read both at once (let/const are not hoisted).
+  const QUEUE_KEY = "lunora.shoppingQueue";
+  let flushing = false;
   initScanner();
   initLiveUpdates();
   initOfflineToggles();
@@ -185,12 +191,6 @@
     applyQueued();
   }
 
-  // Ticking items off works without a connection (a supermarket basement): the change shows on the
-  // page at once, waits in localStorage and is sent once the network is back. A toggle posts the
-  // state it wants, so sending it late (or twice) can't flip an item back.
-  const QUEUE_KEY = "lunora.shoppingQueue";
-  let flushing = false;
-
   // The list's address without a #aisle anchor, so a queued change matches the page it came from.
   function listUrl(href) {
     const url = new URL(href, window.location.href);
@@ -222,6 +222,13 @@
     row.classList.toggle("is-done", done);
     form.elements.done.value = done ? "0" : "1";
     form.querySelector(".shopping-toggle")?.setAttribute("aria-pressed", String(done));
+    // The counter is server-rendered; keep it in step until the list reloads.
+    const counter = document.querySelector("[data-shopping-count]");
+    if (counter) {
+      const items = document.querySelectorAll("[data-shopping-live] .shopping-item");
+      const inCart = [...items].filter((item) => item.classList.contains("is-done")).length;
+      counter.textContent = `${inCart} von ${items.length} im Wagen`;
+    }
   }
 
   function showPending(count) {
