@@ -86,6 +86,7 @@ PROFILE_FIELDS = [
     "notification_quiet_start",
     "notification_quiet_end",
     "weekly_summary",
+    "login_alerts",
     "weather_default_city",
     "dashboard_layout",
     "note_shortcuts",

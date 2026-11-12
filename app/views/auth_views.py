@@ -37,13 +37,46 @@ PASSWORD_RESET_IP_LIMIT = 10
 PASSWORD_RESET_WINDOW_SECONDS = 60 * 60
 
 
-def _notify_login(request, user):
-    """Mail the user about this sign-in (through the inbox, delivered by run_automations)."""
-    materialize_login_notification(
-        user,
-        device=device_label(request.headers.get("User-Agent", "")),
-        ip_address=audit_log.client_ip(request),
+KNOWN_DEVICE_COOKIE = "lunora_known_device"
+KNOWN_DEVICE_SALT = "app.views.auth_views.known_device"
+KNOWN_DEVICE_MAX_AGE = 400 * 24 * 60 * 60  # browsers cap cookie lifetime at 400 days
+KNOWN_DEVICE_MAX_USERS = 10
+
+
+def _known_device_user_ids(request):
+    value = request.get_signed_cookie(KNOWN_DEVICE_COOKIE, default="", salt=KNOWN_DEVICE_SALT)
+    return [part for part in value.split(",") if part.isdigit()]
+
+
+def _notify_login(request, response, user):
+    """Mail the user about this sign-in (through the inbox, delivered by run_automations), as their
+    `login_alerts` setting asks. A signed cookie marks the browser as known for this account; it is
+    unforgeable, so a sign-in elsewhere with a stolen password still counts as a new device."""
+    known_ids = _known_device_user_ids(request)
+    preference = (
+        Profile.objects.filter(user=user).values_list("login_alerts", flat=True).first()
+        or Profile.LOGIN_ALERT_NEW_DEVICE
     )
+    is_new_device = str(user.pk) not in known_ids
+    if preference == Profile.LOGIN_ALERT_ALWAYS or (
+        preference == Profile.LOGIN_ALERT_NEW_DEVICE and is_new_device
+    ):
+        materialize_login_notification(
+            user,
+            device=device_label(request.headers.get("User-Agent", "")),
+            ip_address=audit_log.client_ip(request),
+        )
+    known_ids = [user_id for user_id in known_ids if user_id != str(user.pk)] + [str(user.pk)]
+    response.set_signed_cookie(
+        KNOWN_DEVICE_COOKIE,
+        ",".join(known_ids[-KNOWN_DEVICE_MAX_USERS:]),
+        salt=KNOWN_DEVICE_SALT,
+        max_age=KNOWN_DEVICE_MAX_AGE,
+        secure=settings.SESSION_COOKIE_SECURE,
+        httponly=True,
+        samesite="Lax",
+    )
+    return response
 
 
 class LunoraLoginView(LoginView):
@@ -59,9 +92,7 @@ class LunoraLoginView(LoginView):
     def form_valid(self, form):
         user = form.get_user()
         if not two_factor.is_enabled(user):
-            response = super().form_valid(form)
-            _notify_login(self.request, user)
-            return response
+            return _notify_login(self.request, super().form_valid(form), user)
         # Password is correct, but the session stays anonymous until the second factor is checked.
         self.request.session[TWO_FACTOR_SESSION_KEY] = {
             "user_id": user.pk,
@@ -107,8 +138,7 @@ def login_two_factor(request):
                 cache.delete(attempts_key)
                 del request.session[TWO_FACTOR_SESSION_KEY]
                 login(request, profile.user, backend=pending["backend"])
-                _notify_login(request, profile.user)
-                return redirect(pending["next"])
+                return _notify_login(request, redirect(pending["next"]), profile.user)
             audit_log.record(
                 AuditLogEntry.ACTION_TWO_FACTOR_FAILED, request, actor=profile.user if profile else None
             )
