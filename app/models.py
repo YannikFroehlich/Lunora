@@ -170,6 +170,18 @@ class Profile(models.Model):
     # Set on self-registration until the link from app/services/email_verification.py is opened;
     # login is refused meanwhile. Accounts made by admins or createsuperuser never wait.
     email_confirmation_pending = models.BooleanField(default=False)
+    LOGIN_ALERT_NEW_DEVICE = "new_device"
+    LOGIN_ALERT_ALWAYS = "always"
+    LOGIN_ALERT_OFF = "off"
+    LOGIN_ALERT_CHOICES = [
+        (LOGIN_ALERT_NEW_DEVICE, "Nur bei neuem Gerät"),
+        (LOGIN_ALERT_ALWAYS, "Bei jeder Anmeldung"),
+        (LOGIN_ALERT_OFF, "Nie"),
+    ]
+    # When a successful sign-in is mailed (app/views/auth_views.py); "new device" = no known-device cookie.
+    login_alerts = models.CharField(
+        max_length=12, choices=LOGIN_ALERT_CHOICES, default=LOGIN_ALERT_NEW_DEVICE
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

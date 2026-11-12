@@ -466,6 +466,56 @@ class EmailConfirmationTests(TestCase):
         self.assertEqual(mail.outbox[-1].subject, "Lunora: Neue Anmeldung bei deinem Konto")
         self.assertEqual(mail.outbox[-1].to, ["lea@example.com"])
 
+    def _login_alert_count(self, user):
+        return UserNotification.objects.filter(
+            recipient=user, kind=UserNotification.KIND_SECURITY_ALERT
+        ).count()
+
+    def _lea(self, login_alerts=Profile.LOGIN_ALERT_NEW_DEVICE):
+        user = User.objects.create_user(
+            username="lea@example.com", email="lea@example.com", password="pw-12345!"
+        )
+        Profile.objects.create(user=user, display_name="Lea", login_alerts=login_alerts)
+        return user
+
+    def _lea_login(self, client=None):
+        (client or self.client).post("/login/", {"username": "lea@example.com", "password": "pw-12345!"})
+        (client or self.client).post("/logout/")
+
+    def test_login_notice_only_for_a_new_device_by_default(self):
+        user = self._lea()
+        self._lea_login()
+        self._lea_login()  # same browser, signed in before: no second notice
+        self.assertEqual(self._login_alert_count(user), 1)
+
+        self._lea_login(Client())  # another browser
+        self.assertEqual(self._login_alert_count(user), 2)
+
+        self.client.cookies["lunora_known_device"] = str(user.pk)  # unsigned, forged
+        self._lea_login()
+        self.assertEqual(self._login_alert_count(user), 3)
+
+    def test_login_notice_on_every_login_or_never(self):
+        user = self._lea(Profile.LOGIN_ALERT_ALWAYS)
+        self._lea_login()
+        self._lea_login()
+        self.assertEqual(self._login_alert_count(user), 2)
+
+        Profile.objects.filter(user=user).update(login_alerts=Profile.LOGIN_ALERT_OFF)
+        self._lea_login(Client())
+        self.assertEqual(self._login_alert_count(user), 2)
+
+    def test_login_alerts_setting_is_saved_from_settings(self):
+        user = self._lea()
+        self.client.force_login(user)
+        response = self.client.post("/settings/", {"form_name": "login_alerts", "login_alerts": "off"})
+        self.assertEqual(response.status_code, 302)
+        user.profile.refresh_from_db()
+        self.assertEqual(user.profile.login_alerts, Profile.LOGIN_ALERT_OFF)
+        self.client.post("/settings/", {"form_name": "login_alerts", "login_alerts": "bogus"})
+        user.profile.refresh_from_db()
+        self.assertEqual(user.profile.login_alerts, Profile.LOGIN_ALERT_OFF)
+
     def test_wrong_password_sends_no_login_notice(self):
         user = User.objects.create_user(
             username="lea@example.com", email="lea@example.com", password="pw-12345!"

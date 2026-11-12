@@ -581,6 +581,13 @@ class WeatherPreferencesForm(forms.ModelForm):
         return self.cleaned_data.get("weather_default_city", "").strip()
 
 
+class LoginAlertsForm(forms.ModelForm):
+    class Meta:
+        model = Profile
+        fields = ["login_alerts"]
+        labels = {"login_alerts": "E-Mail bei Anmeldung"}
+
+
 class NotificationCategoryPreferencesForm(forms.Form):
     CHANNELS = (
         ("inbox", "Inbox", "inbox_enabled"),

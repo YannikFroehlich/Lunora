@@ -18,6 +18,7 @@ from app.forms import (
     AppearanceForm,
     BookmarkForm,
     CalendarSubscriptionForm,
+    LoginAlertsForm,
     NotificationCategoryPreferencesForm,
     NotificationPreferencesForm,
     ProfileForm,
@@ -184,6 +185,7 @@ def settings(request):
     region_form = RegionPreferencesForm(instance=profile)
     notification_form = NotificationPreferencesForm(instance=profile)
     weather_form = WeatherPreferencesForm(instance=profile)
+    login_alerts_form = LoginAlertsForm(instance=profile)
     notification_preferences_form = NotificationCategoryPreferencesForm(user=request.user)
 
     if form_name == "profile":
@@ -251,6 +253,12 @@ def settings(request):
             weather_form.save()
             django_messages.success(request, "Wettereinstellungen gespeichert.")
             return redirect(_settings_section_url("weather", return_to))
+    elif form_name == "login_alerts":
+        login_alerts_form = LoginAlertsForm(request.POST, instance=profile)
+        if login_alerts_form.is_valid():
+            login_alerts_form.save()
+            django_messages.success(request, "Anmelde-Benachrichtigung gespeichert.")
+            return redirect(_settings_section_url("security", return_to))
     elif form_name.startswith("two_factor_"):
         _handle_two_factor_form(request, profile, form_name)
         return redirect(_settings_section_url("security", return_to))
@@ -318,6 +326,7 @@ def settings(request):
             "notification_form": notification_form,
             "notification_preferences_form": notification_preferences_form,
             "weather_form": weather_form,
+            "login_alerts_form": login_alerts_form,
             "return_to": return_to,
             "calendar_feed_enabled": calendar_feed_enabled,
             "calendar_subscriptions_enabled": subscriptions_enabled,

@@ -613,6 +613,21 @@
                         Alle anderen Geräte abmelden
                     </button>
                 </form>
+                <form class="login-alerts-form" method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="login_alerts">
+                    <input type="hidden" name="return_to" value="{{ return_to }}">
+                    <label class="region-field" for="{{ login_alerts_form.login_alerts.id_for_label }}">
+                        <span><strong>{{ login_alerts_form.login_alerts.label }}</strong></span>
+                        <select class="region-select" name="{{ login_alerts_form.login_alerts.html_name }}" id="{{ login_alerts_form.login_alerts.id_for_label }}" data-auto-submit>
+                            {% for value, label in login_alerts_form.login_alerts.field.choices %}
+                            <option value="{{ value }}" {% if login_alerts_form.login_alerts.value == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    {{ login_alerts_form.login_alerts.errors }}
+                    <noscript><button class="ghost-button" type="submit">Speichern</button></noscript>
+                </form>
             </section>
 
             <section id="settings-panel-storage" class="glass-panel security-panel" role="tabpanel" aria-labelledby="settings-tab-security" data-settings-panel="security">

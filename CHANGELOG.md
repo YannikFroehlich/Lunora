@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- The sign-in e-mail now comes by default only for a new device or browser. Under Settings →
+  Sicherheit → "E-Mail bei Anmeldung" it can be set to every sign-in or switched off.
 - Fixed: shopping list items ticked off without a connection now stay ticked when the page is
   opened again while still offline, and are sent right away once it loads with a connection. The
   "im Wagen" count follows each tick at once, too.

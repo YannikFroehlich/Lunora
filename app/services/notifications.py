@@ -347,8 +347,9 @@ def materialize_failed_two_factor_notification(user, *, now=None):
 
 
 def materialize_login_notification(user, *, device, ip_address, now=None):
-    """Tell `user` about a successful sign-in. Mailed like every security alert (no opt-out),
-    but created read: their own login shouldn't light up the inbox badge."""
+    """Tell `user` about a successful sign-in. Mailed like every security alert (ignoring the e-mail
+    master switch; `Profile.login_alerts` decides whether it is created at all), but created read:
+    their own login shouldn't light up the inbox badge."""
     current_time = now or timezone.now()
     where = device + (f" (IP {ip_address})" if ip_address else "")
     return _create_missing_user_notifications(
