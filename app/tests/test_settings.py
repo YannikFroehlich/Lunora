@@ -155,10 +155,12 @@ class SettingsProfileTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, "/home/")
+        self.assertContains(response, "Fast geschafft")
+        self.assertFalse(response.wsgi_request.user.is_authenticated)
         user = User.objects.get(username="mira@example.com")
         self.assertTrue(user.check_password("sicheres-passwort-42"))
         self.assertEqual(user.profile.display_name, "Mira Beispiel")
+        self.assertTrue(user.profile.email_confirmation_pending)
 
     @override_settings(
         CLOUDFLARE_TURNSTILE_REQUIRED=True,
@@ -203,7 +205,7 @@ class SettingsProfileTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, "/home/")
+        self.assertContains(response, "Fast geschafft")
         self.assertTrue(User.objects.filter(email="mira-turnstile@example.com").exists())
         mocked_verify.assert_called_once_with("valid-token")
 

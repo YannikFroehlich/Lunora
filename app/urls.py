@@ -16,6 +16,7 @@ urlpatterns = [
     path("accounts/login/", login_view, name="accounts_login"),
     path("logout/", LogoutView.as_view(), name="logout"),
     path("register/", view.register, name="register"),
+    path("register/confirm/<uidb64>/<token>/", view.register_confirm, name="register_confirm"),
     path("password-reset/", view.LunoraPasswordResetView.as_view(), name="password_reset"),
     path("password-reset/done/", view.LunoraPasswordResetDoneView.as_view(), name="password_reset_done"),
     path(

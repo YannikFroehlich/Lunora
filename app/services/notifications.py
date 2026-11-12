@@ -346,6 +346,30 @@ def materialize_failed_two_factor_notification(user, *, now=None):
     )
 
 
+def materialize_login_notification(user, *, device, ip_address, now=None):
+    """Tell `user` about a successful sign-in. Mailed like every security alert (no opt-out),
+    but created read: their own login shouldn't light up the inbox badge."""
+    current_time = now or timezone.now()
+    where = device + (f" (IP {ip_address})" if ip_address else "")
+    return _create_missing_user_notifications(
+        [
+            {
+                "recipient_id": user.pk,
+                "kind": UserNotification.KIND_SECURITY_ALERT,
+                "title": "Neue Anmeldung bei deinem Konto",
+                "body": (
+                    f"Am {format_user_datetime(current_time, user)} hat sich jemand mit {where} "
+                    "bei Lunora angemeldet. Warst du das nicht, ändere bitte sofort dein Passwort und "
+                    "melde unter Einstellungen → Sicherheit alle anderen Geräte ab."
+                ),
+                "url": "/settings/#settings-security",
+                "source_key": f"login:{user.pk}:{current_time.timestamp()}",
+                "read_at": current_time,
+            }
+        ]
+    )
+
+
 def materialize_task_assignment_notifications(tasks):
     rows = []
     for task in tasks:

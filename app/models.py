@@ -167,6 +167,9 @@ class Profile(models.Model):
     totp_last_step = models.BigIntegerField(blank=True, null=True)
     # SHA-256 hashes of the unused one-time recovery codes.
     totp_recovery_codes = models.JSONField(default=list, blank=True)
+    # Set on self-registration until the link from app/services/email_verification.py is opened;
+    # login is refused meanwhile. Accounts made by admins or createsuperuser never wait.
+    email_confirmation_pending = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
