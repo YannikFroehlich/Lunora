@@ -121,6 +121,8 @@ def enable(profile, secret, code, *, now=None):
 
 
 def disable(profile):
+    # Passkeys only stand in for the code, so they go with it.
+    profile.user.passkeys.all().delete()
     profile.totp_secret = ""
     profile.totp_enabled_at = None
     profile.totp_last_step = None

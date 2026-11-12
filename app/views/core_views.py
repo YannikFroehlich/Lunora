@@ -26,7 +26,7 @@ from app.forms import (
     WeatherPreferencesForm,
 )
 from app.models import AuditLogEntry, Bookmark, Profile
-from app.services import audit_log, two_factor
+from app.services import audit_log, passkeys, two_factor
 from app.services.accounts import account_deletion_blocked_reason, delete_account
 from app.services.calendar_service import disable_calendar_feed, reset_calendar_feed_token
 from app.services.dashboard import normalize_dashboard_layout, validate_dashboard_layout
@@ -262,6 +262,9 @@ def settings(request):
     elif form_name.startswith("two_factor_"):
         _handle_two_factor_form(request, profile, form_name)
         return redirect(_settings_section_url("security", return_to))
+    elif form_name.startswith("passkey_"):
+        _handle_passkey_form(request, profile, form_name)
+        return redirect(_settings_section_url("security", return_to))
     elif form_name == "session_revoke":
         session_id = request.POST.get("session_id", "")
         if session_id.isdigit() and revoke_session(
@@ -341,6 +344,7 @@ def settings(request):
             # The SVG is generated server-side from our own URI, never from user input.
             "two_factor_setup_qr": mark_safe(two_factor.qr_code_svg(setup_uri)) if setup_uri else "",
             "two_factor_new_codes": request.session.pop(TWO_FACTOR_NEW_CODES_SESSION_KEY, None),
+            **_passkey_context(request, profile),
             "device_sessions": [
                 {
                     "id": row.pk,
@@ -361,6 +365,7 @@ def settings(request):
 DATA_EXPORT_INTERVAL_SECONDS = 120
 TWO_FACTOR_SETUP_SESSION_KEY = "two_factor_setup_secret"
 TWO_FACTOR_NEW_CODES_SESSION_KEY = "two_factor_new_codes"
+PASSKEY_CHALLENGE_SESSION_KEY = "passkey_challenge"
 
 
 def _handle_two_factor_form(request, profile, form_name):
@@ -401,6 +406,63 @@ def _handle_two_factor_form(request, profile, form_name):
             django_messages.success(
                 request, "Neue Wiederherstellungscodes erstellt. Die alten gelten nicht mehr."
             )
+
+
+def _passkey_context(request, profile):
+    """The user's passkeys plus, while another one fits, the options for creating it."""
+    if not profile.totp_enabled_at:
+        return {"passkeys": [], "passkey_options": None}
+    rows = list(request.user.passkeys.all())
+    options = None
+    if len(rows) < passkeys.MAX_PASSKEYS:
+        # One challenge per session until it is used, so opening settings twice doesn't void a tab.
+        challenge = request.session.setdefault(PASSKEY_CHALLENGE_SESSION_KEY, passkeys.new_challenge())
+        options = passkeys.registration_options(request.user, challenge, passkeys.relying_party(request)[0])
+    return {
+        "passkeys": [
+            {
+                "id": row.pk,
+                "name": row.name,
+                "created": format_user_datetime(row.created_at, request.user),
+                "last_used": format_user_datetime(row.last_used_at, request.user) if row.last_used_at else "",
+            }
+            for row in rows
+        ],
+        "passkey_options": options,
+    }
+
+
+def _handle_passkey_form(request, profile, form_name):
+    if form_name == "passkey_add" and profile.totp_enabled_at:
+        # Popped before checking: every challenge is good for one attempt only.
+        challenge = request.session.pop(PASSKEY_CHALLENGE_SESSION_KEY, None)
+        if request.user.passkeys.count() >= passkeys.MAX_PASSKEYS:
+            django_messages.error(request, f"Mehr als {passkeys.MAX_PASSKEYS} Passkeys sind nicht möglich.")
+            return
+        rp_id, origin = passkeys.relying_party(request)
+        try:
+            passkey = passkeys.add_passkey(
+                request.user,
+                request.POST.get("name") or device_label(request.headers.get("User-Agent", "")),
+                request.POST.get("credential", ""),
+                challenge=challenge,
+                rp_id=rp_id,
+                origin=origin,
+            )
+        except passkeys.PasskeyError:
+            django_messages.error(
+                request, "Der Passkey konnte nicht hinzugefügt werden. Bitte versuche es erneut."
+            )
+            return
+        audit_log.record(AuditLogEntry.ACTION_PASSKEY_ADDED, request, summary=passkey.name)
+        django_messages.success(request, f"Passkey „{passkey.name}“ hinzugefügt.")
+    elif form_name == "passkey_delete":
+        passkey_id = request.POST.get("passkey_id", "")
+        passkey = request.user.passkeys.filter(pk=passkey_id).first() if passkey_id.isdigit() else None
+        if passkey is not None:
+            passkey.delete()
+            audit_log.record(AuditLogEntry.ACTION_PASSKEY_REMOVED, request, summary=passkey.name)
+            django_messages.success(request, f"Passkey „{passkey.name}“ entfernt.")
 
 
 @login_required

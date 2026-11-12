@@ -27,6 +27,7 @@ Lunora ist ein kleines Django-basiertes Workspace-Dashboard mit ruhiger Glas-UI.
 - Tiptap 3 und Vite für das lokal gebündelte Notiz-Frontend
 - ReportLab und Pillow für den serverseitigen, berechtigungsgeprüften Notiz-PDF-Export
 - pywebpush für verschlüsselte Web-Push-Zustellung mit VAPID
+- cryptography für die Signaturprüfung von Passkeys (WebAuthn) bei der Zwei-Faktor-Anmeldung
 
 ## Projektstruktur
 

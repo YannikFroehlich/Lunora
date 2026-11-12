@@ -18,7 +18,7 @@ from django.urls import reverse_lazy
 
 from app.forms import LOGIN_ATTEMPT_LIMIT, LOGIN_ATTEMPT_LOCKOUT_SECONDS, EmailLoginForm, RegistrationForm
 from app.models import AuditLogEntry, Profile
-from app.services import audit_log, email_verification, two_factor
+from app.services import audit_log, email_verification, passkeys, two_factor
 from app.services.notifications import (
     materialize_failed_two_factor_notification,
     materialize_login_notification,
@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 TWO_FACTOR_SESSION_KEY = "two_factor_pending"
 TWO_FACTOR_PENDING_SECONDS = 5 * 60
+PASSKEY_CHALLENGE_KEY = "passkey_challenge"  # inside the pending dict
 PASSWORD_RESET_EMAIL_LIMIT = 3
 PASSWORD_RESET_IP_LIMIT = 10
 PASSWORD_RESET_WINDOW_SECONDS = 60 * 60
@@ -114,7 +115,12 @@ def login_two_factor(request):
         return redirect("login")
 
     error = ""
+    rp_id, origin = passkeys.relying_party(request)
     if request.method == "POST":
+        # A passkey answer stands in for the code. Its challenge is good for one attempt only.
+        posted_passkey = request.POST.get("passkey", "")
+        challenge = pending.pop(PASSKEY_CHALLENGE_KEY, None) if posted_passkey else None
+        request.session.modified = True
         # Throttled per account, not per session: restarting the password step must not reset it.
         # Counted before checking, so parallel requests can't all pass a not-yet-updated counter.
         attempts_key = _two_factor_attempts_key(pending["user_id"])
@@ -132,7 +138,13 @@ def login_two_factor(request):
                     profile
                     and user_can_login(profile.user)
                     and two_factor.is_enabled(profile.user)
-                    and two_factor.verify_login_code(profile, request.POST.get("code", ""))
+                    and (
+                        passkeys.verify_login(
+                            profile.user, posted_passkey, challenge=challenge, rp_id=rp_id, origin=origin
+                        )
+                        if posted_passkey
+                        else two_factor.verify_login_code(profile, request.POST.get("code", ""))
+                    )
                 )
             if verified:
                 cache.delete(attempts_key)
@@ -144,9 +156,18 @@ def login_two_factor(request):
             )
             if profile:
                 materialize_failed_two_factor_notification(profile.user)
-            error = "Der Code ist ungültig oder wurde bereits verwendet."
+            error = (
+                "Der Passkey konnte nicht bestätigt werden."
+                if posted_passkey
+                else "Der Code ist ungültig oder wurde bereits verwendet."
+            )
 
-    return render(request, "app/login_two_factor.html", {"error": error})
+    challenge = pending.get(PASSKEY_CHALLENGE_KEY) or passkeys.new_challenge()
+    passkey_options = passkeys.authentication_options(pending["user_id"], challenge, rp_id)
+    if passkey_options:
+        pending[PASSKEY_CHALLENGE_KEY] = challenge
+        request.session.modified = True  # pending is a dict inside the session
+    return render(request, "app/login_two_factor.html", {"error": error, "passkey_options": passkey_options})
 
 
 def _counter_exceeded(key, limit):

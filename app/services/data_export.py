@@ -250,6 +250,7 @@ def _account(user, archive):
     if profile is not None:
         data["profile"] = {field: getattr(profile, field) for field in PROFILE_FIELDS}
         data["profile"]["two_factor_enabled"] = profile.totp_enabled_at is not None
+        data["profile"]["passkeys"] = list(user.passkeys.values("name", "created_at", "last_used_at"))
         if profile.profile_image:
             extension = posixpath.splitext(profile.profile_image.name)[1]
             data["profile"]["profile_image"] = _add_file(

@@ -244,6 +244,22 @@
   margin-top: 16px;
 }
 
+.passkey-block {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--glass-border-soft);
+}
+
+.passkey-block h3 {
+  margin: 0 0 6px;
+  font-size: var(--text-lg);
+}
+
+.passkey-block h3 i {
+  margin-right: 6px;
+  color: var(--color-accent-strong);
+}
+
 .two-factor-steps {
   margin: 0 0 16px;
   padding-left: 20px;

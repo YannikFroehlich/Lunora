@@ -1,5 +1,5 @@
 {% extends 'app/base.html' %}
-{% load static %}
+{% load static static_versioning %}
 
 {% block title %}Bestätigungscode | Lunora{% endblock %}
 
@@ -13,19 +13,36 @@
         <h1>Bestätigungscode</h1>
         <p>Gib den 6-stelligen Code aus deiner Authenticator-App ein. Kein Zugriff auf die App? Dann nutze einen deiner Wiederherstellungscodes.</p>
 
+        {% if error %}
+        <div class="form-errors">{{ error }}</div>
+        {% endif %}
+
+        {% if passkey_options %}
+        <form class="auth-form" method="post" data-passkey-form="get" data-passkey-options="passkey-options">
+            {% csrf_token %}
+            <input type="hidden" name="passkey" data-passkey-response>
+            <button class="primary-button auth-submit" type="submit">
+                <i class="fa-solid fa-fingerprint" aria-hidden="true"></i>
+                Mit Passkey bestätigen
+            </button>
+            <p class="field-hint" role="status" data-passkey-status></p>
+        </form>
+        {{ passkey_options|json_script:"passkey-options" }}
+        {% endif %}
+
         <form class="auth-form" method="post">
             {% csrf_token %}
-            {% if error %}
-            <div class="form-errors">{{ error }}</div>
-            {% endif %}
-
             <label class="field-label" for="two-factor-code">Code</label>
-            <input id="two-factor-code" type="text" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="20" autofocus required>
+            <input id="two-factor-code" type="text" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="20" {% if not passkey_options %}autofocus {% endif %}required>
 
-            <button class="primary-button auth-submit" type="submit">Bestätigen</button>
+            <button class="{% if passkey_options %}ghost-button{% else %}primary-button{% endif %} auth-submit" type="submit">Bestätigen</button>
         </form>
 
         <p class="auth-switch"><a href="{% url 'login' %}">Zurück zur Anmeldung</a></p>
     </div>
 </section>
+{% endblock %}
+
+{% block page_js %}
+{% if passkey_options %}<script src="{% versioned_static 'js/passkeys.js' %}"></script>{% endif %}
 {% endblock %}
