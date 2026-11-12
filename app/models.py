@@ -215,6 +215,30 @@ class UserSession(models.Model):
         return f"{self.user} – {self.session_key[:8]}"
 
 
+class Passkey(models.Model):
+    """A WebAuthn credential used instead of the TOTP code at the second login step, or to sign in
+    without password from the login page.
+
+    Only counts while the profile's TOTP is on (app/services/passkeys.py); the public key is no
+    secret, the private one never leaves the user's device.
+    """
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="passkeys")
+    name = models.CharField(max_length=60)
+    # base64url of the credential id (at most 1023 bytes per the WebAuthn spec).
+    credential_id = models.CharField(max_length=1366, unique=True)
+    public_key = models.TextField()  # PEM SubjectPublicKeyInfo
+    sign_count = models.BigIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return f"{self.user} – {self.name}"
+
+
 class WeatherLocation(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="weather_locations"
@@ -1353,6 +1377,8 @@ class AuditLogEntry(models.Model):
     ACTION_TWO_FACTOR_ENABLED = "two_factor_enabled"
     ACTION_TWO_FACTOR_DISABLED = "two_factor_disabled"
     ACTION_RECOVERY_CODES = "recovery_codes"
+    ACTION_PASSKEY_ADDED = "passkey_added"
+    ACTION_PASSKEY_REMOVED = "passkey_removed"
     ACTION_SESSIONS_REVOKED = "sessions_revoked"
     ACTION_CALENDAR_FEED = "calendar_feed"
     ACTION_DATA_EXPORT = "data_export"
@@ -1369,6 +1395,8 @@ class AuditLogEntry(models.Model):
         (ACTION_TWO_FACTOR_ENABLED, "2FA aktiviert"),
         (ACTION_TWO_FACTOR_DISABLED, "2FA deaktiviert"),
         (ACTION_RECOVERY_CODES, "Neue Wiederherstellungscodes"),
+        (ACTION_PASSKEY_ADDED, "Passkey hinzugefügt"),
+        (ACTION_PASSKEY_REMOVED, "Passkey entfernt"),
         (ACTION_SESSIONS_REVOKED, "Geräte abgemeldet"),
         (ACTION_CALENDAR_FEED, "Kalender-Abo geändert"),
         (ACTION_DATA_EXPORT, "Datenexport"),

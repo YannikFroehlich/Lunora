@@ -537,6 +537,54 @@
                         </button>
                     </div>
                 </form>
+
+                <div class="passkey-block">
+                    <h3><i class="fa-solid fa-fingerprint" aria-hidden="true"></i> Passkeys</h3>
+                    <p class="panel-description">Bestätige die Anmeldung per Fingerabdruck, Gesichtserkennung, Geräte-PIN oder Sicherheitsschlüssel statt mit dem Code – oder melde dich mit „Mit Passkey anmelden“ ganz ohne Passwort an. Der Code und die Wiederherstellungscodes funktionieren weiterhin.</p>
+                    {% if passkeys %}
+                    <ul class="device-list">
+                        {% for passkey in passkeys %}
+                        <li class="device-row">
+                            <i class="fa-solid fa-key" aria-hidden="true"></i>
+                            <span>
+                                <strong>{{ passkey.name }}</strong>
+                                <small>Hinzugefügt {{ passkey.created }}{% if passkey.last_used %} · zuletzt genutzt {{ passkey.last_used }}{% endif %}</small>
+                            </span>
+                            <form method="post" data-confirm="Passkey „{{ passkey.name }}“ entfernen?">
+                                {% csrf_token %}
+                                <input type="hidden" name="form_name" value="passkey_delete">
+                                <input type="hidden" name="passkey_id" value="{{ passkey.id }}">
+                                <input type="hidden" name="return_to" value="{{ return_to }}">
+                                <button class="ghost-button" type="submit">Entfernen</button>
+                            </form>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                    {% if passkey_options %}
+                    <form class="two-factor-form" method="post" data-passkey-form="create" data-passkey-options="passkey-create-options">
+                        {% csrf_token %}
+                        <input type="hidden" name="form_name" value="passkey_add">
+                        <input type="hidden" name="return_to" value="{{ return_to }}">
+                        <input type="hidden" name="credential" data-passkey-response>
+                        <label class="settings-calendar-form" for="passkey-name">
+                            <span class="field-label">Name (optional)</span>
+                            <span class="calendar-input-pill">
+                                <i class="fa-solid fa-tag" aria-hidden="true"></i>
+                                <input id="passkey-name" type="text" name="name" maxlength="60" placeholder="z. B. Laptop oder YubiKey" autocomplete="off">
+                            </span>
+                        </label>
+                        <div class="calendar-form-actions">
+                            <button class="ghost-button" type="submit">
+                                <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                                Passkey hinzufügen
+                            </button>
+                        </div>
+                        <p class="field-hint" role="status" data-passkey-status></p>
+                    </form>
+                    {{ passkey_options|json_script:"passkey-create-options" }}
+                    {% endif %}
+                </div>
                 {% elif two_factor_setup_secret %}
                 <ol class="two-factor-steps">
                     <li>Scanne den QR-Code mit deiner Authenticator-App.</li>
@@ -728,4 +776,5 @@
 
 {% block page_js %}
 <script src="{% versioned_static 'js/settings.js' %}"></script>
+{% if passkey_options %}<script src="{% versioned_static 'js/passkeys.js' %}"></script>{% endif %}
 {% endblock %}

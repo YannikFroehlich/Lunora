@@ -6,6 +6,12 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Sign in with a passkey alone: the login page has "Mit Passkey anmelden", which needs neither
+  password nor code — the device asks for fingerprint, face or PIN instead. Works with the passkeys
+  added under Settings → Sicherheit (two-factor sign-in stays required for them).
+- Passkeys: with two-factor sign-in on, Settings → Sicherheit can add passkeys (fingerprint, face,
+  device PIN or a security key). Signing in then offers "Mit Passkey bestätigen" instead of typing
+  the code; the code and the recovery codes keep working.
 - The sign-in e-mail now comes by default only for a new device or browser. Under Settings →
   Sicherheit → "E-Mail bei Anmeldung" it can be set to every sign-in or switched off.
 - Fixed: shopping list items ticked off without a connection now stay ticked when the page is

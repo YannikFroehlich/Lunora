@@ -1,8 +1,10 @@
 import hashlib
 import logging
 import time
+from urllib.parse import urlencode
 
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.views import (
     LoginView,
@@ -13,12 +15,22 @@ from django.contrib.auth.views import (
 )
 from django.core.cache import cache
 from django.db import transaction
-from django.shortcuts import redirect, render
-from django.urls import reverse_lazy
+from django.http import JsonResponse
+from django.shortcuts import redirect, render, resolve_url
+from django.urls import reverse, reverse_lazy
+from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.http import require_POST
 
-from app.forms import LOGIN_ATTEMPT_LIMIT, LOGIN_ATTEMPT_LOCKOUT_SECONDS, EmailLoginForm, RegistrationForm
+from app.forms import (
+    LOGIN_ATTEMPT_LIMIT,
+    LOGIN_ATTEMPT_LOCKOUT_SECONDS,
+    LOGIN_CLIENT_ATTEMPT_LIMIT,
+    LOGIN_LOCKED_MESSAGE,
+    EmailLoginForm,
+    RegistrationForm,
+)
 from app.models import AuditLogEntry, Profile
-from app.services import audit_log, email_verification, two_factor
+from app.services import audit_log, email_verification, passkeys, two_factor
 from app.services.notifications import (
     materialize_failed_two_factor_notification,
     materialize_login_notification,
@@ -32,6 +44,8 @@ logger = logging.getLogger(__name__)
 
 TWO_FACTOR_SESSION_KEY = "two_factor_pending"
 TWO_FACTOR_PENDING_SECONDS = 5 * 60
+PASSKEY_CHALLENGE_KEY = "passkey_challenge"  # inside the pending dict
+PASSKEY_SIGN_IN_SESSION_KEY = "passkey_sign_in"
 PASSWORD_RESET_EMAIL_LIMIT = 3
 PASSWORD_RESET_IP_LIMIT = 10
 PASSWORD_RESET_WINDOW_SECONDS = 60 * 60
@@ -114,7 +128,12 @@ def login_two_factor(request):
         return redirect("login")
 
     error = ""
+    rp_id, origin = passkeys.relying_party(request)
     if request.method == "POST":
+        # A passkey answer stands in for the code. Its challenge is good for one attempt only.
+        posted_passkey = request.POST.get("passkey", "")
+        challenge = pending.pop(PASSKEY_CHALLENGE_KEY, None) if posted_passkey else None
+        request.session.modified = True
         # Throttled per account, not per session: restarting the password step must not reset it.
         # Counted before checking, so parallel requests can't all pass a not-yet-updated counter.
         attempts_key = _two_factor_attempts_key(pending["user_id"])
@@ -132,7 +151,13 @@ def login_two_factor(request):
                     profile
                     and user_can_login(profile.user)
                     and two_factor.is_enabled(profile.user)
-                    and two_factor.verify_login_code(profile, request.POST.get("code", ""))
+                    and (
+                        passkeys.verify_login(
+                            profile.user, posted_passkey, challenge=challenge, rp_id=rp_id, origin=origin
+                        )
+                        if posted_passkey
+                        else two_factor.verify_login_code(profile, request.POST.get("code", ""))
+                    )
                 )
             if verified:
                 cache.delete(attempts_key)
@@ -144,9 +169,80 @@ def login_two_factor(request):
             )
             if profile:
                 materialize_failed_two_factor_notification(profile.user)
-            error = "Der Code ist ungültig oder wurde bereits verwendet."
+            error = (
+                "Der Passkey konnte nicht bestätigt werden."
+                if posted_passkey
+                else "Der Code ist ungültig oder wurde bereits verwendet."
+            )
 
-    return render(request, "app/login_two_factor.html", {"error": error})
+    challenge = pending.get(PASSKEY_CHALLENGE_KEY) or passkeys.new_challenge()
+    passkey_options = passkeys.authentication_options(pending["user_id"], challenge, rp_id)
+    if passkey_options:
+        pending[PASSKEY_CHALLENGE_KEY] = challenge
+        request.session.modified = True  # pending is a dict inside the session
+    return render(request, "app/login_two_factor.html", {"error": error, "passkey_options": passkey_options})
+
+
+def _safe_next(request, url):
+    """`url` when it is a local address on this host (as LoginView checks `next`), else ''."""
+    allowed = url_has_allowed_host_and_scheme(
+        url, allowed_hosts={request.get_host()}, require_https=request.is_secure()
+    )
+    return url if url and allowed else ""
+
+
+@require_POST
+def login_passkey_options(request):
+    """Start a sign-in with a passkey: a fresh challenge for this session, good for one answer.
+
+    Only on request (the button), so the login page itself doesn't create a session per visitor.
+    """
+    challenge = passkeys.new_challenge()
+    request.session[PASSKEY_SIGN_IN_SESSION_KEY] = {"challenge": challenge, "started_at": int(time.time())}
+    return JsonResponse(passkeys.sign_in_options(challenge, passkeys.relying_party(request)[0]))
+
+
+@require_POST
+def login_passkey(request):
+    """Sign in with a passkey instead of password and code (see passkeys.authenticate)."""
+    started = request.session.pop(PASSKEY_SIGN_IN_SESSION_KEY, None)
+    next_url = _safe_next(request, request.POST.get("next", ""))
+    # The same per-client counter as wrong passwords, so switching method doesn't reset it.
+    client_ip = audit_log.client_ip(request)
+    client_key = f"login-client:{client_ip}" if client_ip else None
+    if client_key and cache.get(client_key, 0) >= LOGIN_CLIENT_ATTEMPT_LIMIT:
+        messages.error(request, LOGIN_LOCKED_MESSAGE)
+        return redirect(_login_url(next_url))
+
+    user = None
+    if started and time.time() - started["started_at"] <= TWO_FACTOR_PENDING_SECONDS:
+        rp_id, origin = passkeys.relying_party(request)
+        user = passkeys.authenticate(
+            request.POST.get("passkey", ""), challenge=started["challenge"], rp_id=rp_id, origin=origin
+        )
+    # Passkeys only count while TOTP is on (they stand in for it); the rest is what the password
+    # form checks in EmailLoginForm.confirm_login_allowed.
+    allowed = bool(
+        user
+        and user.is_active
+        and user_can_login(user)
+        and two_factor.is_enabled(user)
+        and not email_verification.is_pending(user)
+    )
+    if not allowed:
+        if client_key:
+            count_hit(client_key, LOGIN_ATTEMPT_LOCKOUT_SECONDS)
+        audit_log.record(AuditLogEntry.ACTION_LOGIN_FAILED, request, actor=user, summary="Passkey")
+        messages.error(request, "Die Anmeldung mit Passkey hat nicht geklappt. Bitte versuche es erneut.")
+        return redirect(_login_url(next_url))
+
+    request.session.pop(TWO_FACTOR_SESSION_KEY, None)
+    login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+    return _notify_login(request, redirect(next_url or resolve_url(settings.LOGIN_REDIRECT_URL)), user)
+
+
+def _login_url(next_url):
+    return f"{reverse('login')}?{urlencode({'next': next_url})}" if next_url else reverse("login")
 
 
 def _counter_exceeded(key, limit):
