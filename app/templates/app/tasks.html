@@ -80,7 +80,7 @@
                         <button type="button" class="task-view-link" data-task-view-link="list" data-task-view-list="">
                             <span class="task-list-dot tone-sand" aria-hidden="true"></span>
                             <span>Eingang</span>
-                            <em>{{ inbox_open_count }}</em>
+                            <em id="task-list-count-inbox" data-soft-region>{{ inbox_open_count }}</em>
                         </button>
                     </li>
                     {% for list in task_lists %}
@@ -89,7 +89,7 @@
                         <button type="button" class="task-view-link" data-task-view-link="list" data-task-view-list="{{ list.id }}">
                             <span class="task-list-dot tone-{{ list.color }}" aria-hidden="true"></span>
                             <span>{{ list.name }}</span>
-                            <em>{{ list.open_count }}</em>
+                            <em id="task-list-count-{{ list.id }}" data-soft-region>{{ list.open_count }}</em>
                         </button>
                         <details class="task-list-manage">
                             <summary aria-label="{{ list.name }} verwalten"><i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i></summary>
