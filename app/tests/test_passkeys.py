@@ -9,10 +9,11 @@ from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.test import Client, TestCase
 
-from app.models import AuditLogEntry, Passkey, Profile, UserNotification
+from app.models import AuditLogEntry, Passkey, Profile, SystemSettings, UserNotification
 from app.services import passkeys, two_factor
 from app.services.data_export import _account
 from app.services.user_sessions import device_label
+from app.views.auth_views import PASSKEY_SIGN_IN_SESSION_KEY
 
 SITE = {"rp_id": "testserver", "origin": "http://testserver"}
 
@@ -49,6 +50,7 @@ class FakeAuthenticator:
         )
         self.credential_id = secrets.token_bytes(32)
         self.counter = 0
+        self.user_handle = b""
 
     def _client_data(self, kind, challenge):
         return json.dumps({"type": kind, "challenge": challenge, "origin": self.origin}).encode()
@@ -72,6 +74,8 @@ class FakeAuthenticator:
         )
 
     def create(self, options):
+        if "user" in options:
+            self.user_handle = passkeys._b64decode(options["user"]["id"])
         attested = (
             bytes(16)
             + len(self.credential_id).to_bytes(2, "big")
@@ -85,16 +89,22 @@ class FakeAuthenticator:
             ),
         )
 
-    def get(self, options):
+    def get(self, options, *, flags=0x05):
+        """Flags 0x05: user present and verified (fingerprint, face or PIN)."""
         self.counter += 1
         client_data = self._client_data("webauthn.get", options["challenge"])
-        auth_data = self._auth_data(0x05)
+        auth_data = self._auth_data(flags)
         signed = auth_data + hashlib.sha256(client_data).digest()
         if isinstance(self.key, rsa.RSAPrivateKey):
             signature = self.key.sign(signed, padding.PKCS1v15(), hashes.SHA256())
         else:
             signature = self.key.sign(signed, ec.ECDSA(hashes.SHA256()))
-        return self._answer(clientDataJSON=client_data, authenticatorData=auth_data, signature=signature)
+        return self._answer(
+            clientDataJSON=client_data,
+            authenticatorData=auth_data,
+            signature=signature,
+            userHandle=self.user_handle,
+        )
 
 
 class PasskeyTests(TestCase):
@@ -336,3 +346,98 @@ class PasskeyTests(TestCase):
         self.assertIn("Laptop", exported)
         self.assertNotIn(Passkey.objects.get().credential_id, exported)
         self.assertNotIn("PUBLIC KEY", exported)
+
+
+class PasskeySignInTests(TestCase):
+    """Signing in with a passkey alone, from the login page."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(username="lea", email="lea@example.com", password="pw-12345!")
+        self.profile = Profile.objects.create(user=self.user, display_name="Lea")
+        secret = two_factor.generate_secret()
+        two_factor.enable(self.profile, secret, two_factor.totp_code(secret, two_factor.current_step()))
+        self.authenticator = FakeAuthenticator()
+        self.client.force_login(self.user)
+        options = self.client.get("/settings/").context["passkey_options"]
+        self.client.post(
+            "/settings/", {"form_name": "passkey_add", "credential": self.authenticator.create(options)}
+        )
+        self.assertEqual(Passkey.objects.count(), 1)
+        self.client.logout()
+
+    def _options(self):
+        response = self.client.post("/login/passkey/optionen/")
+        self.assertEqual(response.status_code, 200)
+        return response.json()
+
+    def _sign_in(self, answer, next_url=""):
+        return self.client.post("/login/passkey/", {"passkey": answer, "next": next_url})
+
+    def _assert_refused(self, response):
+        self.assertRedirects(response, "/login/", fetch_redirect_response=False)
+        self.assertNotIn("_auth_user_id", self.client.session)
+        page = self.client.get("/login/")
+        self.assertContains(page, "Die Anmeldung mit Passkey hat nicht geklappt.")
+
+    def test_passkey_signs_in_without_password_or_code(self):
+        options = self._options()
+        self.assertNotIn("allowCredentials", options)
+        self.assertEqual(options["userVerification"], "required")
+
+        response = self._sign_in(self.authenticator.get(options), next_url="/tasks/")
+
+        self.assertRedirects(response, "/tasks/", fetch_redirect_response=False)
+        self.assertEqual(self.client.session["_auth_user_id"], str(self.user.pk))
+        self.assertIsNotNone(Passkey.objects.get().last_used_at)
+        self.assertTrue(
+            AuditLogEntry.objects.filter(action=AuditLogEntry.ACTION_LOGIN, actor=self.user).exists()
+        )
+
+    def test_login_page_offers_the_button_without_starting_a_session(self):
+        response = self.client.get("/login/?next=/notes/")
+        self.assertContains(response, "Mit Passkey anmelden")
+        self.assertContains(response, 'name="next" value="/notes/"')
+        self.assertNotIn(PASSKEY_SIGN_IN_SESSION_KEY, self.client.session)
+
+    def test_answer_without_user_verification_is_refused(self):
+        self._assert_refused(self._sign_in(self.authenticator.get(self._options(), flags=0x01)))
+        self.assertTrue(
+            AuditLogEntry.objects.filter(action=AuditLogEntry.ACTION_LOGIN_FAILED, summary="Passkey").exists()
+        )
+
+    def test_answer_naming_another_user_is_refused(self):
+        self.authenticator.user_handle = b"999"
+        self._assert_refused(self._sign_in(self.authenticator.get(self._options())))
+
+    def test_challenge_works_once(self):
+        answer = self.authenticator.get(self._options())
+        self._sign_in(answer)
+        self.client.logout()
+        self._assert_refused(self._sign_in(answer))
+
+    def test_answer_without_requested_options_is_refused(self):
+        self._assert_refused(self._sign_in(self.authenticator.get({"challenge": passkeys.new_challenge()})))
+
+    def test_inactive_account_is_refused(self):
+        User.objects.filter(pk=self.user.pk).update(is_active=False)
+        self._assert_refused(self._sign_in(self.authenticator.get(self._options())))
+
+    def test_switched_off_login_refuses_normal_users(self):
+        SystemSettings.objects.update_or_create(pk=1, defaults={"normal_login_enabled": False})
+        self._assert_refused(self._sign_in(self.authenticator.get(self._options())))
+
+    def test_unconfirmed_email_is_refused(self):
+        Profile.objects.filter(pk=self.profile.pk).update(email_confirmation_pending=True)
+        self._assert_refused(self._sign_in(self.authenticator.get(self._options())))
+
+    def test_foreign_next_falls_back_to_the_dashboard(self):
+        response = self._sign_in(self.authenticator.get(self._options()), next_url="https://evil.example/")
+        self.assertRedirects(response, "/home/", fetch_redirect_response=False)
+
+    def test_failed_answers_count_against_the_client_limit(self):
+        with patch("app.views.auth_views.LOGIN_CLIENT_ATTEMPT_LIMIT", 1):
+            self._sign_in(self.authenticator.get({"challenge": "x"}))
+            response = self._sign_in(self.authenticator.get(self._options()))
+        self.assertRedirects(response, "/login/", fetch_redirect_response=False)
+        self.assertNotIn("_auth_user_id", self.client.session)

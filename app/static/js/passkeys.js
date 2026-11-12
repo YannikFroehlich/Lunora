@@ -1,7 +1,8 @@
 // Passkeys (WebAuthn). A form with data-passkey-form="create" (settings) or "get" (second login
-// step) asks the browser for a credential on submit, puts the answer as JSON into its
-// [data-passkey-response] field and then submits for real. The server made the options (a JSON
-// script named by data-passkey-options) and checks the answer: app/services/passkeys.py.
+// step, sign-in page) asks the browser for a credential on submit, puts the answer as JSON into its
+// [data-passkey-response] field and then submits for real. The server made the options: a JSON
+// script named by data-passkey-options, or (sign-in page, so a visit alone starts no session) the
+// answer of a POST to data-passkey-options-url. It checks the answer: app/services/passkeys.py.
 (function () {
   function fromBase64Url(text) {
     const binary = atob(text.replace(/-/g, "+").replace(/_/g, "/"));
@@ -46,12 +47,14 @@
         allowCredentials: withBinaryIds(options.allowCredentials),
       },
     });
+    const { userHandle } = credential.response;
     return {
       id: credential.id,
       response: {
         clientDataJSON: toBase64Url(credential.response.clientDataJSON),
         authenticatorData: toBase64Url(credential.response.authenticatorData),
         signature: toBase64Url(credential.response.signature),
+        userHandle: userHandle ? toBase64Url(userHandle) : null,
       },
     };
   }
@@ -62,6 +65,16 @@
     }
     if (error?.name === "NotAllowedError") return "Abgebrochen oder Zeit abgelaufen. Bitte versuche es erneut.";
     return "Der Passkey konnte nicht verwendet werden.";
+  }
+
+  async function loadOptions(form) {
+    if (!form.dataset.passkeyOptionsUrl) {
+      return JSON.parse(document.getElementById(form.dataset.passkeyOptions).textContent);
+    }
+    // The form's own fields carry the CSRF token.
+    const response = await fetch(form.dataset.passkeyOptionsUrl, { method: "POST", body: new FormData(form) });
+    if (!response.ok) throw new Error("options request failed");
+    return response.json();
   }
 
   const supported = Boolean(window.PublicKeyCredential && navigator.credentials);
@@ -79,10 +92,10 @@
       event.preventDefault();
       if (form.getAttribute("aria-busy") === "true") return;
       const mode = form.dataset.passkeyForm;
-      const options = JSON.parse(document.getElementById(form.dataset.passkeyOptions).textContent);
       form.setAttribute("aria-busy", "true");
       if (status) status.textContent = "";
       try {
+        const options = await loadOptions(form);
         const answer = await (mode === "create" ? createPasskey(options) : getPasskey(options));
         form.querySelector("[data-passkey-response]").value = JSON.stringify(answer);
         // submit() skips this listener; the page reloads with the server's verdict.

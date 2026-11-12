@@ -216,7 +216,8 @@ class UserSession(models.Model):
 
 
 class Passkey(models.Model):
-    """A WebAuthn credential used instead of the TOTP code at the second login step.
+    """A WebAuthn credential used instead of the TOTP code at the second login step, or to sign in
+    without password from the login page.
 
     Only counts while the profile's TOTP is on (app/services/passkeys.py); the public key is no
     secret, the private one never leaves the user's device.

@@ -1,5 +1,5 @@
 {% extends 'app/base.html' %}
-{% load static %}
+{% load static static_versioning %}
 
 {% block title %}Anmelden | Lunora{% endblock %}
 
@@ -35,6 +35,17 @@
             <button class="primary-button auth-submit" type="submit">Anmelden</button>
         </form>
 
+        <form class="auth-form" method="post" action="{% url 'login_passkey' %}" data-passkey-form="get" data-passkey-options-url="{% url 'login_passkey_options' %}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ next }}">
+            <input type="hidden" name="passkey" data-passkey-response>
+            <button class="ghost-button auth-submit" type="submit">
+                <i class="fa-solid fa-fingerprint" aria-hidden="true"></i>
+                Mit Passkey anmelden
+            </button>
+            <p class="field-hint" role="status" data-passkey-status></p>
+        </form>
+
         <p class="auth-switch"><a href="{% url 'password_reset' %}">Passwort vergessen?</a></p>
         {% if not login_disabled %}
         <p class="auth-switch">Noch kein Konto? <a href="{% url 'register' %}">Jetzt registrieren</a></p>
@@ -42,3 +53,5 @@
     </div>
 </section>
 {% endblock %}
+
+{% block page_js %}<script src="{% versioned_static 'js/passkeys.js' %}"></script>{% endblock %}

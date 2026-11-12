@@ -1,10 +1,13 @@
-"""Passkeys (WebAuthn) as a second login factor next to the TOTP code.
+"""Passkeys (WebAuthn): a second login factor next to the TOTP code, and a sign-in of their own.
 
 Only the part of the spec Lunora needs: "none" attestation at registration (the public key is
 read from the authenticator data, an attestation statement is ignored), ES256 and RS256 keys, and
 the checks of WebAuthn Level 2 §7.1/§7.2 that matter without attestation: type, challenge,
 origin, RP id hash, user presence, signature and signature counter. Signatures are verified with
 `cryptography`; the few CBOR types an authenticator sends are decoded here.
+
+Signing in without the password (`authenticate`) needs a discoverable passkey and user
+verification (fingerprint, face or device PIN), so the passkey alone is still two factors.
 """
 
 import base64
@@ -16,6 +19,7 @@ import secrets
 from cryptography.exceptions import InvalidSignature, UnsupportedAlgorithm
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
+from django.db import transaction
 from django.http.request import split_domain_port
 from django.utils import timezone
 
@@ -30,6 +34,7 @@ MIN_RSA_BITS = 2048
 TIMEOUT_MS = 120_000
 CBOR_MAX_DEPTH = 8
 FLAG_USER_PRESENT = 0x01
+FLAG_USER_VERIFIED = 0x04
 FLAG_ATTESTED_DATA = 0x40
 COSE_ES256 = -7
 COSE_RS256 = -257
@@ -204,13 +209,22 @@ def verify_registration(posted, *, challenge, rp_id, origin):
         raise PasskeyError(str(error) or type(error).__name__) from error
 
 
-def verify_assertion(posted, *, public_key, sign_count, challenge, rp_id, origin):
-    """Check a navigator.credentials.get() answer against a stored key; returns the new counter."""
+def verify_assertion(posted, *, public_key, sign_count, challenge, rp_id, origin, user_handle=None):
+    """Check a navigator.credentials.get() answer against a stored key; returns the new counter.
+
+    With `user_handle` (the stored user's handle) it is a sign-in without password: the answer
+    must name that user and the authenticator must have verified the person.
+    """
     try:
         response = _posted_response(posted)
         client_data = _checked_client_data(response, "webauthn.get", challenge, origin)
         auth_data = _b64decode(response["authenticatorData"])
-        _flags, new_count = _checked_authenticator_data(auth_data, rp_id)
+        flags, new_count = _checked_authenticator_data(auth_data, rp_id)
+        if user_handle is not None:
+            if not flags & FLAG_USER_VERIFIED:
+                raise PasskeyError("user was not verified")
+            if not hmac.compare_digest(_b64decode(response.get("userHandle")), user_handle):
+                raise PasskeyError("answer names another user")
         signature = _b64decode(response["signature"])
         signed = auth_data + hashlib.sha256(client_data).digest()
         key = serialization.load_pem_public_key(public_key.encode("ascii"))
@@ -237,14 +251,18 @@ def _posted_credential_id(posted):
         raise PasskeyError("answer without credential id") from error
 
 
+def _user_handle(user_id):
+    # The user handle must not carry personal data, so not the e-mail address.
+    return str(user_id).encode()
+
+
 def registration_options(user, challenge, rp_id):
     """PublicKeyCredentialCreationOptions as JSON; passkeys.js turns the base64url parts into bytes."""
     return {
         "challenge": challenge,
         "rp": {"id": rp_id, "name": RP_NAME},
         "user": {
-            # The user handle must not carry personal data, so not the e-mail address.
-            "id": _b64encode(str(user.pk).encode()),
+            "id": _b64encode(_user_handle(user.pk)),
             "name": user.email or user.get_username(),
             "displayName": user.first_name or user.email or user.get_username(),
         },
@@ -276,6 +294,17 @@ def authentication_options(user_id, challenge, rp_id):
     }
 
 
+def sign_in_options(challenge, rp_id):
+    """PublicKeyCredentialRequestOptions without allowCredentials: the browser offers every passkey
+    it keeps for this site, and the answer says whose it is."""
+    return {
+        "challenge": challenge,
+        "rpId": rp_id,
+        "userVerification": "required",
+        "timeout": TIMEOUT_MS,
+    }
+
+
 def add_passkey(user, name, posted, *, challenge, rp_id, origin):
     """Store the credential the browser just created. Raises PasskeyError when a check fails."""
     fields = verify_registration(posted, challenge=challenge, rp_id=rp_id, origin=origin)
@@ -285,25 +314,48 @@ def add_passkey(user, name, posted, *, challenge, rp_id, origin):
     return Passkey.objects.create(user=user, name=name, **fields)
 
 
-def verify_login(user, posted, *, challenge, rp_id, origin):
-    """True when the posted assertion comes from one of the user's passkeys.
+def _use_passkey(candidates, posted, *, without_password, **checks):
+    """The passkey among `candidates` that signed the answer, with its counter moved on, or None.
 
-    Callers hold the profile's row lock (as for TOTP codes), so the counter update can't race.
+    The row lock keeps two answers from passing the same counter value.
     """
     try:
-        passkey = Passkey.objects.filter(user=user, credential_id=_posted_credential_id(posted)).first()
-        if passkey is None:
-            return False
-        passkey.sign_count = verify_assertion(
-            posted,
-            public_key=passkey.public_key,
-            sign_count=passkey.sign_count,
-            challenge=challenge,
-            rp_id=rp_id,
-            origin=origin,
-        )
+        with transaction.atomic():
+            passkey = (
+                candidates.select_for_update()
+                .select_related("user")
+                .filter(credential_id=_posted_credential_id(posted))
+                .first()
+            )
+            if passkey is None:
+                return None
+            passkey.sign_count = verify_assertion(
+                posted,
+                public_key=passkey.public_key,
+                sign_count=passkey.sign_count,
+                user_handle=_user_handle(passkey.user_id) if without_password else None,
+                **checks,
+            )
+            passkey.last_used_at = timezone.now()
+            passkey.save(update_fields=["sign_count", "last_used_at"])
+            return passkey
     except PasskeyError:
-        return False
-    passkey.last_used_at = timezone.now()
-    passkey.save(update_fields=["sign_count", "last_used_at"])
-    return True
+        return None
+
+
+def verify_login(user, posted, *, challenge, rp_id, origin):
+    """True when the posted assertion comes from one of the user's passkeys (second login step)."""
+    checks = {"challenge": challenge, "rp_id": rp_id, "origin": origin}
+    return (
+        _use_passkey(Passkey.objects.filter(user=user), posted, without_password=False, **checks) is not None
+    )
+
+
+def authenticate(posted, *, challenge, rp_id, origin):
+    """The user whose passkey signed this sign-in without password, or None.
+
+    Whether that user may sign in at all is the caller's check.
+    """
+    checks = {"challenge": challenge, "rp_id": rp_id, "origin": origin}
+    passkey = _use_passkey(Passkey.objects.all(), posted, without_password=True, **checks)
+    return passkey.user if passkey else None
