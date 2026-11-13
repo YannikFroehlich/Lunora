@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Shopping list scans: compound items find products under a synonym of their last part, so
+  "Speisemöhren" on the list is ticked off by scanning "Karotten".
 - Fixed: several uploads sent at the same moment could together go past the storage limit; they
   are now checked one after another.
 - Passkeys can be renamed: click a passkey's name under Settings → Sicherheit, type the new one and
