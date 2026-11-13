@@ -12,7 +12,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_http_methods, require_POST
 
 from app.forms import HabitForm, HabitReminderForm, RecipeForm, ShoppingItemForm
-from app.models import Habit, MealPlanEntry, Recipe, ShoppingItem, UmlDiagram
+from app.models import Habit, MealPlanEntry, Recipe, ShoppingItem, UmlDiagram, Whiteboard
 from app.services.habits import habit_items, toggle_habit_check
 from app.services.notes import display_name
 from app.services.recipe_import import fetch_recipe_for
@@ -42,10 +42,12 @@ from app.services.time_tracking import running_entry, start_timer, stop_timer, w
 from app.services.trash import trash_habit, trash_recipe
 from app.services.uml_content import validate_uml_document
 from app.services.user_preferences import format_user_date, format_user_datetime, localtime_for_user
+from app.services.whiteboard_content import validate_whiteboard_document
 from app.view_models import get_tools_context
 from app.views.navigation import local_return_to, posted_id
 from app.views.trash_views import trashed_message
 
+# Whiteboard.title has the same length, so _clean_title serves both editors.
 UML_TITLE_MAX_LENGTH = UmlDiagram._meta.get_field("title").max_length
 
 
@@ -573,3 +575,90 @@ def uml_diagram_api(request, diagram_id):
     diagram.document = document
     diagram.save(update_fields=["title", "document", "updated_at"])
     return JsonResponse({"ok": True, "updated_label": format_user_datetime(diagram.updated_at, request.user)})
+
+
+@login_required
+def whiteboards(request):
+    if not feature_enabled("tools"):
+        return disabled_feature_response(request, "tools")
+
+    form_name = request.POST.get("form_name") if request.method == "POST" else None
+    if form_name == "whiteboard_create":
+        try:
+            title = _clean_title(request.POST.get("title"))
+        except ValidationError as error:
+            django_messages.error(request, " ".join(error.messages))
+            return redirect("whiteboards")
+        board = Whiteboard.objects.create(owner=request.user, title=title)
+        return redirect("whiteboard_editor", board_id=board.pk)
+    if form_name == "whiteboard_duplicate":
+        source = get_object_or_404(Whiteboard, owner=request.user, pk=posted_id(request, "board_id"))
+        copy_title = f"{source.title} (Kopie)"[:UML_TITLE_MAX_LENGTH]
+        board = Whiteboard.objects.create(owner=request.user, title=copy_title, document=source.document)
+        django_messages.success(request, "Whiteboard dupliziert.")
+        return redirect("whiteboard_editor", board_id=board.pk)
+    if form_name == "whiteboard_delete":
+        deleted, _ = Whiteboard.objects.filter(owner=request.user, pk=posted_id(request, "board_id")).delete()
+        if deleted:
+            django_messages.success(request, "Whiteboard gelöscht.")
+        return redirect("whiteboards")
+
+    boards = [
+        {
+            "id": board.pk,
+            "title": board.title,
+            "element_count": len(board.document.get("elements", [])),
+            "updated_label": format_user_datetime(board.updated_at, request.user),
+        }
+        for board in Whiteboard.objects.filter(owner=request.user)
+    ]
+    return render(
+        request,
+        "app/whiteboards.html",
+        {"active_page": "tools", "boards": boards, "title_max_length": UML_TITLE_MAX_LENGTH},
+    )
+
+
+@login_required
+def whiteboard_editor(request, board_id):
+    if not feature_enabled("tools"):
+        return disabled_feature_response(request, "tools")
+    board = get_object_or_404(Whiteboard, owner=request.user, pk=board_id)
+    return render(
+        request,
+        "app/whiteboard_editor.html",
+        {
+            "active_page": "tools",
+            "board": board,
+            "board_payload": {"id": board.pk, "title": board.title, "document": board.document},
+            "title_max_length": UML_TITLE_MAX_LENGTH,
+        },
+    )
+
+
+@login_required
+@require_http_methods(["PUT"])
+def whiteboard_api(request, board_id):
+    if not feature_enabled("tools"):
+        return disabled_feature_response(request, "tools", json_response=True)
+    board = Whiteboard.objects.filter(owner=request.user, pk=board_id).first()
+    if board is None:
+        return JsonResponse({"ok": False, "error": "Whiteboard nicht gefunden."}, status=404)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except (ValueError, RecursionError):  # ValueError covers bad encoding, bad JSON and giant integers.
+        return JsonResponse({"ok": False, "error": "Die Anfrage muss gültiges JSON sein."}, status=400)
+    if not isinstance(payload, dict):
+        return JsonResponse({"ok": False, "error": "Die Anfrage ist ungültig."}, status=400)
+
+    try:
+        title = _clean_title(payload.get("title"))
+        document = validate_whiteboard_document(payload.get("document"))
+    except ValidationError as error:
+        return JsonResponse({"ok": False, "error": " ".join(error.messages)}, status=400)
+
+    board.title = title
+    board.document = document
+    board.save(update_fields=["title", "document", "updated_at"])
+    return JsonResponse({"ok": True, "updated_label": format_user_datetime(board.updated_at, request.user)})

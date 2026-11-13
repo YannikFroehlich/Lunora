@@ -1,0 +1,31 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}{{ board.title }} | Whiteboard | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell uml-shell" data-whiteboard-editor data-save-url="{% url 'whiteboard_api' board.id %}">
+    <header class="glass-panel uml-header">
+        <h1 class="visually-hidden">Whiteboard „{{ board.title }}“ bearbeiten</h1>
+        <a class="icon-button" href="{% url 'whiteboards' %}" aria-label="Zur Whiteboard-Übersicht" title="Zur Übersicht">
+            <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+        </a>
+        <label class="uml-title-field">
+            <span class="visually-hidden">Titel des Whiteboards</span>
+            <input type="text" maxlength="{{ title_max_length }}" value="{{ board.title }}" data-whiteboard-title required>
+        </label>
+        <span class="uml-save-status" role="status" aria-live="polite" data-whiteboard-status>Gespeichert</span>
+    </header>
+
+    <div class="empty-state-card uml-empty">
+        <i class="fa-solid fa-pen-ruler" aria-hidden="true"></i>
+        <strong>Die Zeichenfläche folgt</strong>
+        <p>Dieses Whiteboard ist angelegt; der Editor ist noch in Arbeit.</p>
+    </div>
+</section>
+{{ board_payload|json_script:"whiteboard-data" }}
+{% endblock %}

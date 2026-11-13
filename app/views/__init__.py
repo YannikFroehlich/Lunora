@@ -78,6 +78,9 @@ from .tools_views import (
     uml_diagram_api,
     uml_diagram_editor,
     uml_diagrams,
+    whiteboard_api,
+    whiteboard_editor,
+    whiteboards,
 )
 from .trash_views import trash
 from .vacation_planner_views import (
@@ -167,6 +170,9 @@ __all__ = [
     "uml_diagrams",
     "uml_diagram_editor",
     "uml_diagram_api",
+    "whiteboards",
+    "whiteboard_editor",
+    "whiteboard_api",
     "vocabulary_lists",
     "vocabulary_list_detail",
     "vocabulary_practice",

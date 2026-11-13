@@ -16,6 +16,7 @@ from app.services.note_content import document_checklist_counts, empty_note_docu
 from app.services.note_files import note_upload_to, private_note_storage
 from app.services.note_search import refresh_note_search_vectors
 from app.services.uml_content import empty_uml_document
+from app.services.whiteboard_content import empty_whiteboard_document
 
 
 class AutomationHeartbeat(models.Model):
@@ -995,6 +996,21 @@ class UmlDiagram(models.Model):
     title = models.CharField(max_length=120)
     # Validated by app.services.uml_content before every save; never store client JSON directly.
     document = models.JSONField(default=empty_uml_document)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at", "-id"]
+
+    def __str__(self):
+        return self.title
+
+
+class Whiteboard(models.Model):
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="whiteboards")
+    title = models.CharField(max_length=120)
+    # Validated by app.services.whiteboard_content before every save; never store client JSON directly.
+    document = models.JSONField(default=empty_whiteboard_document)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
