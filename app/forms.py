@@ -183,7 +183,7 @@ class SystemSettingsForm(forms.ModelForm):
             "weather_enabled": "Wetter",
             "dashboard_customization_enabled": "Dashboard anpassen",
             "tasks_enabled": "Aufgaben",
-            "tools_enabled": "Werkzeuge (Gewohnheiten, Einkaufszettel, Rezepte, Ausgaben, Fokus-Timer, UML, Vokabeln)",
+            "tools_enabled": "Werkzeuge (Gewohnheiten, Einkaufszettel, Rezepte, Ausgaben, Fokus-Timer, UML, Whiteboard, Vokabeln)",
             "note_public_links_enabled": "Notizen: öffentliche Links zum Lesen ohne Anmeldung",
         }
         widgets = {

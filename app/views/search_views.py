@@ -3,7 +3,7 @@ from django.db.models import Q
 from django.shortcuts import render
 from django.urls import reverse
 
-from app.models import Conversation, UmlDiagram, VacationPeriod, VocabularyList
+from app.models import Conversation, UmlDiagram, VacationPeriod, VocabularyList, Whiteboard
 from app.services.note_search import build_snippet, highlight_text, parse_search_query, search_notes
 from app.services.notes import accessible_notes
 from app.services.system_settings import feature_flags
@@ -196,6 +196,18 @@ def global_search(request):
                 "url": reverse("uml_diagram_editor", args=[diagram.pk]),
             }
             for diagram in diagrams
+        ]
+        boards = Whiteboard.objects.filter(owner=request.user, title__icontains=query).order_by(
+            "-updated_at", "-id"
+        )[:SEARCH_RESULT_LIMIT]
+        tool_results += [
+            {
+                "title": board.title,
+                "subtitle": "Whiteboard",
+                "icon": "fa-pen-ruler",
+                "url": reverse("whiteboard_editor", args=[board.pk]),
+            }
+            for board in boards
         ]
 
     has_search_results = bool(

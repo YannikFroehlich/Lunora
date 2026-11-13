@@ -58,6 +58,16 @@
             <button type="button" class="uml-tool is-icon" data-whiteboard-action="zoom-in" aria-label="Vergrößern" title="Vergrößern (+)"><i class="fa-solid fa-magnifying-glass-plus" aria-hidden="true"></i></button>
             <button type="button" class="uml-tool is-icon" data-whiteboard-action="fit" aria-label="Alles anzeigen" title="Alles anzeigen (F)"><i class="fa-solid fa-expand" aria-hidden="true"></i></button>
         </div>
+        <details class="uml-tool-group uml-export-menu">
+            <summary class="uml-tool"><i class="fa-solid fa-file-export" aria-hidden="true"></i><span>Export</span></summary>
+            <div class="uml-export-list">
+                <button type="button" data-whiteboard-export="png"><i class="fa-regular fa-image" aria-hidden="true"></i> PNG-Bild</button>
+                <button type="button" data-whiteboard-export="svg"><i class="fa-solid fa-bezier-curve" aria-hidden="true"></i> SVG-Grafik</button>
+                <button type="button" data-whiteboard-export="json"><i class="fa-solid fa-code" aria-hidden="true"></i> JSON-Datei</button>
+                <button type="button" data-whiteboard-export="import"><i class="fa-solid fa-file-import" aria-hidden="true"></i> JSON importieren …</button>
+            </div>
+        </details>
+        <input type="file" accept="application/json,.json" hidden data-whiteboard-import-input aria-label="Whiteboard als JSON importieren">
     </div>
 
     <div class="glass-panel uml-canvas-wrap whiteboard-canvas-wrap">

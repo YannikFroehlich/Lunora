@@ -21,6 +21,7 @@ from app.models import (
     VocabularyCard,
     VocabularyList,
     VocabularyListShare,
+    Whiteboard,
 )
 from app.services.note_search import build_snippet, highlight_text, parse_search_query, search_notes
 from app.services.notes import accessible_notes
@@ -201,11 +202,14 @@ class GlobalSearchToolTests(TestCase):
         VocabularyList.objects.create(owner=self.lukas, title="Rakete privat")
         diagram = UmlDiagram.objects.create(owner=self.mira, title="Raketensteuerung")
         UmlDiagram.objects.create(owner=self.lukas, title="Rakete fremd")
+        board = Whiteboard.objects.create(owner=self.mira, title="Raketenskizze")
+        Whiteboard.objects.create(owner=self.lukas, title="Rakete fremd skizziert")
 
         results = self.client.get("/search/?q=rakete").context["tool_results"]
 
         by_title = {item["title"]: item for item in results}
-        self.assertEqual(set(by_title), {"Unit 5", "Raketen-Vokabeln", "Raketensteuerung"})
+        self.assertEqual(set(by_title), {"Unit 5", "Raketen-Vokabeln", "Raketensteuerung", "Raketenskizze"})
+        self.assertEqual(by_title["Raketenskizze"]["url"], f"/tools/whiteboard/{board.pk}/")
         self.assertEqual(by_title["Unit 5"]["url"], f"/tools/vocabulary/{own.pk}/")
         self.assertEqual(by_title["Raketen-Vokabeln"]["url"], "/tools/vocabulary/")
         self.assertEqual(by_title["Raketensteuerung"]["url"], f"/tools/uml/{diagram.pk}/")

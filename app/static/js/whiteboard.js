@@ -55,6 +55,8 @@
   const fillButton = root.querySelector("[data-whiteboard-fill]");
   const sizeSelect = root.querySelector("[data-whiteboard-text-size]");
   const textInput = root.querySelector("[data-whiteboard-text]");
+  const exportMenu = root.querySelector(".uml-export-menu");
+  const importInput = root.querySelector("[data-whiteboard-import-input]");
   const defaultHint = hintLabel.textContent;
 
   const doc = format.normalizeDocument(payload.document);
@@ -876,6 +878,110 @@
     if (saveState.dirty || saveState.saving) event.preventDefault();
   });
 
+  // ---- Export & import ------------------------------------------------------------------------
+
+  function slug(value) {
+    return (
+      value
+        .normalize("NFKD")
+        .replace(/[̀-ͯ]/g, "")
+        .replace(/[^A-Za-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .toLowerCase() || "whiteboard"
+    );
+  }
+
+  function download(filename, blob) {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  // A standalone SVG of the whole board on white paper, framed by its content plus a margin.
+  function buildExportSvg() {
+    const bounds = format.documentBounds(doc, measure) || { x1: 0, y1: 0, x2: 200, y2: 120 };
+    const margin = 24;
+    const x = Math.floor(bounds.x1 - margin);
+    const y = Math.floor(bounds.y1 - margin);
+    const width = Math.ceil(bounds.x2 - bounds.x1 + margin * 2);
+    const height = Math.ceil(bounds.y2 - bounds.y1 + margin * 2);
+    const exportSvg = svgEl("svg", { xmlns: SVG_NS, width, height, viewBox: `${x} ${y} ${width} ${height}` });
+    exportSvg.append(svgEl("rect", { x, y, width, height, fill: "#ffffff" }));
+    doc.elements.forEach((item) => exportSvg.append(elementNode(item)));
+    return { markup: new XMLSerializer().serializeToString(exportSvg), width, height };
+  }
+
+  function exportPng() {
+    const { markup, width, height } = buildExportSvg();
+    // Canvases have a maximum size; very large boards are scaled down instead of failing.
+    const scale = Math.min(2, 8000 / Math.max(width, height));
+    const image = new Image();
+    const url = URL.createObjectURL(new Blob([markup], { type: "image/svg+xml" }));
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(width * scale);
+      canvas.height = Math.round(height * scale);
+      const context = canvas.getContext("2d");
+      context.scale(scale, scale);
+      context.drawImage(image, 0, 0, width, height);
+      URL.revokeObjectURL(url);
+      canvas.toBlob((blob) => blob && download(`${slug(titleInput.value)}.png`, blob), "image/png");
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      showHint("Das Bild konnte nicht erstellt werden.");
+    };
+    image.src = url;
+  }
+
+  function runExport(kind) {
+    exportMenu.open = false;
+    const base = slug(titleInput.value);
+    if (kind === "png") exportPng();
+    else if (kind === "svg") download(`${base}.svg`, new Blob([buildExportSvg().markup], { type: "image/svg+xml" }));
+    else if (kind === "json") {
+      const data = { format: "lunora-whiteboard", title: titleInput.value.trim(), document: doc };
+      download(`${base}.json`, new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+    } else if (kind === "import") {
+      importInput.value = "";
+      importInput.click();
+    }
+  }
+
+  root.querySelectorAll("[data-whiteboard-export]").forEach((button) => {
+    button.addEventListener("click", () => runExport(button.dataset.whiteboardExport));
+  });
+
+  // Accepts the editor's own JSON export and the files from the data export. The server validates on
+  // save; here it only has to be drawable, so a broken file fails before it replaces anything.
+  importInput.addEventListener("change", async () => {
+    const [file] = importInput.files;
+    if (!file) return;
+    let imported;
+    try {
+      const data = JSON.parse(await file.text());
+      imported = format.normalizeDocument(data?.document ?? data);
+      if (imported.elements.length > format.LIMITS.elements) throw new Error("too many elements");
+      imported.elements.forEach(elementNode);
+    } catch (_error) {
+      showHint("Die Datei ist kein gültiges Whiteboard (JSON).");
+      return;
+    }
+    if (!window.confirm("Das aktuelle Whiteboard durch den Import ersetzen? (Rückgängig ist möglich.)")) return;
+    setTool("select");
+    commit(
+      doc.elements.map((element, index) => ({ index, element })),
+      imported.elements.map((element, index) => ({ index, element })),
+    );
+    fitView();
+    showHint(`${imported.elements.length} Element(e) importiert.`);
+  });
+
   // ---- Toolbar & keyboard ---------------------------------------------------------------------
 
   Object.entries(INK).forEach(([key, ink]) => {
@@ -1034,6 +1140,9 @@
     } else if (key === "0") {
       zoomAt(1 / view.k);
     }
+  });
+  document.addEventListener("click", (event) => {
+    if (exportMenu.open && !exportMenu.contains(event.target)) exportMenu.open = false;
   });
   document.addEventListener("keyup", (event) => {
     if (event.key !== " ") return;

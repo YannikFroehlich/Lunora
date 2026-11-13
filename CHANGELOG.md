@@ -6,6 +6,11 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- New tool: Whiteboards (`/tools/whiteboard/`) for free sketching with pen, eraser, lines, arrows,
+  rectangles, ellipses and text in seven colors. Select, move, restyle, duplicate and delete what
+  you drew, pan and zoom with mouse, keyboard or two fingers, undo/redo, autosave, and export as
+  PNG, SVG or JSON (plus JSON import). Whiteboards show up in the global search, the command palette
+  and the personal data export.
 - Administration: the status panel shows the running version (commit) and which outside services
   are set up (e-mail delivery, Web Push, weather data, registration protection, error e-mails),
   without showing any keys.

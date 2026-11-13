@@ -28,6 +28,7 @@ from app.models import (
     VacationYear,
     VocabularyCard,
     VocabularyList,
+    Whiteboard,
 )
 from app.services.calendar_service import location_link
 from app.services.dashboard import (
@@ -472,6 +473,13 @@ TOOLS = (
         "url_name": "uml_diagrams",
     },
     {
+        "id": "whiteboard",
+        "title": "Whiteboard",
+        "description": "Frei skizzieren mit Stift, Formen, Pfeilen und Text, als Bild exportieren.",
+        "icon": "fa-pen-ruler",
+        "url_name": "whiteboards",
+    },
+    {
         "id": "vocabulary",
         "title": "Vokabeltrainer",
         "description": "Vokabellisten anlegen, per Karteikarte, Eintippen oder Multiple Choice abfragen – mit Lernkartei.",
@@ -483,6 +491,7 @@ TOOLS = (
 
 def get_tools_context(user):
     diagram_count = UmlDiagram.objects.filter(owner=user).count()
+    whiteboard_count = Whiteboard.objects.filter(owner=user).count()
     vocabulary_count = VocabularyList.objects.filter(owner=user).count()
     due_cards = (
         VocabularyCard.objects.filter(vocabulary_list__owner=user).filter(due_filter(timezone.now())).count()
@@ -498,6 +507,7 @@ def get_tools_context(user):
         "expenses": f"{expense_group_count} Gruppe(n)" if expense_group_count else "Noch keine Gruppen",
         "focus": "Läuft direkt im Browser",
         "uml": f"{diagram_count} Diagramm(e)" if diagram_count else "Noch keine Diagramme",
+        "whiteboard": f"{whiteboard_count} Whiteboard(s)" if whiteboard_count else "Noch keine Whiteboards",
         "vocabulary": (
             f"{vocabulary_count} Liste(n) · {due_cards} fällig"
             if vocabulary_count

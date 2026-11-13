@@ -282,6 +282,15 @@ class WhiteboardTests(TestCase):
             f"/tools/whiteboard/api/{board.pk}/", data=json.dumps(payload), content_type="application/json"
         )
 
+    def test_tools_hub_lists_whiteboards_with_count(self):
+        Whiteboard.objects.create(owner=self.user, title="Skizze")
+        Whiteboard.objects.create(owner=self.other, title="Fremd")
+
+        response = self.client.get("/tools/")
+
+        self.assertContains(response, 'href="/tools/whiteboard/"')
+        self.assertContains(response, "1 Whiteboard(s)")
+
     def test_disabled_tools_return_503_for_pages_and_api(self):
         board = Whiteboard.objects.create(owner=self.user, title="Skizze")
         SystemSettings.objects.create(tools_enabled=False)
