@@ -8,6 +8,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## 2026-11-13
 
+- Fixed: the weather map showed OpenStreetMap's "Access blocked" tiles, because its tile requests
+  carried no Referer; they now send the site's origin (never the page path).
 - Settings → Profil: click the profile picture to change it (it saves right away); the separate
   image box is gone, and "Profilbild entfernen" sits under the e-mail address.
 - Settings → Sicherheit can change the password (current password plus the new one twice); the
