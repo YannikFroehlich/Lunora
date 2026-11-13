@@ -310,8 +310,12 @@ def add_passkey(user, name, posted, *, challenge, rp_id, origin):
     fields = verify_registration(posted, challenge=challenge, rp_id=rp_id, origin=origin)
     if Passkey.objects.filter(credential_id=fields["credential_id"]).exists():
         raise PasskeyError("credential already registered")
-    name = " ".join((name or "").split())[:MAX_NAME_LENGTH] or "Passkey"
-    return Passkey.objects.create(user=user, name=name, **fields)
+    return Passkey.objects.create(user=user, name=clean_name(name) or "Passkey", **fields)
+
+
+def clean_name(name):
+    """Collapse whitespace and cap the length; an empty result means no usable name."""
+    return " ".join((name or "").split())[:MAX_NAME_LENGTH]
 
 
 def _use_passkey(candidates, posted, *, without_password, **checks):

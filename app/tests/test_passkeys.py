@@ -281,6 +281,28 @@ class PasskeyTests(TestCase):
         self.assertContains(response, "Passkey „Laptop“ entfernt.")
         self.assertFalse(Passkey.objects.exists())
 
+    def test_rename_only_touches_own_passkeys_and_keeps_a_name(self):
+        self._add(FakeAuthenticator())
+        other = User.objects.create_user(username="tom", email="tom@example.com", password="pw-12345!")
+        Profile.objects.create(user=other, display_name="Tom")
+        mine = Passkey.objects.get()
+        intruder = Client()
+        intruder.force_login(other)
+
+        intruder.post("/settings/", {"form_name": "passkey_rename", "passkey_id": mine.pk, "name": "Weg"})
+        self.client.post("/settings/", {"form_name": "passkey_rename", "passkey_id": mine.pk, "name": "   "})
+        mine.refresh_from_db()
+        self.assertEqual(mine.name, "Laptop")
+
+        response = self.client.post(
+            "/settings/",
+            {"form_name": "passkey_rename", "passkey_id": mine.pk, "name": "  Arbeits-  Laptop "},
+            follow=True,
+        )
+        self.assertContains(response, "Passkey in „Arbeits- Laptop“ umbenannt.")
+        mine.refresh_from_db()
+        self.assertEqual(mine.name, "Arbeits- Laptop")
+
     def test_passkeys_need_the_code_and_go_when_it_is_switched_off(self):
         self._add(FakeAuthenticator())
         self.client.post("/settings/", {"form_name": "two_factor_disable", "password": "pw-12345!"})

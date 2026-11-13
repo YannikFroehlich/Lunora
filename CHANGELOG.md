@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Passkeys can be renamed: click a passkey's name under Settings → Sicherheit, type the new one and
+  press Enter.
 - Sign in with a passkey alone: the login page has "Mit Passkey anmelden", which needs neither
   password nor code — the device asks for fingerprint, face or PIN instead. Works with the passkeys
   added under Settings → Sicherheit (two-factor sign-in stays required for them).
