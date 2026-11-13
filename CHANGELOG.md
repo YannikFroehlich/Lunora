@@ -8,6 +8,11 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## 2026-11-13
 
+- Settings → Profil: click the profile picture to change it (it saves right away); the separate
+  image box is gone, and "Profilbild entfernen" sits under the e-mail address.
+- Settings → Sicherheit can change the password (current password plus the new one twice); the
+  device stays signed in, every other device is signed out. A link there starts the e-mail reset
+  for a forgotten password.
 - Calendar import and subscriptions understand series like "last workday of the month" (BYSETPOS)
   and "Monday of calendar week 2" (BYWEEKNO) instead of importing only their first date.
 - Shopping list scans: compound items find products under a synonym of their last part, so

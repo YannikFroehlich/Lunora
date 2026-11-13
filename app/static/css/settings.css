@@ -1096,102 +1096,40 @@
   }
 }
 
-.profile-image-control {
-  display: grid;
-  gap: 12px;
-  padding: 14px;
-  background: var(--surface-control);
-  border: 1px solid var(--glass-border-soft);
-  border-radius: var(--radius-sm);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.34);
-}
-
-.profile-image-summary {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.profile-image-eyebrow {
-  display: inline-flex;
-  min-height: 28px;
-  align-items: center;
-  padding: 0 10px;
-  color: var(--color-accent-strong);
-  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-accent) 22%, transparent);
-  border-radius: var(--radius-pill);
-  font-size: var(--text-xs);
-  font-weight: 800;
-  letter-spacing: 0.02em;
-}
-
-.profile-image-name {
-  display: inline-flex;
-  min-width: 0;
-  max-width: 100%;
-  align-items: center;
-  gap: 7px;
-  overflow: hidden;
-  color: var(--color-heading);
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.profile-image-name i {
-  color: var(--color-accent-strong);
-  font-size: var(--text-base);
-}
-
-.profile-image-name:is(a) {
-  text-decoration: none;
-}
-
-.profile-image-name:is(a):hover {
-  color: var(--color-accent-strong);
-}
-
-.profile-image-actions {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-}
-
-.upload-button {
+/* The avatar is the image picker: a click opens the file dialog, a chosen file is saved at once. */
+.profile-avatar.is-editable {
   position: relative;
-  display: inline-flex;
-  min-height: 38px;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  overflow: hidden;
-  padding: 0 14px;
-  color: var(--color-on-accent);
-  background: var(--color-accent);
-  border: 1px solid color-mix(in srgb, var(--color-accent) 80%, #ffffff);
-  border-radius: var(--radius-pill);
-  box-shadow: 0 8px 18px rgba(75, 56, 31, 0.10);
+  flex: 0 0 auto;
   cursor: pointer;
-  font-size: var(--text-base);
-  font-weight: 800;
-  transition: transform 160ms ease, filter 160ms ease, box-shadow 160ms ease;
 }
 
-@media (hover: hover) {
-  .upload-button:hover {
-    filter: brightness(1.04);
-    transform: translateY(-1px);
-    box-shadow: 0 12px 22px rgba(75, 56, 31, 0.14);
-  }
+.profile-avatar-edit {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.42);
+  opacity: 0;
+  transition: opacity 160ms ease;
 }
 
-.upload-button i {
-  color: currentColor;
+.profile-avatar-edit i {
+  font-size: var(--text-xl);
+}
+
+.profile-avatar.is-editable:hover .profile-avatar-edit,
+.profile-avatar.is-editable:focus-within .profile-avatar-edit {
+  opacity: 1;
+}
+
+/* The ring goes on the round avatar, not on the invisible input inside it. */
+.profile-avatar.is-editable:focus-within {
+  box-shadow: var(--focus-ring);
+}
+
+.profile-avatar.is-editable input:focus-visible {
+  box-shadow: none;
 }
 
 .profile-image-upload-input {
@@ -1203,87 +1141,20 @@
   cursor: pointer;
 }
 
-.selected-file-name {
-  min-width: 0;
-  overflow: hidden;
+.profile-image-remove {
+  margin-top: 6px;
+  padding: 0;
   color: var(--color-muted);
-  font-size: var(--text-md);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.selected-file-name.has-file {
-  color: var(--color-heading);
-  font-weight: 700;
-}
-
-.clear-image-toggle {
-  display: inline-flex;
-  width: fit-content;
-  align-items: center;
-  gap: 9px;
-  padding: 8px 10px;
-  color: var(--color-muted);
-  background: var(--surface-control);
-  border: 1px solid color-mix(in srgb, var(--color-accent) 18%, transparent);
-  border-radius: var(--radius-pill);
+  background: none;
+  border: 0;
   cursor: pointer;
-  font-size: var(--text-md);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-decoration: underline;
 }
 
-@media (hover: hover) {
-  .clear-image-toggle:hover {
-    color: var(--color-heading);
-    background: var(--surface-control-hover);
-  }
-}
-
-.clear-image-toggle input {
-  width: 17px;
-  height: 17px;
-  flex: 0 0 auto;
-}
-
-.sr-only-file {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-  opacity: 0;
-}
-
-[data-theme="dark"] .profile-image-control {
-  background: rgba(255, 248, 237, 0.08);
-  border-color: rgba(255, 248, 237, 0.12);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-}
-
-[data-theme="dark"] .profile-image-eyebrow {
-  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
-  border-color: rgba(255, 248, 237, 0.12);
-}
-
-[data-theme="dark"] .clear-image-toggle {
-  background: rgba(255, 248, 237, 0.08);
-  border-color: rgba(255, 248, 237, 0.12);
-}
-
-[data-theme="dark"] .clear-image-toggle:hover {
-  background: rgba(255, 248, 237, 0.13);
-}
-
-@media (max-width: 520px) {
-  .profile-image-actions {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .upload-button,
-  .clear-image-toggle {
-    width: 100%;
-  }
+.profile-image-remove:hover {
+  color: var(--color-danger);
 }
 
 .panel-description {

@@ -1374,6 +1374,7 @@ class AuditLogEntry(models.Model):
     ACTION_LOGOUT = "logout"
     ACTION_REGISTER = "register"
     ACTION_PASSWORD_RESET = "password_reset"
+    ACTION_PASSWORD_CHANGED = "password_changed"
     ACTION_TWO_FACTOR_ENABLED = "two_factor_enabled"
     ACTION_TWO_FACTOR_DISABLED = "two_factor_disabled"
     ACTION_RECOVERY_CODES = "recovery_codes"
@@ -1392,6 +1393,7 @@ class AuditLogEntry(models.Model):
         (ACTION_LOGOUT, "Abmeldung"),
         (ACTION_REGISTER, "Registrierung"),
         (ACTION_PASSWORD_RESET, "Passwort zurückgesetzt"),
+        (ACTION_PASSWORD_CHANGED, "Passwort geändert"),
         (ACTION_TWO_FACTOR_ENABLED, "2FA aktiviert"),
         (ACTION_TWO_FACTOR_DISABLED, "2FA deaktiviert"),
         (ACTION_RECOVERY_CODES, "Neue Wiederherstellungscodes"),
