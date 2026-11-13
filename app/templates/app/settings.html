@@ -359,23 +359,31 @@
         <div class="settings-column">
             <section id="settings-panel-profile" class="glass-panel profile-panel" role="tabpanel" aria-labelledby="settings-tab-profile" data-settings-panel="profile">
                 <div class="panel-title"><i class="fa-regular fa-user"></i><h2>Profil</h2></div>
-                <div class="profile-row">
-                    <div class="profile-avatar">
-                        {% if profile.profile_image %}
-                        <img src="{{ profile.profile_image.url }}" alt="Profilbild von {{ profile.name }}">
-                        {% else %}
-                        <i class="fa-solid fa-seedling"></i>
-                        {% endif %}
-                    </div>
-                    <div>
-                        <h3>{{ profile.name }}</h3>
-                        <p>{{ request.user.email }}</p>
-                    </div>
-                </div>
                 <form class="profile-form" method="post" enctype="multipart/form-data">
                     {% csrf_token %}
                     <input type="hidden" name="form_name" value="profile">
                     <input type="hidden" name="return_to" value="{{ return_to }}">
+
+                    <div class="profile-row">
+                        {% comment %}The avatar is the picker: choosing a file saves the profile right away.{% endcomment %}
+                        <label class="profile-avatar is-editable" for="{{ profile_form.profile_image.id_for_label }}" title="Profilbild ändern">
+                            {% if profile.profile_image %}
+                            <img src="{{ profile.profile_image.url }}" alt="Profilbild von {{ profile.name }}">
+                            {% else %}
+                            <i class="fa-solid fa-seedling" aria-hidden="true"></i>
+                            {% endif %}
+                            <span class="profile-avatar-edit" aria-hidden="true"><i class="fa-solid fa-camera"></i></span>
+                            <input class="profile-image-upload-input" type="file" name="{{ profile_form.profile_image.html_name }}" accept="{{ profile_form.profile_image.field.widget.attrs.accept }}" id="{{ profile_form.profile_image.id_for_label }}" aria-label="Profilbild ändern" data-auto-submit>
+                        </label>
+                        <div>
+                            <h3>{{ profile.name }}</h3>
+                            <p>{{ request.user.email }}</p>
+                            {% if profile.profile_image %}
+                            <button class="profile-image-remove" type="submit" form="profile-image-clear-form" data-confirm="Profilbild entfernen?">Profilbild entfernen</button>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {{ profile_form.profile_image.errors }}
 
                     {% if profile_form.non_field_errors %}
                     <div class="form-errors">{{ profile_form.non_field_errors }}</div>
@@ -385,47 +393,21 @@
                     {{ profile_form.display_name }}
                     {{ profile_form.display_name.errors }}
 
-                    <label class="field-label" for="{{ profile_form.profile_image.id_for_label }}">{{ profile_form.profile_image.label }}</label>
-                    <div class="profile-image-control">
-                        <div class="profile-image-summary">
-                            {% if profile.profile_image %}
-                            <span class="profile-image-eyebrow">Aktuelles Bild</span>
-                            <a class="profile-image-name" href="{{ profile.profile_image.url }}" target="_blank" rel="noopener">
-                                <i class="fa-regular fa-image" aria-hidden="true"></i>
-                                {{ profile.profile_image.name|cut:"profiles/" }}
-                            </a>
-                            {% else %}
-                            <span class="profile-image-eyebrow">Noch kein Bild</span>
-                            <strong class="profile-image-name">
-                                <i class="fa-regular fa-image" aria-hidden="true"></i>
-                                Profilbild hinzufügen
-                            </strong>
-                            {% endif %}
-                        </div>
-
-                        <div class="profile-image-actions">
-                            <label class="upload-button" for="{{ profile_form.profile_image.id_for_label }}">
-                                <i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i>
-                                <span>Bild auswählen</span>
-                                <input class="profile-image-upload-input" type="file" name="{{ profile_form.profile_image.html_name }}" accept="{{ profile_form.profile_image.field.widget.attrs.accept }}" id="{{ profile_form.profile_image.id_for_label }}" data-file-input>
-                            </label>
-                            <span class="selected-file-name" data-file-name-for="{{ profile_form.profile_image.id_for_label }}">Keine neue Datei ausgewählt</span>
-                        </div>
-
-                        {% if profile.profile_image %}
-                        <label class="clear-image-toggle" for="profile_image-clear_id">
-                            <input type="checkbox" name="profile_image-clear" id="profile_image-clear_id">
-                            <span>Profilbild zurücksetzen</span>
-                        </label>
-                        {% endif %}
-                    </div>
-                    {{ profile_form.profile_image.errors }}
-
                     <button class="primary-button profile-submit" type="submit">
                         <i class="fa-solid fa-floppy-disk"></i>
                         Profil speichern
                     </button>
                 </form>
+                {% if profile.profile_image %}
+                {% comment %}Outside the profile form, so its button is never the form's default for Enter.{% endcomment %}
+                <form id="profile-image-clear-form" method="post" hidden>
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="profile">
+                    <input type="hidden" name="return_to" value="{{ return_to }}">
+                    <input type="hidden" name="display_name" value="{{ profile.display_name }}">
+                    <input type="hidden" name="profile_image-clear" value="on">
+                </form>
+                {% endif %}
             </section>
 
             <section id="settings-panel-region" class="glass-panel region-panel" role="tabpanel" aria-labelledby="settings-tab-profile" data-settings-panel="profile">

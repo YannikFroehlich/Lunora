@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Settings → Profil: click the profile picture to change it (it saves right away); the separate
+  image box is gone, and "Profilbild entfernen" sits under the e-mail address.
 - Settings → Sicherheit can change the password (current password plus the new one twice); the
   device stays signed in, every other device is signed out. A link there starts the e-mail reset
   for a forgotten password.
