@@ -1,0 +1,85 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}{{ board.title }} | Whiteboard | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell uml-shell" data-whiteboard-editor data-save-url="{% url 'whiteboard_api' board.id %}">
+    <header class="glass-panel uml-header">
+        <h1 class="visually-hidden">Whiteboard „{{ board.title }}“ bearbeiten</h1>
+        <a class="icon-button" href="{% url 'whiteboards' %}" aria-label="Zur Whiteboard-Übersicht" title="Zur Übersicht">
+            <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+        </a>
+        <label class="uml-title-field">
+            <span class="visually-hidden">Titel des Whiteboards</span>
+            <input type="text" maxlength="{{ title_max_length }}" value="{{ board.title }}" data-whiteboard-title required>
+        </label>
+        <span class="uml-save-status" role="status" aria-live="polite" data-whiteboard-status>Gespeichert</span>
+    </header>
+
+    <div class="glass-panel uml-toolbar" role="toolbar" aria-label="Whiteboard-Werkzeuge">
+        <div class="uml-tool-group" role="group" aria-label="Werkzeug">
+            <button type="button" class="uml-tool is-icon" data-whiteboard-tool="select" aria-pressed="false" aria-label="Auswählen" title="Auswählen und verschieben (V)"><i class="fa-solid fa-arrow-pointer" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool is-icon" data-whiteboard-tool="pen" aria-pressed="true" aria-label="Stift" title="Stift (P)"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool is-icon" data-whiteboard-tool="eraser" aria-pressed="false" aria-label="Radierer" title="Radierer (E)"><i class="fa-solid fa-eraser" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool is-icon" data-whiteboard-tool="line" aria-pressed="false" aria-label="Linie" title="Linie (L, Umschalt für 45°-Schritte)"><i class="fa-solid fa-slash" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool is-icon" data-whiteboard-tool="arrow" aria-pressed="false" aria-label="Pfeil" title="Pfeil (A, Umschalt für 45°-Schritte)"><i class="fa-solid fa-arrow-right-long" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool is-icon" data-whiteboard-tool="rect" aria-pressed="false" aria-label="Rechteck" title="Rechteck (R, Umschalt für Quadrat)"><i class="fa-regular fa-square" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool is-icon" data-whiteboard-tool="ellipse" aria-pressed="false" aria-label="Ellipse" title="Ellipse (O, Umschalt für Kreis)"><i class="fa-regular fa-circle" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool is-icon" data-whiteboard-tool="text" aria-pressed="false" aria-label="Text" title="Text (T)"><i class="fa-solid fa-font" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool is-icon" data-whiteboard-tool="hand" aria-pressed="false" aria-label="Fläche verschieben" title="Fläche verschieben (H oder Leertaste halten)"><i class="fa-regular fa-hand" aria-hidden="true"></i></button>
+        </div>
+        <div class="uml-tool-group whiteboard-colors" role="group" aria-label="Farbe" data-whiteboard-colors></div>
+        <div class="uml-tool-group" role="group" aria-label="Stil">
+            <span class="whiteboard-widths" data-whiteboard-widths></span>
+            <button type="button" class="uml-tool is-icon" data-whiteboard-fill aria-pressed="false" aria-label="Formen füllen" title="Rechtecke und Ellipsen füllen"><i class="fa-solid fa-fill-drip" aria-hidden="true"></i></button>
+            <label class="uml-relation-select">
+                <span class="visually-hidden">Textgröße</span>
+                <select data-whiteboard-text-size title="Textgröße">
+                    <option value="s">Text klein</option>
+                    <option value="m">Text mittel</option>
+                    <option value="l">Text groß</option>
+                </select>
+            </label>
+        </div>
+        <div class="uml-tool-group" role="group" aria-label="Bearbeiten">
+            <button type="button" class="uml-tool is-icon" data-whiteboard-action="undo" aria-label="Rückgängig" title="Rückgängig (Strg+Z)"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool is-icon" data-whiteboard-action="redo" aria-label="Wiederholen" title="Wiederholen (Strg+Y)"><i class="fa-solid fa-rotate-right" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool is-icon" data-whiteboard-action="duplicate" aria-label="Auswahl duplizieren" title="Duplizieren (Strg+D)"><i class="fa-regular fa-clone" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool is-icon" data-whiteboard-action="delete" aria-label="Auswahl löschen" title="Löschen (Entf)"><i class="fa-regular fa-trash-can" aria-hidden="true"></i></button>
+        </div>
+        <div class="uml-tool-group" role="group" aria-label="Ansicht">
+            <button type="button" class="uml-tool is-icon" data-whiteboard-action="zoom-out" aria-label="Verkleinern" title="Verkleinern (-)"><i class="fa-solid fa-magnifying-glass-minus" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool uml-zoom-label" data-whiteboard-action="zoom-reset" title="Auf 100 % setzen" data-whiteboard-zoom-label>100 %</button>
+            <button type="button" class="uml-tool is-icon" data-whiteboard-action="zoom-in" aria-label="Vergrößern" title="Vergrößern (+)"><i class="fa-solid fa-magnifying-glass-plus" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool is-icon" data-whiteboard-action="fit" aria-label="Alles anzeigen" title="Alles anzeigen (F)"><i class="fa-solid fa-expand" aria-hidden="true"></i></button>
+        </div>
+        <details class="uml-tool-group uml-export-menu">
+            <summary class="uml-tool"><i class="fa-solid fa-file-export" aria-hidden="true"></i><span>Export</span></summary>
+            <div class="uml-export-list">
+                <button type="button" data-whiteboard-export="png"><i class="fa-regular fa-image" aria-hidden="true"></i> PNG-Bild</button>
+                <button type="button" data-whiteboard-export="svg"><i class="fa-solid fa-bezier-curve" aria-hidden="true"></i> SVG-Grafik</button>
+                <button type="button" data-whiteboard-export="json"><i class="fa-solid fa-code" aria-hidden="true"></i> JSON-Datei</button>
+                <button type="button" data-whiteboard-export="import"><i class="fa-solid fa-file-import" aria-hidden="true"></i> JSON importieren …</button>
+            </div>
+        </details>
+        <input type="file" accept="application/json,.json" hidden data-whiteboard-import-input aria-label="Whiteboard als JSON importieren">
+    </div>
+
+    <div class="glass-panel uml-canvas-wrap whiteboard-canvas-wrap">
+        <svg class="uml-canvas whiteboard-canvas" data-whiteboard-canvas tabindex="0" role="application" aria-label="Zeichenfläche" aria-describedby="whiteboard-canvas-help" xmlns="http://www.w3.org/2000/svg"></svg>
+        <textarea class="whiteboard-text-input" data-whiteboard-text hidden maxlength="500" rows="1" spellcheck="true" aria-label="Text auf dem Whiteboard"></textarea>
+        <p class="uml-canvas-hint" id="whiteboard-canvas-help" data-whiteboard-hint>Werkzeug wählen und ziehen; Enter setzt eine Form in die Mitte, Pfeiltasten verschieben die Auswahl. Zwei Finger oder Leertaste verschieben die Fläche, Strg+Mausrad zoomt.</p>
+    </div>
+</section>
+{{ board_payload|json_script:"whiteboard-data" }}
+{% endblock %}
+
+{% block page_js %}
+<script src="{% versioned_static 'js/whiteboard_format.js' %}"></script>
+<script src="{% versioned_static 'js/whiteboard.js' %}"></script>
+{% endblock %}

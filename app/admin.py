@@ -33,6 +33,7 @@ from app.models import (
     WebPushDelivery,
     WebPushSubscription,
     WeeklySummaryDelivery,
+    Whiteboard,
 )
 
 
@@ -145,6 +146,12 @@ class TaskAdmin(admin.ModelAdmin):
 
 @admin.register(UmlDiagram)
 class UmlDiagramAdmin(admin.ModelAdmin):
+    list_display = ("title", "owner", "updated_at")
+    search_fields = ("title", "owner__username")
+
+
+@admin.register(Whiteboard)
+class WhiteboardAdmin(admin.ModelAdmin):
     list_display = ("title", "owner", "updated_at")
     search_fields = ("title", "owner__username")
 

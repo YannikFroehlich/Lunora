@@ -40,6 +40,7 @@ from app.models import (
     UserNotification,
     VocabularyCard,
     VocabularyList,
+    Whiteboard,
     timezone_choices,
 )
 from app.services.image_uploads import PROFILE_IMAGE_MAX_BYTES
@@ -1714,6 +1715,8 @@ class DataExportTests(TestCase):
         vocabulary_list = VocabularyList.objects.create(owner=self.lea, title="Unit 3")
         VocabularyCard.objects.create(vocabulary_list=vocabulary_list, term="house", translation="Haus")
         UmlDiagram.objects.create(owner=self.lea, title="Klassen")
+        Whiteboard.objects.create(owner=self.lea, title="Skizze")
+        Whiteboard.objects.create(owner=self.tom, title="Toms Skizze")
         habit = Habit.objects.create(owner=self.lea, title="Lesen")
         HabitCheck.objects.create(habit=habit, date=datetime(2026, 10, 1).date())
         Habit.objects.create(owner=self.tom, title="Toms Gewohnheit")
@@ -1744,6 +1747,12 @@ class DataExportTests(TestCase):
         self.assertNotIn("..", attachment_path)
         self.assertEqual(archive.read(attachment_path), b"e=mc2")
         self.assertTrue(any(name.startswith("uml/") for name in names))
+        boards = [name for name in names if name.startswith("whiteboards/")]
+        self.assertEqual(len(boards), 1)
+        self.assertEqual(
+            json.loads(archive.read(boards[0])),
+            {"format": "lunora-whiteboard", "title": "Skizze", "document": {"version": 1, "elements": []}},
+        )
 
         notes = json.loads(archive.read("notizen.json"))
         self.assertEqual([item["title"] for item in notes["notes"]], ["Mathe"])

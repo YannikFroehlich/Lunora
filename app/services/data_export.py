@@ -41,6 +41,7 @@ from app.models import (
     VacationPeriod,
     VacationYear,
     VocabularyList,
+    Whiteboard,
 )
 from app.services.note_markdown import note_markdown_filename, render_note_markdown
 from app.services.notes import display_name
@@ -58,6 +59,7 @@ Dieses Archiv enthält alle Daten, die du in Lunora angelegt hast:
 - nachrichten.json, nachrichten/anhaenge/: Nachrichten (auch geplante und Umfragen) und Dateien, die du gesendet hast
 - vokabeln.json: Vokabellisten mit Lernfortschritt
 - uml/*.json: UML-Diagramme (lassen sich im Editor wieder importieren)
+- whiteboards/*.json: Whiteboards (lassen sich im Editor wieder importieren)
 - urlaub.json: Urlaubsjahre, Urlaube und eigene Feiertage
 - gewohnheiten.json: Gewohnheiten mit allen abgehakten Tagen
 - lesezeichen.json: Lesezeichen vom Dashboard
@@ -173,6 +175,13 @@ def write_user_export(user, fileobj):
         for diagram in UmlDiagram.objects.filter(owner=user):
             name = f"uml/{diagram.pk}-{slugify(diagram.title) or 'diagramm'}.json"
             _add_json(archive, name, {"title": diagram.title, "document": diagram.document})
+        for board in Whiteboard.objects.filter(owner=user):
+            name = f"whiteboards/{board.pk}-{slugify(board.title) or 'whiteboard'}.json"
+            _add_json(
+                archive,
+                name,
+                {"format": "lunora-whiteboard", "title": board.title, "document": board.document},
+            )
 
 
 def _expense_groups(user):

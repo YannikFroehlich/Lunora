@@ -28,6 +28,7 @@ from app.models import (
     VocabularyCard,
     VocabularyList,
     VocabularyListShare,
+    Whiteboard,
 )
 from app.services.habits import (
     STREAK_WINDOW_DAYS,
@@ -45,6 +46,7 @@ from app.services.shopping_products import find_open_item, normalize_barcode, pa
 from app.services.uml_content import validate_uml_document
 from app.services.user_preferences import localtime_for_user
 from app.services.vocabulary import parse_bulk_cards, review_card
+from app.services.whiteboard_content import validate_whiteboard_document
 from app.tests.helpers import FakeHttpConnection, FakeJsonResponse
 
 
@@ -254,6 +256,248 @@ class UmlDiagramTests(TestCase):
         self.assertContains(response, 'id="uml-diagram-data"')
         self.assertNotContains(response, "<b>Auto</b>")
         self.assertEqual(response.context["diagram_payload"]["document"]["classes"][0]["name"], "<b>Auto</b>")
+
+
+def _stroke(element_id, points=(0, 0, 10, 10), **overrides):
+    item = {"id": element_id, "type": "stroke", "color": "default", "width": 2, "points": list(points)}
+    item.update(overrides)
+    return item
+
+
+class WhiteboardTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="lea@example.com", email="lea@example.com", password="pw-12345!"
+        )
+        self.other = User.objects.create_user(
+            username="tom@example.com", email="tom@example.com", password="pw-12345!"
+        )
+        self.client.login(username="lea@example.com", password="pw-12345!")
+
+    def _document(self, *elements):
+        return {"version": 1, "elements": list(elements)}
+
+    def _put(self, board, payload):
+        return self.client.put(
+            f"/tools/whiteboard/api/{board.pk}/", data=json.dumps(payload), content_type="application/json"
+        )
+
+    def test_tools_hub_lists_whiteboards_with_count(self):
+        Whiteboard.objects.create(owner=self.user, title="Skizze")
+        Whiteboard.objects.create(owner=self.other, title="Fremd")
+
+        response = self.client.get("/tools/")
+
+        self.assertContains(response, 'href="/tools/whiteboard/"')
+        self.assertContains(response, "1 Whiteboard(s)")
+
+    def test_disabled_tools_return_503_for_pages_and_api(self):
+        board = Whiteboard.objects.create(owner=self.user, title="Skizze")
+        SystemSettings.objects.create(tools_enabled=False)
+
+        self.assertEqual(self.client.get("/tools/whiteboard/").status_code, 503)
+        self.assertEqual(self.client.get(f"/tools/whiteboard/{board.pk}/").status_code, 503)
+        response = self._put(board, {"title": "Skizze", "document": self._document()})
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(response.json()["ok"])
+
+    def test_create_opens_editor_and_is_listed(self):
+        response = self.client.post(
+            "/tools/whiteboard/", {"form_name": "whiteboard_create", "title": "  Umbau "}
+        )
+
+        board = Whiteboard.objects.get(owner=self.user)
+        self.assertRedirects(response, f"/tools/whiteboard/{board.pk}/")
+        self.assertEqual(board.title, "Umbau")
+        self.assertEqual(board.document, {"version": 1, "elements": []})
+        self.assertContains(self.client.get("/tools/whiteboard/"), "Umbau")
+
+    def test_blank_title_is_rejected(self):
+        self.client.post("/tools/whiteboard/", {"form_name": "whiteboard_create", "title": "   "})
+
+        self.assertFalse(Whiteboard.objects.exists())
+
+    def test_save_validates_and_stores_every_element_type(self):
+        board = Whiteboard.objects.create(owner=self.user, title="Skizze")
+        document = self._document(
+            _stroke("s1", points=[1.26, 2, 3, 4.04]),
+            {"id": "l1", "type": "line", "color": "red", "width": 4, "x1": 0, "y1": 0, "x2": 5, "y2": 5},
+            {"id": "a1", "type": "arrow", "color": "blue", "width": 8, "x1": 0, "y1": 0, "x2": -5, "y2": 5},
+            {
+                "id": "r1",
+                "type": "rect",
+                "color": "green",
+                "width": 2,
+                "x": 0,
+                "y": 0,
+                "w": 10,
+                "h": 0,
+                "fill": True,
+            },
+            {
+                "id": "e1",
+                "type": "ellipse",
+                "color": "gray",
+                "width": 2,
+                "x": 0,
+                "y": 0,
+                "w": 4,
+                "h": 6,
+                "fill": False,
+            },
+            {"id": "t1", "type": "text", "color": "violet", "x": 3, "y": 4, "size": "m", "text": "Hallo"},
+        )
+
+        response = self._put(board, {"title": "Skizze neu", "document": document})
+
+        self.assertEqual(response.status_code, 200, response.content)
+        board.refresh_from_db()
+        self.assertEqual(board.title, "Skizze neu")
+        self.assertEqual(board.document["elements"][0]["points"], [1.3, 2.0, 3.0, 4.0])
+        self.assertEqual(
+            [item["type"] for item in board.document["elements"]],
+            ["stroke", "line", "arrow", "rect", "ellipse", "text"],
+        )
+
+    def test_save_rejects_invalid_documents_without_overwriting(self):
+        board = Whiteboard.objects.create(owner=self.user, title="Skizze")
+        text = {"id": "t1", "type": "text", "color": "default", "x": 0, "y": 0, "size": "m", "text": "Hi"}
+        rect = {
+            "id": "r1",
+            "type": "rect",
+            "color": "default",
+            "width": 2,
+            "x": 0,
+            "y": 0,
+            "w": 1,
+            "h": 1,
+            "fill": False,
+        }
+        invalid_documents = [
+            self._document(_stroke("s1", type="image")),
+            self._document(_stroke("s1"), _stroke("s1")),
+            self._document(_stroke("s1", onclick="x")),
+            self._document(_stroke("s1", color="#ff0000")),
+            self._document(_stroke("s1", width=3)),
+            self._document(_stroke("s1", width=True)),
+            self._document(_stroke("s1", points=[0, 0, 1])),
+            self._document(_stroke("s1", points=[])),
+            self._document(_stroke("s1", points=[0, True])),
+            self._document(_stroke("s1", points=[0, 10**400])),
+            self._document(_stroke("s1", points=[0, 0] * 2001)),
+            self._document(_stroke("s 1")),
+            self._document({**text, "text": "   "}),
+            self._document({**text, "text": "x" * 501}),
+            self._document({**text, "size": "xl"}),
+            self._document({**text, "color": []}),
+            self._document({**rect, "w": -1}),
+            self._document({**rect, "fill": 1}),
+            self._document("stroke"),
+            {"version": 2, "elements": []},
+            {"version": 1, "elements": [], "extra": 1},
+            [],
+        ]
+
+        for document in invalid_documents:
+            with self.subTest(document=str(document)[:80]):
+                response = self._put(board, {"title": "Kaputt", "document": document})
+                self.assertEqual(response.status_code, 400)
+                self.assertFalse(response.json()["ok"])
+
+        board.refresh_from_db()
+        self.assertEqual(board.title, "Skizze")
+
+    def test_total_point_budget_spans_all_strokes(self):
+        from django.core.exceptions import ValidationError
+
+        from app.services.whiteboard_content import MAX_TOTAL_POINTS
+
+        full = [0, 0] * 2000
+        strokes = [_stroke(f"s{index}", points=full) for index in range(MAX_TOTAL_POINTS // 2000)]
+        validate_whiteboard_document(self._document(*strokes))
+        with self.assertRaises(ValidationError):
+            validate_whiteboard_document(self._document(*strokes, _stroke("extra")))
+
+    def test_client_limits_mirror_the_validator(self):
+        import re
+        from pathlib import Path
+
+        from django.conf import settings
+
+        from app.services import uml_content, whiteboard_content
+
+        source = Path(settings.BASE_DIR, "app/static/js/whiteboard_format.js").read_text(encoding="utf-8")
+        limits = dict(re.findall(r"(\w+): (\d+)", re.search(r"const LIMITS = \{(.*?)\}", source).group(1)))
+        self.assertEqual(
+            {key: int(value) for key, value in limits.items()},
+            {
+                "elements": whiteboard_content.MAX_ELEMENTS,
+                "strokePoints": whiteboard_content.MAX_STROKE_POINTS,
+                "totalPoints": whiteboard_content.MAX_TOTAL_POINTS,
+                "text": whiteboard_content.MAX_TEXT_LENGTH,
+                "coordinate": uml_content.MAX_COORDINATE,
+            },
+        )
+        self.assertEqual(
+            set(re.search(r"const COLORS = \[(.*?)\]", source).group(1).replace('"', "").split(", ")),
+            whiteboard_content.COLORS,
+        )
+        self.assertEqual(
+            {int(width) for width in re.search(r"const WIDTHS = \[(.*?)\]", source).group(1).split(", ")},
+            whiteboard_content.STROKE_WIDTHS,
+        )
+
+    def test_other_users_cannot_open_save_duplicate_or_delete(self):
+        board = Whiteboard.objects.create(owner=self.other, title="Geheim")
+
+        self.assertEqual(self.client.get(f"/tools/whiteboard/{board.pk}/").status_code, 404)
+        self.assertEqual(self._put(board, {"title": "X", "document": self._document()}).status_code, 404)
+        self.assertEqual(
+            self.client.post(
+                "/tools/whiteboard/", {"form_name": "whiteboard_duplicate", "board_id": board.pk}
+            ).status_code,
+            404,
+        )
+        self.client.post("/tools/whiteboard/", {"form_name": "whiteboard_delete", "board_id": board.pk})
+        self.client.post("/tools/whiteboard/", {"form_name": "whiteboard_delete", "board_id": "abc"})
+        self.assertTrue(Whiteboard.objects.filter(pk=board.pk).exists())
+        self.assertNotContains(self.client.get("/tools/whiteboard/"), "Geheim")
+
+    def test_duplicate_and_delete_own_board(self):
+        board = Whiteboard.objects.create(
+            owner=self.user,
+            title="Garten",
+            document=validate_whiteboard_document(self._document(_stroke("s1"))),
+        )
+
+        self.client.post("/tools/whiteboard/", {"form_name": "whiteboard_duplicate", "board_id": board.pk})
+        copy = Whiteboard.objects.exclude(pk=board.pk).get()
+        self.assertEqual(copy.title, "Garten (Kopie)")
+        self.assertEqual(copy.document, board.document)
+
+        self.client.post("/tools/whiteboard/", {"form_name": "whiteboard_delete", "board_id": board.pk})
+        self.assertEqual(list(Whiteboard.objects.values_list("pk", flat=True)), [copy.pk])
+
+    def test_editor_embeds_document_as_json_script(self):
+        text = {
+            "id": "t1",
+            "type": "text",
+            "color": "default",
+            "x": 0,
+            "y": 0,
+            "size": "m",
+            "text": "<b>Hi</b>",
+        }
+        board = Whiteboard.objects.create(
+            owner=self.user, title="</script>", document=validate_whiteboard_document(self._document(text))
+        )
+
+        response = self.client.get(f"/tools/whiteboard/{board.pk}/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="whiteboard-data"')
+        self.assertNotContains(response, "<b>Hi</b>")
+        self.assertEqual(response.context["board_payload"]["document"]["elements"][0]["text"], "<b>Hi</b>")
 
 
 class VocabularyTrainerTests(TestCase):

@@ -1,0 +1,70 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}Whiteboards | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell tools-shell">
+    <header class="page-hero">
+        <div>
+            <a class="tools-back-link" href="{% url 'tools' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Werkzeuge</a>
+            <h1>Whiteboards</h1>
+            <p>Frei skizzieren: Stift, Formen, Pfeile und Text.</p>
+        </div>
+        <i class="fa-solid fa-pen-ruler hero-branch" aria-hidden="true"></i>
+    </header>
+
+    <section class="glass-panel uml-create-panel">
+        <form class="uml-create-form" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="whiteboard_create">
+            <label class="uml-create-field">
+                <span class="visually-hidden">Titel des neuen Whiteboards</span>
+                <i class="fa-solid fa-pen" aria-hidden="true"></i>
+                <input type="text" name="title" maxlength="{{ title_max_length }}" placeholder="Titel, z. B. „Wohnzimmer-Umbau“" required>
+            </label>
+            <button class="primary-button" type="submit"><i class="fa-solid fa-plus" aria-hidden="true"></i> Neues Whiteboard</button>
+        </form>
+    </section>
+
+    {% if boards %}
+    <ul class="uml-diagram-list">
+        {% for board in boards %}
+        <li class="glass-panel uml-diagram-card">
+            <a class="uml-diagram-link" href="{% url 'whiteboard_editor' board.id %}">
+                <span class="tool-card-icon" aria-hidden="true"><i class="fa-solid fa-pen-ruler"></i></span>
+                <span>
+                    <strong>{{ board.title }}</strong>
+                    <small>{{ board.element_count }} Element(e) · geändert {{ board.updated_label }}</small>
+                </span>
+            </a>
+            <div class="uml-diagram-actions">
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="whiteboard_duplicate">
+                    <input type="hidden" name="board_id" value="{{ board.id }}">
+                    <button class="icon-button" type="submit" aria-label="„{{ board.title }}“ duplizieren" title="Duplizieren"><i class="fa-regular fa-copy" aria-hidden="true"></i></button>
+                </form>
+                <form method="post" data-confirm="Dieses Whiteboard wirklich löschen?">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="whiteboard_delete">
+                    <input type="hidden" name="board_id" value="{{ board.id }}">
+                    <button class="icon-button" type="submit" aria-label="„{{ board.title }}“ löschen" title="Löschen"><i class="fa-regular fa-trash-can" aria-hidden="true"></i></button>
+                </form>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state-card uml-empty">
+        <i class="fa-solid fa-pen-ruler" aria-hidden="true"></i>
+        <strong>Noch keine Whiteboards</strong>
+        <p>Lege oben dein erstes Whiteboard an.</p>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

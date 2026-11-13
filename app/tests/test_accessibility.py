@@ -31,6 +31,7 @@ from app.models import (
     UmlDiagram,
     VocabularyCard,
     VocabularyList,
+    Whiteboard,
 )
 from app.services.chat import create_poll
 from app.services.expenses import add_expense, create_group
@@ -148,6 +149,7 @@ class PageAccessibilityMarkupTests(TestCase):
         self.diagram = UmlDiagram.objects.create(
             owner=self.mira, title="Klassen", document=empty_uml_document()
         )
+        self.whiteboard = Whiteboard.objects.create(owner=self.mira, title="Skizze")
         self.vocabulary = VocabularyList.objects.create(owner=self.mira, title="Englisch")
         VocabularyCard.objects.create(vocabulary_list=self.vocabulary, term="Haus", translation="house")
         MealPlanEntry.objects.create(owner=self.mira, recipe=self.recipe, date=date(2099, 3, 10))
@@ -195,6 +197,8 @@ class PageAccessibilityMarkupTests(TestCase):
             "/tools/focus/",
             "/tools/uml/",
             f"/tools/uml/{self.diagram.pk}/",
+            "/tools/whiteboard/",
+            f"/tools/whiteboard/{self.whiteboard.pk}/",
             "/tools/vocabulary/",
             f"/tools/vocabulary/{self.vocabulary.pk}/",
             f"/tools/vocabulary/{self.vocabulary.pk}/practice/",
