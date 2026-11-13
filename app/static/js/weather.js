@@ -349,6 +349,9 @@ if (weatherMapShell) {
       minZoom: 2,
       maxZoom: 10,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      // OSM's tile policy blocks requests without a Referer, and the page's own policy
+      // (same-origin) sends none cross-origin. Only the origin goes out, never the path.
+      referrerPolicy: "strict-origin",
     });
     baseMapLayer.addTo(map);
 
