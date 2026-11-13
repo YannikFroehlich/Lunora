@@ -2,8 +2,9 @@ import json
 from urllib.parse import urlencode, urlparse, urlunparse
 
 from django.contrib import messages as django_messages
-from django.contrib.auth import logout
+from django.contrib.auth import logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.forms import PasswordChangeForm
 from django.core.cache import cache
 from django.db import transaction
 from django.http import FileResponse, JsonResponse
@@ -272,6 +273,24 @@ def settings(request):
         ):
             audit_log.record(AuditLogEntry.ACTION_SESSIONS_REVOKED, request, summary="1 Gerät")
             django_messages.success(request, "Gerät abgemeldet.")
+        return redirect(_settings_section_url("security", return_to))
+    elif form_name == "password_change":
+        password_form = PasswordChangeForm(request.user, request.POST)
+        if password_form.is_valid():
+            user = password_form.save()
+            # The others lose their session, like after enabling 2FA; this device stays signed in under a
+            # new key. Revoked first, so this device's old key isn't counted as another session.
+            signed_out = revoke_other_sessions(user, current_key=request.session.session_key)
+            update_session_auth_hash(request, user)
+            audit_log.record(AuditLogEntry.ACTION_PASSWORD_CHANGED, request)
+            message = "Passwort geändert."
+            if signed_out:
+                message += f" {signed_out} andere Sitzung(en) abgemeldet."
+            django_messages.success(request, message)
+        else:
+            for errors in password_form.errors.values():
+                for error in errors:
+                    django_messages.error(request, error)
         return redirect(_settings_section_url("security", return_to))
     elif form_name == "session_revoke_others":
         count = revoke_other_sessions(request.user, current_key=request.session.session_key)

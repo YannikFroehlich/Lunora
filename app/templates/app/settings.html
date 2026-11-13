@@ -635,6 +635,44 @@
                 {% endif %}
             </section>
 
+            <section id="settings-panel-password" class="glass-panel security-panel" role="tabpanel" aria-labelledby="settings-tab-security" data-settings-panel="security">
+                <div class="panel-title"><i class="fa-solid fa-key" aria-hidden="true"></i><h2>Passwort ändern</h2></div>
+                <p class="panel-description">Nach dem Ändern bleibst du auf diesem Gerät angemeldet, alle anderen Geräte werden abgemeldet.</p>
+                <form class="two-factor-form" method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="password_change">
+                    <input type="hidden" name="return_to" value="{{ return_to }}">
+                    <label class="settings-calendar-form" for="password-change-old">
+                        <span class="field-label">Aktuelles Passwort</span>
+                        <span class="calendar-input-pill">
+                            <i class="fa-solid fa-lock" aria-hidden="true"></i>
+                            <input id="password-change-old" type="password" name="old_password" autocomplete="current-password" required>
+                        </span>
+                    </label>
+                    <label class="settings-calendar-form" for="password-change-new">
+                        <span class="field-label">Neues Passwort</span>
+                        <span class="calendar-input-pill">
+                            <i class="fa-solid fa-key" aria-hidden="true"></i>
+                            <input id="password-change-new" type="password" name="new_password1" autocomplete="new-password" required>
+                        </span>
+                    </label>
+                    <label class="settings-calendar-form" for="password-change-repeat">
+                        <span class="field-label">Neues Passwort wiederholen</span>
+                        <span class="calendar-input-pill">
+                            <i class="fa-solid fa-key" aria-hidden="true"></i>
+                            <input id="password-change-repeat" type="password" name="new_password2" autocomplete="new-password" required>
+                        </span>
+                    </label>
+                    <div class="calendar-form-actions">
+                        <button class="primary-button" type="submit">
+                            <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+                            Passwort ändern
+                        </button>
+                    </div>
+                </form>
+                <p class="field-hint">Aktuelles Passwort vergessen? <a href="{% url 'password_reset' %}">Per E-Mail zurücksetzen</a></p>
+            </section>
+
             <section id="settings-panel-devices" class="glass-panel security-panel" role="tabpanel" aria-labelledby="settings-tab-security" data-settings-panel="security">
                 <div class="panel-title"><i class="fa-solid fa-laptop" aria-hidden="true"></i><h2>Angemeldete Geräte</h2></div>
                 <p class="panel-description">Hier siehst du, wo du gerade bei Lunora angemeldet bist. Ein unbekanntes Gerät? Melde es ab und ändere dein Passwort.</p>

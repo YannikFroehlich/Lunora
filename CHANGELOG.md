@@ -6,6 +6,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Settings → Sicherheit can change the password (current password plus the new one twice); the
+  device stays signed in, every other device is signed out. A link there starts the e-mail reset
+  for a forgotten password.
+
 ## 2026-11-13
 
 - Calendar import and subscriptions understand series like "last workday of the month" (BYSETPOS)

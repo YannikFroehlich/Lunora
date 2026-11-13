@@ -10,7 +10,7 @@ from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, SimpleTestCase, TestCase, override_settings
 
-from app.models import Note, NoteAttachment, Profile, Task, UserNotification, UserSession
+from app.models import AuditLogEntry, Note, NoteAttachment, Profile, Task, UserNotification, UserSession
 from app.services import two_factor
 from app.services.notifications import send_pending_user_notification_emails
 from app.services.user_sessions import device_label
@@ -580,6 +580,62 @@ class DeviceSessionTests(TestCase):
         self.assertRedirects(tablet.get("/home/"), "/login/?next=/home/")
         self.assertEqual(self.laptop.get("/home/").status_code, 200)
         self.assertEqual(stranger.get("/home/").status_code, 200)
+
+    def test_password_change_keeps_this_device_and_signs_out_the_others(self):
+        new_password = "Mondlicht-2026!"
+
+        response = self.laptop.post(
+            "/settings/",
+            {
+                "form_name": "password_change",
+                "old_password": "pw-12345!",
+                "new_password1": new_password,
+                "new_password2": new_password,
+            },
+            follow=True,
+        )
+
+        self.assertContains(response, "Passwort geändert. 1 andere Sitzung(en) abgemeldet.")
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password(new_password))
+        self.assertEqual(self.laptop.get("/home/").status_code, 200)
+        self.assertRedirects(self.phone.get("/home/"), "/login/?next=/home/")
+        self.assertTrue(
+            AuditLogEntry.objects.filter(
+                action=AuditLogEntry.ACTION_PASSWORD_CHANGED, actor=self.user
+            ).exists()
+        )
+        # The device list still shows this device under its rotated session key.
+        devices = self.laptop.get("/settings/").context["device_sessions"]
+        self.assertEqual([device["is_current"] for device in devices], [True])
+
+    def test_password_change_needs_the_current_password_and_matching_new_ones(self):
+        for data, error in (
+            (
+                {
+                    "old_password": "falsch",
+                    "new_password1": "Mondlicht-2026!",
+                    "new_password2": "Mondlicht-2026!",
+                },
+                "Das alte Passwort war falsch. Bitte neu eingeben.",
+            ),
+            (
+                {
+                    "old_password": "pw-12345!",
+                    "new_password1": "Mondlicht-2026!",
+                    "new_password2": "Sonne-2026!",
+                },
+                "Die beiden Passwörter sind nicht identisch.",
+            ),
+        ):
+            with self.subTest(error):
+                response = self.laptop.post(
+                    "/settings/", {"form_name": "password_change", **data}, follow=True
+                )
+                self.assertContains(response, error)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("pw-12345!"))
+        self.assertEqual(self.phone.get("/home/").status_code, 200)
 
     def test_backfill_migration_tracks_signed_in_sessions_that_have_no_row(self):
         tracked_keys = {self.laptop.session.session_key, self.phone.session.session_key}
