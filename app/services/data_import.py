@@ -355,9 +355,20 @@ ICS_DURATION_RE = re.compile(
     r"(?:T(?:(?P<hours>\d+)H)?(?:(?P<minutes>\d+)M)?(?:(?P<seconds>\d+)S)?)?$"
 )
 SUPPORTED_FREQUENCIES = {"DAILY", "WEEKLY", "MONTHLY", "YEARLY"}
-# RRULE parts _ics_occurrences understands; a rule with any other part (BYSETPOS, BYWEEKNO, BYHOUR,
-# ...) imports as its first date only.
-SUPPORTED_RULE_PARTS = {"FREQ", "INTERVAL", "UNTIL", "COUNT", "WKST", "BYDAY", "BYMONTHDAY", "BYMONTH"}
+# RRULE parts _ics_occurrences understands; a rule with any other part (BYYEARDAY, BYHOUR, ...)
+# imports as its first date only.
+SUPPORTED_RULE_PARTS = {
+    "FREQ",
+    "INTERVAL",
+    "UNTIL",
+    "COUNT",
+    "WKST",
+    "BYDAY",
+    "BYMONTHDAY",
+    "BYMONTH",
+    "BYWEEKNO",
+    "BYSETPOS",
+}
 ICS_WEEKDAYS = {"MO": 0, "TU": 1, "WE": 2, "TH": 3, "FR": 4, "SA": 5, "SU": 6}
 BYDAY_RE = re.compile(r"^([+-]?\d{1,2})?(MO|TU|WE|TH|FR|SA|SU)$")
 # Periods walked at most, so a rule that rarely matches (FEB 30th never does) can't loop for long.
@@ -433,7 +444,8 @@ def _ics_occurrences(rule, start_at, window=None):
     importer can't read (then only the first date is imported).
 
     Handles FREQ, INTERVAL, COUNT, UNTIL, BYDAY (with ordinals such as 2MO or -1FR in monthly and
-    yearly rules), BYMONTHDAY and BYMONTH. DTSTART is always the first occurrence, and every
+    yearly rules), BYMONTHDAY, BYMONTH, BYWEEKNO (ISO weeks, yearly rules) and BYSETPOS ("the last
+    workday of the month"). DTSTART is always the first occurrence, and every
     occurrence keeps start_at's wall-clock time, so a series stays at 9:00 across DST changes.
 
     With a ``window`` (start, end), as for subscribed calendars, the series runs up to the window's
@@ -449,6 +461,8 @@ def _ics_occurrences(rule, start_at, window=None):
         count = int(parts["COUNT"]) if "COUNT" in parts else MANUAL_RECURRENCE_MAX_INSTANCES
         months = {int(value) for value in parts["BYMONTH"].split(",")} if "BYMONTH" in parts else set()
         month_days = [int(value) for value in parts["BYMONTHDAY"].split(",")] if "BYMONTHDAY" in parts else []
+        week_numbers = [int(value) for value in parts["BYWEEKNO"].split(",")] if "BYWEEKNO" in parts else []
+        set_positions = [int(value) for value in parts["BYSETPOS"].split(",")] if "BYSETPOS" in parts else []
     except ValueError:
         return None
     by_day = []
@@ -461,7 +475,11 @@ def _ics_occurrences(rule, start_at, window=None):
     has_ordinal = any(ordinal for ordinal, _weekday in by_day)
     if interval < 1 or count < 1 or (has_ordinal and frequency in {"DAILY", "WEEKLY"}):
         return None
-    if frequency == "YEARLY" and by_day and not months:
+    if week_numbers and (frequency != "YEARLY" or has_ordinal or month_days):
+        return None
+    if frequency == "YEARLY" and by_day and not months and not week_numbers:
+        return None
+    if 0 in set_positions or 0 in week_numbers:
         return None
 
     until = window[1] if window else start_at + timedelta(days=RECURRENCE_HORIZON_DAYS)
@@ -482,11 +500,21 @@ def _ics_occurrences(rule, start_at, window=None):
         first_period = max(0, _elapsed_periods(frequency, start_date, window[0].date()) // interval - 1)
     for period in range(first_period, first_period + MAX_RECURRENCE_PERIODS):
         period_start, days = _rule_period_days(
-            frequency, start_date, period * interval, by_day, month_days, months
+            frequency, start_date, period * interval, by_day, month_days, months, week_numbers
         )
         if datetime.combine(period_start, time.min, tzinfo=start_at.tzinfo) > until:
             break
-        for day in sorted(set(days)):
+        days = sorted(set(days))
+        if set_positions:
+            # Picked from the whole period, days before DTSTART included, as RFC 5545 counts them.
+            days = sorted(
+                {
+                    days[position - 1 if position > 0 else position]
+                    for position in set_positions
+                    if 1 <= abs(position) <= len(days)
+                }
+            )
+        for day in days:
             if day <= start_date:
                 continue
             occurrence = datetime.combine(day, start_at.time(), tzinfo=start_at.tzinfo)
@@ -507,7 +535,7 @@ def _elapsed_periods(frequency, start_date, day):
     return day.year - start_date.year
 
 
-def _rule_period_days(frequency, start_date, step, by_day, month_days, months):
+def _rule_period_days(frequency, start_date, step, by_day, month_days, months, week_numbers=()):
     """The first day of the step-th period (day, week, month or year) after start_date's own, and the
     days of that period the rule picks."""
     weekdays = {weekday for _ordinal, weekday in by_day}
@@ -532,10 +560,26 @@ def _rule_period_days(frequency, start_date, step, by_day, month_days, months):
             return first, []
         return first, _rule_month_days(first.year, first.month, by_day, month_days, start_date.day)
     year = start_date.year + step
+    if week_numbers:
+        return date(year, 1, 1), _rule_week_days(year, week_numbers, by_day, months, start_date.weekday())
     days = []
     for month in sorted(months or {start_date.month}):
         days += _rule_month_days(year, month, by_day, month_days, start_date.day)
     return date(year, 1, 1), days
+
+
+def _rule_week_days(year, week_numbers, by_day, months, default_weekday):
+    """The days of ISO weeks of ``year`` (-1 is the last week) on the BYDAY weekdays, or on
+    DTSTART's weekday without BYDAY. Days of week 1 or the last week that spill into the
+    neighbouring year don't count, as RFC 5545 keeps the set within the year."""
+    weeks_in_year = date(year, 12, 28).isocalendar().week
+    weekdays = {weekday for _ordinal, weekday in by_day} or {default_weekday}
+    days = []
+    for week in week_numbers:
+        week = week if week > 0 else weeks_in_year + week + 1
+        if 1 <= week <= weeks_in_year:
+            days += [date.fromisocalendar(year, week, weekday + 1) for weekday in weekdays]
+    return [day for day in days if day.year == year and (not months or day.month in months)]
 
 
 def _resolve_month_days(year, month, month_days):

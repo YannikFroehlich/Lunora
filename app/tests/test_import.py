@@ -193,10 +193,10 @@ ICS = (
     "SUMMARY:Team\r\n"
     "END:VEVENT\r\n"
     "BEGIN:VEVENT\r\n"
-    "UID:letzter-montag-1\r\n"
-    "DTSTART:20991130T080000Z\r\n"
-    "RRULE:FREQ=MONTHLY;BYDAY=MO;BYSETPOS=-1\r\n"
-    "SUMMARY:Monatsabschluss\r\n"
+    "UID:jahrestag-100\r\n"
+    "DTSTART:20990410T080000Z\r\n"
+    "RRULE:FREQ=YEARLY;BYYEARDAY=100\r\n"
+    "SUMMARY:Tag 100\r\n"
     "END:VEVENT\r\n"
     "BEGIN:VEVENT\r\n"
     "UID:abgesagt-1\r\n"
@@ -239,7 +239,7 @@ class IcsImportTests(TestCase):
             [event.start_at.date().isoformat() for event in team],
             ["2099-11-06", "2099-11-09", "2099-11-11", "2099-11-16", "2099-11-18"],
         )
-        self.assertEqual(CalendarEvent.objects.filter(title="Monatsabschluss").count(), 1)
+        self.assertEqual(CalendarEvent.objects.filter(title="Tag 100").count(), 1)
         self.assertFalse(CalendarEvent.objects.filter(title="Abgesagt").exists())
 
         counts = import_ics_events(self.user, ICS)
@@ -281,6 +281,66 @@ class IcsImportTests(TestCase):
                 "2099-02-02 10:00",
                 "2099-02-27 19:00",
                 "2099-03-27 19:00",
+            ],
+        )
+
+    def test_set_positions_pick_from_each_month(self):
+        starts = self._series(
+            "BEGIN:VEVENT",
+            "UID:abschluss",
+            "DTSTART;TZID=Europe/Berlin:20990130T160000",
+            "RRULE:FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1;COUNT=4",
+            "SUMMARY:Monatsabschluss",
+            "END:VEVENT",
+            "BEGIN:VEVENT",
+            "UID:abrechnung",
+            "DTSTART;TZID=Europe/Berlin:20990601T080000",
+            "RRULE:FREQ=MONTHLY;BYMONTHDAY=1,15,-1;BYSETPOS=2,-1;COUNT=3",
+            "SUMMARY:Abrechnung",
+            "END:VEVENT",
+        )
+
+        self.assertEqual(
+            starts,
+            [
+                # The last workday of each month (28 February 2099 is a Saturday).
+                "2099-01-30 16:00",
+                "2099-02-27 16:00",
+                "2099-03-31 16:00",
+                "2099-04-30 16:00",
+                # DTSTART stays first; then the 2nd and last of {1, 15, 30}.
+                "2099-06-01 08:00",
+                "2099-06-15 08:00",
+                "2099-06-30 08:00",
+            ],
+        )
+
+    def test_iso_week_numbers_in_yearly_rules(self):
+        starts = self._series(
+            "BEGIN:VEVENT",
+            "UID:inventur",
+            "DTSTART;TZID=Europe/Berlin:20990105T090000",
+            "RRULE:FREQ=YEARLY;BYWEEKNO=2,-1;BYDAY=MO;COUNT=4",
+            "SUMMARY:Inventur",
+            "END:VEVENT",
+            "BEGIN:VEVENT",
+            "UID:monatlich-woche",
+            "DTSTART;TZID=Europe/Berlin:20990105T090000",
+            "RRULE:FREQ=MONTHLY;BYWEEKNO=2",
+            "SUMMARY:Nur erster Termin",
+            "END:VEVENT",
+        )
+
+        # 2099 has 53 ISO weeks, 2100 has 52; BYWEEKNO only belongs to yearly rules, so the monthly
+        # one keeps its first date only.
+        self.assertEqual(
+            starts,
+            [
+                "2099-01-05 09:00",
+                "2099-01-05 09:00",
+                "2099-12-28 09:00",
+                "2100-01-11 09:00",
+                "2100-12-27 09:00",
             ],
         )
 
