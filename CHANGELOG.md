@@ -6,6 +6,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Whiteboard: "Alles anzeigen" now zooms in on a small drawing instead of stopping at 100 %; filling
+  is a bucket tool (click into a rectangle or ellipse, click again to clear it) and no longer a
+  switch that got out of step with the selection; and the eraser can be set to remove whole strokes
+  or only the part it touches.
 - New tool: Whiteboards (`/tools/whiteboard/`) for free sketching with pen, eraser, lines, arrows,
   rectangles, ellipses and text in seven colors. Select, move, restyle, duplicate and delete what
   you drew, pan and zoom with mouse, keyboard or two fingers, undo/redo, autosave, and export as
