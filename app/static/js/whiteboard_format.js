@@ -157,6 +157,42 @@
     return false;
   }
 
+  // Cuts the part of a stroke within `radius` of the eraser's path (ax, ay)-(bx, by) out of it and
+  // returns what is left as point lists, one per remaining piece (none when all of it is gone).
+  function eraseFromStroke(points, ax, ay, bx, by, radius) {
+    const count = points.length / 2;
+    let length = 0;
+    for (let i = 1; i < count; i += 1) {
+      length += Math.hypot(points[i * 2] - points[i * 2 - 2], points[i * 2 + 1] - points[i * 2 - 1]);
+    }
+    // Saved strokes have long straight segments, so sample them finely enough to cut inside one;
+    // the second term bounds the work on very long strokes.
+    const step = Math.max(radius / 2, length / 20000, 0.01);
+    const limit = radius * radius;
+    const pieces = [];
+    let run = [];
+    const visit = (x, y) => {
+      if (segmentDistanceSquared(x, y, ax, ay, bx, by) > limit) {
+        run.push(x, y);
+        return;
+      }
+      if (run.length >= 4) pieces.push(run);
+      run = [];
+    };
+    visit(points[0], points[1]);
+    for (let i = 1; i < count; i += 1) {
+      const x0 = points[i * 2 - 2];
+      const y0 = points[i * 2 - 1];
+      const dx = points[i * 2] - x0;
+      const dy = points[i * 2 + 1] - y0;
+      const parts = Math.max(1, Math.ceil(Math.hypot(dx, dy) / step));
+      for (let j = 1; j <= parts; j += 1) visit(x0 + (dx * j) / parts, y0 + (dy * j) / parts);
+    }
+    if (run.length >= 4) pieces.push(run);
+    // reduce() drops the sampling points again, leaving the original corners plus the cut ends.
+    return pieces.map((piece) => cap(reduce(piece, 0.05), LIMITS.strokePoints).map(coordinate));
+  }
+
   // Text sizes in board units per allowed size key, and the line metrics the SVG <text> and the edit
   // field share so the text doesn't jump when it is opened for editing.
   const TEXT_SIZES = { s: 16, m: 24, l: 40 };
@@ -310,6 +346,8 @@
     elementBounds,
     documentBounds,
     hitsElement,
+    containsPoint: contains,
+    eraseFromStroke,
     moveElement,
     normalizeBox,
     arrowHead,

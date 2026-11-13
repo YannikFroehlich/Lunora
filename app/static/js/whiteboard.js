@@ -12,6 +12,8 @@
   const SAVE_DELAY = 1200;
   const SIMPLIFY_PIXELS = 0.75;
   const ERASER_PIXELS = 10;
+  const FIT_MAX_ZOOM = 4;
+  const ERASER_MODE_KEY = "lunora-whiteboard-eraser";
   const HIT_PIXELS = 6;
   const DRAG_PIXELS = 3;
   const MIN_SHAPE_PIXELS = 4;
@@ -39,6 +41,7 @@
     r: "rect",
     o: "ellipse",
     t: "text",
+    g: "fill",
   };
 
   const payload = JSON.parse(document.getElementById("whiteboard-data").textContent);
@@ -52,7 +55,7 @@
   const zoomLabel = root.querySelector("[data-whiteboard-zoom-label]");
   const colorOptions = root.querySelector("[data-whiteboard-colors]");
   const widthOptions = root.querySelector("[data-whiteboard-widths]");
-  const fillButton = root.querySelector("[data-whiteboard-fill]");
+  const eraserModeSelect = root.querySelector("[data-whiteboard-eraser-mode]");
   const sizeSelect = root.querySelector("[data-whiteboard-text-size]");
   const textInput = root.querySelector("[data-whiteboard-text]");
   const exportMenu = root.querySelector(".uml-export-menu");
@@ -61,7 +64,7 @@
 
   const doc = format.normalizeDocument(payload.document);
   const view = { x: 0, y: 0, k: 1 };
-  const style = { color: "default", width: 4, fill: false, size: "m" };
+  const style = { color: "default", width: 4, size: "m" };
   const nodes = new Map();
   const pointers = new Map();
   const history = { undo: [], redo: [] };
@@ -173,7 +176,7 @@
       const head = format.arrowHead(item.x1, item.y1, item.x2, item.y2, item.width);
       return svgEl("path", { ...attrs, d: `M${item.x1} ${item.y1}L${item.x2} ${item.y2}${head}` });
     }
-    const fill = item.fill ? { fill: inkColor(item.color), "fill-opacity": 0.22 } : {};
+    const fill = item.fill ? { fill: inkColor(item.color), "fill-opacity": 0.3 } : {};
     if (item.type === "rect") {
       return svgEl("rect", { ...attrs, ...fill, x: item.x, y: item.y, width: item.w, height: item.h, rx: 2 });
     }
@@ -262,7 +265,8 @@
     applyView();
   }
 
-  function fitView() {
+  // Frames the whole drawing. The button zooms in on a small one; opening a board never goes past 100 %.
+  function fitView(maxZoom = 1) {
     const bounds = format.documentBounds(doc, measure);
     const size = canvasSize();
     if (!bounds) {
@@ -272,7 +276,7 @@
     } else {
       const width = bounds.x2 - bounds.x1 + 80;
       const height = bounds.y2 - bounds.y1 + 80;
-      view.k = Math.min(1, clampZoom(Math.min(size.width / width, size.height / height)));
+      view.k = Math.min(maxZoom, clampZoom(Math.min(size.width / width, size.height / height)));
       view.x = size.width / 2 - ((bounds.x1 + bounds.x2) / 2) * view.k;
       view.y = size.height / 2 - ((bounds.y1 + bounds.y2) / 2) * view.k;
     }
@@ -469,29 +473,80 @@
     commit([], [{ index: doc.elements.length, element }]);
   }
 
+  function isFillable(element) {
+    return element.type === "rect" || element.type === "ellipse";
+  }
+
+  // Fills the given shapes, or clears the fill when all of them already have one.
+  function toggleFill(elements) {
+    const shapes = elements.filter(isFillable);
+    const fill = !shapes.every((element) => element.fill);
+    const entries = shapes
+      .filter((element) => element.fill !== fill)
+      .map((element) => ({ index: doc.elements.indexOf(element), element }));
+    if (!entries.length) return;
+    commit(
+      entries,
+      entries.map(({ index, element }) => ({ index, element: { ...element, fill } })),
+    );
+  }
+
+  function fillAt(world) {
+    const reach = HIT_PIXELS / view.k;
+    const shape = [...doc.elements]
+      .reverse()
+      .find((element) => isFillable(element) && format.containsPoint(element, world.x, world.y, reach));
+    if (shape) toggleFill([shape]);
+    else showHint("Füllen lassen sich Rechtecke und Ellipsen: einfach hineinklicken.");
+  }
+
+  // "whole" removes every element the eraser touches; "part" cuts the touched bit out of freehand
+  // strokes and leaves the rest as separate strokes (shapes and text still go as a whole).
   function eraseAt(eraser, world) {
     const reach = ERASER_PIXELS / view.k;
     const from = eraser.last || world;
     eraser.last = world;
-    // Undo reinserts by ascending index, so each entry keeps its position from before the gesture.
-    const hit = doc.elements
-      .filter((element) => format.hitsElement(element, from.x, from.y, world.x, world.y, reach, measure))
-      .map((element) => ({ index: eraser.origin.get(element.id), element }));
-    if (!hit.length) return;
-    eraser.removed.push(...hit);
-    swap(hit, []);
+    let changed = false;
+    const next = [];
+    doc.elements.forEach((element) => {
+      if (!format.hitsElement(element, from.x, from.y, world.x, world.y, reach, measure)) {
+        next.push(element);
+        return;
+      }
+      changed = true;
+      if (eraserModeSelect.value !== "part" || element.type !== "stroke") return;
+      const pieces = format.eraseFromStroke(
+        element.points,
+        from.x,
+        from.y,
+        world.x,
+        world.y,
+        reach + element.width / 2,
+      );
+      // No room for the extra strokes a cut makes: the stroke goes as a whole instead.
+      if (doc.elements.length + pieces.length > format.LIMITS.elements) return;
+      pieces.forEach((points) => next.push({ ...element, id: newId(), points }));
+    });
+    if (!changed) return;
+    doc.elements = next;
+    render();
+    markDirty();
   }
 
   function startErase(world) {
-    const origin = new Map(doc.elements.map((element, index) => [element.id, index]));
-    const eraser = { type: "erase", origin, removed: [] };
+    const eraser = { type: "erase", before: [...doc.elements] };
     eraseAt(eraser, world);
     return eraser;
   }
 
+  // The board already changed while erasing; the difference to how the gesture found it becomes one
+  // undo step. Indexes are positions in the old board for what went and in the new one for what came.
   function finishErase(eraser) {
-    // The elements are already gone; the whole gesture becomes one undo step.
-    if (eraser.removed.length) record({ removed: eraser.removed, added: [] });
+    const kept = new Set(doc.elements);
+    const old = new Set(eraser.before);
+    const removed = eraser.before.flatMap((element, index) => (kept.has(element) ? [] : [{ index, element }]));
+    const added = doc.elements.flatMap((element, index) => (old.has(element) ? [] : [{ index, element }]));
+    if (removed.length) record({ removed, added });
   }
 
   // The element a shape tool drag from `start` to `end` describes. `constrain` (Shift) snaps lines to
@@ -509,7 +564,7 @@
       }
       return { ...base, x1: start.x, y1: start.y, x2: x, y2: y };
     }
-    return { ...base, ...format.normalizeBox(start.x, start.y, end.x, end.y, constrain), fill: style.fill };
+    return { ...base, ...format.normalizeBox(start.x, start.y, end.x, end.y, constrain), fill: false };
   }
 
   function finishShape(shape) {
@@ -731,6 +786,7 @@
       else if (tool === "select") interaction = startSelect(event, world);
       // The text field opens on release: focus moves to the canvas on press and would close it again.
       else if (tool === "text") interaction = { type: "text", world };
+      else if (tool === "fill") fillAt(world);
       else if (SHAPE_TOOLS.has(tool) && canAdd())
         interaction = { type: "shape", kind: tool, start: world, draft: null };
     }
@@ -1015,8 +1071,6 @@
   function refreshStyleControls() {
     pressOption(colorOptions, "color", style.color);
     pressOption(widthOptions, "width", style.width);
-    fillButton.setAttribute("aria-pressed", String(style.fill));
-    fillButton.classList.toggle("is-active", style.fill);
     sizeSelect.value = style.size;
   }
 
@@ -1024,7 +1078,6 @@
     const next = { ...element };
     if ("color" in changes) next.color = changes.color;
     if ("width" in changes && element.type !== "text") next.width = changes.width;
-    if ("fill" in changes && (element.type === "rect" || element.type === "ellipse")) next.fill = changes.fill;
     if ("size" in changes && element.type === "text") next.size = changes.size;
     return next;
   }
@@ -1045,7 +1098,6 @@
     const button = event.target.closest("[data-width]");
     if (button) applyStyle({ width: Number(button.dataset.width) });
   });
-  fillButton.addEventListener("click", () => applyStyle({ fill: !style.fill }));
   sizeSelect.addEventListener("change", () => applyStyle({ size: sizeSelect.value }));
 
   // Enter on the canvas is the keyboard route to every tool that otherwise needs a drag.
@@ -1072,13 +1124,21 @@
     "zoom-in": () => zoomAt(1.2),
     "zoom-out": () => zoomAt(1 / 1.2),
     "zoom-reset": () => zoomAt(1 / view.k),
-    fit: fitView,
+    fit: () => fitView(FIT_MAX_ZOOM),
   };
   root.querySelectorAll("[data-whiteboard-action]").forEach((button) => {
     button.addEventListener("click", () => ACTIONS[button.dataset.whiteboardAction]?.());
   });
   root.querySelectorAll("[data-whiteboard-tool]").forEach((button) => {
-    button.addEventListener("click", () => setTool(button.dataset.whiteboardTool));
+    button.addEventListener("click", () => {
+      const name = button.dataset.whiteboardTool;
+      // With shapes selected the bucket fills them at once instead of becoming the tool.
+      if (name === "fill" && tool === "select" && selectedEntries().some(({ element }) => isFillable(element))) {
+        toggleFill(selectedEntries().map(({ element }) => element));
+      } else {
+        setTool(name);
+      }
+    });
   });
 
   document.addEventListener("keydown", (event) => {
@@ -1132,7 +1192,7 @@
     } else if (TOOL_KEYS[key]) {
       setTool(TOOL_KEYS[key]);
     } else if (key === "f") {
-      fitView();
+      fitView(FIT_MAX_ZOOM);
     } else if (key === "+" || key === "=") {
       zoomAt(1.2);
     } else if (key === "-") {
@@ -1148,6 +1208,20 @@
     if (event.key !== " ") return;
     spaceHeld = false;
     svg.classList.remove("is-space-pan");
+  });
+
+  try {
+    if (window.localStorage.getItem(ERASER_MODE_KEY) === "part") eraserModeSelect.value = "part";
+  } catch (_error) {
+    // Storage can be blocked; the mode then just isn't remembered.
+  }
+  eraserModeSelect.addEventListener("change", () => {
+    setTool("eraser");
+    try {
+      window.localStorage.setItem(ERASER_MODE_KEY, eraserModeSelect.value);
+    } catch (_error) {
+      // See above.
+    }
   });
 
   setTool("pen");

@@ -135,3 +135,45 @@ describe("whiteboard shapes and text", () => {
     expect(format.arrowHead(0, 0, 0, 0, 2)).toContain("L0 0L");
   });
 });
+
+describe("whiteboard partial eraser", () => {
+  it("cuts the touched middle out of a straight stroke", () => {
+    // Eraser dabs at (50, 0) with radius 10: what is left ends short of 40 and starts after 60.
+    const pieces = format.eraseFromStroke([0, 0, 100, 0], 50, 0, 50, 0, 10);
+    expect(pieces).toHaveLength(2);
+    expect(pieces[0].slice(0, 2)).toEqual([0, 0]);
+    expect(pieces[0][2]).toBeGreaterThan(30);
+    expect(pieces[0][2]).toBeLessThan(40);
+    expect(pieces[1][0]).toBeGreaterThan(60);
+    expect(pieces[1][0]).toBeLessThan(70);
+    expect(pieces[1].slice(-2)).toEqual([100, 0]);
+    // The sampling points are gone again: each piece is a plain two-point line.
+    expect(pieces.map((piece) => piece.length)).toEqual([4, 4]);
+  });
+
+  it("shortens a stroke erased at its end and keeps corners of the rest", () => {
+    const pieces = format.eraseFromStroke([0, 0, 100, 0, 100, 100], 100, 100, 100, 100, 10);
+    expect(pieces).toHaveLength(1);
+    expect(pieces[0].slice(0, 4)).toEqual([0, 0, 100, 0]);
+    expect(pieces[0][5]).toBeLessThan(90);
+  });
+
+  it("removes a stroke that lies entirely under the eraser, and dots", () => {
+    expect(format.eraseFromStroke([0, 0, 5, 0], 2, 0, 3, 0, 10)).toEqual([]);
+    expect(format.eraseFromStroke([4, 4], 4, 4, 4, 4, 2)).toEqual([]);
+  });
+
+  it("cuts along the eraser's swept path", () => {
+    const pieces = format.eraseFromStroke([0, 0, 100, 0], 50, -40, 50, 40, 5);
+    expect(pieces).toHaveLength(2);
+  });
+
+  it("tells whether a point lies inside a shape, filled or not", () => {
+    const rect = { type: "rect", x: 0, y: 0, w: 100, h: 50, fill: false, width: 2 };
+    const ellipse = { type: "ellipse", x: 0, y: 0, w: 100, h: 50, fill: false, width: 2 };
+    expect(format.containsPoint(rect, 50, 25, 0)).toBe(true);
+    expect(format.containsPoint(rect, 150, 25, 0)).toBe(false);
+    expect(format.containsPoint(ellipse, 50, 25, 0)).toBe(true);
+    expect(format.containsPoint(ellipse, 2, 2, 0)).toBe(false);
+  });
+});

@@ -31,12 +31,19 @@
             <button type="button" class="uml-tool is-icon" data-whiteboard-tool="rect" aria-pressed="false" aria-label="Rechteck" title="Rechteck (R, Umschalt für Quadrat)"><i class="fa-regular fa-square" aria-hidden="true"></i></button>
             <button type="button" class="uml-tool is-icon" data-whiteboard-tool="ellipse" aria-pressed="false" aria-label="Ellipse" title="Ellipse (O, Umschalt für Kreis)"><i class="fa-regular fa-circle" aria-hidden="true"></i></button>
             <button type="button" class="uml-tool is-icon" data-whiteboard-tool="text" aria-pressed="false" aria-label="Text" title="Text (T)"><i class="fa-solid fa-font" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool is-icon" data-whiteboard-tool="fill" aria-pressed="false" aria-label="Füllen" title="Füllen (G): in ein Rechteck oder eine Ellipse klicken, nochmal klicken leert sie wieder"><i class="fa-solid fa-fill-drip" aria-hidden="true"></i></button>
             <button type="button" class="uml-tool is-icon" data-whiteboard-tool="hand" aria-pressed="false" aria-label="Fläche verschieben" title="Fläche verschieben (H oder Leertaste halten)"><i class="fa-regular fa-hand" aria-hidden="true"></i></button>
         </div>
         <div class="uml-tool-group whiteboard-colors" role="group" aria-label="Farbe" data-whiteboard-colors></div>
         <div class="uml-tool-group" role="group" aria-label="Stil">
             <span class="whiteboard-widths" data-whiteboard-widths></span>
-            <button type="button" class="uml-tool is-icon" data-whiteboard-fill aria-pressed="false" aria-label="Formen füllen" title="Rechtecke und Ellipsen füllen"><i class="fa-solid fa-fill-drip" aria-hidden="true"></i></button>
+            <label class="uml-relation-select">
+                <span class="visually-hidden">Radierer-Modus</span>
+                <select data-whiteboard-eraser-mode title="Was der Radierer entfernt">
+                    <option value="whole">Radierer: ganze Striche</option>
+                    <option value="part">Radierer: nur Teilstücke</option>
+                </select>
+            </label>
             <label class="uml-relation-select">
                 <span class="visually-hidden">Textgröße</span>
                 <select data-whiteboard-text-size title="Textgröße">

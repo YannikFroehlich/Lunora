@@ -426,6 +426,10 @@ a.tool-card:hover {
   cursor: default;
 }
 
+.whiteboard-canvas[data-tool="fill"] {
+  cursor: pointer;
+}
+
 .whiteboard-canvas[data-tool="text"] {
   cursor: text;
 }
