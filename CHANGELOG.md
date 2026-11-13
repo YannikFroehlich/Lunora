@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+## 2026-11-13
+
 - Calendar import and subscriptions understand series like "last workday of the month" (BYSETPOS)
   and "Monday of calendar week 2" (BYWEEKNO) instead of importing only their first date.
 - Shopping list scans: compound items find products under a synonym of their last part, so
