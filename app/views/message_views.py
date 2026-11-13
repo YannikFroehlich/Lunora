@@ -6,6 +6,7 @@ from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.db.models import Count, Max, Q
 from django.http import FileResponse, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
@@ -131,16 +132,23 @@ def messages(request, conversation_id=None):
                             f"Nachricht für {format_user_datetime(send_at, request.user)} geplant.",
                         )
                     return redirect("messages_detail", conversation_id=selected_conversation.id)
-                message = message_form.save(commit=False)
-                message.conversation = selected_conversation
-                message.sender = request.user
-                message.reply_to = reply_to
-                message.save()
                 upload = message_form.cleaned_data.get("attachment")
-                if upload:
-                    attach_file(
-                        message, request.user, upload, message_form.cleaned_data.get("voice_duration")
-                    )
+                try:
+                    with transaction.atomic():
+                        # Checked again under the lock: the form's check can't see parallel uploads.
+                        ensure_storage_available(request.user, upload.size if upload else 0)
+                        message = message_form.save(commit=False)
+                        message.conversation = selected_conversation
+                        message.sender = request.user
+                        message.reply_to = reply_to
+                        message.save()
+                        if upload:
+                            attach_file(
+                                message, request.user, upload, message_form.cleaned_data.get("voice_duration")
+                            )
+                except ValidationError as error:
+                    django_messages.error(request, " ".join(error.messages))
+                    return redirect("messages_detail", conversation_id=selected_conversation.id)
                 selected_conversation.updated_at = message.created_at
                 selected_conversation.save(update_fields=["updated_at"])
                 apply_mentions(message)
@@ -243,11 +251,12 @@ def messages(request, conversation_id=None):
                 return redirect("messages_detail", conversation_id=source_conversation.id)
             attachment = getattr(message, "attachment", None)
             try:
-                ensure_storage_available(request.user, attachment.size if attachment else 0)
+                with transaction.atomic():
+                    ensure_storage_available(request.user, attachment.size if attachment else 0)
+                    forwarded = forward_message(message, target, request.user)
             except ValidationError as error:
                 django_messages.error(request, " ".join(error.messages))
                 return redirect("messages_detail", conversation_id=source_conversation.id)
-            forwarded = forward_message(message, target, request.user)
             target.updated_at = forwarded.created_at
             target.save(update_fields=["updated_at"])
             target.mark_read_for(request.user)

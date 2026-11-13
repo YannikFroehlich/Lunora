@@ -8,6 +8,7 @@ from collections import Counter
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.db.models import Sum
 from django.template.defaultfilters import filesizeformat
 
@@ -50,13 +51,16 @@ def user_storage_limit():
 def ensure_storage_available(user, incoming_bytes):
     """Raise ValidationError unless ``user`` may store ``incoming_bytes`` more.
 
-    Call it for every path that writes a new file for a user, copies included.
+    Call it for every path that writes a new file for a user, copies included, inside the same
+    transaction as the write: there it locks the user's row, so parallel uploads of one user wait
+    for each other instead of all passing the check against the same total. Outside a transaction
+    (form validation) it is only an early check.
     """
-    # ponytail: check-then-write without a lock, so parallel uploads can overshoot by a few files
-    # (20 MB each at most). Lock the user's row around the write if that ever matters.
     limit = user_storage_limit()
     if not incoming_bytes or limit is None:
         return
+    if transaction.get_connection().in_atomic_block:
+        get_user_model().objects.select_for_update().filter(pk=user.pk).first()
     used = user_storage_used(user)
     if used + incoming_bytes > limit:
         raise ValidationError(

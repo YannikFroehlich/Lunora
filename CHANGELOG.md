@@ -6,6 +6,19 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+## 2026-11-13
+
+- Calendar import and subscriptions understand series like "last workday of the month" (BYSETPOS)
+  and "Monday of calendar week 2" (BYWEEKNO) instead of importing only their first date.
+- Shopping list scans: compound items find products under a synonym of their last part, so
+  "Speisemöhren" on the list is ticked off by scanning "Karotten".
+- Fixed: several uploads sent at the same moment could together go past the storage limit; they
+  are now checked one after another.
+- Passkeys can be renamed: click a passkey's name under Settings → Sicherheit, type the new one and
+  press Enter.
+
+## 2026-11-12
+
 - Sign in with a passkey alone: the login page has "Mit Passkey anmelden", which needs neither
   password nor code — the device asks for fingerprint, face or PIN instead. Works with the passkeys
   added under Settings → Sicherheit (two-factor sign-in stays required for them).

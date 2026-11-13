@@ -952,6 +952,7 @@ def _document_attachment_ids(document):
     return found
 
 
+@transaction.atomic
 def create_attachment(user, note_id, upload, *, kind):
     note = get_accessible_note(user, note_id)
     if not can_edit_note(note, user):

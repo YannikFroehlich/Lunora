@@ -547,7 +547,13 @@
                         <li class="device-row">
                             <i class="fa-solid fa-key" aria-hidden="true"></i>
                             <span>
-                                <strong>{{ passkey.name }}</strong>
+                                <form class="passkey-rename" method="post">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="form_name" value="passkey_rename">
+                                    <input type="hidden" name="passkey_id" value="{{ passkey.id }}">
+                                    <input type="hidden" name="return_to" value="{{ return_to }}">
+                                    <input type="text" name="name" value="{{ passkey.name }}" maxlength="60" required autocomplete="off" aria-label="Name des Passkeys „{{ passkey.name }}“" title="Zum Umbenennen anklicken" data-auto-submit>
+                                </form>
                                 <small>Hinzugefügt {{ passkey.created }}{% if passkey.last_used %} · zuletzt genutzt {{ passkey.last_used }}{% endif %}</small>
                             </span>
                             <form method="post" data-confirm="Passkey „{{ passkey.name }}“ entfernen?">

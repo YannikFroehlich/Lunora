@@ -219,13 +219,21 @@ _SYNONYMS = {
 }
 
 
+def _names_for(stem):
+    """The stem plus its synonyms; a compound gets those of its last part, which decides what it is
+    ("speisemöhr" also finds "karott")."""
+    if stem in _SYNONYMS:
+        return _SYNONYMS[stem]
+    tail = max((key for key in _SYNONYMS if stem.endswith(key)), key=len, default=None)
+    return (stem, *_SYNONYMS[tail]) if tail else (stem,)
+
+
 def find_open_item(list_owner, product):
     """The open list item a scanned product stands for.
 
     The item scanned with this barcode before wins; otherwise one whose words, or their synonyms,
     all appear in the product name ("Milch" for "Frische Vollmilch 3,5 %", "Möhren" for "Karotten"),
     the longest such name first.
-    ponytail: fixed synonym table for whole words, so "Speisemöhren" on the list won't find "Karotten".
     """
     items = list(ShoppingItem.objects.filter(owner=list_owner, is_done=False))
     for item in items:
@@ -237,7 +245,7 @@ def find_open_item(list_owner, product):
         if item.barcode:
             continue
         stems = [_stem(word) for word in re.findall(r"\w{3,}", item.name.casefold())]
-        if stems and all(any(name in text for name in _SYNONYMS.get(stem, (stem,))) for stem in stems):
+        if stems and all(any(name in text for name in _names_for(stem)) for stem in stems):
             matches.append(item)
     return max(matches, key=lambda item: len(item.name), default=None)
 

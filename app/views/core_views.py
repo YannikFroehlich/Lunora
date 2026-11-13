@@ -463,6 +463,14 @@ def _handle_passkey_form(request, profile, form_name):
             passkey.delete()
             audit_log.record(AuditLogEntry.ACTION_PASSKEY_REMOVED, request, summary=passkey.name)
             django_messages.success(request, f"Passkey „{passkey.name}“ entfernt.")
+    elif form_name == "passkey_rename":
+        passkey_id = request.POST.get("passkey_id", "")
+        passkey = request.user.passkeys.filter(pk=passkey_id).first() if passkey_id.isdigit() else None
+        name = passkeys.clean_name(request.POST.get("name"))
+        if passkey is not None and name and name != passkey.name:
+            passkey.name = name
+            passkey.save(update_fields=["name"])
+            django_messages.success(request, f"Passkey in „{name}“ umbenannt.")
 
 
 @login_required

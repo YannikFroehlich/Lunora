@@ -788,6 +788,20 @@ class ShoppingScanTests(TestCase):
 
         self.assertEqual(self._scan(name="Karotten").json()["message"], "„Möhren“ abgehakt.")
 
+    def test_compound_items_match_synonyms_of_their_last_part(self, urlopen):
+        carrots = ShoppingItem.objects.create(owner=self.user, name="Speisemöhren")
+        tomatoes = ShoppingItem.objects.create(owner=self.user, name="Kirschtomaten")
+
+        for product_name, expected in (
+            ("Karotten 1 kg", carrots),
+            ("Speisemöhren lose", carrots),
+            ("Paradeiser am Strauch", tomatoes),
+            ("Gurken", None),
+        ):
+            with self.subTest(product_name):
+                product = ShoppingProduct(barcode=MILK, name=product_name)
+                self.assertEqual(find_open_item(self.user, product), expected)
+
     def test_scanning_at_home_puts_the_product_on_the_list_once(self, urlopen):
         urlopen.return_value = off_milk_response()
 
