@@ -6,6 +6,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Administration: the status panel shows the running version (commit) and which outside services
+  are set up (e-mail delivery, Web Push, weather data, registration protection, error e-mails),
+  without showing any keys.
+
 ## 2026-11-13
 
 - The password forms in Settings → Sicherheit (change password, switch off 2FA, delete account)
