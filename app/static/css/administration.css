@@ -270,3 +270,19 @@
     padding: 20px 18px;
   }
 }
+
+.admin-inline-form {
+  margin-top: 14px;
+}
+
+.admin-audit-search {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.admin-audit-search input {
+  flex: 1 1 220px;
+  min-width: 0;
+}

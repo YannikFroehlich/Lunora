@@ -9,6 +9,9 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 - Administration: the status panel shows the running version (commit) and which outside services
   are set up (e-mail delivery, Web Push, weather data, registration protection, error e-mails),
   without showing any keys.
+- Administration: a "Testmail an mich senden" button checks the e-mail delivery, a new Konten panel
+  counts accounts (total, active this week, unconfirmed e-mail, with 2FA) and links to the Django
+  admin, and the audit log can be searched by account.
 
 ## 2026-11-13
 

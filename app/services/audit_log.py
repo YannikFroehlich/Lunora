@@ -128,14 +128,17 @@ def purge_old_entries(*, now=None):
     return deleted
 
 
-def audit_log_page(viewer, *, filter_key="all", page=None):
-    """One page of entries for the administration page, newest first."""
+def audit_log_page(viewer, *, filter_key="all", account="", page=None):
+    """One page of entries for the administration page, newest first, optionally for one account."""
     if filter_key not in FILTERS:
         filter_key = "all"
+    account = account.strip()[:254]
     entries = AuditLogEntry.objects.select_related("actor")
     actions = FILTERS[filter_key][1]
     if actions is not None:
         entries = entries.filter(action__in=actions)
+    if account:
+        entries = entries.filter(actor_label__icontains=account)
     paginator = Paginator(entries, AUDIT_LOG_PAGE_SIZE)
     page_obj = paginator.get_page(page)
     items = [
@@ -156,6 +159,7 @@ def audit_log_page(viewer, *, filter_key="all", page=None):
         "items": items,
         "page": page_obj,
         "filter": filter_key,
+        "account": account,
         "filters": [{"key": key, "label": label} for key, (label, _actions) in FILTERS.items()],
         "retention_days": AUDIT_LOG_RETENTION.days,
     }

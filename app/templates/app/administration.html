@@ -74,10 +74,47 @@
                     <li><span>{{ check.label }}</span> <strong class="admin-health-state is-{{ check.tone }}">{{ check.state }}</strong></li>
                     {% endfor %}
                 </ul>
+                <form class="admin-inline-form" method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="test_mail">
+                    <button class="ghost-button" type="submit">
+                        <i class="fa-solid fa-envelope" aria-hidden="true"></i>
+                        Testmail an mich senden
+                    </button>
+                </form>
                 <p class="admin-muted">Version: {% if deployed_commit %}<code title="{{ deployed_commit }}">{{ deployed_commit|slice:":7" }}</code>{% else %}unbekannt{% endif %}</p>
                 {% if system_settings.updated_at %}
                 <p class="admin-muted">Zuletzt gespeichert: {{ system_settings.updated_at }}</p>
                 {% endif %}
+            </section>
+
+            <section class="glass-panel admin-accounts-panel">
+                <div class="panel-title">
+                    <i class="fa-solid fa-users" aria-hidden="true"></i>
+                    <h2>Konten</h2>
+                </div>
+                <div class="admin-metric-grid">
+                    <article>
+                        <strong>{{ account_stats.total }}</strong>
+                        <span>Konten gesamt</span>
+                    </article>
+                    <article>
+                        <strong>{{ account_stats.active_week }}</strong>
+                        <span>aktiv in 7 Tagen</span>
+                    </article>
+                    <article>
+                        <strong>{{ account_stats.unconfirmed }}</strong>
+                        <span>E-Mail unbestätigt</span>
+                    </article>
+                    <article>
+                        <strong>{{ account_stats.two_factor }}</strong>
+                        <span>mit 2FA</span>
+                    </article>
+                </div>
+                <a class="ghost-button admin-inline-form" href="{% url 'admin:index' %}">
+                    <i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i>
+                    Django-Admin öffnen
+                </a>
             </section>
 
             <section class="glass-panel admin-storage-panel">
@@ -135,10 +172,16 @@
             </div>
             <nav class="admin-audit-filters" aria-label="Audit-Log filtern">
                 {% for option in audit_log.filters %}
-                <a href="?audit={{ option.key }}#audit-log" {% if option.key == audit_log.filter %}class="is-active" aria-current="page"{% endif %}>{{ option.label }}</a>
+                <a href="{% querystring audit=option.key audit_page=None %}#audit-log" {% if option.key == audit_log.filter %}class="is-active" aria-current="page"{% endif %}>{{ option.label }}</a>
                 {% endfor %}
             </nav>
         </div>
+        <form class="admin-audit-search" method="get" action="#audit-log" role="search">
+            <input type="hidden" name="audit" value="{{ audit_log.filter }}">
+            <input type="search" name="account" value="{{ audit_log.account }}" placeholder="Konto suchen (E-Mail)" aria-label="Audit-Log nach Konto durchsuchen" maxlength="254">
+            <button class="ghost-button" type="submit">Suchen</button>
+            {% if audit_log.account %}<a class="ghost-button" href="{% querystring account=None audit_page=None %}#audit-log">Zurücksetzen</a>{% endif %}
+        </form>
         <p class="admin-muted">Anmeldungen, Sicherheitsänderungen und Administrationsaktionen der letzten {{ audit_log.retention_days }} Tage. Ältere Einträge werden automatisch gelöscht.</p>
         {% if audit_log.items %}
         <div class="admin-audit-table-wrap">
@@ -161,13 +204,13 @@
         </div>
         {% if audit_log.page.has_other_pages %}
         <nav class="admin-audit-pages" aria-label="Seiten des Audit-Logs">
-            {% if audit_log.page.has_previous %}<a class="ghost-button" href="?audit={{ audit_log.filter }}&audit_page={{ audit_log.page.previous_page_number }}#audit-log"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i> Neuer</a>{% endif %}
+            {% if audit_log.page.has_previous %}<a class="ghost-button" href="{% querystring audit_page=audit_log.page.previous_page_number %}#audit-log"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i> Neuer</a>{% endif %}
             <span>Seite {{ audit_log.page.number }} von {{ audit_log.page.paginator.num_pages }}</span>
-            {% if audit_log.page.has_next %}<a class="ghost-button" href="?audit={{ audit_log.filter }}&audit_page={{ audit_log.page.next_page_number }}#audit-log">Älter <i class="fa-solid fa-chevron-right" aria-hidden="true"></i></a>{% endif %}
+            {% if audit_log.page.has_next %}<a class="ghost-button" href="{% querystring audit_page=audit_log.page.next_page_number %}#audit-log">Älter <i class="fa-solid fa-chevron-right" aria-hidden="true"></i></a>{% endif %}
         </nav>
         {% endif %}
         {% else %}
-        <p class="admin-audit-empty">Keine Einträge für diesen Filter.</p>
+        <p class="admin-audit-empty">Keine Einträge für {% if audit_log.account %}diese Suche{% else %}diesen Filter{% endif %}.</p>
         {% endif %}
     </section>
 </section>

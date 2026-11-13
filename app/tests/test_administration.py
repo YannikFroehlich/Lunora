@@ -101,6 +101,41 @@ class AdministrationFeatureFlagTests(TestCase):
         self.assertNotContains(response, "secret-weather-key")
         self.assertContains(response, f'<code title="{"a" * 40}">aaaaaaa</code>', html=True)
 
+    def test_administration_shows_account_counts_and_admin_link(self):
+        Profile.objects.filter(user=self.user).update(
+            email_confirmation_pending=True, totp_enabled_at=timezone.now()
+        )
+        User.objects.filter(pk=self.staff.pk).update(last_login=timezone.now() - timedelta(days=30))
+        self.client.login(username="admin@example.com", password="secret-12345")
+        response = self.client.get("/administration/")
+        # The superuser just logged in; mira and staff have not been active this week.
+        self.assertEqual(
+            response.context["account_stats"],
+            {"total": 3, "active_week": 1, "unconfirmed": 1, "two_factor": 1},
+        )
+        self.assertContains(response, 'href="/admin/"')
+
+    @override_settings(MAILERS={"default": {"BACKEND": "django.core.mail.backends.locmem.EmailBackend"}})
+    def test_superuser_can_send_a_test_mail_to_themselves(self):
+        self.client.login(username="admin@example.com", password="secret-12345")
+        response = self.client.post("/administration/", {"form_name": "test_mail"}, follow=True)
+        self.assertContains(response, "Testmail an admin@example.com verschickt.")
+        self.assertEqual([message.to for message in mail.outbox], [["admin@example.com"]])
+
+        with (
+            patch("app.services.deployment.send_mail", side_effect=OSError("smtp down: secret")),
+            self.assertLogs("app.services.deployment", level="ERROR"),
+        ):
+            response = self.client.post("/administration/", {"form_name": "test_mail"}, follow=True)
+        self.assertContains(response, "Die Testmail konnte nicht verschickt werden.")
+        self.assertNotContains(response, "smtp down")
+
+        self.client.logout()
+        self.client.login(username="staff@example.com", password="secret-12345")
+        response = self.client.post("/administration/", {"form_name": "test_mail"})
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(len(mail.outbox), 1)
+
     def test_superuser_can_save_system_settings(self):
         self.client.login(username="admin@example.com", password="secret-12345")
 
@@ -394,6 +429,21 @@ class AuditLogTests(TestCase):
 
         warnings = self.client.get("/administration/", {"audit": "warnings"}).context["audit_log"]
         self.assertEqual([item["action"] for item in warnings["items"]], [AuditLogEntry.ACTION_LOGIN_FAILED])
+
+    def test_audit_log_can_be_searched_by_account(self):
+        audit_log.record(AuditLogEntry.ACTION_LOGIN_FAILED, actor=self.user, summary="")
+        audit_log.record(AuditLogEntry.ACTION_LOGIN, actor=self.admin)
+        self.client.force_login(self.admin)
+
+        response = self.client.get("/administration/", {"audit": "warnings", "account": "MIRA@"})
+        page = response.context["audit_log"]
+        self.assertEqual(page["account"], "MIRA@")
+        self.assertEqual([item["actor"] for item in page["items"]], ["mira@example.com"])
+        # Filter links and paging keep the search.
+        self.assertContains(response, "?audit=all&amp;account=MIRA%40#audit-log")
+
+        page = self.client.get("/administration/", {"account": "niemand"}).context["audit_log"]
+        self.assertEqual(page["items"], [])
 
     def test_only_superusers_see_the_audit_log(self):
         self.client.force_login(self.user)
