@@ -1,4 +1,6 @@
+import tempfile
 from datetime import timedelta
+from pathlib import Path
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
@@ -16,6 +18,7 @@ from app.models import (
     SystemSettings,
 )
 from app.services import audit_log
+from app.services.deployment import deployed_commit
 
 
 class AdministrationFeatureFlagTests(TestCase):
@@ -72,6 +75,31 @@ class AdministrationFeatureFlagTests(TestCase):
         AutomationHeartbeat.objects.filter(pk=1).update(finished_at=timezone.now())
         response = self.client.get("/administration/")
         self.assertEqual(response.context["system_health"]["items"][2]["state"], "OK")
+
+    @override_settings(
+        MAILERS={"default": {"BACKEND": "django.core.mail.backends.smtp.EmailBackend", "OPTIONS": {}}},
+        WEB_PUSH_ENABLED=False,
+        WEATHER_API_KEY="secret-weather-key",
+        CLOUDFLARE_TURNSTILE_REQUIRED=True,
+        ADMINS=[],
+    )
+    def test_administration_shows_configuration_without_values(self):
+        self.client.login(username="admin@example.com", password="secret-12345")
+        with patch("app.services.deployment.deployed_commit", return_value="a" * 40):
+            response = self.client.get("/administration/")
+        states = {item["label"]: item["state"] for item in response.context["configuration"]}
+        self.assertEqual(
+            states,
+            {
+                "E-Mail-Versand": "SMTP",
+                "Web Push": "Fehlt",
+                "Wetterdaten": "OpenWeather",
+                "Registrierungsschutz": "Turnstile",
+                "Fehlermails": "Aus",
+            },
+        )
+        self.assertNotContains(response, "secret-weather-key")
+        self.assertContains(response, f'<code title="{"a" * 40}">aaaaaaa</code>', html=True)
 
     def test_superuser_can_save_system_settings(self):
         self.client.login(username="admin@example.com", password="secret-12345")
@@ -386,3 +414,31 @@ class AuditLogTests(TestCase):
         with patch("app.services.audit_log.AuditLogEntry.objects.create", side_effect=RuntimeError("db")):
             with self.assertLogs("app.services.audit_log", level="ERROR"):
                 self.assertIsNone(audit_log.record(AuditLogEntry.ACTION_LOGIN, actor=self.user))
+
+
+class DeployedCommitTests(TestCase):
+    COMMIT = "0123456789abcdef0123456789abcdef01234567"
+
+    def git_dir(self, files):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        directory = Path(temp.name)
+        for name, content in files.items():
+            (directory / name).parent.mkdir(parents=True, exist_ok=True)
+            (directory / name).write_text(content, encoding="ascii")
+        return directory
+
+    def test_reads_loose_packed_and_detached_heads(self):
+        head_ref = "ref: refs/heads/main\n"
+        loose = self.git_dir({"HEAD": head_ref, "refs/heads/main": f"{self.COMMIT}\n"})
+        packed = self.git_dir(
+            {"HEAD": head_ref, "packed-refs": f"# pack-refs\n{self.COMMIT} refs/heads/main\n"}
+        )
+        detached = self.git_dir({"HEAD": f"{self.COMMIT}\n"})
+        for git_dir in (loose, packed, detached):
+            self.assertEqual(deployed_commit(git_dir), self.COMMIT)
+
+    def test_returns_none_without_a_readable_commit(self):
+        self.assertIsNone(deployed_commit(self.git_dir({})))
+        self.assertIsNone(deployed_commit(self.git_dir({"HEAD": "ref: refs/heads/main"})))
+        self.assertIsNone(deployed_commit(self.git_dir({"HEAD": "not a commit"})))

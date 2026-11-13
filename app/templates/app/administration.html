@@ -69,6 +69,12 @@
                 {% if system_health.last_automation_run %}
                 <p class="admin-muted">Letzter Automationslauf: {{ system_health.last_automation_run }}</p>
                 {% endif %}
+                <ul class="admin-health-list" aria-label="Konfiguration">
+                    {% for check in configuration %}
+                    <li><span>{{ check.label }}</span> <strong class="admin-health-state is-{{ check.tone }}">{{ check.state }}</strong></li>
+                    {% endfor %}
+                </ul>
+                <p class="admin-muted">Version: {% if deployed_commit %}<code title="{{ deployed_commit }}">{{ deployed_commit|slice:":7" }}</code>{% else %}unbekannt{% endif %}</p>
                 {% if system_settings.updated_at %}
                 <p class="admin-muted">Zuletzt gespeichert: {{ system_settings.updated_at }}</p>
                 {% endif %}

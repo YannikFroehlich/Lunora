@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.sessions.models import Session
@@ -7,7 +8,7 @@ from django.utils import timezone
 
 from app.forms import StorageLimitForm, SystemSettingsForm
 from app.models import AuditLogEntry, UserSession
-from app.services import audit_log, health
+from app.services import audit_log, deployment, health
 from app.services.storage_quota import top_storage_users, total_storage_used
 from app.services.system_settings import get_system_settings, logout_other_authenticated_sessions
 from app.services.user_preferences import format_user_datetime
@@ -45,6 +46,22 @@ def _system_health(user):
     except Exception:  # the health check has already logged why the database is unreadable
         last_run = None
     return {"items": items, "last_automation_run": format_user_datetime(last_run, user)}
+
+
+def _configuration_status():
+    """Which outside services are set up, from settings alone; never shows a value."""
+    smtp = settings.MAILERS["default"]["BACKEND"] == "django.core.mail.backends.smtp.EmailBackend"
+    checks = [
+        ("E-Mail-Versand", smtp, "SMTP", "Nur Konsole"),
+        ("Web Push", settings.WEB_PUSH_ENABLED, "Eingerichtet", "Fehlt"),
+        ("Wetterdaten", bool(settings.WEATHER_API_KEY), "OpenWeather", "Demodaten"),
+        ("Registrierungsschutz", settings.CLOUDFLARE_TURNSTILE_REQUIRED, "Turnstile", "Aus"),
+        ("Fehlermails", bool(settings.ADMINS), "An Admins", "Aus"),
+    ]
+    return [
+        {"label": label, "state": on if ok else off, "tone": "ok" if ok else "warning"}
+        for label, ok, on, off in checks
+    ]
 
 
 @login_required
@@ -112,6 +129,8 @@ def administration(request):
             "system_settings": settings_obj,
             "session_stats": _active_session_stats(),
             "system_health": _system_health(request.user),
+            "configuration": _configuration_status(),
+            "deployed_commit": deployment.deployed_commit(),
             "total_storage_used": total_storage_used(),
             "top_storage_users": top_storage_users(),
             "audit_log": audit_log.audit_log_page(
