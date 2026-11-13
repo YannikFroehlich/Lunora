@@ -6,12 +6,13 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+## 2026-11-13
+
+- The password forms in Settings → Sicherheit (change password, switch off 2FA, delete account)
+  carry the account name for password managers, so they can update the right saved login.
 - Administration: the status panel shows whether the database, the cache and the background
   automations (reminders, push, calendar syncs) are healthy, plus the time of the last automation
   pass; the "Werkzeuge" switch now names every tool it turns off.
-
-## 2026-11-13
-
 - Fixed: the weather map showed OpenStreetMap's "Access blocked" tiles, because its tile requests
   carried no Referer; they now send the site's origin (never the page path).
 - Settings → Profil: click the profile picture to change it (it saves right away); the separate

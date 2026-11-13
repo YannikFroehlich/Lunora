@@ -501,6 +501,7 @@
                 <form class="two-factor-form" method="post">
                     {% csrf_token %}
                     <input type="hidden" name="return_to" value="{{ return_to }}">
+                    <input type="text" name="username" value="{{ request.user.get_username }}" autocomplete="username" aria-label="Benutzername" hidden>
                     <label class="settings-calendar-form" for="two-factor-password">
                         <span class="field-label">Passwort zur Bestätigung</span>
                         <span class="calendar-input-pill">
@@ -624,6 +625,7 @@
                     {% csrf_token %}
                     <input type="hidden" name="form_name" value="password_change">
                     <input type="hidden" name="return_to" value="{{ return_to }}">
+                    <input type="text" name="username" value="{{ request.user.get_username }}" autocomplete="username" aria-label="Benutzername" hidden>
                     <label class="settings-calendar-form" for="password-change-old">
                         <span class="field-label">Aktuelles Passwort</span>
                         <span class="calendar-input-pill">
@@ -763,6 +765,7 @@
                     {% csrf_token %}
                     <input type="hidden" name="form_name" value="account_delete">
                     <input type="hidden" name="return_to" value="{{ return_to }}">
+                    <input type="text" name="username" value="{{ request.user.get_username }}" autocomplete="username" aria-label="Benutzername" hidden>
                     <label class="settings-calendar-form" for="account-delete-password">
                         <span class="field-label">Passwort zur Bestätigung</span>
                         <span class="calendar-input-pill">
