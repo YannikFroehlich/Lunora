@@ -57,9 +57,14 @@ def _check_cache():
     return OK if value == "1" else FAILING
 
 
+def last_automation_run():
+    """When ``run_automations`` last finished a pass without a failed step, or None."""
+    return AutomationHeartbeat.objects.filter(pk=1).values_list("finished_at", flat=True).first()
+
+
 def _check_automations(now):
     try:
-        heartbeat = AutomationHeartbeat.objects.filter(pk=1).values_list("finished_at", flat=True).first()
+        heartbeat = last_automation_run()
     except Exception:
         logger.warning("Health check: automation heartbeat unreadable", exc_info=True)
         return FAILING

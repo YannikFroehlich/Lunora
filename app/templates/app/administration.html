@@ -61,6 +61,14 @@
                         <span>aktive Sitzungen</span>
                     </article>
                 </div>
+                <ul class="admin-health-list" aria-label="Systemzustand">
+                    {% for check in system_health.items %}
+                    <li><span>{{ check.label }}</span> <strong class="admin-health-state is-{{ check.tone }}">{{ check.state }}</strong></li>
+                    {% endfor %}
+                </ul>
+                {% if system_health.last_automation_run %}
+                <p class="admin-muted">Letzter Automationslauf: {{ system_health.last_automation_run }}</p>
+                {% endif %}
                 {% if system_settings.updated_at %}
                 <p class="admin-muted">Zuletzt gespeichert: {{ system_settings.updated_at }}</p>
                 {% endif %}

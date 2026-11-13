@@ -9,6 +9,7 @@ from django.utils import timezone
 from app.forms import SystemSettingsForm
 from app.models import (
     AuditLogEntry,
+    AutomationHeartbeat,
     CalendarEvent,
     CalendarReminder,
     Profile,
@@ -55,6 +56,22 @@ class AdministrationFeatureFlagTests(TestCase):
         response = self.client.get("/administration/")
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Administration")
+
+    def test_administration_shows_system_health(self):
+        self.client.login(username="admin@example.com", password="secret-12345")
+        response = self.client.get("/administration/")
+        states = {item["label"]: item["state"] for item in response.context["system_health"]["items"]}
+        self.assertEqual(states, {"Datenbank": "OK", "Cache": "OK", "Automationen": "Noch nie gelaufen"})
+        self.assertNotContains(response, "Letzter Automationslauf")
+
+        AutomationHeartbeat.objects.create(pk=1, finished_at=timezone.now() - timedelta(hours=1))
+        response = self.client.get("/administration/")
+        self.assertEqual(response.context["system_health"]["items"][2]["state"], "Überfällig")
+        self.assertContains(response, "Letzter Automationslauf")
+
+        AutomationHeartbeat.objects.filter(pk=1).update(finished_at=timezone.now())
+        response = self.client.get("/administration/")
+        self.assertEqual(response.context["system_health"]["items"][2]["state"], "OK")
 
     def test_superuser_can_save_system_settings(self):
         self.client.login(username="admin@example.com", password="secret-12345")
