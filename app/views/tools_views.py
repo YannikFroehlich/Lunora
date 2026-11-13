@@ -43,6 +43,7 @@ from app.services.trash import trash_habit, trash_recipe
 from app.services.uml_content import validate_uml_document
 from app.services.user_preferences import format_user_date, format_user_datetime, localtime_for_user
 from app.services.whiteboard_content import validate_whiteboard_document
+from app.services.whiteboard_preview import whiteboard_preview_svg
 from app.view_models import get_tools_context
 from app.views.navigation import local_return_to, posted_id
 from app.views.trash_views import trashed_message
@@ -608,6 +609,7 @@ def whiteboards(request):
             "id": board.pk,
             "title": board.title,
             "element_count": len(board.document.get("elements", [])),
+            "preview": whiteboard_preview_svg(board.document),
             "updated_label": format_user_datetime(board.updated_at, request.user),
         }
         for board in Whiteboard.objects.filter(owner=request.user)

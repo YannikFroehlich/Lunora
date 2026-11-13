@@ -6,6 +6,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Whiteboard: resize a selected element by its corners (or a line by its ends, Shift keeps the
+  proportions), a highlighter, an optional dot grid that shapes snap to, "nach vorn"/"nach hinten",
+  copy, cut and paste with Strg+C/X/V (also into another whiteboard), a thumbnail of each board in
+  the overview, and PNG/SVG exports that carry the Inter font so text looks as it does on screen.
 - Whiteboard: "Alles anzeigen" now zooms in on a small drawing instead of stopping at 100 %; filling
   is a bucket tool (click into a rectangle or ellipse, click again to clear it) and no longer a
   switch that got out of step with the selection; and the eraser can be set to remove whole strokes

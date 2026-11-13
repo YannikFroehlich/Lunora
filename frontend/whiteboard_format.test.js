@@ -177,3 +177,54 @@ describe("whiteboard partial eraser", () => {
     expect(format.containsPoint(ellipse, 2, 2, 0)).toBe(false);
   });
 });
+
+describe("whiteboard resize, highlighter and grid", () => {
+  const rect = { id: "r", type: "rect", color: "default", width: 2, x: 0, y: 0, w: 100, h: 50, fill: false };
+  const line = { id: "l", type: "line", color: "default", width: 2, x1: 0, y1: 0, x2: 10, y2: 10 };
+  const stroke = { id: "s", type: "stroke", color: "default", width: 2, points: [0, 0, 10, 20] };
+
+  it("offers end grips for lines, corner grips for boxes and none for text", () => {
+    expect(format.handlePoints(line).map((grip) => grip.id)).toEqual(["start", "end"]);
+    expect(format.handlePoints(rect)).toEqual([
+      { id: "nw", x: 0, y: 0 },
+      { id: "ne", x: 100, y: 0 },
+      { id: "se", x: 100, y: 50 },
+      { id: "sw", x: 0, y: 50 },
+    ]);
+    expect(format.handlePoints({ type: "text", x: 0, y: 0, size: "m", text: "a" })).toEqual([]);
+  });
+
+  it("resizes a box around the opposite corner, keeping its keys", () => {
+    expect(format.resizeElement(rect, "se", 200, 80, false)).toEqual({ ...rect, w: 200, h: 80 });
+    expect(format.resizeElement(rect, "nw", 20, 10, false)).toEqual({ ...rect, x: 20, y: 10, w: 80, h: 40 });
+    // Dragged past the anchor the box flips instead of getting a negative size.
+    expect(format.resizeElement(rect, "se", -50, 25, false)).toEqual({ ...rect, x: -50, y: 0, w: 50, h: 25 });
+    expect(format.resizeElement(rect, "se", 200, 60, true)).toEqual({ ...rect, w: 200, h: 100 });
+  });
+
+  it("moves one end of a line and scales strokes", () => {
+    expect(format.resizeElement(line, "end", 30.04, 5, false)).toEqual({ ...line, x2: 30, y2: 5 });
+    expect(format.resizeElement(line, "start", -5, -5, false)).toEqual({ ...line, x1: -5, y1: -5 });
+    expect(format.resizeElement(stroke, "se", 20, 10, false).points).toEqual([0, 0, 20, 10]);
+    // A flat stroke keeps its position in the direction it has no extent in.
+    const flat = { ...stroke, points: [0, 5, 10, 5] };
+    expect(format.resizeElement(flat, "se", 30, 99, false).points).toEqual([0, 5, 30, 5]);
+  });
+
+  it("treats a highlighter like a stroke that is four times as wide", () => {
+    const marker = { ...stroke, type: "highlight", points: [0, 0, 100, 0] };
+    expect(format.isStroke(marker)).toBe(true);
+    expect(format.lineWidth(marker)).toBe(8);
+    expect(format.lineWidth(stroke)).toBe(2);
+    expect(format.pointCount({ elements: [marker, rect] })).toBe(2);
+    expect(format.elementBounds(marker)).toEqual({ x1: 0, y1: 0, x2: 100, y2: 0 });
+    // 3 units off the centre line: inside the width of the marker, outside that of a pen stroke.
+    expect(format.hitsElement(marker, 50, 3, 50, 3, 0)).toBe(true);
+    expect(format.hitsElement({ ...marker, type: "stroke" }, 50, 3, 50, 3, 0)).toBe(false);
+    expect(format.moveElement(marker, 1, 1).points).toEqual([1, 1, 101, 1]);
+  });
+
+  it("snaps to the grid", () => {
+    expect([format.snap(14, 10), format.snap(15, 10), format.snap(26, 20)]).toEqual([10, 20, 20]);
+  });
+});
