@@ -1,7 +1,13 @@
+"""What is deployed and set up, for the superuser-only administration page."""
+
+import logging
 import re
 from pathlib import Path
 
 from django.conf import settings
+from django.core.mail import send_mail
+
+logger = logging.getLogger(__name__)
 
 COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}")
 
@@ -27,3 +33,18 @@ def deployed_commit(git_dir=None):
     except (OSError, UnicodeDecodeError):
         return None
     return head if COMMIT_PATTERN.fullmatch(head) else None
+
+
+def send_test_mail(user):
+    """Send a test mail to ``user``'s own address; True on success. The cause only goes to the log."""
+    try:
+        send_mail(
+            "Lunora-Testmail",
+            "Diese Testmail wurde über die Administration verschickt. Der E-Mail-Versand funktioniert.",
+            settings.DEFAULT_FROM_EMAIL,
+            [user.email],
+        )
+    except Exception:
+        logger.exception("Test mail to user %s failed", user.pk)
+        return False
+    return True
