@@ -21,11 +21,35 @@
         <span class="uml-save-status" role="status" aria-live="polite" data-whiteboard-status>Gespeichert</span>
     </header>
 
-    <div class="empty-state-card uml-empty">
-        <i class="fa-solid fa-pen-ruler" aria-hidden="true"></i>
-        <strong>Die Zeichenfläche folgt</strong>
-        <p>Dieses Whiteboard ist angelegt; der Editor ist noch in Arbeit.</p>
+    <div class="glass-panel uml-toolbar" role="toolbar" aria-label="Whiteboard-Werkzeuge">
+        <div class="uml-tool-group" role="group" aria-label="Werkzeug">
+            <button type="button" class="uml-tool" data-whiteboard-tool="pen" aria-pressed="true" title="Stift (P)"><i class="fa-solid fa-pen" aria-hidden="true"></i><span>Stift</span></button>
+            <button type="button" class="uml-tool" data-whiteboard-tool="eraser" aria-pressed="false" title="Radierer (E)"><i class="fa-solid fa-eraser" aria-hidden="true"></i><span>Radierer</span></button>
+            <button type="button" class="uml-tool" data-whiteboard-tool="hand" aria-pressed="false" title="Fläche verschieben (H oder Leertaste halten)"><i class="fa-regular fa-hand" aria-hidden="true"></i><span>Verschieben</span></button>
+        </div>
+        <div class="uml-tool-group whiteboard-colors" role="group" aria-label="Farbe" data-whiteboard-colors></div>
+        <div class="uml-tool-group" role="group" aria-label="Strichstärke" data-whiteboard-widths></div>
+        <div class="uml-tool-group" role="group" aria-label="Bearbeiten">
+            <button type="button" class="uml-tool is-icon" data-whiteboard-action="undo" aria-label="Rückgängig" title="Rückgängig (Strg+Z)"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool is-icon" data-whiteboard-action="redo" aria-label="Wiederholen" title="Wiederholen (Strg+Y)"><i class="fa-solid fa-rotate-right" aria-hidden="true"></i></button>
+        </div>
+        <div class="uml-tool-group" role="group" aria-label="Ansicht">
+            <button type="button" class="uml-tool is-icon" data-whiteboard-action="zoom-out" aria-label="Verkleinern" title="Verkleinern (-)"><i class="fa-solid fa-magnifying-glass-minus" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool uml-zoom-label" data-whiteboard-action="zoom-reset" title="Auf 100 % setzen" data-whiteboard-zoom-label>100 %</button>
+            <button type="button" class="uml-tool is-icon" data-whiteboard-action="zoom-in" aria-label="Vergrößern" title="Vergrößern (+)"><i class="fa-solid fa-magnifying-glass-plus" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool is-icon" data-whiteboard-action="fit" aria-label="Alles anzeigen" title="Alles anzeigen (F)"><i class="fa-solid fa-expand" aria-hidden="true"></i></button>
+        </div>
+    </div>
+
+    <div class="glass-panel uml-canvas-wrap whiteboard-canvas-wrap">
+        <svg class="uml-canvas whiteboard-canvas" data-whiteboard-canvas tabindex="0" role="application" aria-label="Zeichenfläche" aria-describedby="whiteboard-canvas-help" xmlns="http://www.w3.org/2000/svg"></svg>
+        <p class="uml-canvas-hint" id="whiteboard-canvas-help" data-whiteboard-hint>Mit dem Stift zeichnen, mit zwei Fingern oder der Leertaste verschieben, Strg+Mausrad zoomt.</p>
     </div>
 </section>
 {{ board_payload|json_script:"whiteboard-data" }}
+{% endblock %}
+
+{% block page_js %}
+<script src="{% versioned_static 'js/whiteboard_format.js' %}"></script>
+<script src="{% versioned_static 'js/whiteboard.js' %}"></script>
 {% endblock %}

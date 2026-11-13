@@ -409,6 +409,35 @@ class WhiteboardTests(TestCase):
         with self.assertRaises(ValidationError):
             validate_whiteboard_document(self._document(*strokes, _stroke("extra")))
 
+    def test_client_limits_mirror_the_validator(self):
+        import re
+        from pathlib import Path
+
+        from django.conf import settings
+
+        from app.services import uml_content, whiteboard_content
+
+        source = Path(settings.BASE_DIR, "app/static/js/whiteboard_format.js").read_text(encoding="utf-8")
+        limits = dict(re.findall(r"(\w+): (\d+)", re.search(r"const LIMITS = \{(.*?)\}", source).group(1)))
+        self.assertEqual(
+            {key: int(value) for key, value in limits.items()},
+            {
+                "elements": whiteboard_content.MAX_ELEMENTS,
+                "strokePoints": whiteboard_content.MAX_STROKE_POINTS,
+                "totalPoints": whiteboard_content.MAX_TOTAL_POINTS,
+                "text": whiteboard_content.MAX_TEXT_LENGTH,
+                "coordinate": uml_content.MAX_COORDINATE,
+            },
+        )
+        self.assertEqual(
+            set(re.search(r"const COLORS = \[(.*?)\]", source).group(1).replace('"', "").split(", ")),
+            whiteboard_content.COLORS,
+        )
+        self.assertEqual(
+            {int(width) for width in re.search(r"const WIDTHS = \[(.*?)\]", source).group(1).split(", ")},
+            whiteboard_content.STROKE_WIDTHS,
+        )
+
     def test_other_users_cannot_open_save_duplicate_or_delete(self):
         board = Whiteboard.objects.create(owner=self.other, title="Geheim")
 
