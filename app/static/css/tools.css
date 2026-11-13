@@ -409,6 +409,27 @@ a.tool-card:hover {
   cursor: crosshair;
 }
 
+/* The overview's thumbnail is light paper in both themes, like the editor's canvas. */
+.whiteboard-thumb {
+  flex: none;
+  display: grid;
+  width: 96px;
+  height: 64px;
+  padding: 4px;
+  background: #fbfaf7;
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-xs);
+}
+
+.whiteboard-thumb svg {
+  width: 100%;
+  height: 100%;
+}
+
+.whiteboard-canvas[data-tool="highlight"] {
+  cursor: crosshair;
+}
+
 .whiteboard-canvas-wrap {
   position: relative;
   height: max(520px, calc(100vh - 290px));

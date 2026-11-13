@@ -8,7 +8,7 @@
 {% endblock %}
 
 {% block content %}
-<section class="page-shell uml-shell" data-whiteboard-editor data-save-url="{% url 'whiteboard_api' board.id %}">
+<section class="page-shell uml-shell" data-whiteboard-editor data-save-url="{% url 'whiteboard_api' board.id %}" data-font-url="{% versioned_static 'vendor/inter/inter-latin-variable.woff2' %}">
     <header class="glass-panel uml-header">
         <h1 class="visually-hidden">Whiteboard „{{ board.title }}“ bearbeiten</h1>
         <a class="icon-button" href="{% url 'whiteboards' %}" aria-label="Zur Whiteboard-Übersicht" title="Zur Übersicht">
@@ -25,6 +25,7 @@
         <div class="uml-tool-group" role="group" aria-label="Werkzeug">
             <button type="button" class="uml-tool is-icon" data-whiteboard-tool="select" aria-pressed="false" aria-label="Auswählen" title="Auswählen und verschieben (V)"><i class="fa-solid fa-arrow-pointer" aria-hidden="true"></i></button>
             <button type="button" class="uml-tool is-icon" data-whiteboard-tool="pen" aria-pressed="true" aria-label="Stift" title="Stift (P)"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool is-icon" data-whiteboard-tool="highlight" aria-pressed="false" aria-label="Textmarker" title="Textmarker (M)"><i class="fa-solid fa-highlighter" aria-hidden="true"></i></button>
             <button type="button" class="uml-tool is-icon" data-whiteboard-tool="eraser" aria-pressed="false" aria-label="Radierer" title="Radierer (E)"><i class="fa-solid fa-eraser" aria-hidden="true"></i></button>
             <button type="button" class="uml-tool is-icon" data-whiteboard-tool="line" aria-pressed="false" aria-label="Linie" title="Linie (L, Umschalt für 45°-Schritte)"><i class="fa-solid fa-slash" aria-hidden="true"></i></button>
             <button type="button" class="uml-tool is-icon" data-whiteboard-tool="arrow" aria-pressed="false" aria-label="Pfeil" title="Pfeil (A, Umschalt für 45°-Schritte)"><i class="fa-solid fa-arrow-right-long" aria-hidden="true"></i></button>
@@ -56,14 +57,17 @@
         <div class="uml-tool-group" role="group" aria-label="Bearbeiten">
             <button type="button" class="uml-tool is-icon" data-whiteboard-action="undo" aria-label="Rückgängig" title="Rückgängig (Strg+Z)"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i></button>
             <button type="button" class="uml-tool is-icon" data-whiteboard-action="redo" aria-label="Wiederholen" title="Wiederholen (Strg+Y)"><i class="fa-solid fa-rotate-right" aria-hidden="true"></i></button>
-            <button type="button" class="uml-tool is-icon" data-whiteboard-action="duplicate" aria-label="Auswahl duplizieren" title="Duplizieren (Strg+D)"><i class="fa-regular fa-clone" aria-hidden="true"></i></button>
-            <button type="button" class="uml-tool is-icon" data-whiteboard-action="delete" aria-label="Auswahl löschen" title="Löschen (Entf)"><i class="fa-regular fa-trash-can" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool is-icon" data-whiteboard-action="duplicate" data-whiteboard-needs-selection aria-label="Auswahl duplizieren" title="Duplizieren (Strg+D)"><i class="fa-regular fa-clone" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool is-icon" data-whiteboard-action="delete" data-whiteboard-needs-selection aria-label="Auswahl löschen" title="Löschen (Entf)"><i class="fa-regular fa-trash-can" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool is-icon" data-whiteboard-action="front" data-whiteboard-needs-selection aria-label="Auswahl nach vorn" title="Nach vorn (])"><i class="fa-solid fa-angles-up" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool is-icon" data-whiteboard-action="back" data-whiteboard-needs-selection aria-label="Auswahl nach hinten" title="Nach hinten ([)"><i class="fa-solid fa-angles-down" aria-hidden="true"></i></button>
         </div>
         <div class="uml-tool-group" role="group" aria-label="Ansicht">
             <button type="button" class="uml-tool is-icon" data-whiteboard-action="zoom-out" aria-label="Verkleinern" title="Verkleinern (-)"><i class="fa-solid fa-magnifying-glass-minus" aria-hidden="true"></i></button>
             <button type="button" class="uml-tool uml-zoom-label" data-whiteboard-action="zoom-reset" title="Auf 100 % setzen" data-whiteboard-zoom-label>100 %</button>
             <button type="button" class="uml-tool is-icon" data-whiteboard-action="zoom-in" aria-label="Vergrößern" title="Vergrößern (+)"><i class="fa-solid fa-magnifying-glass-plus" aria-hidden="true"></i></button>
             <button type="button" class="uml-tool is-icon" data-whiteboard-action="fit" aria-label="Alles anzeigen" title="Alles anzeigen (F)"><i class="fa-solid fa-expand" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool is-icon" data-whiteboard-action="grid" aria-pressed="false" aria-label="Raster anzeigen und daran ausrichten" title="Raster: Formen rasten beim Zeichnen, Verschieben und Größe ändern ein"><i class="fa-solid fa-border-all" aria-hidden="true"></i></button>
         </div>
         <details class="uml-tool-group uml-export-menu">
             <summary class="uml-tool"><i class="fa-solid fa-file-export" aria-hidden="true"></i><span>Export</span></summary>
@@ -80,7 +84,7 @@
     <div class="glass-panel uml-canvas-wrap whiteboard-canvas-wrap">
         <svg class="uml-canvas whiteboard-canvas" data-whiteboard-canvas tabindex="0" role="application" aria-label="Zeichenfläche" aria-describedby="whiteboard-canvas-help" xmlns="http://www.w3.org/2000/svg"></svg>
         <textarea class="whiteboard-text-input" data-whiteboard-text hidden maxlength="500" rows="1" spellcheck="true" aria-label="Text auf dem Whiteboard"></textarea>
-        <p class="uml-canvas-hint" id="whiteboard-canvas-help" data-whiteboard-hint>Werkzeug wählen und ziehen; Enter setzt eine Form in die Mitte, Pfeiltasten verschieben die Auswahl. Zwei Finger oder Leertaste verschieben die Fläche, Strg+Mausrad zoomt.</p>
+        <p class="uml-canvas-hint" id="whiteboard-canvas-help" data-whiteboard-hint>Werkzeug wählen und ziehen; Enter setzt eine Form in die Mitte. Ecken ändern die Größe, Strg+C/V kopiert. Leertaste oder zwei Finger verschieben, Strg+Mausrad zoomt.</p>
     </div>
 </section>
 {{ board_payload|json_script:"whiteboard-data" }}

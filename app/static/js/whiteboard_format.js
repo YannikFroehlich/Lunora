@@ -18,8 +18,24 @@
     return { version: 1, elements: Array.isArray(value?.elements) ? value.elements : [] };
   }
 
+  // Pen and highlighter strokes share their data; the highlighter is drawn wide and translucent.
+  const HIGHLIGHT_SCALE = 4;
+
+  function isStroke(item) {
+    return item.type === "stroke" || item.type === "highlight";
+  }
+
+  // The width an element's line is drawn with, in board units.
+  function lineWidth(item) {
+    return item.type === "highlight" ? item.width * HIGHLIGHT_SCALE : item.width;
+  }
+
+  function snap(value, step) {
+    return Math.round(value / step) * step;
+  }
+
   function pointCount(doc) {
-    return doc.elements.reduce((sum, item) => sum + (item.type === "stroke" ? item.points.length / 2 : 0), 0);
+    return doc.elements.reduce((sum, item) => sum + (isStroke(item) ? item.points.length / 2 : 0), 0);
   }
 
   // Squared distance from (px, py) to the segment (ax, ay)-(bx, by).
@@ -217,7 +233,7 @@
   }
 
   function elementBounds(item, measure = estimateTextWidth) {
-    if (item.type === "stroke") return pointsBounds(item.points);
+    if (isStroke(item)) return pointsBounds(item.points);
     if (item.type === "line" || item.type === "arrow") return pointsBounds([item.x1, item.y1, item.x2, item.y2]);
     if (item.type === "text") {
       const size = TEXT_SIZES[item.size];
@@ -247,7 +263,7 @@
 
   // The drawn line of an element as a flat polyline; closed for rectangles, ellipses and text boxes.
   function outline(item, measure) {
-    if (item.type === "stroke") return item.points;
+    if (isStroke(item)) return item.points;
     if (item.type === "line" || item.type === "arrow") return [item.x1, item.y1, item.x2, item.y2];
     if (item.type === "ellipse") {
       const rx = item.w / 2;
@@ -278,14 +294,14 @@
   function hitsElement(item, ax, ay, bx, by, tolerance, measure) {
     const solid = item.type === "text" || ((item.type === "rect" || item.type === "ellipse") && item.fill);
     if (solid && contains(item, bx, by, tolerance, measure)) return true;
-    const reach = item.type === "text" ? tolerance : tolerance + item.width / 2;
+    const reach = item.type === "text" ? tolerance : tolerance + lineWidth(item) / 2;
     return hitsStroke(outline(item, measure), ax, ay, bx, by, reach);
   }
 
   // A copy shifted by (dx, dy) and rounded the way the server stores it.
   function moveElement(item, dx, dy) {
     const moved = { ...item };
-    if (item.type === "stroke") {
+    if (isStroke(item)) {
       moved.points = item.points.map((value, index) => coordinate(value + (index % 2 ? dy : dx)));
     } else if (item.type === "line" || item.type === "arrow") {
       moved.x1 = coordinate(item.x1 + dx);
@@ -301,6 +317,66 @@
       }
     }
     return moved;
+  }
+
+  // The grips of a selected element: the two ends of a line or arrow, the four corners of the box
+  // around anything else. Text has none; its size comes from the text size setting.
+  function handlePoints(item) {
+    if (item.type === "text") return [];
+    if (item.type === "line" || item.type === "arrow") {
+      return [
+        { id: "start", x: item.x1, y: item.y1 },
+        { id: "end", x: item.x2, y: item.y2 },
+      ];
+    }
+    const box = elementBounds(item);
+    return [
+      { id: "nw", x: box.x1, y: box.y1 },
+      { id: "ne", x: box.x2, y: box.y1 },
+      { id: "se", x: box.x2, y: box.y2 },
+      { id: "sw", x: box.x1, y: box.y2 },
+    ];
+  }
+
+  // A copy with the grip `handle` dragged to (x, y). Boxes scale around the opposite corner, and may
+  // flip when dragged past it; `keepRatio` scales both directions alike.
+  function resizeElement(item, handle, x, y, keepRatio) {
+    if (item.type === "line" || item.type === "arrow") {
+      return handle === "start"
+        ? { ...item, x1: coordinate(x), y1: coordinate(y) }
+        : { ...item, x2: coordinate(x), y2: coordinate(y) };
+    }
+    const box = elementBounds(item);
+    const west = handle.includes("w");
+    const north = handle.includes("n");
+    const anchorX = west ? box.x2 : box.x1;
+    const anchorY = north ? box.y2 : box.y1;
+    const cornerX = west ? box.x1 : box.x2;
+    const cornerY = north ? box.y1 : box.y2;
+    // A stroke that is a straight horizontal or vertical line has no extent to scale in one direction.
+    let scaleX = cornerX === anchorX ? 1 : (x - anchorX) / (cornerX - anchorX);
+    let scaleY = cornerY === anchorY ? 1 : (y - anchorY) / (cornerY - anchorY);
+    if (keepRatio) {
+      const scale = Math.max(Math.abs(scaleX), Math.abs(scaleY));
+      scaleX = (scaleX < 0 ? -1 : 1) * scale;
+      scaleY = (scaleY < 0 ? -1 : 1) * scale;
+    }
+    const mapX = (value) => anchorX + (value - anchorX) * scaleX;
+    const mapY = (value) => anchorY + (value - anchorY) * scaleY;
+    if (isStroke(item)) {
+      return { ...item, points: item.points.map((value, index) => coordinate(index % 2 ? mapY(value) : mapX(value))) };
+    }
+    const x1 = mapX(box.x1);
+    const x2 = mapX(box.x2);
+    const y1 = mapY(box.y1);
+    const y2 = mapY(box.y2);
+    return {
+      ...item,
+      x: coordinate(Math.min(x1, x2)),
+      y: coordinate(Math.min(y1, y2)),
+      w: coordinate(Math.abs(x2 - x1)),
+      h: coordinate(Math.abs(y2 - y1)),
+    };
   }
 
   // The box spanned by a drag from (x1, y1) to (x2, y2) in any direction; `square` keeps the longer side.
@@ -345,6 +421,11 @@
     estimateTextWidth,
     elementBounds,
     documentBounds,
+    isStroke,
+    lineWidth,
+    snap,
+    handlePoints,
+    resizeElement,
     hitsElement,
     containsPoint: contains,
     eraseFromStroke,

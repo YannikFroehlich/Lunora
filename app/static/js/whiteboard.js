@@ -14,6 +14,12 @@
   const ERASER_PIXELS = 10;
   const FIT_MAX_ZOOM = 4;
   const ERASER_MODE_KEY = "lunora-whiteboard-eraser";
+  const GRID_KEY = "lunora-whiteboard-grid";
+  const CLIPBOARD_KEY = "lunora-whiteboard-clipboard";
+  const GRID = 20;
+  const SNAP = 10;
+  const HANDLE_PIXELS = 9;
+  const HIGHLIGHT_OPACITY = 0.4;
   const HIT_PIXELS = 6;
   const DRAG_PIXELS = 3;
   const MIN_SHAPE_PIXELS = 4;
@@ -34,6 +40,7 @@
   const TOOL_KEYS = {
     v: "select",
     p: "pen",
+    m: "highlight",
     e: "eraser",
     h: "hand",
     l: "line",
@@ -56,6 +63,7 @@
   const colorOptions = root.querySelector("[data-whiteboard-colors]");
   const widthOptions = root.querySelector("[data-whiteboard-widths]");
   const eraserModeSelect = root.querySelector("[data-whiteboard-eraser-mode]");
+  const gridButton = root.querySelector("[data-whiteboard-action='grid']");
   const sizeSelect = root.querySelector("[data-whiteboard-text-size]");
   const textInput = root.querySelector("[data-whiteboard-text]");
   const exportMenu = root.querySelector(".uml-export-menu");
@@ -76,14 +84,25 @@
   let editing = null;
   let hintTimer = null;
   let nextId = 0;
+  let gridOn = false;
+  let pasteCount = 0;
 
+  const gridPattern = svgEl("pattern", {
+    id: "whiteboard-grid",
+    width: GRID,
+    height: GRID,
+    patternUnits: "userSpaceOnUse",
+  });
+  gridPattern.append(svgEl("circle", { cx: 1, cy: 1, r: 1, fill: "rgba(90, 72, 50, 0.28)" }));
+  const defs = svgEl("defs");
+  defs.append(gridPattern);
   const background = svgEl("rect", { width: "100%", height: "100%", fill: "transparent" });
   const viewport = svgEl("g");
   const selectionLayer = svgEl("g");
   const guideLayer = svgEl("g");
   const overlay = svgEl("g", { "pointer-events": "none" });
   overlay.append(selectionLayer, guideLayer);
-  svg.replaceChildren(background, viewport, overlay);
+  svg.replaceChildren(defs, background, viewport, overlay);
 
   // ---- Helpers --------------------------------------------------------------------------------
 
@@ -169,8 +188,9 @@
   }
 
   function elementNode(item) {
-    const attrs = lineAttrs(item.color, item.width);
-    if (item.type === "stroke") return svgEl("path", { ...attrs, d: format.strokePath(item.points) });
+    const attrs = lineAttrs(item.color, format.lineWidth(item));
+    if (item.type === "highlight") attrs["stroke-opacity"] = HIGHLIGHT_OPACITY;
+    if (format.isStroke(item)) return svgEl("path", { ...attrs, d: format.strokePath(item.points) });
     if (item.type === "line") return svgEl("line", { ...attrs, x1: item.x1, y1: item.y1, x2: item.x2, y2: item.y2 });
     if (item.type === "arrow") {
       const head = format.arrowHead(item.x1, item.y1, item.x2, item.y2, item.width);
@@ -216,18 +236,30 @@
         "vector-effect": "non-scaling-stroke",
       });
     });
-    selectionLayer.replaceChildren(...boxes);
-    root
-      .querySelectorAll("[data-whiteboard-action='duplicate'], [data-whiteboard-action='delete']")
-      .forEach((button) => {
-        button.disabled = !selection.size;
-      });
+    const size = HANDLE_PIXELS / view.k;
+    const grips = selectionHandles().map((grip) =>
+      svgEl("rect", {
+        x: grip.x - size / 2,
+        y: grip.y - size / 2,
+        width: size,
+        height: size,
+        fill: "#ffffff",
+        stroke: SELECT_COLOR,
+        "stroke-width": 1.5,
+        "vector-effect": "non-scaling-stroke",
+      }),
+    );
+    selectionLayer.replaceChildren(...boxes, ...grips);
+    root.querySelectorAll("[data-whiteboard-needs-selection]").forEach((button) => {
+      button.disabled = !selection.size;
+    });
   }
 
   function applyView() {
     const transform = `translate(${view.x} ${view.y}) scale(${view.k})`;
     viewport.setAttribute("transform", transform);
     overlay.setAttribute("transform", transform);
+    gridPattern.setAttribute("patternTransform", transform);
     zoomLabel.textContent = `${Math.round(view.k * 100)} %`;
     if (selection.size) drawSelection();
     positionTextInput();
@@ -376,6 +408,99 @@
     if (removed.length) commit(removed, added, mergeKey);
   }
 
+  // Grips exist for a single selected element; several are only moved together.
+  function selectionHandles() {
+    if (tool !== "select" || selection.size !== 1) return [];
+    const element = findElement([...selection][0]);
+    return element ? format.handlePoints(element) : [];
+  }
+
+  function handleAt(world) {
+    const reach = HANDLE_PIXELS / view.k;
+    return selectionHandles().find(
+      (grip) => Math.abs(grip.x - world.x) <= reach && Math.abs(grip.y - world.y) <= reach,
+    );
+  }
+
+  function selectionBounds() {
+    return format.documentBounds({ elements: selectedEntries().map(({ element }) => element) }, measure);
+  }
+
+  function snapPoint(world) {
+    return gridOn ? { x: format.snap(world.x, SNAP), y: format.snap(world.y, SNAP) } : world;
+  }
+
+  // Moves the selection above or below everything else, keeping its own order.
+  function reorderSelection(toFront) {
+    const entries = selectedEntries();
+    if (!entries.length) return;
+    const first = toFront ? doc.elements.length - entries.length : 0;
+    if (entries.every((entry, order) => entry.index === first + order)) return;
+    commit(
+      entries,
+      entries.map(({ element }, order) => ({ index: first + order, element })),
+    );
+  }
+
+  function hasRoomFor(elements) {
+    const points = elements.reduce((sum, element) => sum + (element.points?.length || 0) / 2, 0);
+    return (
+      doc.elements.length + elements.length <= format.LIMITS.elements &&
+      format.pointCount(doc) + points <= format.LIMITS.totalPoints
+    );
+  }
+
+  // The clipboard lives in localStorage, so a copy can be pasted into another board or tab.
+  function copySelection() {
+    const elements = selectedEntries().map(({ element }) => element);
+    if (!elements.length) return false;
+    try {
+      window.localStorage.setItem(CLIPBOARD_KEY, JSON.stringify(elements));
+    } catch (_error) {
+      showHint("Die Auswahl ist zu groß für die Zwischenablage.");
+      return false;
+    }
+    pasteCount = 0;
+    return true;
+  }
+
+  function pasteClipboard() {
+    let elements;
+    try {
+      elements = JSON.parse(window.localStorage.getItem(CLIPBOARD_KEY) || "[]");
+      // Whatever sits in storage has to be drawable before it gets onto the board.
+      elements.forEach((element) => {
+        elementNode(element);
+        const box = format.elementBounds(element, measure);
+        if (![box.x1, box.y1, box.x2, box.y2].every(Number.isFinite)) throw new Error("not drawable");
+      });
+    } catch (_error) {
+      elements = [];
+    }
+    if (!elements.length) {
+      showHint("Die Zwischenablage ist leer. Erst etwas auswählen und mit Strg+C kopieren.");
+      return;
+    }
+    if (!hasRoomFor(elements)) {
+      showHint("Zum Einfügen ist auf dem Whiteboard kein Platz mehr.");
+      return;
+    }
+    // Into the middle of the view, each further paste a little lower right so copies don't hide each other.
+    const bounds = format.documentBounds({ elements }, measure);
+    const center = visibleCenter();
+    const shift = (pasteCount * DUPLICATE_PIXELS) / view.k;
+    pasteCount += 1;
+    const dx = center.x - (bounds.x1 + bounds.x2) / 2 + shift;
+    const dy = center.y - (bounds.y1 + bounds.y2) / 2 + shift;
+    const copies = elements.map((element, order) => ({
+      index: doc.elements.length + order,
+      element: { ...format.moveElement(element, dx, dy), id: newId() },
+    }));
+    setTool("select");
+    commit([], copies);
+    setSelection(copies.map((entry) => entry.element.id));
+  }
+
   function deleteSelection() {
     const removed = selectedEntries();
     if (removed.length) commit(removed, []);
@@ -384,11 +509,7 @@
   function duplicateSelection() {
     const entries = selectedEntries();
     if (!entries.length) return;
-    const points = entries.reduce((sum, { element }) => sum + (element.points?.length || 0) / 2, 0);
-    if (
-      doc.elements.length + entries.length > format.LIMITS.elements ||
-      format.pointCount(doc) + points > format.LIMITS.totalPoints
-    ) {
+    if (!hasRoomFor(entries.map(({ element }) => element))) {
       showHint("Für eine Kopie ist auf dem Whiteboard kein Platz mehr.");
       return;
     }
@@ -421,6 +542,7 @@
     tool = name;
     svg.dataset.tool = name;
     if (name !== "select") setSelection([]);
+    else drawSelection();
     root.querySelectorAll("[data-whiteboard-tool]").forEach((button) => {
       const active = button.dataset.whiteboardTool === name;
       button.classList.toggle("is-active", active);
@@ -442,15 +564,16 @@
     setSelection([element.id]);
   }
 
-  function startStroke(world) {
+  // `kind` is "stroke" for the pen and "highlight" for the highlighter.
+  function startStroke(world, kind) {
     if (!canAdd()) return null;
     if (format.pointCount(doc) >= format.LIMITS.totalPoints) {
       showHint("Das Whiteboard ist voll. Lösche etwas, um weiterzuzeichnen.");
       return null;
     }
-    const node = svgEl("path", { ...lineAttrs(style.color, style.width), d: "" });
+    const node = elementNode({ type: kind, color: style.color, width: style.width, points: [] });
     viewport.append(node);
-    return { type: "stroke", node, points: [world.x, world.y], d: `M${world.x} ${world.y}` };
+    return { type: "stroke", kind, node, points: [world.x, world.y], d: `M${world.x} ${world.y}` };
   }
 
   function extendStroke(stroke, event) {
@@ -469,7 +592,7 @@
     const room = format.LIMITS.totalPoints - format.pointCount(doc);
     let points = format.simplifyStroke(stroke.points, SIMPLIFY_PIXELS / view.k);
     if (points.length / 2 > room) points = points.slice(0, room * 2);
-    const element = { id: newId(), type: "stroke", color: style.color, width: style.width, points };
+    const element = { id: newId(), type: stroke.kind, color: style.color, width: style.width, points };
     commit([], [{ index: doc.elements.length, element }]);
   }
 
@@ -514,14 +637,14 @@
         return;
       }
       changed = true;
-      if (eraserModeSelect.value !== "part" || element.type !== "stroke") return;
+      if (eraserModeSelect.value !== "part" || !format.isStroke(element)) return;
       const pieces = format.eraseFromStroke(
         element.points,
         from.x,
         from.y,
         world.x,
         world.y,
-        reach + element.width / 2,
+        reach + format.lineWidth(element) / 2,
       );
       // No room for the extra strokes a cut makes: the stroke goes as a whole instead.
       if (doc.elements.length + pieces.length > format.LIMITS.elements) return;
@@ -577,6 +700,11 @@
   }
 
   function startSelect(event, world) {
+    const grip = handleAt(world);
+    if (grip) {
+      const [{ index, element: target }] = selectedEntries();
+      return { type: "resize", handle: grip.id, index, element: target, draft: null };
+    }
     const element = topElementAt(world);
     if (!element) {
       if (!event.shiftKey) setSelection([]);
@@ -590,7 +718,16 @@
       return null;
     }
     if (!selection.has(element.id)) setSelection([element.id]);
-    return { type: "move", start: world, startX: event.clientX, startY: event.clientY, moved: false, dx: 0, dy: 0 };
+    return {
+      type: "move",
+      start: world,
+      origin: selectionBounds(),
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
+      dx: 0,
+      dy: 0,
+    };
   }
 
   function updateMove(move, event) {
@@ -599,6 +736,11 @@
     move.moved = true;
     move.dx = world.x - move.start.x;
     move.dy = world.y - move.start.y;
+    if (gridOn) {
+      // The selection's top left corner lands on the grid; everything in it keeps its spacing.
+      move.dx = format.snap(move.origin.x1 + move.dx, SNAP) - move.origin.x1;
+      move.dy = format.snap(move.origin.y1 + move.dy, SNAP) - move.origin.y1;
+    }
     // Only a transform while dragging; the elements change once, on release.
     const transform = `translate(${move.dx} ${move.dy})`;
     selection.forEach((id) => nodes.get(id)?.setAttribute("transform", transform));
@@ -613,6 +755,27 @@
   function finishMove(move) {
     clearMovePreview();
     if (move.moved) replaceSelected((element) => format.moveElement(element, move.dx, move.dy));
+  }
+
+  function updateResize(resize, event) {
+    const world = snapPoint(toWorld(event.clientX, event.clientY));
+    resize.draft = format.resizeElement(resize.element, resize.handle, world.x, world.y, event.shiftKey);
+    // The element itself stays untouched until release; a stand-in shows the new size.
+    nodes.get(resize.element.id)?.setAttribute("visibility", "hidden");
+    selectionLayer.setAttribute("visibility", "hidden");
+    guideLayer.replaceChildren(elementNode(resize.draft));
+  }
+
+  function clearResizePreview(resize) {
+    nodes.get(resize.element.id)?.removeAttribute("visibility");
+    selectionLayer.removeAttribute("visibility");
+    guideLayer.replaceChildren();
+  }
+
+  function finishResize(resize) {
+    clearResizePreview(resize);
+    if (!resize.draft || JSON.stringify(resize.draft) === JSON.stringify(resize.element)) return;
+    commit([{ index: resize.index, element: resize.element }], [{ index: resize.index, element: resize.draft }]);
   }
 
   function marqueeBox(marquee) {
@@ -753,6 +916,7 @@
     if (interaction?.type === "stroke") interaction.node.remove();
     if (interaction?.type === "erase") finishErase(interaction);
     if (interaction?.type === "move") clearMovePreview();
+    if (interaction?.type === "resize") clearResizePreview(interaction);
     guideLayer.replaceChildren();
     svg.classList.remove("is-panning");
     interaction = null;
@@ -781,14 +945,15 @@
       return;
     } else {
       const world = toWorld(event.clientX, event.clientY);
-      if (tool === "pen") interaction = startStroke(world);
+      if (tool === "pen") interaction = startStroke(world, "stroke");
+      else if (tool === "highlight") interaction = startStroke(world, "highlight");
       else if (tool === "eraser") interaction = startErase(world);
       else if (tool === "select") interaction = startSelect(event, world);
       // The text field opens on release: focus moves to the canvas on press and would close it again.
       else if (tool === "text") interaction = { type: "text", world };
       else if (tool === "fill") fillAt(world);
       else if (SHAPE_TOOLS.has(tool) && canAdd())
-        interaction = { type: "shape", kind: tool, start: world, draft: null };
+        interaction = { type: "shape", kind: tool, start: snapPoint(world), draft: null };
     }
     if (interaction) svg.setPointerCapture(event.pointerId);
     svg.focus({ preventScroll: true });
@@ -814,11 +979,13 @@
     } else if (interaction.type === "erase") {
       eraseAt(interaction, toWorld(event.clientX, event.clientY));
     } else if (interaction.type === "shape") {
-      const world = toWorld(event.clientX, event.clientY);
+      const world = snapPoint(toWorld(event.clientX, event.clientY));
       interaction.draft = shapeFrom(interaction.kind, interaction.start, world, event.shiftKey);
       guideLayer.replaceChildren(elementNode(interaction.draft));
     } else if (interaction.type === "move") {
       updateMove(interaction, event);
+    } else if (interaction.type === "resize") {
+      updateResize(interaction, event);
     } else if (interaction.type === "marquee") {
       updateMarquee(interaction, toWorld(event.clientX, event.clientY));
     }
@@ -844,6 +1011,7 @@
     else if (current.type === "erase") finishErase(current);
     else if (current.type === "shape") finishShape(current);
     else if (current.type === "move") finishMove(current);
+    else if (current.type === "resize") finishResize(current);
     else if (current.type === "marquee") finishMarquee(current);
     else if (current.type === "text") {
       const element = topElementAt(current.world);
@@ -958,8 +1126,30 @@
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
+  let fontStyle = null;
+
+  // Images can't load the page's fonts, so the export carries Inter itself when the board has text.
+  // Without it (the fetch failed) the text falls back to a system font.
+  function exportFontStyle() {
+    if (!doc.elements.some((item) => item.type === "text")) return Promise.resolve("");
+    fontStyle ??= fetch(root.dataset.fontUrl)
+      .then((response) => (response.ok ? response.arrayBuffer() : Promise.reject(new Error("font"))))
+      .then((buffer) => {
+        const bytes = new Uint8Array(buffer);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i += 0x8000) {
+          binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+        }
+        const source = `url(data:font/woff2;base64,${window.btoa(binary)}) format("woff2")`;
+        return `@font-face{font-family:Inter;font-weight:100 900;src:${source}}`;
+      })
+      .catch(() => "");
+    return fontStyle;
+  }
+
   // A standalone SVG of the whole board on white paper, framed by its content plus a margin.
-  function buildExportSvg() {
+  async function buildExportSvg() {
+    const css = await exportFontStyle();
     const bounds = format.documentBounds(doc, measure) || { x1: 0, y1: 0, x2: 200, y2: 120 };
     const margin = 24;
     const x = Math.floor(bounds.x1 - margin);
@@ -967,13 +1157,18 @@
     const width = Math.ceil(bounds.x2 - bounds.x1 + margin * 2);
     const height = Math.ceil(bounds.y2 - bounds.y1 + margin * 2);
     const exportSvg = svgEl("svg", { xmlns: SVG_NS, width, height, viewBox: `${x} ${y} ${width} ${height}` });
+    if (css) {
+      const styleNode = svgEl("style");
+      styleNode.textContent = css;
+      exportSvg.append(styleNode);
+    }
     exportSvg.append(svgEl("rect", { x, y, width, height, fill: "#ffffff" }));
     doc.elements.forEach((item) => exportSvg.append(elementNode(item)));
     return { markup: new XMLSerializer().serializeToString(exportSvg), width, height };
   }
 
-  function exportPng() {
-    const { markup, width, height } = buildExportSvg();
+  async function exportPng() {
+    const { markup, width, height } = await buildExportSvg();
     // Canvases have a maximum size; very large boards are scaled down instead of failing.
     const scale = Math.min(2, 8000 / Math.max(width, height));
     const image = new Image();
@@ -995,12 +1190,14 @@
     image.src = url;
   }
 
-  function runExport(kind) {
+  async function runExport(kind) {
     exportMenu.open = false;
     const base = slug(titleInput.value);
-    if (kind === "png") exportPng();
-    else if (kind === "svg") download(`${base}.svg`, new Blob([buildExportSvg().markup], { type: "image/svg+xml" }));
-    else if (kind === "json") {
+    if (kind === "png") await exportPng();
+    else if (kind === "svg") {
+      const { markup } = await buildExportSvg();
+      download(`${base}.svg`, new Blob([markup], { type: "image/svg+xml" }));
+    } else if (kind === "json") {
       const data = { format: "lunora-whiteboard", title: titleInput.value.trim(), document: doc };
       download(`${base}.json`, new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
     } else if (kind === "import") {
@@ -1111,7 +1308,7 @@
     } else if (SHAPE_TOOLS.has(tool) && canAdd()) {
       const w = 160 / view.k;
       const h = (tool === "line" || tool === "arrow" ? 0 : 100) / view.k;
-      const start = { x: center.x - w / 2, y: center.y - h / 2 };
+      const start = snapPoint({ x: center.x - w / 2, y: center.y - h / 2 });
       addElement(shapeFrom(tool, start, { x: start.x + w, y: start.y + h }, false));
     }
   }
@@ -1125,7 +1322,22 @@
     "zoom-out": () => zoomAt(1 / 1.2),
     "zoom-reset": () => zoomAt(1 / view.k),
     fit: () => fitView(FIT_MAX_ZOOM),
+    front: () => reorderSelection(true),
+    back: () => reorderSelection(false),
+    grid: () => setGrid(!gridOn),
   };
+
+  function setGrid(on) {
+    gridOn = on;
+    background.setAttribute("fill", on ? "url(#whiteboard-grid)" : "transparent");
+    gridButton.setAttribute("aria-pressed", String(on));
+    gridButton.classList.toggle("is-active", on);
+    try {
+      window.localStorage.setItem(GRID_KEY, on ? "1" : "0");
+    } catch (_error) {
+      // Storage can be blocked; the grid then just isn't remembered.
+    }
+  }
   root.querySelectorAll("[data-whiteboard-action]").forEach((button) => {
     button.addEventListener("click", () => ACTIONS[button.dataset.whiteboardAction]?.());
   });
@@ -1166,6 +1378,14 @@
     } else if (modifier && key === "d") {
       event.preventDefault();
       duplicateSelection();
+    } else if (modifier && (key === "c" || key === "x")) {
+      // Text marked elsewhere on the page keeps the browser's own copy.
+      if (!selection.size || window.getSelection()?.toString()) return;
+      event.preventDefault();
+      if (copySelection() && key === "x") deleteSelection();
+    } else if (modifier && key === "v") {
+      event.preventDefault();
+      pasteClipboard();
     } else if (modifier) {
       return;
     } else if (key === " ") {
@@ -1189,6 +1409,8 @@
       const dx = key === "arrowleft" ? -step : key === "arrowright" ? step : 0;
       const dy = key === "arrowup" ? -step : key === "arrowdown" ? step : 0;
       nudgeSelection(dx, dy);
+    } else if (key === "]" || key === "[") {
+      reorderSelection(key === "]");
     } else if (TOOL_KEYS[key]) {
       setTool(TOOL_KEYS[key]);
     } else if (key === "f") {
@@ -1223,6 +1445,12 @@
       // See above.
     }
   });
+
+  try {
+    if (window.localStorage.getItem(GRID_KEY) === "1") setGrid(true);
+  } catch (_error) {
+    // See above.
+  }
 
   setTool("pen");
   refreshStyleControls();

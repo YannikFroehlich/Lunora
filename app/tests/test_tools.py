@@ -418,6 +418,81 @@ class WhiteboardTests(TestCase):
         with self.assertRaises(ValidationError):
             validate_whiteboard_document(self._document(*strokes, _stroke("extra")))
 
+    def test_highlighter_strokes_are_stored_and_count_against_the_point_budget(self):
+        from django.core.exceptions import ValidationError
+
+        board = Whiteboard.objects.create(owner=self.user, title="Skizze")
+        marker = _stroke("h1", type="highlight", color="yellow", width=8, points=[0, 0, 50.04, 0])
+
+        response = self._put(board, {"title": "Skizze", "document": self._document(marker)})
+
+        self.assertEqual(response.status_code, 200, response.content)
+        board.refresh_from_db()
+        self.assertEqual(board.document["elements"][0], {**marker, "points": [0.0, 0.0, 50.0, 0.0]})
+        with self.assertRaises(ValidationError):
+            validate_whiteboard_document(
+                self._document(_stroke("h1", type="highlight", points=[0, 0] * 2001))
+            )
+
+    def test_overview_shows_a_thumbnail_that_escapes_text(self):
+        text = {
+            "id": "t1",
+            "type": "text",
+            "color": "red",
+            "x": 0,
+            "y": 0,
+            "size": "m",
+            "text": "<b>Hi</b>\nda",
+        }
+        rect = {
+            "id": "r1",
+            "type": "rect",
+            "color": "green",
+            "width": 2,
+            "x": 10,
+            "y": 20,
+            "w": 30,
+            "h": 40,
+            "fill": True,
+        }
+        Whiteboard.objects.create(
+            owner=self.user,
+            title="Mit Bild",
+            document=validate_whiteboard_document(
+                self._document(
+                    _stroke("s1", points=[0, 0, 100, 50]), rect, text, _stroke("h1", type="highlight")
+                )
+            ),
+        )
+        Whiteboard.objects.create(owner=self.user, title="Leer")
+
+        response = self.client.get("/tools/whiteboard/")
+
+        self.assertContains(response, 'class="whiteboard-thumb"', count=1)
+        self.assertContains(response, '<polyline points="0,0 100,50"')
+        self.assertContains(response, '<rect x="10" y="20" width="30" height="40"')
+        self.assertContains(response, "&lt;b&gt;Hi&lt;/b&gt;")
+        self.assertNotContains(response, "<b>Hi</b>")
+        self.assertContains(response, 'viewBox="-16 -16 ')
+
+    def test_thumbnail_thins_long_strokes_and_survives_broken_documents(self):
+        from app.services.whiteboard_preview import MAX_PREVIEW_POINTS, whiteboard_preview_svg
+
+        points = [value for index in range(2000) for value in (index, index % 7)]
+        strokes = [_stroke(f"s{index}", points=points) for index in range(5)]
+        markup = whiteboard_preview_svg({"version": 1, "elements": strokes})
+
+        self.assertLessEqual(markup.count(","), MAX_PREVIEW_POINTS + 2 * len(strokes))
+        # Every stroke still ends where it ended.
+        self.assertEqual(markup.count(" 1999,4"), 5)
+        for broken in (
+            {},
+            {"elements": [{"type": "stroke"}]},
+            {"elements": [{"type": "image", "color": "red"}]},
+        ):
+            self.assertEqual(whiteboard_preview_svg(broken), "")
+        self.assertEqual(whiteboard_preview_svg({"version": 1, "elements": []}), "")
+
     def test_client_limits_mirror_the_validator(self):
         import re
         from pathlib import Path

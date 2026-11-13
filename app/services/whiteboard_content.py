@@ -20,6 +20,8 @@ DOCUMENT_KEYS = {"version", "elements"}
 COMMON_KEYS = {"id", "type", "color"}
 ELEMENT_KEYS = {
     "stroke": COMMON_KEYS | {"width", "points"},
+    # A highlighter stroke: same data, drawn wide and translucent.
+    "highlight": COMMON_KEYS | {"width", "points"},
     "line": COMMON_KEYS | {"width", "x1", "y1", "x2", "y2"},
     "arrow": COMMON_KEYS | {"width", "x1", "y1", "x2", "y2"},
     "rect": COMMON_KEYS | {"width", "x", "y", "w", "h", "fill"},
@@ -83,7 +85,7 @@ def _clean_element(item, seen_ids, budget):
     if type(width) is not int or width not in STROKE_WIDTHS:
         raise ValidationError("Die Strichstärke ist ungültig.")
     cleaned["width"] = width
-    if kind == "stroke":
+    if kind in ("stroke", "highlight"):
         cleaned["points"] = _points(item["points"], budget)
     elif kind in ("line", "arrow"):
         cleaned.update({key: _coordinate(item[key]) for key in ("x1", "y1", "x2", "y2")})
