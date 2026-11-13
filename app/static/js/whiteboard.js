@@ -4,12 +4,19 @@
   if (!root || !format) return;
 
   const SVG_NS = "http://www.w3.org/2000/svg";
+  const FONT_FAMILY = "Inter, 'Segoe UI', Arial, sans-serif";
   const MIN_ZOOM = 0.1;
   const MAX_ZOOM = 8;
   const HISTORY_LIMIT = 200;
+  const MERGE_MS = 1500;
   const SAVE_DELAY = 1200;
   const SIMPLIFY_PIXELS = 0.75;
   const ERASER_PIXELS = 10;
+  const HIT_PIXELS = 6;
+  const DRAG_PIXELS = 3;
+  const MIN_SHAPE_PIXELS = 4;
+  const DUPLICATE_PIXELS = 20;
+  const SELECT_COLOR = "#b3772f";
   // The page is light paper in both themes (like the UML canvas), so the ink colors are fixed.
   const INK = {
     default: { label: "Schwarz", color: "#2b2520" },
@@ -21,36 +28,57 @@
     gray: { label: "Grau", color: "#8c8c8c" },
   };
   const WIDTH_LABELS = { 2: "Dünn", 4: "Mittel", 8: "Dick" };
-  const TOOL_KEYS = { p: "pen", e: "eraser", h: "hand" };
+  const SHAPE_TOOLS = new Set(["line", "arrow", "rect", "ellipse"]);
+  const TOOL_KEYS = {
+    v: "select",
+    p: "pen",
+    e: "eraser",
+    h: "hand",
+    l: "line",
+    a: "arrow",
+    r: "rect",
+    o: "ellipse",
+    t: "text",
+  };
 
   const payload = JSON.parse(document.getElementById("whiteboard-data").textContent);
   const saveUrl = root.dataset.saveUrl;
   const csrfToken = document.querySelector("meta[name='csrf-token']")?.content || "";
   const svg = root.querySelector("[data-whiteboard-canvas]");
+  const canvasWrap = svg.parentElement;
   const titleInput = root.querySelector("[data-whiteboard-title]");
   const statusLabel = root.querySelector("[data-whiteboard-status]");
   const hintLabel = root.querySelector("[data-whiteboard-hint]");
   const zoomLabel = root.querySelector("[data-whiteboard-zoom-label]");
   const colorOptions = root.querySelector("[data-whiteboard-colors]");
   const widthOptions = root.querySelector("[data-whiteboard-widths]");
+  const fillButton = root.querySelector("[data-whiteboard-fill]");
+  const sizeSelect = root.querySelector("[data-whiteboard-text-size]");
+  const textInput = root.querySelector("[data-whiteboard-text]");
   const defaultHint = hintLabel.textContent;
 
   const doc = format.normalizeDocument(payload.document);
   const view = { x: 0, y: 0, k: 1 };
-  const style = { color: "default", width: 4 };
+  const style = { color: "default", width: 4, fill: false, size: "m" };
   const nodes = new Map();
   const pointers = new Map();
   const history = { undo: [], redo: [] };
   const saveState = { dirty: false, saving: false, again: false, timer: null };
+  let selection = new Set();
   let tool = "pen";
   let spaceHeld = false;
   let interaction = null;
+  let editing = null;
   let hintTimer = null;
   let nextId = 0;
 
   const background = svgEl("rect", { width: "100%", height: "100%", fill: "transparent" });
   const viewport = svgEl("g");
-  svg.replaceChildren(background, viewport);
+  const selectionLayer = svgEl("g");
+  const guideLayer = svgEl("g");
+  const overlay = svgEl("g", { "pointer-events": "none" });
+  overlay.append(selectionLayer, guideLayer);
+  svg.replaceChildren(background, viewport, overlay);
 
   // ---- Helpers --------------------------------------------------------------------------------
 
@@ -86,22 +114,73 @@
     }, duration);
   }
 
+  function inkColor(color) {
+    return (INK[color] || INK.default).color;
+  }
+
+  const measureContext = document.createElement("canvas").getContext("2d");
+
+  function measure(text, size) {
+    if (!measureContext) return format.estimateTextWidth(text, size);
+    measureContext.font = `${size}px ${FONT_FAMILY}`;
+    return measureContext.measureText(text).width;
+  }
+
+  function findElement(id) {
+    return doc.elements.find((item) => item.id === id);
+  }
+
   // ---- Rendering ------------------------------------------------------------------------------
 
-  function strokeAttrs(color, width) {
+  function lineAttrs(color, width) {
     return {
       fill: "none",
-      stroke: (INK[color] || INK.default).color,
+      stroke: inkColor(color),
       "stroke-width": width,
       "stroke-linecap": "round",
       "stroke-linejoin": "round",
     };
   }
 
+  function textNode(item) {
+    const size = format.TEXT_SIZES[item.size];
+    const node = svgEl("text", {
+      x: item.x,
+      y: item.y,
+      fill: inkColor(item.color),
+      "font-size": size,
+      "font-family": FONT_FAMILY,
+    });
+    item.text.split("\n").forEach((line, index) => {
+      const span = svgEl("tspan", {
+        x: item.x,
+        dy: index ? size * format.TEXT_LINE_HEIGHT : size * format.TEXT_ASCENT,
+      });
+      // An empty tspan would collapse; a no-break space keeps blank lines.
+      span.textContent = line || " ";
+      node.append(span);
+    });
+    return node;
+  }
+
   function elementNode(item) {
-    // Only strokes exist so far; other element types stay in the document untouched.
-    if (item.type !== "stroke") return null;
-    return svgEl("path", { ...strokeAttrs(item.color, item.width), d: format.strokePath(item.points) });
+    const attrs = lineAttrs(item.color, item.width);
+    if (item.type === "stroke") return svgEl("path", { ...attrs, d: format.strokePath(item.points) });
+    if (item.type === "line") return svgEl("line", { ...attrs, x1: item.x1, y1: item.y1, x2: item.x2, y2: item.y2 });
+    if (item.type === "arrow") {
+      const head = format.arrowHead(item.x1, item.y1, item.x2, item.y2, item.width);
+      return svgEl("path", { ...attrs, d: `M${item.x1} ${item.y1}L${item.x2} ${item.y2}${head}` });
+    }
+    const fill = item.fill ? { fill: inkColor(item.color), "fill-opacity": 0.22 } : {};
+    if (item.type === "rect") {
+      return svgEl("rect", { ...attrs, ...fill, x: item.x, y: item.y, width: item.w, height: item.h, rx: 2 });
+    }
+    if (item.type === "ellipse") {
+      const rx = item.w / 2;
+      const ry = item.h / 2;
+      return svgEl("ellipse", { ...attrs, ...fill, cx: item.x + rx, cy: item.y + ry, rx, ry });
+    }
+    return textNode(item);
   }
 
   function render() {
@@ -109,16 +188,44 @@
     const fragment = document.createDocumentFragment();
     doc.elements.forEach((item) => {
       const node = elementNode(item);
-      if (!node) return;
       nodes.set(item.id, node);
       fragment.append(node);
     });
     viewport.replaceChildren(fragment);
+    if (editing?.element) nodes.get(editing.element.id)?.setAttribute("visibility", "hidden");
+  }
+
+  function drawSelection() {
+    const pad = 5 / view.k;
+    const boxes = selectedEntries().map(({ element }) => {
+      const box = format.elementBounds(element, measure);
+      return svgEl("rect", {
+        x: box.x1 - pad,
+        y: box.y1 - pad,
+        width: box.x2 - box.x1 + pad * 2,
+        height: box.y2 - box.y1 + pad * 2,
+        fill: "none",
+        stroke: SELECT_COLOR,
+        "stroke-width": 1.5,
+        "stroke-dasharray": "5 4",
+        "vector-effect": "non-scaling-stroke",
+      });
+    });
+    selectionLayer.replaceChildren(...boxes);
+    root
+      .querySelectorAll("[data-whiteboard-action='duplicate'], [data-whiteboard-action='delete']")
+      .forEach((button) => {
+        button.disabled = !selection.size;
+      });
   }
 
   function applyView() {
-    viewport.setAttribute("transform", `translate(${view.x} ${view.y}) scale(${view.k})`);
+    const transform = `translate(${view.x} ${view.y}) scale(${view.k})`;
+    viewport.setAttribute("transform", transform);
+    overlay.setAttribute("transform", transform);
     zoomLabel.textContent = `${Math.round(view.k * 100)} %`;
+    if (selection.size) drawSelection();
+    positionTextInput();
   }
 
   // ---- View -----------------------------------------------------------------------------------
@@ -131,6 +238,11 @@
   function toWorld(clientX, clientY) {
     const size = canvasSize();
     return { x: (clientX - size.left - view.x) / view.k, y: (clientY - size.top - view.y) / view.k };
+  }
+
+  function visibleCenter() {
+    const size = canvasSize();
+    return toWorld(size.left + size.width / 2, size.top + size.height / 2);
   }
 
   function clampZoom(value) {
@@ -149,7 +261,7 @@
   }
 
   function fitView() {
-    const bounds = format.documentBounds(doc);
+    const bounds = format.documentBounds(doc, measure);
     const size = canvasSize();
     if (!bounds) {
       view.k = 1;
@@ -167,7 +279,8 @@
 
   // ---- History --------------------------------------------------------------------------------
   // A change is two lists of {index, element}: what it took out and what it put in. Undo swaps them
-  // back, so history never copies the whole board.
+  // back, so history never copies the whole board. Elements are never mutated in place; an edit
+  // replaces the element with a changed copy at the same index.
 
   function swap(out, into) {
     const gone = new Set(out.map((entry) => entry.element.id));
@@ -184,13 +297,13 @@
       .forEach((entry) => doc.elements.splice(Math.min(entry.index, doc.elements.length), 0, entry.element));
     if (appended) {
       const node = elementNode(into[0].element);
-      if (node) {
-        nodes.set(into[0].element.id, node);
-        viewport.append(node);
-      }
+      nodes.set(into[0].element.id, node);
+      viewport.append(node);
     } else if (into.length) {
       render();
     }
+    selection = new Set([...selection].filter((id) => nodes.has(id)));
+    drawSelection();
     markDirty();
     updateHistoryButtons();
   }
@@ -202,9 +315,17 @@
     updateHistoryButtons();
   }
 
-  function commit(removed, added) {
+  // Changes with the same mergeKey in quick succession (holding an arrow key) become one undo step.
+  function commit(removed, added, mergeKey) {
     swap(removed, added);
-    record({ removed, added });
+    const top = history.undo[history.undo.length - 1];
+    const now = Date.now();
+    if (mergeKey && top?.mergeKey === mergeKey && now - top.time < MERGE_MS && !history.redo.length) {
+      top.added = added;
+      top.time = now;
+      return;
+    }
+    record({ removed, added, mergeKey, time: now });
   }
 
   function undo() {
@@ -226,11 +347,74 @@
     root.querySelector("[data-whiteboard-action='redo']").disabled = !history.redo.length;
   }
 
+  // ---- Selection ------------------------------------------------------------------------------
+
+  function selectedEntries() {
+    return doc.elements.flatMap((element, index) => (selection.has(element.id) ? [{ index, element }] : []));
+  }
+
+  function setSelection(ids) {
+    selection = new Set(ids);
+    drawSelection();
+  }
+
+  function replaceSelected(change, mergeKey) {
+    const removed = [];
+    const added = [];
+    selectedEntries().forEach(({ index, element }) => {
+      const next = change(element);
+      if (JSON.stringify(next) === JSON.stringify(element)) return;
+      removed.push({ index, element });
+      added.push({ index, element: next });
+    });
+    if (removed.length) commit(removed, added, mergeKey);
+  }
+
+  function deleteSelection() {
+    const removed = selectedEntries();
+    if (removed.length) commit(removed, []);
+  }
+
+  function duplicateSelection() {
+    const entries = selectedEntries();
+    if (!entries.length) return;
+    const points = entries.reduce((sum, { element }) => sum + (element.points?.length || 0) / 2, 0);
+    if (
+      doc.elements.length + entries.length > format.LIMITS.elements ||
+      format.pointCount(doc) + points > format.LIMITS.totalPoints
+    ) {
+      showHint("Für eine Kopie ist auf dem Whiteboard kein Platz mehr.");
+      return;
+    }
+    const offset = DUPLICATE_PIXELS / view.k;
+    const copies = entries.map(({ element }, order) => ({
+      index: doc.elements.length + order,
+      element: { ...format.moveElement(element, offset, offset), id: newId() },
+    }));
+    commit([], copies);
+    setSelection(copies.map((entry) => entry.element.id));
+  }
+
+  function nudgeSelection(dx, dy) {
+    const key = `nudge:${[...selection].sort().join(",")}`;
+    replaceSelected((element) => format.moveElement(element, dx, dy), key);
+  }
+
+  function topElementAt(world) {
+    const reach = HIT_PIXELS / view.k;
+    for (let i = doc.elements.length - 1; i >= 0; i -= 1) {
+      const element = doc.elements[i];
+      if (format.hitsElement(element, world.x, world.y, world.x, world.y, reach, measure)) return element;
+    }
+    return null;
+  }
+
   // ---- Tools ----------------------------------------------------------------------------------
 
   function setTool(name) {
     tool = name;
     svg.dataset.tool = name;
+    if (name !== "select") setSelection([]);
     root.querySelectorAll("[data-whiteboard-tool]").forEach((button) => {
       const active = button.dataset.whiteboardTool === name;
       button.classList.toggle("is-active", active);
@@ -238,18 +422,27 @@
     });
   }
 
-  function pressOption(container, attribute, value) {
-    container.querySelectorAll("button").forEach((button) => {
-      button.setAttribute("aria-pressed", String(button.dataset[attribute] === String(value)));
-    });
+  function canAdd() {
+    if (doc.elements.length < format.LIMITS.elements) return true;
+    showHint("Das Whiteboard ist voll. Lösche etwas, um weiterzuzeichnen.");
+    return false;
+  }
+
+  // Adds a finished element, rounded for saving, and selects it so it can be moved or restyled at once.
+  function addElement(draft) {
+    const element = { ...format.moveElement(draft, 0, 0), id: newId() };
+    commit([], [{ index: doc.elements.length, element }]);
+    setTool("select");
+    setSelection([element.id]);
   }
 
   function startStroke(world) {
-    if (doc.elements.length >= format.LIMITS.elements || format.pointCount(doc) >= format.LIMITS.totalPoints) {
+    if (!canAdd()) return null;
+    if (format.pointCount(doc) >= format.LIMITS.totalPoints) {
       showHint("Das Whiteboard ist voll. Lösche etwas, um weiterzuzeichnen.");
       return null;
     }
-    const node = svgEl("path", { ...strokeAttrs(style.color, style.width), d: "" });
+    const node = svgEl("path", { ...lineAttrs(style.color, style.width), d: "" });
     viewport.append(node);
     return { type: "stroke", node, points: [world.x, world.y], d: `M${world.x} ${world.y}` };
   }
@@ -280,11 +473,7 @@
     eraser.last = world;
     // Undo reinserts by ascending index, so each entry keeps its position from before the gesture.
     const hit = doc.elements
-      .filter(
-        (element) =>
-          element.type === "stroke" &&
-          format.hitsStroke(element.points, from.x, from.y, world.x, world.y, reach + element.width / 2),
-      )
+      .filter((element) => format.hitsElement(element, from.x, from.y, world.x, world.y, reach, measure))
       .map((element) => ({ index: eraser.origin.get(element.id), element }));
     if (!hit.length) return;
     eraser.removed.push(...hit);
@@ -299,9 +488,190 @@
   }
 
   function finishErase(eraser) {
-    // The strokes are already gone; the whole gesture becomes one undo step.
+    // The elements are already gone; the whole gesture becomes one undo step.
     if (eraser.removed.length) record({ removed: eraser.removed, added: [] });
   }
+
+  // The element a shape tool drag from `start` to `end` describes. `constrain` (Shift) snaps lines to
+  // 45° steps and makes rectangles square and ellipses round.
+  function shapeFrom(kind, start, end, constrain) {
+    const base = { id: "draft", type: kind, color: style.color, width: style.width };
+    if (kind === "line" || kind === "arrow") {
+      let { x, y } = end;
+      if (constrain) {
+        const step = Math.PI / 4;
+        const angle = Math.round(Math.atan2(y - start.y, x - start.x) / step) * step;
+        const length = Math.hypot(x - start.x, y - start.y);
+        x = start.x + Math.cos(angle) * length;
+        y = start.y + Math.sin(angle) * length;
+      }
+      return { ...base, x1: start.x, y1: start.y, x2: x, y2: y };
+    }
+    return { ...base, ...format.normalizeBox(start.x, start.y, end.x, end.y, constrain), fill: style.fill };
+  }
+
+  function finishShape(shape) {
+    guideLayer.replaceChildren();
+    if (!shape.draft) return;
+    const box = format.elementBounds(shape.draft);
+    // A click without a drag would leave an invisible element behind.
+    if (Math.hypot(box.x2 - box.x1, box.y2 - box.y1) * view.k < MIN_SHAPE_PIXELS) return;
+    addElement(shape.draft);
+  }
+
+  function startSelect(event, world) {
+    const element = topElementAt(world);
+    if (!element) {
+      if (!event.shiftKey) setSelection([]);
+      return { type: "marquee", start: world, base: new Set(selection) };
+    }
+    if (event.shiftKey) {
+      const ids = new Set(selection);
+      if (ids.has(element.id)) ids.delete(element.id);
+      else ids.add(element.id);
+      setSelection(ids);
+      return null;
+    }
+    if (!selection.has(element.id)) setSelection([element.id]);
+    return { type: "move", start: world, startX: event.clientX, startY: event.clientY, moved: false, dx: 0, dy: 0 };
+  }
+
+  function updateMove(move, event) {
+    if (!move.moved && Math.hypot(event.clientX - move.startX, event.clientY - move.startY) < DRAG_PIXELS) return;
+    const world = toWorld(event.clientX, event.clientY);
+    move.moved = true;
+    move.dx = world.x - move.start.x;
+    move.dy = world.y - move.start.y;
+    // Only a transform while dragging; the elements change once, on release.
+    const transform = `translate(${move.dx} ${move.dy})`;
+    selection.forEach((id) => nodes.get(id)?.setAttribute("transform", transform));
+    selectionLayer.setAttribute("transform", transform);
+  }
+
+  function clearMovePreview() {
+    selection.forEach((id) => nodes.get(id)?.removeAttribute("transform"));
+    selectionLayer.removeAttribute("transform");
+  }
+
+  function finishMove(move) {
+    clearMovePreview();
+    if (move.moved) replaceSelected((element) => format.moveElement(element, move.dx, move.dy));
+  }
+
+  function marqueeBox(marquee) {
+    return {
+      x1: Math.min(marquee.start.x, marquee.current.x),
+      y1: Math.min(marquee.start.y, marquee.current.y),
+      x2: Math.max(marquee.start.x, marquee.current.x),
+      y2: Math.max(marquee.start.y, marquee.current.y),
+    };
+  }
+
+  function updateMarquee(marquee, world) {
+    marquee.current = world;
+    const box = marqueeBox(marquee);
+    guideLayer.replaceChildren(
+      svgEl("rect", {
+        x: box.x1,
+        y: box.y1,
+        width: box.x2 - box.x1,
+        height: box.y2 - box.y1,
+        fill: "rgba(179, 119, 47, 0.08)",
+        stroke: SELECT_COLOR,
+        "stroke-dasharray": "4 3",
+        "vector-effect": "non-scaling-stroke",
+      }),
+    );
+  }
+
+  function finishMarquee(marquee) {
+    guideLayer.replaceChildren();
+    if (!marquee.current) return;
+    const box = marqueeBox(marquee);
+    const inside = doc.elements.filter((element) => {
+      const bounds = format.elementBounds(element, measure);
+      return bounds.x1 >= box.x1 && bounds.y1 >= box.y1 && bounds.x2 <= box.x2 && bounds.y2 <= box.y2;
+    });
+    setSelection([...marquee.base, ...inside.map((element) => element.id)]);
+  }
+
+  // ---- Text -----------------------------------------------------------------------------------
+
+  function openText(world, element = null) {
+    if (!element && !canAdd()) return;
+    editing = {
+      element,
+      x: element ? element.x : world.x,
+      y: element ? element.y : world.y,
+      size: element ? element.size : style.size,
+      color: element ? element.color : style.color,
+    };
+    if (element) nodes.get(element.id)?.setAttribute("visibility", "hidden");
+    textInput.value = element ? element.text : "";
+    textInput.hidden = false;
+    positionTextInput();
+    textInput.focus();
+  }
+
+  function positionTextInput() {
+    if (!editing) return;
+    const svgRect = svg.getBoundingClientRect();
+    const wrapRect = canvasWrap.getBoundingClientRect();
+    const size = format.TEXT_SIZES[editing.size];
+    const fontSize = size * view.k;
+    const lines = textInput.value.split("\n");
+    const width = Math.max(...lines.map((line) => measure(line, size))) * view.k;
+    Object.assign(textInput.style, {
+      left: `${svgRect.left - wrapRect.left - canvasWrap.clientLeft + view.x + editing.x * view.k}px`,
+      top: `${svgRect.top - wrapRect.top - canvasWrap.clientTop + view.y + editing.y * view.k}px`,
+      fontSize: `${fontSize}px`,
+      width: `${width + fontSize}px`,
+      height: `${lines.length * fontSize * format.TEXT_LINE_HEIGHT}px`,
+      color: inkColor(editing.color),
+    });
+  }
+
+  function closeText() {
+    if (!editing) return;
+    const current = editing;
+    editing = null;
+    textInput.hidden = true;
+    const text = textInput.value.replace(/\s+$/, "").slice(0, format.LIMITS.text);
+    const original = current.element;
+    if (original) {
+      nodes.get(original.id)?.removeAttribute("visibility");
+      const index = doc.elements.indexOf(original);
+      if (index === -1) return;
+      if (!text.trim()) commit([{ index, element: original }], []);
+      else if (text !== original.text)
+        commit([{ index, element: original }], [{ index, element: { ...original, text } }]);
+      return;
+    }
+    if (!text.trim()) return;
+    addElement({
+      id: "draft",
+      type: "text",
+      color: current.color,
+      x: current.x,
+      y: current.y,
+      size: current.size,
+      text,
+    });
+  }
+
+  textInput.addEventListener("input", positionTextInput);
+  textInput.addEventListener("blur", closeText);
+  textInput.addEventListener("keydown", (event) => {
+    // Enter makes a new line; Escape or Ctrl+Enter finish the text. Closing directly rather than through
+    // the blur, which browsers skip while the window itself has no focus.
+    if (event.key === "Escape" || (event.key === "Enter" && (event.ctrlKey || event.metaKey))) {
+      event.preventDefault();
+      closeText();
+      svg.focus({ preventScroll: true });
+    }
+  });
+
+  // ---- Pointer input --------------------------------------------------------------------------
 
   function startPan(event) {
     svg.classList.add("is-panning");
@@ -325,6 +695,8 @@
   function cancelInteraction() {
     if (interaction?.type === "stroke") interaction.node.remove();
     if (interaction?.type === "erase") finishErase(interaction);
+    if (interaction?.type === "move") clearMovePreview();
+    guideLayer.replaceChildren();
     svg.classList.remove("is-panning");
     interaction = null;
   }
@@ -333,22 +705,32 @@
     if (event.pointerType === "touch") {
       pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
       if (pointers.size === 2) {
-        // A second finger turns the gesture into pan/zoom; the stroke the first one started is dropped.
+        // A second finger turns the gesture into pan/zoom; whatever the first one started is dropped.
         cancelInteraction();
         interaction = startPinch();
         return;
       }
       if (pointers.size > 2) return;
     }
+    if (editing) {
+      // The first click outside an open text finishes it instead of starting something new.
+      closeText();
+      return;
+    }
     if (event.button === 1 || (event.button === 0 && (tool === "hand" || spaceHeld))) {
       event.preventDefault();
       interaction = startPan(event);
     } else if (event.button !== 0) {
       return;
-    } else if (tool === "pen") {
-      interaction = startStroke(toWorld(event.clientX, event.clientY));
-    } else if (tool === "eraser") {
-      interaction = startErase(toWorld(event.clientX, event.clientY));
+    } else {
+      const world = toWorld(event.clientX, event.clientY);
+      if (tool === "pen") interaction = startStroke(world);
+      else if (tool === "eraser") interaction = startErase(world);
+      else if (tool === "select") interaction = startSelect(event, world);
+      // The text field opens on release: focus moves to the canvas on press and would close it again.
+      else if (tool === "text") interaction = { type: "text", world };
+      else if (SHAPE_TOOLS.has(tool) && canAdd())
+        interaction = { type: "shape", kind: tool, start: world, draft: null };
     }
     if (interaction) svg.setPointerCapture(event.pointerId);
     svg.focus({ preventScroll: true });
@@ -373,6 +755,14 @@
       extendStroke(interaction, event);
     } else if (interaction.type === "erase") {
       eraseAt(interaction, toWorld(event.clientX, event.clientY));
+    } else if (interaction.type === "shape") {
+      const world = toWorld(event.clientX, event.clientY);
+      interaction.draft = shapeFrom(interaction.kind, interaction.start, world, event.shiftKey);
+      guideLayer.replaceChildren(elementNode(interaction.draft));
+    } else if (interaction.type === "move") {
+      updateMove(interaction, event);
+    } else if (interaction.type === "marquee") {
+      updateMarquee(interaction, toWorld(event.clientX, event.clientY));
     }
   }
 
@@ -386,13 +776,22 @@
       if (!pointers.size) interaction = null;
       return;
     }
+    if (event.type === "pointercancel") {
+      cancelInteraction();
+      return;
+    }
     interaction = null;
     svg.classList.remove("is-panning");
-    if (current.type === "stroke") {
-      if (event.type === "pointercancel") current.node.remove();
-      else finishStroke(current);
-    } else if (current.type === "erase") {
-      finishErase(current);
+    if (current.type === "stroke") finishStroke(current);
+    else if (current.type === "erase") finishErase(current);
+    else if (current.type === "shape") finishShape(current);
+    else if (current.type === "move") finishMove(current);
+    else if (current.type === "marquee") finishMarquee(current);
+    else if (current.type === "text") {
+      const element = topElementAt(current.world);
+      if (element?.type === "text") openText(null, element);
+      // Start the text so the caret sits where the user clicked rather than below it.
+      else openText({ x: current.world.x, y: current.world.y - format.TEXT_SIZES[style.size] * 0.6 });
     }
   }
 
@@ -400,6 +799,11 @@
   svg.addEventListener("pointermove", onPointerMove);
   svg.addEventListener("pointerup", onPointerUp);
   svg.addEventListener("pointercancel", onPointerUp);
+  svg.addEventListener("dblclick", (event) => {
+    if (tool !== "select") return;
+    const element = topElementAt(toWorld(event.clientX, event.clientY));
+    if (element?.type === "text") openText(null, element);
+  });
   svg.addEventListener(
     "wheel",
     (event) => {
@@ -496,24 +900,69 @@
     widthOptions.append(button);
   });
 
+  function pressOption(container, attribute, value) {
+    container.querySelectorAll("button").forEach((button) => {
+      button.setAttribute("aria-pressed", String(button.dataset[attribute] === String(value)));
+    });
+  }
+
+  function refreshStyleControls() {
+    pressOption(colorOptions, "color", style.color);
+    pressOption(widthOptions, "width", style.width);
+    fillButton.setAttribute("aria-pressed", String(style.fill));
+    fillButton.classList.toggle("is-active", style.fill);
+    sizeSelect.value = style.size;
+  }
+
+  function restyle(element, changes) {
+    const next = { ...element };
+    if ("color" in changes) next.color = changes.color;
+    if ("width" in changes && element.type !== "text") next.width = changes.width;
+    if ("fill" in changes && (element.type === "rect" || element.type === "ellipse")) next.fill = changes.fill;
+    if ("size" in changes && element.type === "text") next.size = changes.size;
+    return next;
+  }
+
+  // A style choice applies to the selection when there is one, and to everything drawn next.
+  function applyStyle(changes) {
+    Object.assign(style, changes);
+    refreshStyleControls();
+    if (tool === "select" && selection.size) replaceSelected((element) => restyle(element, changes));
+    else if (["select", "eraser", "hand"].includes(tool) && ("color" in changes || "width" in changes)) setTool("pen");
+  }
+
   colorOptions.addEventListener("click", (event) => {
     const button = event.target.closest("[data-color]");
-    if (!button) return;
-    style.color = button.dataset.color;
-    pressOption(colorOptions, "color", style.color);
-    if (tool !== "pen") setTool("pen");
+    if (button) applyStyle({ color: button.dataset.color });
   });
   widthOptions.addEventListener("click", (event) => {
     const button = event.target.closest("[data-width]");
-    if (!button) return;
-    style.width = Number(button.dataset.width);
-    pressOption(widthOptions, "width", style.width);
-    if (tool !== "pen") setTool("pen");
+    if (button) applyStyle({ width: Number(button.dataset.width) });
   });
+  fillButton.addEventListener("click", () => applyStyle({ fill: !style.fill }));
+  sizeSelect.addEventListener("change", () => applyStyle({ size: sizeSelect.value }));
+
+  // Enter on the canvas is the keyboard route to every tool that otherwise needs a drag.
+  function insertAtCenter() {
+    const center = visibleCenter();
+    if (tool === "select") {
+      const element = selection.size === 1 ? findElement([...selection][0]) : null;
+      if (element?.type === "text") openText(null, element);
+    } else if (tool === "text") {
+      openText(center);
+    } else if (SHAPE_TOOLS.has(tool) && canAdd()) {
+      const w = 160 / view.k;
+      const h = (tool === "line" || tool === "arrow" ? 0 : 100) / view.k;
+      const start = { x: center.x - w / 2, y: center.y - h / 2 };
+      addElement(shapeFrom(tool, start, { x: start.x + w, y: start.y + h }, false));
+    }
+  }
 
   const ACTIONS = {
     undo,
     redo,
+    duplicate: duplicateSelection,
+    delete: deleteSelection,
     "zoom-in": () => zoomAt(1.2),
     "zoom-out": () => zoomAt(1 / 1.2),
     "zoom-reset": () => zoomAt(1 / view.k),
@@ -544,6 +993,13 @@
     } else if (modifier && key === "y") {
       event.preventDefault();
       redo();
+    } else if (modifier && key === "a") {
+      event.preventDefault();
+      setTool("select");
+      setSelection(doc.elements.map((element) => element.id));
+    } else if (modifier && key === "d") {
+      event.preventDefault();
+      duplicateSelection();
     } else if (modifier) {
       return;
     } else if (key === " ") {
@@ -552,6 +1008,21 @@
       event.preventDefault();
       spaceHeld = true;
       svg.classList.add("is-space-pan");
+    } else if (key === "enter") {
+      if (event.target !== svg) return;
+      event.preventDefault();
+      insertAtCenter();
+    } else if ((key === "delete" || key === "backspace") && selection.size) {
+      event.preventDefault();
+      deleteSelection();
+    } else if (key === "escape") {
+      setSelection([]);
+    } else if (key.startsWith("arrow") && selection.size) {
+      event.preventDefault();
+      const step = (event.shiftKey ? 20 : 2) / view.k;
+      const dx = key === "arrowleft" ? -step : key === "arrowright" ? step : 0;
+      const dy = key === "arrowup" ? -step : key === "arrowdown" ? step : 0;
+      nudgeSelection(dx, dy);
     } else if (TOOL_KEYS[key]) {
       setTool(TOOL_KEYS[key]);
     } else if (key === "f") {
@@ -571,9 +1042,14 @@
   });
 
   setTool("pen");
-  pressOption(colorOptions, "color", style.color);
-  pressOption(widthOptions, "width", style.width);
+  refreshStyleControls();
   updateHistoryButtons();
   render();
+  drawSelection();
   fitView();
+  // Text widths depend on the web font; measure again once it has loaded.
+  document.fonts?.ready.then(() => {
+    render();
+    drawSelection();
+  });
 })();

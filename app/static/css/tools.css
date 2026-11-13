@@ -422,6 +422,46 @@ a.tool-card:hover {
   cursor: cell;
 }
 
+.whiteboard-canvas[data-tool="select"] {
+  cursor: default;
+}
+
+.whiteboard-canvas[data-tool="text"] {
+  cursor: text;
+}
+
+.whiteboard-canvas[data-tool="line"],
+.whiteboard-canvas[data-tool="arrow"],
+.whiteboard-canvas[data-tool="rect"],
+.whiteboard-canvas[data-tool="ellipse"] {
+  cursor: crosshair;
+}
+
+.whiteboard-widths {
+  display: contents;
+}
+
+.whiteboard-text-input {
+  position: absolute;
+  z-index: 2;
+  min-width: 2ch;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+  line-height: 1.25;
+  white-space: pre;
+  background: transparent;
+  border: 0;
+  outline: 1px dashed #b3772f;
+  outline-offset: 3px;
+  resize: none;
+}
+
+.whiteboard-text-input:focus-visible {
+  box-shadow: none;
+}
+
 .whiteboard-canvas.is-space-pan {
   cursor: grab;
 }

@@ -85,3 +85,53 @@ describe("whiteboard stroke geometry", () => {
     expect(format.normalizeDocument({ elements: "x" }).elements).toEqual([]);
   });
 });
+
+describe("whiteboard shapes and text", () => {
+  const rect = { id: "r", type: "rect", color: "default", width: 2, x: 0, y: 0, w: 100, h: 50, fill: false };
+  const ellipse = { id: "e", type: "ellipse", color: "default", width: 2, x: 0, y: 0, w: 100, h: 50, fill: true };
+  const arrow = { id: "a", type: "arrow", color: "default", width: 4, x1: 10, y1: 20, x2: -30, y2: 5 };
+  const text = { id: "t", type: "text", color: "default", x: 10, y: 10, size: "m", text: "ab\nabcd" };
+
+  it("measures every element type", () => {
+    expect(format.elementBounds(rect)).toEqual({ x1: 0, y1: 0, x2: 100, y2: 50 });
+    expect(format.elementBounds(arrow)).toEqual({ x1: -30, y1: 5, x2: 10, y2: 20 });
+    // Two lines, the longer one decides the width; a custom measure replaces the estimate.
+    expect(format.elementBounds(text, (line, size) => line.length * size)).toEqual({ x1: 10, y1: 10, x2: 106, y2: 70 });
+    expect(format.documentBounds({ elements: [rect, arrow] })).toEqual({ x1: -30, y1: 0, x2: 100, y2: 50 });
+  });
+
+  it("hits an outlined rectangle on its border only, a filled ellipse anywhere inside", () => {
+    expect(format.hitsElement(rect, 50, 1, 50, 1, 3)).toBe(true);
+    expect(format.hitsElement(rect, 50, 25, 50, 25, 3)).toBe(false);
+    expect(format.hitsElement({ ...rect, fill: true }, 50, 25, 50, 25, 3)).toBe(true);
+    expect(format.hitsElement(ellipse, 50, 25, 50, 25, 3)).toBe(true);
+    // The corner of the bounding box lies outside the ellipse itself.
+    expect(format.hitsElement(ellipse, 2, 2, 2, 2, 3)).toBe(false);
+    expect(format.hitsElement(arrow, -10, 12.5, -10, 12.5, 2)).toBe(true);
+    expect(format.hitsElement(text, 20, 20, 20, 20, 0)).toBe(true);
+    expect(format.hitsElement(text, 200, 20, 200, 20, 0)).toBe(false);
+  });
+
+  it("hits a shape the eraser swept across", () => {
+    expect(format.hitsElement(rect, 50, -20, 50, 20, 1)).toBe(true);
+    expect(format.hitsElement(rect, 150, -20, 150, 20, 1)).toBe(false);
+  });
+
+  it("moves elements, rounds them and keeps their keys", () => {
+    const moved = format.moveElement(arrow, 0.04, 1.26);
+    expect(moved).toEqual({ ...arrow, x1: 10, y1: 21.3, x2: -30, y2: 6.3 });
+    expect(Object.keys(format.moveElement(rect, 1, 1)).sort()).toEqual(Object.keys(rect).sort());
+    expect(format.moveElement({ id: "s", type: "stroke", points: [0, 0, 1, 1] }, 1, 2).points).toEqual([1, 2, 2, 3]);
+    expect(format.moveElement(text, -10, 0).x).toBe(0);
+  });
+
+  it("spans a box in any drag direction and squares it on request", () => {
+    expect(format.normalizeBox(10, 10, 0, 30, false)).toEqual({ x: 0, y: 10, w: 10, h: 20 });
+    expect(format.normalizeBox(10, 10, 0, 30, true)).toEqual({ x: -10, y: 10, w: 20, h: 20 });
+  });
+
+  it("puts the arrow tip at the end point", () => {
+    expect(format.arrowHead(0, 0, 100, 0, 2)).toMatch(/^M\S+ \S+L100 0L\S+ \S+$/);
+    expect(format.arrowHead(0, 0, 0, 0, 2)).toContain("L0 0L");
+  });
+});

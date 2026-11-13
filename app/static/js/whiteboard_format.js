@@ -157,34 +157,161 @@
     return false;
   }
 
-  // Bounding box of all strokes, or null for an empty board.
-  function documentBounds(doc) {
-    let bounds = null;
-    doc.elements.forEach((item) => {
-      if (item.type !== "stroke") return;
-      for (let i = 0; i < item.points.length; i += 2) {
-        const x = item.points[i];
-        const y = item.points[i + 1];
-        if (!bounds) bounds = { x1: x, y1: y, x2: x, y2: y };
-        bounds.x1 = Math.min(bounds.x1, x);
-        bounds.y1 = Math.min(bounds.y1, y);
-        bounds.x2 = Math.max(bounds.x2, x);
-        bounds.y2 = Math.max(bounds.y2, y);
-      }
-    });
+  // Text sizes in board units per allowed size key, and the line metrics the SVG <text> and the edit
+  // field share so the text doesn't jump when it is opened for editing.
+  const TEXT_SIZES = { s: 16, m: 24, l: 40 };
+  const TEXT_LINE_HEIGHT = 1.25;
+  const TEXT_ASCENT = 1.05;
+  const ELLIPSE_SEGMENTS = 36;
+
+  // Fallback width when no canvas is around to measure (tests, fit before fonts load).
+  function estimateTextWidth(text, size) {
+    return text.length * size * 0.55;
+  }
+
+  function pointsBounds(points) {
+    const bounds = { x1: Infinity, y1: Infinity, x2: -Infinity, y2: -Infinity };
+    for (let i = 0; i < points.length; i += 2) {
+      bounds.x1 = Math.min(bounds.x1, points[i]);
+      bounds.y1 = Math.min(bounds.y1, points[i + 1]);
+      bounds.x2 = Math.max(bounds.x2, points[i]);
+      bounds.y2 = Math.max(bounds.y2, points[i + 1]);
+    }
     return bounds;
+  }
+
+  function elementBounds(item, measure = estimateTextWidth) {
+    if (item.type === "stroke") return pointsBounds(item.points);
+    if (item.type === "line" || item.type === "arrow") return pointsBounds([item.x1, item.y1, item.x2, item.y2]);
+    if (item.type === "text") {
+      const size = TEXT_SIZES[item.size];
+      const lines = item.text.split("\n");
+      const width = Math.max(...lines.map((line) => measure(line, size)));
+      return { x1: item.x, y1: item.y, x2: item.x + width, y2: item.y + lines.length * size * TEXT_LINE_HEIGHT };
+    }
+    return { x1: item.x, y1: item.y, x2: item.x + item.w, y2: item.y + item.h };
+  }
+
+  // Bounding box of everything on the board, or null for an empty board.
+  function documentBounds(doc, measure) {
+    if (!doc.elements.length) return null;
+    return doc.elements.reduce(
+      (bounds, item) => {
+        const box = elementBounds(item, measure);
+        return {
+          x1: Math.min(bounds.x1, box.x1),
+          y1: Math.min(bounds.y1, box.y1),
+          x2: Math.max(bounds.x2, box.x2),
+          y2: Math.max(bounds.y2, box.y2),
+        };
+      },
+      { x1: Infinity, y1: Infinity, x2: -Infinity, y2: -Infinity },
+    );
+  }
+
+  // The drawn line of an element as a flat polyline; closed for rectangles, ellipses and text boxes.
+  function outline(item, measure) {
+    if (item.type === "stroke") return item.points;
+    if (item.type === "line" || item.type === "arrow") return [item.x1, item.y1, item.x2, item.y2];
+    if (item.type === "ellipse") {
+      const rx = item.w / 2;
+      const ry = item.h / 2;
+      const points = [];
+      for (let i = 0; i <= ELLIPSE_SEGMENTS; i += 1) {
+        const angle = (i / ELLIPSE_SEGMENTS) * 2 * Math.PI;
+        points.push(item.x + rx + rx * Math.cos(angle), item.y + ry + ry * Math.sin(angle));
+      }
+      return points;
+    }
+    const box = elementBounds(item, measure);
+    return [box.x1, box.y1, box.x2, box.y1, box.x2, box.y2, box.x1, box.y2, box.x1, box.y1];
+  }
+
+  function contains(item, x, y, tolerance, measure) {
+    if (item.type === "ellipse") {
+      const dx = (x - item.x - item.w / 2) / (item.w / 2 + tolerance);
+      const dy = (y - item.y - item.h / 2) / (item.h / 2 + tolerance);
+      return dx * dx + dy * dy <= 1;
+    }
+    const box = elementBounds(item, measure);
+    return x >= box.x1 - tolerance && x <= box.x2 + tolerance && y >= box.y1 - tolerance && y <= box.y2 + tolerance;
+  }
+
+  // Whether a pointer moving from (ax, ay) to (bx, by) touches the element: its drawn line for outlines,
+  // anywhere inside for text and filled shapes. A click passes the same point twice.
+  function hitsElement(item, ax, ay, bx, by, tolerance, measure) {
+    const solid = item.type === "text" || ((item.type === "rect" || item.type === "ellipse") && item.fill);
+    if (solid && contains(item, bx, by, tolerance, measure)) return true;
+    const reach = item.type === "text" ? tolerance : tolerance + item.width / 2;
+    return hitsStroke(outline(item, measure), ax, ay, bx, by, reach);
+  }
+
+  // A copy shifted by (dx, dy) and rounded the way the server stores it.
+  function moveElement(item, dx, dy) {
+    const moved = { ...item };
+    if (item.type === "stroke") {
+      moved.points = item.points.map((value, index) => coordinate(value + (index % 2 ? dy : dx)));
+    } else if (item.type === "line" || item.type === "arrow") {
+      moved.x1 = coordinate(item.x1 + dx);
+      moved.y1 = coordinate(item.y1 + dy);
+      moved.x2 = coordinate(item.x2 + dx);
+      moved.y2 = coordinate(item.y2 + dy);
+    } else {
+      moved.x = coordinate(item.x + dx);
+      moved.y = coordinate(item.y + dy);
+      if ("w" in item) {
+        moved.w = coordinate(item.w);
+        moved.h = coordinate(item.h);
+      }
+    }
+    return moved;
+  }
+
+  // The box spanned by a drag from (x1, y1) to (x2, y2) in any direction; `square` keeps the longer side.
+  function normalizeBox(x1, y1, x2, y2, square) {
+    let w = x2 - x1;
+    let h = y2 - y1;
+    if (square) {
+      const side = Math.max(Math.abs(w), Math.abs(h));
+      w = Math.sign(w || 1) * side;
+      h = Math.sign(h || 1) * side;
+    }
+    return { x: Math.min(x1, x1 + w), y: Math.min(y1, y1 + h), w: Math.abs(w), h: Math.abs(h) };
+  }
+
+  // The two barbs of an arrow tip at (x2, y2), sized by the stroke width but never longer than the arrow.
+  function arrowHead(x1, y1, x2, y2, width) {
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    const length = Math.min(Math.max(10, width * 3.5), Math.hypot(x2 - x1, y2 - y1) * 0.6 || 10);
+    const spread = Math.PI / 7;
+    const barb = (side) => {
+      const x = x2 - length * Math.cos(angle + side * spread);
+      const y = y2 - length * Math.sin(angle + side * spread);
+      return `${Math.round(x * 10) / 10} ${Math.round(y * 10) / 10}`;
+    };
+    return `M${barb(-1)}L${x2} ${y2}L${barb(1)}`;
   }
 
   globalThis.LunoraWhiteboardFormat = {
     COLORS,
     WIDTHS,
     LIMITS,
+    TEXT_SIZES,
+    TEXT_LINE_HEIGHT,
+    TEXT_ASCENT,
+    coordinate,
     emptyDocument,
     normalizeDocument,
     pointCount,
     simplifyStroke,
     strokePath,
     hitsStroke,
+    estimateTextWidth,
+    elementBounds,
     documentBounds,
+    hitsElement,
+    moveElement,
+    normalizeBox,
+    arrowHead,
   };
 })();
