@@ -931,10 +931,10 @@ def import_docx_note(user, filename, data, *, folder_id=None):
         data, PurePath(filename).stem.strip() or "Importierte Notiz"
     )
     validate_note_document(document)
-    ensure_storage_available(user, sum(len(content) for _id, _name, _type, content in images))
     saved = []
     try:
         with transaction.atomic():
+            ensure_storage_available(user, sum(len(content) for _id, _name, _type, content in images))
             note = create_note(user, title=title, folder_id=folder_id)
             for file_id, name, content_type, content in images:
                 attachment = NoteAttachment(

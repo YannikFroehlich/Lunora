@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Fixed: several uploads sent at the same moment could together go past the storage limit; they
+  are now checked one after another.
 - Passkeys can be renamed: click a passkey's name under Settings → Sicherheit, type the new one and
   press Enter.
 - Sign in with a passkey alone: the login page has "Mit Passkey anmelden", which needs neither

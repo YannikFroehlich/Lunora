@@ -79,6 +79,12 @@ class StorageQuotaServiceTests(StorageQuotaTestCase):
         ensure_storage_available(self.user, 5000 * MB)
         self.assertEqual(storage_summary(self.user), {"used": 5000 * MB, "limit": None, "percent": 0})
 
+    def test_check_locks_the_uploaders_row_so_parallel_uploads_wait(self):
+        set_limit(10)
+        with patch.object(User.objects, "select_for_update", wraps=User.objects.select_for_update) as lock:
+            create_attachment(self.user, self.note.id, png_upload(), kind=NoteAttachment.KIND_IMAGE)
+        lock.assert_called_once_with()
+
     def test_nothing_new_passes_even_when_over_the_limit(self):
         set_limit(1)
         self.fill_storage(5)
