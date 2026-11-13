@@ -122,6 +122,32 @@
   font-size: var(--text-3xl);
 }
 
+.admin-health-list {
+  display: grid;
+  gap: 6px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-health-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-health-state.is-ok {
+  color: var(--color-success);
+}
+
+.admin-health-state.is-warning {
+  color: var(--color-warning);
+}
+
+.admin-health-state.is-error {
+  color: var(--color-danger);
+}
+
 .admin-metric-grid span,
 .admin-muted,
 .admin-danger-panel p {

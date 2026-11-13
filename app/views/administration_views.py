@@ -7,9 +7,18 @@ from django.utils import timezone
 
 from app.forms import StorageLimitForm, SystemSettingsForm
 from app.models import AuditLogEntry, UserSession
-from app.services import audit_log
+from app.services import audit_log, health
 from app.services.storage_quota import top_storage_users, total_storage_used
 from app.services.system_settings import get_system_settings, logout_other_authenticated_sessions
+from app.services.user_preferences import format_user_datetime
+
+HEALTH_LABELS = {"database": "Datenbank", "cache": "Cache", "automations": "Automationen"}
+HEALTH_STATES = {
+    health.OK: ("OK", "ok"),
+    health.FAILING: ("Fehler", "error"),
+    health.STALE: ("Überfällig", "warning"),
+    health.UNKNOWN: ("Unbekannt", "warning"),
+}
 
 
 def _active_session_stats():
@@ -21,6 +30,21 @@ def _active_session_stats():
         "authenticated_sessions": live_rows.count(),
         "authenticated_users": live_rows.values("user_id").distinct().count(),
     }
+
+
+def _system_health(user):
+    _healthy, checks = health.health_report()
+    items = []
+    for name, state in checks.items():
+        label, tone = HEALTH_STATES[state]
+        if name == "automations" and state == health.UNKNOWN and checks["database"] == health.OK:
+            label = "Noch nie gelaufen"
+        items.append({"label": HEALTH_LABELS[name], "state": label, "tone": tone})
+    try:
+        last_run = health.last_automation_run() if checks["database"] == health.OK else None
+    except Exception:  # the health check has already logged why the database is unreadable
+        last_run = None
+    return {"items": items, "last_automation_run": format_user_datetime(last_run, user)}
 
 
 @login_required
@@ -87,6 +111,7 @@ def administration(request):
             "storage_form": storage_form,
             "system_settings": settings_obj,
             "session_stats": _active_session_stats(),
+            "system_health": _system_health(request.user),
             "total_storage_used": total_storage_used(),
             "top_storage_users": top_storage_users(),
             "audit_log": audit_log.audit_log_page(

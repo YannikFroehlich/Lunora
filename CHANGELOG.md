@@ -6,6 +6,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Administration: the status panel shows whether the database, the cache and the background
+  automations (reminders, push, calendar syncs) are healthy, plus the time of the last automation
+  pass; the "Werkzeuge" switch now names every tool it turns off.
+
 ## 2026-11-13
 
 - Fixed: the weather map showed OpenStreetMap's "Access blocked" tiles, because its tile requests
