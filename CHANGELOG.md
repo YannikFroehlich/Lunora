@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+## 2026-11-13
+
 - Whiteboard: resize a selected element by its corners (or a line by its ends, Shift keeps the
   proportions), a highlighter, an optional dot grid that shapes snap to, "nach vorn"/"nach hinten",
   copy, cut and paste with Strg+C/X/V (also into another whiteboard), a thumbnail of each board in
@@ -25,8 +27,6 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 - Administration: a "Testmail an mich senden" button checks the e-mail delivery, a new Konten panel
   counts accounts (total, active this week, unconfirmed e-mail, with 2FA) and links to the Django
   admin, and the audit log can be searched by account.
-
-## 2026-11-13
 
 - The password forms in Settings → Sicherheit (change password, switch off 2FA, delete account)
   carry the account name for password managers, so they can update the right saved login.
