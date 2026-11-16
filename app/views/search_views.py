@@ -3,7 +3,7 @@ from django.db.models import Q
 from django.shortcuts import render
 from django.urls import reverse
 
-from app.models import Conversation, UmlDiagram, VacationPeriod, VocabularyList, Whiteboard
+from app.models import Conversation, UmlDiagram, VacationPeriod, VocabularyList
 from app.services.note_search import build_snippet, highlight_text, parse_search_query, search_notes
 from app.services.notes import accessible_notes
 from app.services.system_settings import feature_flags
@@ -14,6 +14,7 @@ from app.services.user_preferences import (
     format_user_time,
     localtime_for_user,
 )
+from app.services.whiteboards import accessible_whiteboards
 from app.view_models import _calendar_visible_events_query
 from app.views.message_views import (
     _build_inbox_items,
@@ -197,15 +198,22 @@ def global_search(request):
             }
             for diagram in diagrams
         ]
-        boards = Whiteboard.objects.filter(owner=request.user, title__icontains=query).order_by(
-            "-updated_at", "-id"
-        )[:SEARCH_RESULT_LIMIT]
+        # Texts on a board count too; the snippet shows where the hit is when it isn't in the title.
+        boards = (
+            accessible_whiteboards(request.user)
+            .filter(Q(title__icontains=query) | Q(plain_text__icontains=query))
+            .order_by("-updated_at", "-id")[:SEARCH_RESULT_LIMIT]
+        )
+        parsed = parse_search_query(query)
         tool_results += [
             {
                 "title": board.title,
-                "subtitle": "Whiteboard",
+                "subtitle": "Whiteboard" if board.owner_id == request.user.id else "Geteiltes Whiteboard",
                 "icon": "fa-pen-ruler",
                 "url": reverse("whiteboard_editor", args=[board.pk]),
+                "snippet": build_snippet(board.plain_text, parsed)
+                if query.lower() not in board.title.lower()
+                else [],
             }
             for board in boards
         ]

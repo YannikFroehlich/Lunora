@@ -6,6 +6,16 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Whiteboards can be shared: in the overview, "Teilen" adds people by e-mail or username, who then
+  draw and rename along (and get an inbox notification). Open editors of a shared board pick up the
+  others' changes every few seconds, and if two people save at the same time, Lunora asks whether to
+  keep your version or load theirs instead of silently overwriting. Members can leave a board.
+- The global search finds text written on whiteboards (own and shared), with the matching passage
+  shown under the result.
+- Faster pages: the calendar no longer runs one query per event for its invitees, the system
+  settings are read once per request instead of up to a dozen times, and the chat's live updates
+  count unread notifications once instead of for every refreshed part.
+
 ## 2026-11-13
 
 - Whiteboard: resize a selected element by its corners (or a line by its ends, Shift keeps the

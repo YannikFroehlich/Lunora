@@ -34,7 +34,7 @@
     {% if boards %}
     <ul class="uml-diagram-list">
         {% for board in boards %}
-        <li class="glass-panel uml-diagram-card">
+        <li class="glass-panel uml-diagram-card whiteboard-card" id="board-{{ board.id }}">
             <a class="uml-diagram-link" href="{% url 'whiteboard_editor' board.id %}">
                 {% if board.preview %}
                 <span class="whiteboard-thumb" aria-hidden="true">{{ board.preview }}</span>
@@ -43,7 +43,7 @@
                 {% endif %}
                 <span>
                     <strong>{{ board.title }}</strong>
-                    <small>{{ board.element_count }} Element(e) · geändert {{ board.updated_label }}</small>
+                    <small>{{ board.element_count }} Element(e) · geändert {{ board.updated_label }}{% if not board.is_own %} · geteilt von {{ board.owner_name }}{% elif board.members %} · geteilt mit {{ board.members|length }}{% endif %}</small>
                 </span>
             </a>
             <div class="uml-diagram-actions">
@@ -53,13 +53,54 @@
                     <input type="hidden" name="board_id" value="{{ board.id }}">
                     <button class="icon-button" type="submit" aria-label="„{{ board.title }}“ duplizieren" title="Duplizieren"><i class="fa-regular fa-copy" aria-hidden="true"></i></button>
                 </form>
+                {% if board.is_own %}
                 <form method="post" data-confirm="Dieses Whiteboard wirklich löschen?">
                     {% csrf_token %}
                     <input type="hidden" name="form_name" value="whiteboard_delete">
                     <input type="hidden" name="board_id" value="{{ board.id }}">
                     <button class="icon-button" type="submit" aria-label="„{{ board.title }}“ löschen" title="Löschen"><i class="fa-regular fa-trash-can" aria-hidden="true"></i></button>
                 </form>
+                {% else %}
+                <form method="post" data-confirm="Das Whiteboard von {{ board.owner_name }} wirklich verlassen?">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="whiteboard_leave">
+                    <input type="hidden" name="board_id" value="{{ board.id }}">
+                    <button class="icon-button" type="submit" aria-label="„{{ board.title }}“ verlassen" title="Verlassen"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i></button>
+                </form>
+                {% endif %}
             </div>
+            {% if board.is_own %}
+            <details class="whiteboard-share">
+                <summary><i class="fa-solid fa-user-group" aria-hidden="true"></i> Teilen{% if board.members %} ({{ board.members|length }}){% endif %}</summary>
+                <p>Alle, mit denen du teilst, zeichnen und benennen mit. Was jemand ändert, sehen die anderen nach ein paar Sekunden.</p>
+                {% if board.members %}
+                <ul class="shopping-members">
+                    {% for member in board.members %}
+                    <li>
+                        <span>{{ member.name }}</span>
+                        <form method="post" data-confirm="{{ member.name }} wirklich vom Whiteboard entfernen?">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_name" value="whiteboard_unshare">
+                            <input type="hidden" name="board_id" value="{{ board.id }}">
+                            <input type="hidden" name="user_id" value="{{ member.id }}">
+                            <button class="icon-button" type="submit" aria-label="{{ member.name }} entfernen" title="Entfernen"><i class="fa-solid fa-user-minus" aria-hidden="true"></i></button>
+                        </form>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+                <form class="shopping-share-form" method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="whiteboard_share">
+                    <input type="hidden" name="board_id" value="{{ board.id }}">
+                    <label class="vocab-field">
+                        <span>E-Mail oder Benutzername</span>
+                        <input type="text" name="identifier" maxlength="254" autocomplete="off" required>
+                    </label>
+                    <button class="ghost-button" type="submit"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i> Teilen</button>
+                </form>
+            </details>
+            {% endif %}
         </li>
         {% endfor %}
     </ul>

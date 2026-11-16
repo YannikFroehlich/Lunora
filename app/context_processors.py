@@ -47,19 +47,26 @@ def appearance_settings(request):
     return {"appearance": _appearance_from_profile(profile)}
 
 
-def system_settings(request):
-    flags = feature_flags()
-    unread_notification_count = 0
-    if request.user.is_authenticated:
+def _unread_notification_count(request):
+    # Live-update views render several partials with the request, and each render runs this
+    # processor; count once per request (views mark things read before they render).
+    if not hasattr(request, "_lunora_unread_notifications"):
         try:
-            unread_notification_count = UserNotification.objects.filter(
+            count = UserNotification.objects.filter(
                 recipient=request.user,
                 kind__in=enabled_notification_kinds(request.user, CHANNEL_INBOX),
                 read_at__isnull=True,
             ).count()
         except (OperationalError, ProgrammingError):
             # Keep pages usable while a deployment is between code update and migration.
-            unread_notification_count = 0
+            count = 0
+        request._lunora_unread_notifications = count
+    return request._lunora_unread_notifications
+
+
+def system_settings(request):
+    flags = feature_flags()
+    unread_notification_count = _unread_notification_count(request) if request.user.is_authenticated else 0
 
     return {
         "system_settings": get_system_settings(),

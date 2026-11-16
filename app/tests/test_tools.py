@@ -278,6 +278,7 @@ class WhiteboardTests(TestCase):
         return {"version": 1, "elements": list(elements)}
 
     def _put(self, board, payload):
+        payload = {"base_revision": Whiteboard.objects.get(pk=board.pk).revision, **payload}
         return self.client.put(
             f"/tools/whiteboard/api/{board.pk}/", data=json.dumps(payload), content_type="application/json"
         )
@@ -573,6 +574,136 @@ class WhiteboardTests(TestCase):
         self.assertContains(response, 'id="whiteboard-data"')
         self.assertNotContains(response, "<b>Hi</b>")
         self.assertEqual(response.context["board_payload"]["document"]["elements"][0]["text"], "<b>Hi</b>")
+
+
+class WhiteboardSharingTests(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(
+            username="lea@example.com", email="lea@example.com", password="pw"
+        )
+        self.member = User.objects.create_user(
+            username="tom@example.com", email="tom@example.com", password="pw"
+        )
+        self.stranger = User.objects.create_user(
+            username="max@example.com", email="max@example.com", password="pw"
+        )
+        self.board = Whiteboard.objects.create(owner=self.owner, title="Umbau")
+        self.client.force_login(self.owner)
+
+    def _share(self, identifier="tom@example.com"):
+        return self.client.post(
+            "/tools/whiteboard/",
+            {"form_name": "whiteboard_share", "board_id": self.board.pk, "identifier": identifier},
+        )
+
+    def _put(self, payload):
+        return self.client.put(
+            f"/tools/whiteboard/api/{self.board.pk}/",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+    def _text(self, text):
+        element = {"id": "t1", "type": "text", "color": "default", "x": 0, "y": 0, "size": "m", "text": text}
+        return {"version": 1, "elements": [element]}
+
+    def test_owner_shares_and_member_opens_edits_and_is_notified(self):
+        self._share()
+
+        notification = UserNotification.objects.get(recipient=self.member)
+        self.assertEqual(notification.kind, UserNotification.KIND_WHITEBOARD_SHARE)
+        self.assertEqual(notification.url, f"/tools/whiteboard/{self.board.pk}/")
+
+        self.client.force_login(self.member)
+        self.assertContains(self.client.get("/tools/whiteboard/"), "geteilt von")
+        response = self.client.get(f"/tools/whiteboard/{self.board.pk}/")
+        self.assertContains(response, 'data-shared="true"')
+
+        response = self._put({"title": "Umbau 2", "document": self._text("Sofa"), "base_revision": 1})
+        self.assertEqual(response.json()["revision"], 2)
+        self.board.refresh_from_db()
+        self.assertEqual((self.board.title, self.board.revision), ("Umbau 2", 2))
+
+    def test_share_rejects_self_unknown_duplicate_and_non_owners(self):
+        self._share("lea@example.com")
+        self._share("nobody@example.com")
+        self._share()
+        self._share()
+        self.assertEqual(self.board.shares.count(), 1)
+
+        self.client.force_login(self.member)
+        response = self.client.post(
+            "/tools/whiteboard/",
+            {"form_name": "whiteboard_share", "board_id": self.board.pk, "identifier": "max@example.com"},
+        )
+        self.assertEqual(response.status_code, 404)
+        self.client.post("/tools/whiteboard/", {"form_name": "whiteboard_delete", "board_id": self.board.pk})
+        self.assertTrue(Whiteboard.objects.filter(pk=self.board.pk).exists())
+
+    def test_strangers_and_former_members_have_no_access(self):
+        self._share()
+        self.client.force_login(self.stranger)
+        self.assertEqual(self.client.get(f"/tools/whiteboard/{self.board.pk}/").status_code, 404)
+        self.assertEqual(
+            self._put({"title": "X", "document": self._text("X"), "base_revision": 1}).status_code, 404
+        )
+
+        self.client.force_login(self.member)
+        self.client.post("/tools/whiteboard/", {"form_name": "whiteboard_leave", "board_id": self.board.pk})
+        self.assertFalse(self.board.shares.exists())
+        self.assertFalse(UserNotification.objects.filter(recipient=self.member).exists())
+        self.assertEqual(self.client.get(f"/tools/whiteboard/{self.board.pk}/").status_code, 404)
+
+    def test_owner_removes_member(self):
+        self._share()
+        self.client.post(
+            "/tools/whiteboard/",
+            {"form_name": "whiteboard_unshare", "board_id": self.board.pk, "user_id": self.member.pk},
+        )
+        self.assertFalse(self.board.shares.exists())
+
+    def test_stale_revision_conflicts_unless_resolved(self):
+        self.assertEqual(
+            self._put({"title": "A", "document": self._text("A"), "base_revision": 1}).status_code, 200
+        )
+
+        response = self._put({"title": "B", "document": self._text("B"), "base_revision": 1})
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["board"]["title"], "A")
+        self.assertEqual(response.json()["board"]["revision"], 2)
+
+        response = self._put(
+            {"title": "B", "document": self._text("B"), "base_revision": 1, "conflict_resolution": True}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.board.refresh_from_db()
+        self.assertEqual((self.board.title, self.board.revision), ("B", 3))
+        self.assertEqual(self._put({"title": "C", "document": self._text("C")}).status_code, 400)
+
+    def test_poll_sends_the_document_only_when_the_revision_changed(self):
+        url = f"/tools/whiteboard/api/{self.board.pk}/"
+        self.assertNotIn("board", self.client.get(f"{url}?revision=1").json())
+        self._put({"title": "A", "document": self._text("Neu"), "base_revision": 1})
+        response = self.client.get(f"{url}?revision=1")
+        self.assertEqual(response["Cache-Control"], "no-store")
+        self.assertEqual(response.json()["board"]["document"]["elements"][0]["text"], "Neu")
+
+    def test_global_search_finds_board_texts_of_own_and_shared_boards(self):
+        self._put({"title": "Umbau", "document": self._text("Rotes Sofa ans Fenster"), "base_revision": 1})
+        self.board.refresh_from_db()
+        self.assertEqual(self.board.plain_text, "Rotes Sofa ans Fenster")
+
+        response = self.client.get("/search/", {"q": "sofa"})
+        [result] = response.context["tool_results"]
+        self.assertEqual(result["subtitle"], "Whiteboard")
+        self.assertTrue(any(part["match"] for part in result["snippet"]))
+
+        self._share()
+        self.client.force_login(self.member)
+        [result] = self.client.get("/search/", {"q": "sofa"}).context["tool_results"]
+        self.assertEqual(result["subtitle"], "Geteiltes Whiteboard")
+        self.client.force_login(self.stranger)
+        self.assertEqual(self.client.get("/search/", {"q": "sofa"}).context["tool_results"], [])
 
 
 class VocabularyTrainerTests(TestCase):

@@ -34,6 +34,18 @@ def empty_whiteboard_document():
     return {"version": WHITEBOARD_DOCUMENT_VERSION, "elements": []}
 
 
+def whiteboard_plain_text(document):
+    """The board's text elements joined by newlines; tolerates broken documents."""
+    elements = document.get("elements") if isinstance(document, dict) else None
+    if not isinstance(elements, list):
+        return ""
+    return "\n".join(
+        item["text"]
+        for item in elements
+        if isinstance(item, dict) and item.get("type") == "text" and isinstance(item.get("text"), str)
+    )
+
+
 def validate_whiteboard_document(document):
     """Return a cleaned copy of a client-supplied whiteboard or raise ValidationError."""
     if not isinstance(document, dict):

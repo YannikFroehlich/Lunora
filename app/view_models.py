@@ -28,7 +28,6 @@ from app.models import (
     VacationYear,
     VocabularyCard,
     VocabularyList,
-    Whiteboard,
 )
 from app.services.calendar_service import location_link
 from app.services.dashboard import (
@@ -65,6 +64,7 @@ from app.services.user_preferences import (
 )
 from app.services.vacation_planner import annual_summary, calendar_day_markers, upcoming_vacations
 from app.services.vocabulary import due_filter
+from app.services.whiteboards import accessible_whiteboards
 
 # Calendar views: the month grid plus time-grid views showing this many days side by side.
 CALENDAR_TIME_GRID_DAYS = {"week": 7, "three_days": 3, "day": 1}
@@ -491,7 +491,7 @@ TOOLS = (
 
 def get_tools_context(user):
     diagram_count = UmlDiagram.objects.filter(owner=user).count()
-    whiteboard_count = Whiteboard.objects.filter(owner=user).count()
+    whiteboard_count = accessible_whiteboards(user).count()
     vocabulary_count = VocabularyList.objects.filter(owner=user).count()
     due_cards = (
         VocabularyCard.objects.filter(vocabulary_list__owner=user).filter(due_filter(timezone.now())).count()
@@ -745,6 +745,7 @@ def get_calendar_context(user, *, year=None, month=None, view=None, day=None):
     events = list(
         _calendar_visible_events_query(user)
         .filter(start_at__lt=range_end, end_at__gt=range_start)
+        .prefetch_related("attendees")
         .order_by("start_at", "title")
     )
     events_by_date = _group_calendar_events_by_date(events, visible_start, visible_end, user)
@@ -1247,7 +1248,9 @@ def _calendar_event_manage_fields(event, user):
                 "edit_location": event.location,
                 "edit_reminder_minutes": "" if event.reminder_minutes is None else event.reminder_minutes,
                 "edit_attendee_ids": ",".join(
-                    str(user_id) for user_id in event.attendees.values_list("user_id", flat=True)
+                    # .all() so callers can prefetch attendees instead of one query per event.
+                    str(attendee.user_id)
+                    for attendee in event.attendees.all()
                 ),
             }
         )
@@ -1318,7 +1321,12 @@ def get_calendar_event_detail_context(event, user):
 
 
 def _upcoming_calendar_events(user, now):
-    events = _calendar_visible_events_query(user).filter(end_at__gte=now).order_by("start_at")[:6]
+    events = (
+        _calendar_visible_events_query(user)
+        .filter(end_at__gte=now)
+        .prefetch_related("attendees")
+        .order_by("start_at")[:6]
+    )
     items = [
         {
             "date": format_user_date(event.start_at, user),

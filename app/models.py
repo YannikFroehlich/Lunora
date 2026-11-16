@@ -16,7 +16,7 @@ from app.services.note_content import document_checklist_counts, empty_note_docu
 from app.services.note_files import note_upload_to, private_note_storage
 from app.services.note_search import refresh_note_search_vectors
 from app.services.uml_content import empty_uml_document
-from app.services.whiteboard_content import empty_whiteboard_document
+from app.services.whiteboard_content import empty_whiteboard_document, whiteboard_plain_text
 
 
 class AutomationHeartbeat(models.Model):
@@ -66,8 +66,12 @@ class SystemSettings(models.Model):
         verbose_name_plural = "Systemeinstellungen"
 
     def save(self, *args, **kwargs):
+        # Imported here because system_settings imports this module.
+        from app.services.system_settings import forget_cached_system_settings
+
         self.pk = 1
         super().save(*args, **kwargs)
+        forget_cached_system_settings()
 
     def __str__(self):
         return "Lunora Systemeinstellungen"
@@ -1011,6 +1015,10 @@ class Whiteboard(models.Model):
     title = models.CharField(max_length=120)
     # Validated by app.services.whiteboard_content before every save; never store client JSON directly.
     document = models.JSONField(default=empty_whiteboard_document)
+    # The board's text elements, derived from `document` in save() for the global search.
+    plain_text = models.TextField(blank=True, default="")
+    # Bumped by every save through the API; a stale base revision is refused with 409.
+    revision = models.PositiveIntegerField(default=1)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -1019,6 +1027,31 @@ class Whiteboard(models.Model):
 
     def __str__(self):
         return self.title
+
+    def save(self, *args, **kwargs):
+        update_fields = kwargs.get("update_fields")
+        if update_fields is None or "document" in update_fields:
+            self.plain_text = whiteboard_plain_text(self.document)
+            if update_fields is not None:
+                kwargs["update_fields"] = {*update_fields, "plain_text"}
+        super().save(*args, **kwargs)
+
+
+class WhiteboardShare(models.Model):
+    """Someone the owner shares a whiteboard with; members draw and rename like the owner."""
+
+    board = models.ForeignKey(Whiteboard, on_delete=models.CASCADE, related_name="shares")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="shared_whiteboards"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        constraints = [models.UniqueConstraint(fields=["board", "user"], name="unique_whiteboard_share")]
+
+    def __str__(self):
+        return f"{self.board} -> {self.user}"
 
 
 VOCABULARY_LANGUAGE_CHOICES = [
@@ -1462,6 +1495,7 @@ class UserNotification(models.Model):
     KIND_EVENT_COMMENT = "event_comment"
     KIND_SHOPPING_SHARE = "shopping_share"
     KIND_EXPENSE_GROUP = "expense_group"
+    KIND_WHITEBOARD_SHARE = "whiteboard_share"
     KIND_SECURITY_ALERT = "security_alert"
     KIND_CHOICES = [
         (KIND_CALENDAR_REMINDER, "Kalendererinnerung"),
@@ -1481,6 +1515,7 @@ class UserNotification(models.Model):
         (KIND_EVENT_COMMENT, "Terminkommentar"),
         (KIND_SHOPPING_SHARE, "Geteilter Einkaufszettel"),
         (KIND_EXPENSE_GROUP, "Geteilte Ausgaben"),
+        (KIND_WHITEBOARD_SHARE, "Geteiltes Whiteboard"),
         (KIND_SECURITY_ALERT, "Sicherheitswarnung"),
     ]
 
