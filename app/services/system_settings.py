@@ -1,3 +1,4 @@
+from contextvars import ContextVar
 from dataclasses import dataclass
 
 from django.contrib.sessions.models import Session
@@ -60,11 +61,41 @@ class DefaultSystemSettings:
     updated_at: object = None
 
 
+# One request reads the flags a dozen times (views, context processors, partials). Inside a request
+# scope (SystemSettingsScopeMiddleware) the row is loaded once; outside one, such as the automations
+# loop, every call reads the database, so a switch flipped on /administration/ applies at once.
+_request_scope = ContextVar("lunora_system_settings_scope", default=None)
+
+
+def system_settings_scope(get_response):
+    """Middleware: memoize the settings row for the duration of one request."""
+
+    def middleware(request):
+        token = _request_scope.set({})
+        try:
+            return get_response(request)
+        finally:
+            _request_scope.reset(token)
+
+    return middleware
+
+
+def forget_cached_system_settings():
+    scope = _request_scope.get()
+    if scope is not None:
+        scope.clear()
+
+
 def get_system_settings():
+    scope = _request_scope.get()
+    if scope and "settings" in scope:
+        return scope["settings"]
     try:
         settings_obj, _created = SystemSettings.objects.get_or_create(pk=1)
     except (OperationalError, ProgrammingError):
         return DefaultSystemSettings()
+    if scope is not None:
+        scope["settings"] = settings_obj
     return settings_obj
 
 

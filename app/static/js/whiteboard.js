@@ -10,6 +10,7 @@
   const HISTORY_LIMIT = 200;
   const MERGE_MS = 1500;
   const SAVE_DELAY = 1200;
+  const POLL_INTERVAL = 5000;
   const SIMPLIFY_PIXELS = 0.75;
   const ERASER_PIXELS = 10;
   const FIT_MAX_ZOOM = 4;
@@ -76,7 +77,8 @@
   const nodes = new Map();
   const pointers = new Map();
   const history = { undo: [], redo: [] };
-  const saveState = { dirty: false, saving: false, again: false, timer: null };
+  const saveState = { dirty: false, saving: false, again: false, timer: null, force: false };
+  let revision = payload.revision;
   let selection = new Set();
   let tool = "pen";
   let spaceHeld = false;
@@ -1074,15 +1076,22 @@
     saveState.saving = true;
     saveState.dirty = false;
     setStatus("Speichert …", "saving");
+    const force = saveState.force;
+    saveState.force = false;
     try {
       const response = await fetch(saveUrl, {
         method: "PUT",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
-        body: JSON.stringify({ title, document: doc }),
+        body: JSON.stringify({ title, document: doc, base_revision: revision, conflict_resolution: force }),
       });
       const data = await response.json().catch(() => ({}));
+      if (response.status === 409 && data.board) {
+        resolveConflict(data.board);
+        return;
+      }
       if (!response.ok || !data.ok) throw new Error(data.error || `Fehler ${response.status}`);
+      revision = data.revision;
       if (!saveState.dirty) setStatus("Gespeichert", "saved");
       document.title = `${title} | Whiteboard | Lunora`;
     } catch (error) {
@@ -1095,6 +1104,50 @@
         save();
       }
     }
+  }
+
+  // Someone else saved in between: keep this version (overwrite theirs) or take theirs.
+  function resolveConflict(board) {
+    const keepMine = window.confirm(
+      "Jemand anderes hat das Whiteboard inzwischen geändert.\n\nOK: deine Version speichern (überschreibt die andere).\nAbbrechen: die andere Version laden (deine letzten Änderungen gehen verloren).",
+    );
+    if (keepMine) {
+      saveState.force = true;
+      saveState.dirty = true;
+      saveState.again = true;
+    } else {
+      saveState.dirty = false;
+      applyRemote(board);
+    }
+  }
+
+  // Replaces the board with a version saved elsewhere. Undo steps refer to the old version, so
+  // they are dropped.
+  function applyRemote(board) {
+    revision = board.revision;
+    doc.elements = format.normalizeDocument(board.document).elements;
+    if (document.activeElement !== titleInput) titleInput.value = board.title;
+    history.undo = [];
+    history.redo = [];
+    render();
+    selection = new Set([...selection].filter((id) => nodes.has(id)));
+    drawSelection();
+    updateHistoryButtons();
+    setStatus("Gespeichert", "saved");
+  }
+
+  // Shared boards pick up the others' changes while this editor has nothing unsaved.
+  if (root.dataset.shared === "true") {
+    window.setInterval(async () => {
+      if (document.hidden || saveState.dirty || saveState.saving || interaction || editing) return;
+      try {
+        const response = await fetch(`${saveUrl}?revision=${revision}`, { credentials: "same-origin" });
+        const data = await response.json();
+        if (data.board && !saveState.dirty && !saveState.saving && !interaction && !editing) applyRemote(data.board);
+      } catch (_error) {
+        // Offline or a hiccup: the next poll tries again.
+      }
+    }, POLL_INTERVAL);
   }
 
   titleInput.addEventListener("input", markDirty);

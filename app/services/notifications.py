@@ -63,6 +63,7 @@ NOTIFICATION_PRESENTATION = {
     UserNotification.KIND_EVENT_COMMENT: ("fa-comments", "Termin", "calendar"),
     UserNotification.KIND_SHOPPING_SHARE: ("fa-basket-shopping", "Einkauf", "tools"),
     UserNotification.KIND_EXPENSE_GROUP: ("fa-scale-balanced", "Ausgaben", "tools"),
+    UserNotification.KIND_WHITEBOARD_SHARE: ("fa-pen-ruler", "Whiteboard", "tools"),
     UserNotification.KIND_SECURITY_ALERT: ("fa-shield-halved", "Sicherheit", "security"),
 }
 
@@ -304,6 +305,23 @@ def materialize_shopping_share_notification(share):
                 "body": "Ihr könnt jetzt beide eintragen und abhaken.",
                 "url": f"/tools/shopping/?list={share.owner_id}",
                 "source_key": f"shopping-share:{share.pk}",
+            }
+        ]
+    )
+
+
+def materialize_whiteboard_share_notification(share):
+    board = share.board
+    return _create_missing_user_notifications(
+        [
+            {
+                "recipient_id": share.user_id,
+                "actor_id": board.owner_id,
+                "kind": UserNotification.KIND_WHITEBOARD_SHARE,
+                "title": f"{_display_name(board.owner)} teilt ein Whiteboard mit dir",
+                "body": board.title,
+                "url": f"/tools/whiteboard/{board.pk}/",
+                "source_key": f"whiteboard-share:{share.pk}",
             }
         ]
     )
@@ -1106,7 +1124,7 @@ def send_pending_user_notification_emails(
     if include_vocabulary_shares:
         kinds.append(UserNotification.KIND_VOCABULARY_SHARE)
     if include_shopping_shares:
-        kinds.append(UserNotification.KIND_SHOPPING_SHARE)
+        kinds += [UserNotification.KIND_SHOPPING_SHARE, UserNotification.KIND_WHITEBOARD_SHARE]
     if include_expense_groups:
         kinds.append(UserNotification.KIND_EXPENSE_GROUP)
     if include_weather:

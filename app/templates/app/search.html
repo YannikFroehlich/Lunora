@@ -179,14 +179,14 @@
                 <i class="fa-solid {{ item.icon }}" aria-hidden="true"></i>
                 <span>
                     <strong>{{ item.title }}</strong>
-                    <small>{{ item.subtitle }}</small>
+                    <small>{{ item.subtitle }}{% if item.snippet %} · {% for part in item.snippet %}{% if part.match %}<mark class="search-hit">{{ part.text }}</mark>{% else %}{{ part.text }}{% endif %}{% endfor %}{% endif %}</small>
                 </span>
             </a>
             {% endfor %}
             {% else %}
             <div class="empty-state-card is-compact">
                 <i class="fa-solid fa-toolbox" aria-hidden="true"></i>
-                <div><strong>Keine Treffer</strong><p>Keine Vokabelliste und kein Diagramm passt zu &bdquo;{{ query }}&ldquo;.</p></div>
+                <div><strong>Keine Treffer</strong><p>Keine Vokabelliste, kein Diagramm und kein Whiteboard passt zu &bdquo;{{ query }}&ldquo;.</p></div>
             </div>
             {% endif %}
         </section>

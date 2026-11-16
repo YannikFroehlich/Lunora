@@ -8,7 +8,7 @@
 {% endblock %}
 
 {% block content %}
-<section class="page-shell uml-shell" data-whiteboard-editor data-save-url="{% url 'whiteboard_api' board.id %}" data-font-url="{% versioned_static 'vendor/inter/inter-latin-variable.woff2' %}">
+<section class="page-shell uml-shell" data-whiteboard-editor data-shared="{{ is_shared|yesno:'true,false' }}" data-save-url="{% url 'whiteboard_api' board.id %}" data-font-url="{% versioned_static 'vendor/inter/inter-latin-variable.woff2' %}">
     <header class="glass-panel uml-header">
         <h1 class="visually-hidden">Whiteboard „{{ board.title }}“ bearbeiten</h1>
         <a class="icon-button" href="{% url 'whiteboards' %}" aria-label="Zur Whiteboard-Übersicht" title="Zur Übersicht">

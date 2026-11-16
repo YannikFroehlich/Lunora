@@ -44,6 +44,13 @@ from app.services.uml_content import validate_uml_document
 from app.services.user_preferences import format_user_date, format_user_datetime, localtime_for_user
 from app.services.whiteboard_content import validate_whiteboard_document
 from app.services.whiteboard_preview import whiteboard_preview_svg
+from app.services.whiteboards import (
+    WhiteboardConflictError,
+    accessible_whiteboards,
+    end_whiteboard_share,
+    save_whiteboard,
+    share_whiteboard,
+)
 from app.view_models import get_tools_context
 from app.views.navigation import local_return_to, posted_id
 from app.views.trash_views import trashed_message
@@ -593,7 +600,7 @@ def whiteboards(request):
         board = Whiteboard.objects.create(owner=request.user, title=title)
         return redirect("whiteboard_editor", board_id=board.pk)
     if form_name == "whiteboard_duplicate":
-        source = get_object_or_404(Whiteboard, owner=request.user, pk=posted_id(request, "board_id"))
+        source = get_object_or_404(accessible_whiteboards(request.user), pk=posted_id(request, "board_id"))
         copy_title = f"{source.title} (Kopie)"[:UML_TITLE_MAX_LENGTH]
         board = Whiteboard.objects.create(owner=request.user, title=copy_title, document=source.document)
         django_messages.success(request, "Whiteboard dupliziert.")
@@ -603,49 +610,93 @@ def whiteboards(request):
         if deleted:
             django_messages.success(request, "Whiteboard gelöscht.")
         return redirect("whiteboards")
+    if form_name == "whiteboard_share":
+        board = get_object_or_404(Whiteboard, owner=request.user, pk=posted_id(request, "board_id"))
+        error = share_whiteboard(board, request.POST.get("identifier", "")[:254])
+        if error:
+            django_messages.error(request, error)
+        else:
+            django_messages.success(request, "Das Whiteboard ist jetzt geteilt.")
+        return redirect(f"{reverse('whiteboards')}#board-{board.pk}")
+    if form_name == "whiteboard_unshare":
+        board = get_object_or_404(Whiteboard, owner=request.user, pk=posted_id(request, "board_id"))
+        user_id = posted_id(request, "user_id")
+        if user_id is not None:
+            end_whiteboard_share(board.pk, user_id)
+        return redirect(f"{reverse('whiteboards')}#board-{board.pk}")
+    if form_name == "whiteboard_leave":
+        board_id = posted_id(request, "board_id")
+        if board_id is not None:
+            end_whiteboard_share(board_id, request.user.pk)
+        return redirect("whiteboards")
 
-    boards = [
+    boards = list(
+        accessible_whiteboards(request.user)
+        .select_related("owner__profile")
+        .prefetch_related("shares__user__profile")
+    )
+    items = [
         {
             "id": board.pk,
             "title": board.title,
             "element_count": len(board.document.get("elements", [])),
             "preview": whiteboard_preview_svg(board.document),
             "updated_label": format_user_datetime(board.updated_at, request.user),
+            "is_own": board.owner_id == request.user.pk,
+            "owner_name": display_name(board.owner),
+            "members": [
+                {"id": share.user_id, "name": display_name(share.user)} for share in board.shares.all()
+            ],
         }
-        for board in Whiteboard.objects.filter(owner=request.user)
+        for board in boards
     ]
     return render(
         request,
         "app/whiteboards.html",
-        {"active_page": "tools", "boards": boards, "title_max_length": UML_TITLE_MAX_LENGTH},
+        {"active_page": "tools", "boards": items, "title_max_length": UML_TITLE_MAX_LENGTH},
     )
+
+
+def _whiteboard_payload(board):
+    return {"id": board.pk, "title": board.title, "document": board.document, "revision": board.revision}
 
 
 @login_required
 def whiteboard_editor(request, board_id):
     if not feature_enabled("tools"):
         return disabled_feature_response(request, "tools")
-    board = get_object_or_404(Whiteboard, owner=request.user, pk=board_id)
+    board = get_object_or_404(accessible_whiteboards(request.user), pk=board_id)
     return render(
         request,
         "app/whiteboard_editor.html",
         {
             "active_page": "tools",
             "board": board,
-            "board_payload": {"id": board.pk, "title": board.title, "document": board.document},
+            "board_payload": _whiteboard_payload(board),
+            # Only shared boards poll for the others' changes.
+            "is_shared": board.shares.exists(),
             "title_max_length": UML_TITLE_MAX_LENGTH,
         },
     )
 
 
 @login_required
-@require_http_methods(["PUT"])
+@require_http_methods(["GET", "PUT"])
 def whiteboard_api(request, board_id):
     if not feature_enabled("tools"):
         return disabled_feature_response(request, "tools", json_response=True)
-    board = Whiteboard.objects.filter(owner=request.user, pk=board_id).first()
-    if board is None:
-        return JsonResponse({"ok": False, "error": "Whiteboard nicht gefunden."}, status=404)
+    headers = {"Cache-Control": "no-store"}
+    if request.method == "GET":
+        board = accessible_whiteboards(request.user).filter(pk=board_id).first()
+        if board is None:
+            return JsonResponse(
+                {"ok": False, "error": "Whiteboard nicht gefunden."}, status=404, headers=headers
+            )
+        # The editor polls this; the document only travels when it changed since `?revision=`.
+        known = request.GET.get("revision", "")
+        if known.isdigit() and int(known) == board.revision:
+            return JsonResponse({"ok": True, "revision": board.revision}, headers=headers)
+        return JsonResponse({"ok": True, "board": _whiteboard_payload(board)}, headers=headers)
 
     try:
         payload = json.loads(request.body.decode("utf-8"))
@@ -653,6 +704,9 @@ def whiteboard_api(request, board_id):
         return JsonResponse({"ok": False, "error": "Die Anfrage muss gültiges JSON sein."}, status=400)
     if not isinstance(payload, dict):
         return JsonResponse({"ok": False, "error": "Die Anfrage ist ungültig."}, status=400)
+    base_revision = payload.get("base_revision")
+    if type(base_revision) is not int:
+        return JsonResponse({"ok": False, "error": "Die Revision fehlt."}, status=400)
 
     try:
         title = _clean_title(payload.get("title"))
@@ -660,7 +714,26 @@ def whiteboard_api(request, board_id):
     except ValidationError as error:
         return JsonResponse({"ok": False, "error": " ".join(error.messages)}, status=400)
 
-    board.title = title
-    board.document = document
-    board.save(update_fields=["title", "document", "updated_at"])
-    return JsonResponse({"ok": True, "updated_label": format_user_datetime(board.updated_at, request.user)})
+    try:
+        board = save_whiteboard(
+            board_id,
+            request.user,
+            title=title,
+            document=document,
+            base_revision=base_revision,
+            force=payload.get("conflict_resolution") is True,
+        )
+    except WhiteboardConflictError as conflict:
+        return JsonResponse(
+            {"ok": False, "error": "revision_conflict", "board": _whiteboard_payload(conflict.board)},
+            status=409,
+        )
+    if board is None:
+        return JsonResponse({"ok": False, "error": "Whiteboard nicht gefunden."}, status=404)
+    return JsonResponse(
+        {
+            "ok": True,
+            "revision": board.revision,
+            "updated_label": format_user_datetime(board.updated_at, request.user),
+        }
+    )

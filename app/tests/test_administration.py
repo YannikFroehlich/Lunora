@@ -5,7 +5,10 @@ from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.core import mail
+from django.db import connection
+from django.http import HttpResponse
 from django.test import Client, TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from app.forms import SystemSettingsForm
@@ -19,6 +22,7 @@ from app.models import (
 )
 from app.services import audit_log
 from app.services.deployment import deployed_commit
+from app.services.system_settings import feature_enabled, system_settings_scope
 
 
 class AdministrationFeatureFlagTests(TestCase):
@@ -464,6 +468,28 @@ class AuditLogTests(TestCase):
         with patch("app.services.audit_log.AuditLogEntry.objects.create", side_effect=RuntimeError("db")):
             with self.assertLogs("app.services.audit_log", level="ERROR"):
                 self.assertIsNone(audit_log.record(AuditLogEntry.ACTION_LOGIN, actor=self.user))
+
+
+class SystemSettingsMemoTests(TestCase):
+    def test_a_request_reads_the_settings_row_once_and_a_save_refreshes_it(self):
+        user = User.objects.create_user(username="lea@example.com", email="lea@example.com", password="pw")
+        self.client.force_login(user)
+        SystemSettings.objects.create(tools_enabled=True)
+
+        with CaptureQueriesContext(connection) as queries:
+            self.assertEqual(self.client.get("/home/").status_code, 200)
+        reads = [q for q in queries.captured_queries if 'FROM "app_systemsettings"' in q["sql"]]
+        self.assertEqual(len(reads), 1)
+
+        def page_after_switching_tools_off(request):
+            self.assertTrue(feature_enabled("tools"))
+            SystemSettings.objects.update_or_create(pk=1, defaults={"tools_enabled": False})
+            return HttpResponse(str(feature_enabled("tools")))
+
+        self.assertEqual(system_settings_scope(page_after_switching_tools_off)(None).content, b"False")
+        # Outside a request scope every call reads the database.
+        SystemSettings.objects.filter(pk=1).update(tools_enabled=True)
+        self.assertTrue(feature_enabled("tools"))
 
 
 class DeployedCommitTests(TestCase):
