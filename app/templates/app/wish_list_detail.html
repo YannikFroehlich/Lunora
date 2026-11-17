@@ -19,7 +19,7 @@
                 {% if unpriced and totals %}<small>({{ unpriced }} Artikel ohne Preis)</small>{% endif %}
             </p>
         </div>
-        <i class="fa-brands fa-amazon hero-branch" aria-hidden="true"></i>
+        <i class="fa-solid fa-gift hero-branch" aria-hidden="true"></i>
     </header>
 
     <section class="glass-panel uml-create-panel">
@@ -27,8 +27,8 @@
             {% csrf_token %}
             <input type="hidden" name="form_name" value="wish_item_add">
             <label class="vocab-field">
-                <span>Amazon-Link</span>
-                <input type="url" name="url" value="{{ add_url }}" maxlength="500" placeholder="https://www.amazon.de/dp/… oder https://amzn.eu/…" autocomplete="off" required>
+                <span>Link zum Produkt</span>
+                <input type="url" name="url" value="{{ add_url }}" maxlength="500" placeholder="https://… Amazon, Otto, IKEA oder ein anderer Shop" autocomplete="off" required>
             </label>
             <button class="primary-button" type="submit"><i class="fa-solid fa-plus" aria-hidden="true"></i> Hinzufügen</button>
             {% if add_error %}<ul class="errorlist"><li>{{ add_error }}</li></ul>{% endif %}
@@ -40,7 +40,7 @@
         {% for item in items %}
         <li class="glass-panel wish-item">
             <a class="wish-item-image" href="{{ item.url }}" target="_blank" rel="noopener noreferrer nofollow" tabindex="-1" aria-hidden="true">
-                {% if item.image_url %}<img src="{{ item.image_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% else %}<i class="fa-solid fa-box-open"></i>{% endif %}
+                {% if item.image_url %}<img src="{% url 'wish_item_image' item.id %}?v={{ item.image_version }}" alt="" loading="lazy">{% else %}<i class="fa-solid fa-box-open"></i>{% endif %}
             </a>
             <div class="wish-item-body">
                 <a class="wish-item-title" href="{{ item.url }}" target="_blank" rel="noopener noreferrer nofollow">{{ item.title }}</a>
@@ -96,7 +96,7 @@
     <div class="empty-state-card uml-empty">
         <i class="fa-solid fa-gift" aria-hidden="true"></i>
         <strong>Noch nichts auf der Liste</strong>
-        <p>Kopier den Link eines Amazon-Artikels und füg ihn oben ein. Titel, Preis, Bild und Bewertung werden übernommen.</p>
+        <p>Kopier den Link eines Produkts aus einem Onlineshop und füg ihn oben ein. Titel, Preis, Bild und Bewertung werden übernommen, soweit der Shop sie angibt.</p>
     </div>
     {% endif %}
 

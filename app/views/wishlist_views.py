@@ -1,14 +1,41 @@
 from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
+from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.cache import patch_cache_control
+from django.views.decorators.http import require_GET
 
 from app.forms import WishListForm, WishListItemForm
-from app.models import WishList
+from app.models import WishList, WishListItem
 from app.services.safe_fetch import FetchError
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.user_preferences import format_user_datetime
-from app.services.wishlist import MAX_LISTS, add_item, list_totals, money, refresh_item
+from app.services.wishlist import (
+    MAX_LISTS,
+    add_item,
+    image_version,
+    list_totals,
+    money,
+    refresh_item,
+    thumbnail,
+)
 from app.views.navigation import posted_id
+
+
+@login_required
+@require_GET
+def wish_item_image(request, item_id):
+    """The item's product picture, fetched and re-encoded by the server so the browser never
+    contacts the shop."""
+    if not feature_enabled("tools"):
+        return disabled_feature_response(request, "tools")
+    item = get_object_or_404(WishListItem, pk=item_id, wish_list__owner=request.user)
+    data = thumbnail(request.user, item.image_url) if item.image_url else None
+    if data is None:
+        raise Http404
+    response = HttpResponse(data, content_type="image/jpeg")
+    patch_cache_control(response, private=True, max_age=7 * 24 * 3600)
+    return response
 
 
 @login_required
@@ -116,6 +143,7 @@ def wish_list_detail(request, list_id):
             else ""
         )
         item.fetched_label = format_user_datetime(item.fetched_at, request.user)
+        item.image_version = image_version(item) if item.image_url else ""
         item.reviews_label = f"{item.review_count:,}".replace(",", ".") if item.review_count else ""
     return render(
         request,

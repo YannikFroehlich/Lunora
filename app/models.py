@@ -1240,18 +1240,19 @@ class WishList(models.Model):
 
 
 class WishListItem(models.Model):
-    """An Amazon product on a wish list; the details are read from its page (app/services/wishlist.py)
-    and can be corrected by hand when Amazon doesn't answer."""
+    """A shop product on a wish list; the details are read from its page (app/services/wishlist.py)
+    and can be corrected by hand when the shop doesn't answer."""
 
     wish_list = models.ForeignKey(WishList, on_delete=models.CASCADE, related_name="items")
-    # Always an Amazon address, without tracking parameters when the ASIN is known.
+    # The product page without tracking parameters; Amazon links are cut down to /dp/<ASIN>.
     url = models.URLField(max_length=500)
+    # Amazon only; other shops' items are told apart by their address.
     asin = models.CharField(max_length=10, blank=True)
     title = models.CharField(max_length=300)
     price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     currency = models.CharField(max_length=3, default="€")
     quantity = models.PositiveSmallIntegerField(default=1)
-    # Only Amazon's image hosts (IMAGE_HOSTS in app/services/wishlist.py), allowed by the CSP.
+    # The shop's picture; browsers get it only through wish_item_image, never from the shop.
     image_url = models.URLField(max_length=500, blank=True)
     rating = models.DecimalField(max_digits=2, decimal_places=1, blank=True, null=True)
     review_count = models.PositiveIntegerField(blank=True, null=True)

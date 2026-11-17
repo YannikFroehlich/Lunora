@@ -1,7 +1,7 @@
 {% extends 'app/base.html' %}
 {% load static static_versioning %}
 
-{% block title %}Amazon-Wunschlisten | Lunora{% endblock %}
+{% block title %}Wunschlisten | Lunora{% endblock %}
 
 {% block page_css %}
 <link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
@@ -12,10 +12,10 @@
     <header class="page-hero">
         <div>
             <a class="tools-back-link" href="{% url 'tools' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Werkzeuge</a>
-            <h1>Amazon-Wunschlisten</h1>
-            <p>Amazon-Links sammeln, Preise im Blick behalten und sehen, was eine Liste insgesamt kostet.</p>
+            <h1>Wunschlisten</h1>
+            <p>Produktlinks aus Onlineshops sammeln, Preise im Blick behalten und sehen, was eine Liste insgesamt kostet.</p>
         </div>
-        <i class="fa-brands fa-amazon hero-branch" aria-hidden="true"></i>
+        <i class="fa-solid fa-gift hero-branch" aria-hidden="true"></i>
     </header>
 
     <section class="glass-panel uml-create-panel">
@@ -49,7 +49,7 @@
     <div class="empty-state-card uml-empty">
         <i class="fa-solid fa-gift" aria-hidden="true"></i>
         <strong>Noch keine Wunschlisten</strong>
-        <p>Lege oben eine Liste an und füge danach Links zu Amazon-Artikeln hinzu.</p>
+        <p>Lege oben eine Liste an und füge danach Links zu Produkten aus Onlineshops hinzu.</p>
     </div>
     {% endif %}
 </section>

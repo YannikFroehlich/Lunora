@@ -268,17 +268,8 @@ SECURE_CSP = {
     "default-src": [CSP.SELF],
     "script-src": [CSP.SELF, CSP.NONCE, _TURNSTILE_ORIGIN, "https://unpkg.com/leaflet@1.9.4/"],
     "style-src": [CSP.SELF, CSP.UNSAFE_INLINE],
-    # data: and blob: for the UML image export and Leaflet's empty placeholder tile; Amazon's image
-    # hosts for wish list product photos (app/services/wishlist.py IMAGE_HOSTS).
-    "img-src": [
-        CSP.SELF,
-        "data:",
-        "blob:",
-        "https://tile.openstreetmap.org",
-        "https://m.media-amazon.com",
-        "https://images-na.ssl-images-amazon.com",
-        "https://images-eu.ssl-images-amazon.com",
-    ],
+    # data: and blob: for the UML image export and Leaflet's empty placeholder tile.
+    "img-src": [CSP.SELF, "data:", "blob:", "https://tile.openstreetmap.org"],
     "frame-src": [_TURNSTILE_ORIGIN],
     "frame-ancestors": [CSP.NONE],
     "object-src": [CSP.NONE],
