@@ -1,0 +1,56 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}Amazon-Wunschlisten | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell tools-shell">
+    <header class="page-hero">
+        <div>
+            <a class="tools-back-link" href="{% url 'tools' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Werkzeuge</a>
+            <h1>Amazon-Wunschlisten</h1>
+            <p>Amazon-Links sammeln, Preise im Blick behalten und sehen, was eine Liste insgesamt kostet.</p>
+        </div>
+        <i class="fa-brands fa-amazon hero-branch" aria-hidden="true"></i>
+    </header>
+
+    <section class="glass-panel uml-create-panel">
+        <form class="vocab-create-form wish-create-form" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="wish_list_create">
+            <label class="vocab-field">
+                <span>{{ form.title.label }}</span>
+                {{ form.title }}
+            </label>
+            <button class="primary-button" type="submit"><i class="fa-solid fa-plus" aria-hidden="true"></i> Neue Wunschliste</button>
+            {% if form.errors %}<ul class="errorlist">{% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}{% for error in form.title.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
+        </form>
+    </section>
+
+    {% if lists %}
+    <ul class="uml-diagram-list">
+        {% for item in lists %}
+        <li class="glass-panel uml-diagram-card">
+            <a class="uml-diagram-link" href="{% url 'wish_list_detail' item.id %}">
+                <span class="tool-card-icon" aria-hidden="true"><i class="fa-solid fa-gift"></i></span>
+                <span>
+                    <strong>{{ item.title }}</strong>
+                    <small>{{ item.count }} Artikel{% if item.totals %} · {{ item.totals|join:" + " }}{% endif %}</small>
+                </span>
+            </a>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state-card uml-empty">
+        <i class="fa-solid fa-gift" aria-hidden="true"></i>
+        <strong>Noch keine Wunschlisten</strong>
+        <p>Lege oben eine Liste an und füge danach Links zu Amazon-Artikeln hinzu.</p>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

@@ -32,6 +32,8 @@ from app.models import (
     VocabularyCard,
     VocabularyList,
     Whiteboard,
+    WishList,
+    WishListItem,
 )
 from app.services.chat import create_poll
 from app.services.expenses import add_expense, create_group
@@ -146,6 +148,17 @@ class PageAccessibilityMarkupTests(TestCase):
             ingredients="Teig:\n200 g Mehl\n2 Eier",
             instructions="Verrühren.",
         )
+        self.wish_list = WishList.objects.create(owner=self.mira, title="Geburtstag")
+        WishListItem.objects.create(
+            wish_list=self.wish_list,
+            url="https://www.amazon.de/dp/B0TEST1234",
+            title="Tasse",
+            price=4,
+            quantity=2,
+        )
+        WishListItem.objects.create(
+            wish_list=self.wish_list, url="https://www.amazon.de/dp/B0TEST5678", title="Lampe"
+        )
         self.diagram = UmlDiagram.objects.create(
             owner=self.mira, title="Klassen", document=empty_uml_document()
         )
@@ -199,6 +212,8 @@ class PageAccessibilityMarkupTests(TestCase):
             f"/tools/uml/{self.diagram.pk}/",
             "/tools/whiteboard/",
             f"/tools/whiteboard/{self.whiteboard.pk}/",
+            "/tools/wishlist/",
+            f"/tools/wishlist/{self.wish_list.pk}/",
             "/tools/vocabulary/",
             f"/tools/vocabulary/{self.vocabulary.pk}/",
             f"/tools/vocabulary/{self.vocabulary.pk}/practice/",

@@ -36,6 +36,8 @@ from app.models import (
     VacationYear,
     VocabularyCard,
     VocabularyList,
+    WishList,
+    WishListItem,
 )
 from app.services import audit_log
 from app.services.calendar_service import (
@@ -1333,6 +1335,27 @@ class RecipeForm(forms.ModelForm):
         widgets = {
             "title": forms.TextInput(attrs={"placeholder": "z. B. Gemüselasagne", "autocomplete": "off"})
         }
+
+
+class WishListForm(forms.ModelForm):
+    class Meta:
+        model = WishList
+        fields = ["title"]
+        labels = {"title": "Name der Liste"}
+        widgets = {"title": forms.TextInput(attrs={"placeholder": "z. B. Geburtstag", "autocomplete": "off"})}
+
+
+class WishListItemForm(forms.ModelForm):
+    """The hand-corrected details of an item; the page fills them in again on "Aktualisieren"."""
+
+    price = forms.DecimalField(
+        label="Preis", required=False, min_value=0, max_value=99_999_999, decimal_places=2, localize=True
+    )
+    quantity = forms.IntegerField(label="Anzahl", min_value=1, max_value=99)
+
+    class Meta:
+        model = WishListItem
+        fields = ["title", "price", "quantity"]
 
 
 class TaskLabelForm(forms.ModelForm):

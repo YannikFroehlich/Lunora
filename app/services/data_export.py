@@ -42,6 +42,7 @@ from app.models import (
     VacationYear,
     VocabularyList,
     Whiteboard,
+    WishList,
 )
 from app.services.note_markdown import note_markdown_filename, render_note_markdown
 from app.services.notes import display_name
@@ -66,6 +67,7 @@ Dieses Archiv enthält alle Daten, die du in Lunora angelegt hast:
 - einkaufszettel.json: Artikel auf deinem Einkaufszettel
 - rezepte.json, wochenplan.json: Rezepte und geplante Gerichte
 - ausgaben.json: Gruppen mit geteilten Ausgaben, Personen mit Anzeigenamen
+- wunschlisten.json: Amazon-Wunschlisten mit Artikeln und Preisen
 
 Erstellt am {created}.
 """
@@ -172,6 +174,21 @@ def write_user_export(user, fileobj):
             ],
         )
         _add_json(archive, "ausgaben.json", _expense_groups(user))
+        _add_json(
+            archive,
+            "wunschlisten.json",
+            [
+                {
+                    "title": wish_list.title,
+                    "items": list(
+                        wish_list.items.values(
+                            "title", "url", "price", "currency", "quantity", "fetched_at", "created_at"
+                        )
+                    ),
+                }
+                for wish_list in WishList.objects.filter(owner=user)
+            ],
+        )
         for diagram in UmlDiagram.objects.filter(owner=user):
             name = f"uml/{diagram.pk}-{slugify(diagram.title) or 'diagramm'}.json"
             _add_json(archive, name, {"title": diagram.title, "document": diagram.document})

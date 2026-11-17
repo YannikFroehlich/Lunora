@@ -1227,6 +1227,45 @@ class MealPlanEntry(models.Model):
         return f"{self.date}: {self.recipe}"
 
 
+class WishList(models.Model):
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="wish_lists")
+    title = models.CharField(max_length=120)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["title", "id"]
+
+    def __str__(self):
+        return self.title
+
+
+class WishListItem(models.Model):
+    """An Amazon product on a wish list; the details are read from its page (app/services/wishlist.py)
+    and can be corrected by hand when Amazon doesn't answer."""
+
+    wish_list = models.ForeignKey(WishList, on_delete=models.CASCADE, related_name="items")
+    # Always an Amazon address, without tracking parameters when the ASIN is known.
+    url = models.URLField(max_length=500)
+    asin = models.CharField(max_length=10, blank=True)
+    title = models.CharField(max_length=300)
+    price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    currency = models.CharField(max_length=3, default="€")
+    quantity = models.PositiveSmallIntegerField(default=1)
+    # Only Amazon's image hosts (IMAGE_HOSTS in app/services/wishlist.py), allowed by the CSP.
+    image_url = models.URLField(max_length=500, blank=True)
+    rating = models.DecimalField(max_digits=2, decimal_places=1, blank=True, null=True)
+    review_count = models.PositiveIntegerField(blank=True, null=True)
+    availability = models.CharField(max_length=120, blank=True)
+    fetched_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return self.title
+
+
 class ShoppingItem(models.Model):
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="shopping_items"
