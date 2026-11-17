@@ -452,6 +452,13 @@ TOOLS = (
         "url_name": "recipes",
     },
     {
+        "id": "wishlist",
+        "title": "Amazon-Wunschliste",
+        "description": "Amazon-Links sammeln, mit Preis, Bild und Bewertung auflisten und den Gesamtpreis sehen.",
+        "icon": "fa-gift",
+        "url_name": "wish_lists",
+    },
+    {
         "id": "expenses",
         "title": "Geteilte Ausgaben",
         "description": "Gemeinsame Ausgaben eintragen, sehen, wer wem was schuldet, und ausgleichen.",

@@ -1,0 +1,122 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}{{ wish_list.title }} | Wunschlisten | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell tools-shell">
+    <div class="soft-contents" id="wish-list-detail" data-soft-region>
+    <header class="page-hero">
+        <div>
+            <a class="tools-back-link" href="{% url 'wish_lists' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Alle Wunschlisten</a>
+            <h1>{{ wish_list.title }}</h1>
+            <p class="wish-total">
+                {% if totals %}Gesamt: <strong>{{ totals|join:" + " }}</strong>{% else %}Noch kein Preis bekannt{% endif %}
+                {% if unpriced and totals %}<small>({{ unpriced }} Artikel ohne Preis)</small>{% endif %}
+            </p>
+        </div>
+        <i class="fa-brands fa-amazon hero-branch" aria-hidden="true"></i>
+    </header>
+
+    <section class="glass-panel uml-create-panel">
+        <form class="vocab-create-form wish-create-form" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="wish_item_add">
+            <label class="vocab-field">
+                <span>Amazon-Link</span>
+                <input type="url" name="url" value="{{ add_url }}" maxlength="500" placeholder="https://www.amazon.de/dp/… oder https://amzn.eu/…" autocomplete="off" required>
+            </label>
+            <button class="primary-button" type="submit"><i class="fa-solid fa-plus" aria-hidden="true"></i> Hinzufügen</button>
+            {% if add_error %}<ul class="errorlist"><li>{{ add_error }}</li></ul>{% endif %}
+        </form>
+    </section>
+
+    {% if items %}
+    <ul class="wish-items">
+        {% for item in items %}
+        <li class="glass-panel wish-item">
+            <a class="wish-item-image" href="{{ item.url }}" target="_blank" rel="noopener noreferrer nofollow" tabindex="-1" aria-hidden="true">
+                {% if item.image_url %}<img src="{{ item.image_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% else %}<i class="fa-solid fa-box-open"></i>{% endif %}
+            </a>
+            <div class="wish-item-body">
+                <a class="wish-item-title" href="{{ item.url }}" target="_blank" rel="noopener noreferrer nofollow">{{ item.title }}</a>
+                <p class="wish-item-meta">
+                    {% if item.rating is not None %}<span><i class="fa-solid fa-star" aria-hidden="true"></i> {{ item.rating }} von 5{% if item.reviews_label %} ({{ item.reviews_label }} Bewertungen){% endif %}</span>{% endif %}
+                    {% if item.availability %}<span>{{ item.availability }}</span>{% endif %}
+                    {% if item.fetched_label %}<span>Stand: {{ item.fetched_label }}</span>{% else %}<span>Angaben von Hand</span>{% endif %}
+                </p>
+                <details class="wish-item-edit">
+                    <summary><i class="fa-solid fa-pen" aria-hidden="true"></i> Bearbeiten</summary>
+                    <form class="wish-edit-form" method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="form_name" value="wish_item_update">
+                        <input type="hidden" name="item_id" value="{{ item.id }}">
+                        <label class="vocab-field wish-edit-title">
+                            <span>Titel</span>
+                            <input type="text" name="title" value="{{ item.title }}" maxlength="300" required>
+                        </label>
+                        <label class="vocab-field">
+                            <span>Preis ({{ item.currency }})</span>
+                            <input type="text" name="price" value="{% if item.price is not None %}{{ item.price|floatformat:2 }}{% endif %}" inputmode="decimal" autocomplete="off">
+                        </label>
+                        <label class="vocab-field">
+                            <span>Anzahl</span>
+                            <input type="number" name="quantity" value="{{ item.quantity }}" min="1" max="99" required>
+                        </label>
+                        <button class="primary-button" type="submit"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Speichern</button>
+                    </form>
+                </details>
+            </div>
+            <div class="wish-item-side">
+                <strong class="wish-item-price">{{ item.price_label|default:"Preis fehlt" }}</strong>
+                {% if item.quantity > 1 %}<small>{{ item.quantity }} ×{% if item.line_label %} = {{ item.line_label }}{% endif %}</small>{% endif %}
+                <div class="uml-diagram-actions">
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="form_name" value="wish_item_refresh">
+                        <input type="hidden" name="item_id" value="{{ item.id }}">
+                        <button class="icon-button" type="submit" aria-label="Preis von „{{ item.title }}“ aktualisieren" title="Preis aktualisieren"><i class="fa-solid fa-rotate" aria-hidden="true"></i></button>
+                    </form>
+                    <form method="post" data-confirm="„{{ item.title }}“ von der Liste nehmen?">
+                        {% csrf_token %}
+                        <input type="hidden" name="form_name" value="wish_item_delete">
+                        <input type="hidden" name="item_id" value="{{ item.id }}">
+                        <button class="icon-button" type="submit" aria-label="„{{ item.title }}“ entfernen" title="Entfernen"><i class="fa-regular fa-trash-can" aria-hidden="true"></i></button>
+                    </form>
+                </div>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state-card uml-empty">
+        <i class="fa-solid fa-gift" aria-hidden="true"></i>
+        <strong>Noch nichts auf der Liste</strong>
+        <p>Kopier den Link eines Amazon-Artikels und füg ihn oben ein. Titel, Preis, Bild und Bewertung werden übernommen.</p>
+    </div>
+    {% endif %}
+
+    <details class="glass-panel wish-list-settings">
+        <summary><i class="fa-solid fa-gear" aria-hidden="true"></i> Liste umbenennen oder löschen</summary>
+        <form class="vocab-create-form wish-create-form" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="wish_list_rename">
+            <label class="vocab-field">
+                <span>Name der Liste</span>
+                <input type="text" name="title" value="{{ wish_list.title }}" maxlength="120" required>
+            </label>
+            <button class="ghost-button" type="submit">Umbenennen</button>
+        </form>
+        <form method="post" data-no-soft data-confirm="Diese Wunschliste mit allen Artikeln löschen?">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="wish_list_delete">
+            <button class="ghost-button" type="submit"><i class="fa-regular fa-trash-can" aria-hidden="true"></i> Liste löschen</button>
+        </form>
+    </details>
+    </div>
+</section>
+{% endblock %}

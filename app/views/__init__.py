@@ -102,6 +102,7 @@ from .vocabulary_views import (
     vocabulary_review_api,
 )
 from .weather_views import dashboard_weather, weather, weather_map_tile, weather_point, weather_suggestions
+from .wishlist_views import wish_list_detail, wish_lists
 
 __all__ = [
     "calendar",
@@ -173,6 +174,8 @@ __all__ = [
     "whiteboards",
     "whiteboard_editor",
     "whiteboard_api",
+    "wish_lists",
+    "wish_list_detail",
     "vocabulary_lists",
     "vocabulary_list_detail",
     "vocabulary_practice",

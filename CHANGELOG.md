@@ -6,6 +6,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- New tool "Amazon-Wunschliste": paste Amazon product links (short links such as amzn.eu too) into
+  named lists; Lunora reads title, price, picture, rating and availability from the product page and
+  shows each list's total. Prices can be refreshed per item, and when Amazon blocks the lookup the
+  item is kept so title and price can be entered by hand. Included in the data export.
 - Whiteboards can be shared: in the overview, "Teilen" adds people by e-mail or username, who then
   draw and rename along (and get an inbox notification). Open editors of a shared board pick up the
   others' changes every few seconds, and if two people save at the same time, Lunora asks whether to
