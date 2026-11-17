@@ -67,7 +67,7 @@ Dieses Archiv enthält alle Daten, die du in Lunora angelegt hast:
 - einkaufszettel.json: Artikel auf deinem Einkaufszettel
 - rezepte.json, wochenplan.json: Rezepte und geplante Gerichte
 - ausgaben.json: Gruppen mit geteilten Ausgaben, Personen mit Anzeigenamen
-- wunschlisten.json: Amazon-Wunschlisten mit Artikeln und Preisen
+- wunschlisten.json: Wunschlisten mit Artikeln und Preisen
 
 Erstellt am {created}.
 """

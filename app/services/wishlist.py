@@ -1,21 +1,31 @@
-"""Amazon wish lists: product details read from the public product page.
+"""Wish lists of products from online shops, with details read from the public product page.
 
-There is no Amazon API without a partner account, so the page is fetched like a browser would, through
-the SSRF-safe fetcher with an honest User-Agent, and a few well-known parts of its markup are read.
-Amazon sometimes answers automated requests with a block page; the item is kept anyway, named after
-its link, and title and price can be filled in by hand.
+Shops don't offer a free product API, so the page is fetched like a browser would, through the
+SSRF-safe fetcher with an honest User-Agent. Amazon gets its own reader for a few well-known parts of
+its markup; every other shop is read from the schema.org/Product data (JSON-LD) or OpenGraph tags
+shops embed for search engines. Some shops answer automated requests with a block page; the item is
+kept anyway, named after its link, and title and price can be filled in by hand.
+
+Product pictures are never loaded from the shop by the browser: `thumbnail` fetches them through the
+same fetcher and re-encodes them as small JPEGs, which wish_item_image serves from Lunora itself.
 """
 
+import hashlib
 import html
+import io
+import json
 import re
 from decimal import Decimal, InvalidOperation
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qsl, unquote, urlencode, urljoin, urlsplit, urlunsplit
 
+from django.core.cache import cache
 from django.utils import timezone
+from PIL import Image
 
 from app.models import WishListItem
 from app.services import safe_fetch
 from app.services.expenses import euro
+from app.services.recipe_import import JsonLdScripts, json_ld_objects
 from app.services.throttle import count_hit
 
 MAX_LISTS = 50
@@ -24,6 +34,14 @@ MAX_PAGE_BYTES = 6_000_000
 USER_AGENT = "Mozilla/5.0 (compatible; Lunora-Wunschliste/1.0)"
 FETCHES_PER_WINDOW = 30
 FETCH_WINDOW_SECONDS = 600
+
+MAX_IMAGE_BYTES = 8_000_000
+MAX_IMAGE_PIXELS = 50_000_000
+THUMBNAIL_SIZE = 400
+THUMBNAIL_CACHE_SECONDS = 7 * 24 * 3600
+FAILED_THUMBNAIL_CACHE_SECONDS = 3600
+IMAGE_FETCHES_PER_WINDOW = 120
+IMAGE_FORMATS = {"JPEG", "PNG", "WEBP", "GIF", "AVIF"}
 
 AMAZON_DOMAINS = (
     "amazon.de",
@@ -49,31 +67,55 @@ AMAZON_DOMAINS = (
     "amazon.sa",
     "amazon.eg",
 )
-SHORT_LINK_HOSTS = ("amzn.to", "amzn.eu", "a.co")
-# Also listed in SECURE_CSP's img-src; the browser loads the pictures straight from there.
-IMAGE_HOSTS = ("m.media-amazon.com", "images-na.ssl-images-amazon.com", "images-eu.ssl-images-amazon.com")
+AMAZON_SHORT_LINK_HOSTS = ("amzn.to", "amzn.eu", "a.co")
+TRACKING_PARAMETERS = {"gclid", "gbraid", "wbraid", "fbclid", "msclkid", "srsltid", "mc_cid", "mc_eid"}
+CURRENCY_SYMBOLS = {"EUR": "€", "USD": "$", "GBP": "£", "JPY": "¥"}
+AVAILABILITY_LABELS = {
+    "InStock": "Auf Lager",
+    "OnlineOnly": "Auf Lager",
+    "LimitedAvailability": "Nur noch wenige",
+    "PreOrder": "Vorbestellbar",
+    "PreSale": "Vorbestellbar",
+    "BackOrder": "Nachbestellt",
+    "InStoreOnly": "Nur im Laden",
+    "OutOfStock": "Nicht verfügbar",
+    "SoldOut": "Ausverkauft",
+    "Discontinued": "Nicht mehr erhältlich",
+}
 
 _ASIN_RE = re.compile(r"/(?:dp|gp/product|gp/aw/d|exec/obidos/asin)/([A-Z0-9]{10})(?=[/?#]|$)", re.IGNORECASE)
 _IMAGE_SIZE_RE = re.compile(r"\._[A-Za-z0-9_,]+_\.(jpe?g|png|webp)$")
+_NUMBER_RE = re.compile(r"\d[\d.,]*")
 
 
 def _is_amazon_host(host):
     return any(host == domain or host.endswith("." + domain) for domain in AMAZON_DOMAINS)
 
 
-def amazon_url(raw_url):
-    """(address to store, ASIN or "") for an Amazon product link; raises safe_fetch.FetchError.
+def _without_tracking(url):
+    parts = urlsplit(url)
+    query = [
+        (key, value)
+        for key, value in parse_qsl(parts.query, keep_blank_values=True)
+        if not key.lower().startswith("utm_") and key.lower() not in TRACKING_PARAMETERS
+    ]
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), ""))
 
-    With a known ASIN the address is cut down to /dp/<ASIN>, so tracking and partner parameters go.
-    Short links (amzn.to …) are kept as they are and resolved when the page is fetched.
+
+def product_url(raw_url):
+    """(address to store, ASIN or "") for a product link; raises safe_fetch.FetchError.
+
+    Amazon links with a known ASIN are cut down to /dp/<ASIN>, so tracking and partner parameters go;
+    Amazon short links (amzn.to …) are resolved when the page is fetched. Other shops keep their
+    address minus common tracking parameters (utm_*, gclid …).
     """
     url = safe_fetch.normalize_url(raw_url)
     parts = urlsplit(url)
     host = (parts.hostname or "").lower()
-    if host in SHORT_LINK_HOSTS:
+    if host in AMAZON_SHORT_LINK_HOSTS:
         return url, ""
     if not _is_amazon_host(host):
-        raise safe_fetch.FetchError("Bitte füge einen Link zu einem Amazon-Artikel ein.")
+        return _without_tracking(url)[:500], ""
     match = _ASIN_RE.search(parts.path)
     if not match:
         raise safe_fetch.FetchError("Der Link zeigt auf keinen Amazon-Artikel.")
@@ -81,15 +123,26 @@ def amazon_url(raw_url):
 
 
 def title_from_url(url):
-    """A stand-in title from the words Amazon puts before /dp/ in product links."""
-    path = unquote(urlsplit(url).path)
-    match = re.search(r"/([^/]+)/(?:dp|gp/product)/", path)
-    words = match.group(1).replace("-", " ").strip() if match else ""
-    return words[:300] if words and words.lower() != "dp" else "Amazon-Artikel"
+    """A stand-in title from the words in a product link, for when the page can't be read."""
+    parts = urlsplit(url)
+    host = (parts.hostname or "").lower()
+    path = unquote(parts.path)
+    if _is_amazon_host(host):
+        match = re.search(r"/([^/]+)/(?:dp|gp/product)/", path)
+        words = match.group(1) if match else ""
+    else:
+        segments = [segment for segment in path.split("/") if segment]
+        words = re.sub(r"\.\w{2,5}$", "", segments[-1]) if segments else ""
+    words = " ".join(words.replace("-", " ").replace("_", " ").split())
+    if len(words) >= 3 and re.search(r"[^\W\d]", words) and words.lower() != "dp":
+        return words[:300]
+    if _is_amazon_host(host) or host in AMAZON_SHORT_LINK_HOSTS:
+        return "Amazon-Artikel"
+    return f"Artikel von {host.removeprefix('www.')}"[:300]
 
 
 def _text(value):
-    return " ".join(html.unescape(value).split())
+    return " ".join(html.unescape(str(value)).split())
 
 
 def _search(pattern, page):
@@ -98,16 +151,18 @@ def _search(pattern, page):
 
 
 def _amount(text):
-    """Decimal from "1.299,99", "1,299.99" or "39.99"; None when it isn't a price."""
-    text = text.strip()
+    """Decimal from "1.299,99", "1,299.99", "39.99" or "19,99 €"; None when it isn't a price."""
+    match = _NUMBER_RE.search(str(text))
+    if not match:
+        return None
+    text = match.group().rstrip(".,")
     if "," in text and "." in text:
         decimal_mark = "," if text.rfind(",") > text.rfind(".") else "."
     elif "," in text:
         decimal_mark = "," if len(text) - text.rfind(",") <= 3 else None
     else:
         decimal_mark = "." if len(text) - text.rfind(".") <= 3 else None
-    thousands = {",", "."} - {decimal_mark}
-    for mark in thousands:
+    for mark in {",", "."} - {decimal_mark}:
         text = text.replace(mark, "")
     try:
         value = Decimal(text.replace(",", ".")).quantize(Decimal("0.01"))
@@ -116,66 +171,176 @@ def _amount(text):
     return value if Decimal(0) <= value < Decimal("100000000") else None
 
 
-def _image(page):
-    url = _search(r'data-old-hires="(https://[^"]+)"', page) or _search(
-        r'id="landingImage"[^>]*data-a-dynamic-image="\{&quot;(https://[^&]+)&quot;', page
-    )
-    if (urlsplit(url).hostname or "") not in IMAGE_HOSTS:
-        return ""
-    # A 400 px version instead of the 1500 px original.
-    return _IMAGE_SIZE_RE.sub(r"._AC_SL400_.\1", url)[:500]
-
-
-def parse_product_page(page):
-    """{title, price, currency, image_url, rating, review_count, availability, canonical} from an
-    Amazon product page, or None when it shows no product."""
-    title = _search(r'id="productTitle"[^>]*>([^<]+)<', page)
-    if not title:
+def _rating(value, best=None):
+    """A rating on a 0–5 scale, rescaled when the shop rates out of `best` (e.g. 10)."""
+    try:
+        rating = Decimal(str(value).replace(",", "."))
+        scale = Decimal(str(best).replace(",", ".")) if best not in (None, "") else Decimal(5)
+        rating = (rating * 5 / scale).quantize(Decimal("0.1")) if scale > 0 else None
+    except (InvalidOperation, ValueError):
         return None
+    return rating if rating is not None and Decimal(0) <= rating <= Decimal(5) else None
+
+
+def _count(value):
+    digits = re.sub(r"\D", "", str(value or ""))
+    return int(digits) if digits and len(digits) <= 9 else None
+
+
+def _currency(code):
+    code = _text(code or "").upper()
+    return CURRENCY_SYMBOLS.get(code, code[:3] or "€")
+
+
+def _image_link(value, base_url):
+    """The http(s) address of a JSON-LD image: a string, an ImageObject or a list of either."""
+    if isinstance(value, list):
+        value = value[0] if value else ""
+    if isinstance(value, dict):
+        value = value.get("url") or value.get("contentUrl") or ""
+    if not isinstance(value, str) or not value.strip():
+        return ""
+    url = urljoin(base_url, value.strip())
+    return url if urlsplit(url).scheme in ("http", "https") and len(url) <= 500 else ""
+
+
+def _amazon_product(page):
+    title = _search(r'id="productTitle"[^>]*>([^<]+)<', page)
     price = None
     if match := re.search(r'"priceAmount":\s*(\d+(?:\.\d+)?)', page):
         price = _amount(match.group(1))
     elif label := _search(r'id="apex-pricetopay-accessibility-label"[^>]*>\s*([\d.,]+)', page):
         price = _amount(label)
-    currency = _search(r'"currencySymbol":"([^"]{1,3})"', page) or "€"
-    rating = None
-    if value := _search(r'id="acrPopover"[^>]*title="([\d.,]+)', page):
-        try:
-            rating = Decimal(value.replace(",", ".")).quantize(Decimal("0.1"))
-        except InvalidOperation:
-            rating = None
-        rating = rating if rating is not None and Decimal(0) <= rating <= Decimal(5) else None
-    reviews = re.sub(r"\D", "", _search(r'id="acrCustomerReviewText"[^>]*>([^<]*)<', page))
-    availability = _search(r'primary-availability-message[^"]*"[^>]*>([^<]+)<', page) or _search(
-        r'id="availability"[^>]*>\s*<span[^>]*>([^<]+)<', page
+    image = _search(r'data-old-hires="(https://[^"]+)"', page) or _search(
+        r'id="landingImage"[^>]*data-a-dynamic-image="\{&quot;(https://[^&]+)&quot;', page
     )
     return {
         "title": title[:300],
         "price": price,
-        "currency": currency,
-        "image_url": _image(page),
-        "rating": rating,
-        "review_count": int(reviews) if reviews and len(reviews) <= 9 else None,
-        "availability": availability[:120],
+        "currency": _search(r'"currencySymbol":"([^"]{1,3})"', page) or "€",
+        # A 400 px version instead of the 1500 px original.
+        "image_url": _IMAGE_SIZE_RE.sub(r"._AC_SL400_.\1", image)[:500],
+        "rating": _rating(_search(r'id="acrPopover"[^>]*title="([\d.,]+)', page)),
+        "review_count": _count(_search(r'id="acrCustomerReviewText"[^>]*>([^<]*)<', page)),
+        "availability": (
+            _search(r'primary-availability-message[^"]*"[^>]*>([^<]+)<', page)
+            or _search(r'id="availability"[^>]*>\s*<span[^>]*>([^<]+)<', page)
+        )[:120],
         "canonical": _search(r'<link rel="canonical" href="([^"]+)"', page),
     }
 
 
+class _ProductPage(JsonLdScripts):
+    """JSON-LD blocks plus the first value of every meta tag (property, name or itemprop → content)."""
+
+    def __init__(self):
+        super().__init__()
+        self.meta = {}
+
+    def handle_starttag(self, tag, attrs):
+        super().handle_starttag(tag, attrs)
+        attributes = dict(attrs)
+        key = attributes.get("property") or attributes.get("name") or attributes.get("itemprop")
+        if key and attributes.get("content"):
+            self.meta.setdefault(key.lower(), attributes["content"])
+
+
+def _json_ld_product(blocks):
+    for block in blocks:
+        try:
+            data = json.loads(block)
+        except ValueError:
+            continue
+        for product in json_ld_objects(data, "Product"):
+            if isinstance(product.get("name"), str) and product["name"].strip():
+                return product
+    return {}
+
+
+def _first_offer(offers):
+    if isinstance(offers, list):
+        offers = next((offer for offer in offers if isinstance(offer, dict)), {})
+    return offers if isinstance(offers, dict) else {}
+
+
+def _generic_product(page, base_url):
+    parser = _ProductPage()
+    parser.feed(page)
+    parser.close()
+    meta = parser.meta
+    product = _json_ld_product(parser.blocks)
+    offer = _first_offer(product.get("offers"))
+    specification = _first_offer(offer.get("priceSpecification"))
+    rating = product.get("aggregateRating") if isinstance(product.get("aggregateRating"), dict) else {}
+    title = _text(product.get("name") or meta.get("og:title") or "")
+    if not title:
+        return None
+    price_text = next(
+        (
+            value
+            for value in (
+                offer.get("price"),
+                offer.get("lowPrice"),
+                specification.get("price"),
+                meta.get("product:price:amount"),
+                meta.get("og:price:amount"),
+                meta.get("price"),
+            )
+            if value not in (None, "")
+        ),
+        None,
+    )
+    currency = (
+        offer.get("priceCurrency")
+        or specification.get("priceCurrency")
+        or meta.get("product:price:currency")
+        or meta.get("og:price:currency")
+        or meta.get("pricecurrency")
+    )
+    availability = str(offer.get("availability") or meta.get("product:availability") or "")
+    return {
+        "title": title[:300],
+        "price": _amount(price_text) if price_text is not None else None,
+        "currency": _currency(currency),
+        "image_url": _image_link(product.get("image"), base_url)
+        or _image_link(meta.get("og:image"), base_url),
+        "rating": _rating(rating.get("ratingValue"), rating.get("bestRating")) if rating else None,
+        "review_count": _count(rating.get("reviewCount") or rating.get("ratingCount")),
+        "availability": AVAILABILITY_LABELS.get(availability.rsplit("/", 1)[-1], ""),
+        "canonical": "",
+    }
+
+
+def parse_product_page(page, base_url=""):
+    """{title, price, currency, image_url, rating, review_count, availability, canonical} from a
+    product page, or None when it shows no product."""
+    if 'id="productTitle"' in page:
+        product = _amazon_product(page)
+        return product if product["title"] else None
+    return _generic_product(page, base_url)
+
+
 def _read_page(response):
-    body = safe_fetch.read_capped(response, MAX_PAGE_BYTES, "Die Amazon-Seite ist zu groß.")
-    return body.decode("utf-8", errors="replace")
+    body = safe_fetch.read_capped(response, MAX_PAGE_BYTES, "Die Produktseite ist zu groß.")
+    charset = (
+        response.headers.get_content_charset() if hasattr(response.headers, "get_content_charset") else None
+    )
+    try:
+        return body.decode(charset or "utf-8", errors="replace")
+    except LookupError:
+        return body.decode("utf-8", errors="replace")
 
 
 def fetch_product(url):
     """The details on the product page at `url`; raises safe_fetch.FetchError."""
     page = safe_fetch.fetch(
-        url, _read_page, user_agent=USER_AGENT, accept="text/html, application/xhtml+xml", server="Amazon"
+        url, _read_page, user_agent=USER_AGENT, accept="text/html, application/xhtml+xml", server="Der Shop"
     )
     if "validateCaptcha" in page or "api-services-support@amazon.com" in page:
         raise safe_fetch.FetchError("Amazon hat die Abfrage gerade blockiert.")
-    product = parse_product_page(page)
+    product = parse_product_page(page, url)
     if product is None:
-        raise safe_fetch.FetchError("Auf der Seite wurde kein Amazon-Artikel gefunden.")
+        raise safe_fetch.FetchError("Auf der Seite wurden keine Produktdaten gefunden.")
     return product
 
 
@@ -190,8 +355,13 @@ def refresh_item(user, item):
         return str(error)
     canonical = urlsplit(product.pop("canonical"))
     match = _ASIN_RE.search(canonical.path)
-    # Only for short links: an old product's canonical can point at its successor's ASIN.
-    if match and not item.asin and _is_amazon_host((canonical.hostname or "").lower()):
+    # Only for Amazon short links: an old product's canonical can point at its successor's ASIN.
+    if (
+        match
+        and not item.asin
+        and (urlsplit(item.url).hostname or "") in AMAZON_SHORT_LINK_HOSTS
+        and _is_amazon_host((canonical.hostname or "").lower())
+    ):
         item.asin = match.group(1).upper()
         item.url = f"https://{canonical.hostname.lower()}/dp/{item.asin}"
     for field, value in product.items():
@@ -200,20 +370,70 @@ def refresh_item(user, item):
     return None
 
 
+def _is_duplicate(wish_list, item):
+    items = wish_list.items.exclude(pk=item.pk) if item.pk else wish_list.items.all()
+    return items.filter(asin=item.asin).exists() if item.asin else items.filter(url=item.url).exists()
+
+
 def add_item(user, wish_list, raw_url):
     """(new item, None or the reason its details are missing); raises safe_fetch.FetchError when the
     link can't be added at all."""
-    url, asin = amazon_url(raw_url)
+    url, asin = product_url(raw_url)
     if wish_list.items.count() >= MAX_ITEMS:
         raise safe_fetch.FetchError(f"Eine Liste kann höchstens {MAX_ITEMS} Artikel haben.")
-    if asin and wish_list.items.filter(asin=asin).exists():
-        raise safe_fetch.FetchError("Dieser Artikel steht schon auf der Liste.")
     item = WishListItem(wish_list=wish_list, url=url, asin=asin, title=title_from_url(raw_url))
+    if _is_duplicate(wish_list, item):
+        raise safe_fetch.FetchError("Dieser Artikel steht schon auf der Liste.")
     problem = refresh_item(user, item)
-    if not asin and item.asin and wish_list.items.filter(asin=item.asin).exists():
+    if item.asin != asin and _is_duplicate(wish_list, item):
         raise safe_fetch.FetchError("Dieser Artikel steht schon auf der Liste.")
     item.save()
     return item, problem
+
+
+def image_version(item):
+    """A short hash of the picture's address, so a refreshed picture gets a fresh browser cache entry."""
+    return hashlib.sha256(item.image_url.encode()).hexdigest()[:10]
+
+
+def _jpeg_thumbnail(data):
+    """`data` re-encoded as a JPEG of at most THUMBNAIL_SIZE px, so nothing of the shop's file
+    reaches the browser; raises ValueError or OSError for anything that isn't a plain picture."""
+    with Image.open(io.BytesIO(data)) as image:
+        if image.format not in IMAGE_FORMATS or image.width * image.height > MAX_IMAGE_PIXELS:
+            raise ValueError("not a supported picture")
+        image.thumbnail((THUMBNAIL_SIZE, THUMBNAIL_SIZE))
+        image = image.convert("RGBA")
+        # Transparent product shots go on white, like the shops show them.
+        flat = Image.new("RGB", image.size, "white")
+        flat.paste(image, mask=image.getchannel("A"))
+        output = io.BytesIO()
+        flat.save(output, "JPEG", quality=85, optimize=True)
+        return output.getvalue()
+
+
+def thumbnail(user, image_url):
+    """JPEG bytes of the picture at `image_url`, or None. Cached for everyone by address; misses
+    are throttled per user because each one fetches from a server of the shop's choosing."""
+    key = "wishlist:thumbnail:" + hashlib.sha256(image_url.encode()).hexdigest()
+    cached = cache.get(key)
+    if cached is not None:
+        return cached or None
+    if count_hit(f"wishlist:images:{user.pk}", FETCH_WINDOW_SECONDS) > IMAGE_FETCHES_PER_WINDOW:
+        return None
+    try:
+        data = safe_fetch.fetch(
+            image_url,
+            lambda response: safe_fetch.read_capped(response, MAX_IMAGE_BYTES, "Das Bild ist zu groß."),
+            user_agent=USER_AGENT,
+            accept="image/avif, image/webp, image/png, image/jpeg, image/*;q=0.8",
+            server="Der Bildserver",
+        )
+        result = _jpeg_thumbnail(data)
+    except (safe_fetch.FetchError, ValueError, OSError, Image.DecompressionBombError):
+        result = b""
+    cache.set(key, result, THUMBNAIL_CACHE_SECONDS if result else FAILED_THUMBNAIL_CACHE_SECONDS)
+    return result or None
 
 
 def money(amount, currency):

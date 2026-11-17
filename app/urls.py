@@ -68,6 +68,7 @@ urlpatterns = [
     path("tools/whiteboard/api/<int:board_id>/", view.whiteboard_api, name="whiteboard_api"),
     path("tools/wishlist/", view.wish_lists, name="wish_lists"),
     path("tools/wishlist/<int:list_id>/", view.wish_list_detail, name="wish_list_detail"),
+    path("tools/wishlist/image/<int:item_id>/", view.wish_item_image, name="wish_item_image"),
     path("tools/vocabulary/", view.vocabulary_lists, name="vocabulary_lists"),
     path("tools/vocabulary/<int:list_id>/", view.vocabulary_list_detail, name="vocabulary_list_detail"),
     path("tools/vocabulary/<int:list_id>/practice/", view.vocabulary_practice, name="vocabulary_practice"),

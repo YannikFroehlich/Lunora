@@ -6,6 +6,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- The wish list ("Wunschliste") takes links from other online shops too, not only Amazon: title,
+  price, picture, rating and availability come from the product data most shops embed for search
+  engines. Product pictures are now loaded through Lunora instead of straight from the shop, so the
+  browser no longer contacts Amazon or the shop when a list is opened.
 - New tool "Amazon-Wunschliste": paste Amazon product links (short links such as amzn.eu too) into
   named lists; Lunora reads title, price, picture, rating and availability from the product page and
   shows each list's total. Prices can be refreshed per item, and when Amazon blocks the lookup the

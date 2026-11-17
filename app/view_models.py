@@ -453,8 +453,8 @@ TOOLS = (
     },
     {
         "id": "wishlist",
-        "title": "Amazon-Wunschliste",
-        "description": "Amazon-Links sammeln, mit Preis, Bild und Bewertung auflisten und den Gesamtpreis sehen.",
+        "title": "Wunschliste",
+        "description": "Produktlinks aus Onlineshops sammeln, mit Preis, Bild und Bewertung auflisten und den Gesamtpreis sehen.",
         "icon": "fa-gift",
         "url_name": "wish_lists",
     },

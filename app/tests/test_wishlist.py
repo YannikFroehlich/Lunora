@@ -1,13 +1,15 @@
+import io
 from decimal import Decimal
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.test import SimpleTestCase, TestCase
+from PIL import Image
 
 from app.models import WishList, WishListItem
 from app.services.safe_fetch import FetchError
-from app.services.wishlist import _amount, amazon_url, list_totals, parse_product_page, title_from_url
+from app.services.wishlist import _amount, list_totals, parse_product_page, product_url, title_from_url
 from app.tests.helpers import FakeHttpConnection
 
 PRODUCT_PAGE = """<html><head>
@@ -20,6 +22,33 @@ PRODUCT_PAGE = """<html><head>
 <div id="availability" class="a-section"><span class="a-size-medium a-color-success primary-availability-message"> Auf Lager </span></div>
 <img id="landingImage" data-old-hires="https://m.media-amazon.com/images/I/71abc._AC_SL1500_.jpg" src="x">
 </body></html>"""
+
+SHOP_PAGE = """<html><head>
+<meta property="og:title" content="Nicht dieser Titel">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [
+  {"@type": "BreadcrumbList", "name": "Krümel"},
+  {"@type": "ProductGroup", "name": "Sessel", "hasVariant": [{
+    "@type": "Product", "name": "Sessel Ohrensessel &amp; Hocker",
+    "image": {"@type": "ImageObject", "url": "/bilder/sessel.png"},
+    "aggregateRating": {"ratingValue": "9", "bestRating": "10", "reviewCount": 87},
+    "offers": [{"@type": "Offer", "price": "349.00", "priceCurrency": "EUR",
+                "availability": "https://schema.org/LimitedAvailability"}]
+  }]}
+]}</script>
+</head><body><h1>Sessel</h1></body></html>"""
+
+OPEN_GRAPH_PAGE = """<html><head>
+<meta property="og:title" content="Lampe Bogen">
+<meta property="og:image" content="https://cdn.shop.example.com/lampe.jpg">
+<meta property="product:price:amount" content="89,90">
+<meta property="product:price:currency" content="CHF">
+</head></html>"""
+
+
+def png_bytes(size=(900, 600)):
+    output = io.BytesIO()
+    Image.new("RGBA", size, (200, 30, 30, 128)).save(output, "PNG")
+    return output.getvalue()
 
 
 class WishlistParsingTests(SimpleTestCase):
@@ -35,11 +64,10 @@ class WishlistParsingTests(SimpleTestCase):
         self.assertEqual(product["availability"], "Auf Lager")
         self.assertEqual(product["canonical"], "https://www.amazon.de/kaffeemaschine/dp/B0TEST1234")
 
-    def test_falls_back_to_the_price_label_and_drops_foreign_pictures(self):
+    def test_amazon_falls_back_to_the_price_label(self):
         page = (
             '<span id="productTitle">Lampe</span>'
             '<span id="apex-pricetopay-accessibility-label" class="aok-offscreen"> 24,95&nbsp;&euro; </span>'
-            '<img data-old-hires="https://evil.example.com/a.jpg">'
         )
 
         product = parse_product_page(page)
@@ -48,8 +76,31 @@ class WishlistParsingTests(SimpleTestCase):
         self.assertEqual(product["image_url"], "")
         self.assertIsNone(product["rating"])
 
-    def test_page_without_product_title_is_no_product(self):
+    def test_other_shops_are_read_from_their_json_ld_product(self):
+        product = parse_product_page(SHOP_PAGE, "https://www.moebel.example.com/p/sessel?farbe=blau")
+
+        self.assertEqual(product["title"], "Sessel Ohrensessel & Hocker")
+        self.assertEqual(product["price"], Decimal("349.00"))
+        self.assertEqual(product["currency"], "€")
+        self.assertEqual(product["image_url"], "https://www.moebel.example.com/bilder/sessel.png")
+        self.assertEqual(product["rating"], Decimal("4.5"))
+        self.assertEqual(product["review_count"], 87)
+        self.assertEqual(product["availability"], "Nur noch wenige")
+
+    def test_open_graph_tags_stand_in_for_missing_json_ld(self):
+        product = parse_product_page(OPEN_GRAPH_PAGE, "https://shop.example.com/lampe")
+
+        self.assertEqual(product["title"], "Lampe Bogen")
+        self.assertEqual(product["price"], Decimal("89.90"))
+        self.assertEqual(product["currency"], "CHF")
+        self.assertEqual(product["image_url"], "https://cdn.shop.example.com/lampe.jpg")
+        self.assertIsNone(product["rating"])
+
+    def test_page_without_product_data_is_no_product(self):
         self.assertIsNone(parse_product_page("<html><title>Robot Check</title></html>"))
+        self.assertIsNone(
+            parse_product_page('<script type="application/ld+json">{"@type": "Product"</script>')
+        )
 
     def test_amounts_in_german_and_english_notation(self):
         for text, expected in [
@@ -67,20 +118,32 @@ class WishlistParsingTests(SimpleTestCase):
     def test_product_links_are_cut_down_to_the_asin(self):
         url = "https://www.amazon.de/Kaffee-Muehle/dp/b0test1234/ref=sr_1_1?tag=partner-21&th=1"
 
-        self.assertEqual(amazon_url(url), ("https://www.amazon.de/dp/B0TEST1234", "B0TEST1234"))
-        self.assertEqual(amazon_url("https://amzn.eu/d/abc123"), ("https://amzn.eu/d/abc123", ""))
+        self.assertEqual(product_url(url), ("https://www.amazon.de/dp/B0TEST1234", "B0TEST1234"))
+        self.assertEqual(product_url("https://amzn.eu/d/abc123"), ("https://amzn.eu/d/abc123", ""))
         self.assertEqual(title_from_url(url), "Kaffee Muehle")
         self.assertEqual(title_from_url("https://www.amazon.de/dp/B0TEST1234"), "Amazon-Artikel")
 
-    def test_other_shops_and_internal_addresses_are_refused(self):
+    def test_other_shop_links_lose_only_their_tracking_parameters(self):
+        url = (
+            "https://www.otto.de/p/philips-airfryer-xxl-S0F2Z0EN/?variationId=42&utm_source=x&gclid=y#reviews"
+        )
+
+        self.assertEqual(
+            product_url(url), ("https://www.otto.de/p/philips-airfryer-xxl-S0F2Z0EN/?variationId=42", "")
+        )
+        self.assertEqual(title_from_url(url), "philips airfryer xxl S0F2Z0EN")
+        self.assertEqual(
+            title_from_url("https://www.shop.example.com/p/12345"), "Artikel von shop.example.com"
+        )
+
+    def test_amazon_pages_without_product_and_internal_addresses_are_refused(self):
         for url in [
-            "https://www.ebay.de/itm/123",
-            "https://amazon.de.evil.example.com/dp/B0TEST1234",
             "https://www.amazon.de/gp/help/customer",
             "http://127.0.0.1/dp/B0TEST1234",
+            "http://intranet/produkt",
         ]:
             with self.subTest(url=url), self.assertRaises(FetchError):
-                amazon_url(url)
+                product_url(url)
 
     def test_totals_count_quantities_per_currency(self):
         items = [
@@ -188,15 +251,72 @@ class WishlistViewTests(TestCase):
         item.refresh_from_db()
         self.assertEqual(item.price, Decimal("1299.99"))
 
-    def test_same_product_twice_and_other_shops_are_refused_without_a_request(self):
+    def test_same_product_twice_is_refused_without_a_request(self):
         WishListItem.objects.create(
             wish_list=self.wish_list, url="https://www.amazon.de/dp/B0TEST1234", asin="B0TEST1234", title="X"
         )
+        WishListItem.objects.create(
+            wish_list=self.wish_list, url="https://shop.example.com/p/sessel", title="Y"
+        )
 
         self.assertContains(self._add(), "steht schon auf der Liste")
-        self.assertContains(self._add("https://www.ebay.de/itm/1"), "Link zu einem Amazon-Artikel")
+        self.assertContains(
+            self._add("https://shop.example.com/p/sessel?utm_source=mail"), "steht schon auf der Liste"
+        )
         self.assertEqual(FakeHttpConnection.requests, [])
-        self.assertEqual(WishListItem.objects.count(), 1)
+        self.assertEqual(WishListItem.objects.count(), 2)
+
+    def test_adding_a_link_from_another_shop(self):
+        FakeHttpConnection.responses = [(200, {}, SHOP_PAGE.encode())]
+
+        self._add("https://www.moebel.example.com/p/sessel?farbe=blau&utm_campaign=herbst")
+
+        item = WishListItem.objects.get(wish_list=self.wish_list)
+        self.assertEqual(FakeHttpConnection.requests, [("www.moebel.example.com", "/p/sessel?farbe=blau")])
+        self.assertEqual(
+            (item.title, item.price, item.asin), ("Sessel Ohrensessel & Hocker", Decimal("349.00"), "")
+        )
+        self.assertEqual(item.image_url, "https://www.moebel.example.com/bilder/sessel.png")
+
+    def test_pictures_are_served_re_encoded_and_cached(self):
+        item = WishListItem.objects.create(
+            wish_list=self.wish_list,
+            url="https://shop.example.com/p/sessel",
+            title="Sessel",
+            image_url="https://cdn.shop.example.com/sessel.png",
+        )
+        FakeHttpConnection.responses = [(200, {}, png_bytes())]
+
+        first = self.client.get(f"/tools/wishlist/image/{item.pk}/")
+        second = self.client.get(f"/tools/wishlist/image/{item.pk}/")
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(first["Content-Type"], "image/jpeg")
+        self.assertIn("private", first["Cache-Control"])
+        with Image.open(io.BytesIO(first.content)) as picture:
+            self.assertEqual((picture.format, picture.size), ("JPEG", (400, 267)))
+        self.assertEqual(second.content, first.content)
+        self.assertEqual(FakeHttpConnection.requests, [("cdn.shop.example.com", "/sessel.png")])
+
+    def test_pictures_that_are_no_plain_images_and_foreign_items_are_not_served(self):
+        item = WishListItem.objects.create(
+            wish_list=self.wish_list,
+            url="https://shop.example.com/p/sessel",
+            title="Sessel",
+            image_url="https://cdn.shop.example.com/sessel.svg",
+        )
+        other = User.objects.create_user(username="max", email="max@example.com", password="pw-12345!")
+        foreign = WishListItem.objects.create(
+            wish_list=WishList.objects.create(owner=other, title="Privat"),
+            url="https://shop.example.com/p/lampe",
+            title="Lampe",
+            image_url="https://cdn.shop.example.com/lampe.png",
+        )
+        FakeHttpConnection.responses = [(200, {}, b'<svg xmlns="http://www.w3.org/2000/svg"><script/></svg>')]
+
+        self.assertEqual(self.client.get(f"/tools/wishlist/image/{item.pk}/").status_code, 404)
+        self.assertEqual(self.client.get(f"/tools/wishlist/image/{foreign.pk}/").status_code, 404)
+        self.assertEqual(len(FakeHttpConnection.requests), 1)
 
     def test_lookups_are_throttled_per_user(self):
         FakeHttpConnection.responses = [(503, {}, b"")] * 30

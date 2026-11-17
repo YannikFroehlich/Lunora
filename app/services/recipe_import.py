@@ -21,7 +21,7 @@ _TAG_RE = re.compile(r"<[^>]*>")
 _BREAK_RE = re.compile(r"<\s*(?:br|/p|/li|/div)\s*/?\s*>", re.IGNORECASE)
 
 
-class _JsonLdScripts(HTMLParser):
+class JsonLdScripts(HTMLParser):
     """Collects the text of every <script type="application/ld+json"> on a page."""
 
     def __init__(self):
@@ -43,25 +43,26 @@ class _JsonLdScripts(HTMLParser):
             self._current = None
 
 
-def _is_recipe(value):
+def _has_type(value, type_name):
     kind = value.get("@type")
     kinds = kind if isinstance(kind, list) else [kind]
-    return any(isinstance(item, str) and item.rsplit("/", 1)[-1] == "Recipe" for item in kinds)
+    return any(isinstance(item, str) and item.rsplit("/", 1)[-1] == type_name for item in kinds)
 
 
-def _recipe_objects(value, depth=0):
-    """Every Recipe object in a JSON-LD value: top level, lists, @graph or mainEntity."""
+def json_ld_objects(value, type_name, depth=0):
+    """Every object of schema.org type `type_name` in a JSON-LD value: top level, lists, @graph,
+    mainEntity or a product group's variants."""
     if depth > _MAX_DEPTH:
         return
     if isinstance(value, list):
         for item in value:
-            yield from _recipe_objects(item, depth + 1)
+            yield from json_ld_objects(item, type_name, depth + 1)
     elif isinstance(value, dict):
-        if _is_recipe(value):
+        if _has_type(value, type_name):
             yield value
-        for key in ("@graph", "mainEntity", "mainEntityOfPage"):
+        for key in ("@graph", "mainEntity", "mainEntityOfPage", "hasVariant"):
             if key in value:
-                yield from _recipe_objects(value[key], depth + 1)
+                yield from json_ld_objects(value[key], type_name, depth + 1)
 
 
 def _text(value):
@@ -111,7 +112,7 @@ def _capped_lines(lines, limit):
 
 def parse_recipe_page(page):
     """{title, servings, ingredients, instructions} from the first Recipe on the page, or None."""
-    parser = _JsonLdScripts()
+    parser = JsonLdScripts()
     parser.feed(page)
     parser.close()
     for block in parser.blocks:
@@ -119,7 +120,7 @@ def parse_recipe_page(page):
             data = json.loads(block)
         except ValueError:
             continue
-        for recipe in _recipe_objects(data):
+        for recipe in json_ld_objects(data, "Recipe"):
             title = _text(recipe.get("name")).replace("\n", " ")[:TITLE_MAX].strip()
             if not title:
                 continue
