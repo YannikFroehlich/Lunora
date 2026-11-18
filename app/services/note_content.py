@@ -47,6 +47,8 @@ ALLOWED_MARK_TYPES = {
     "textStyle",
     "highlight",
     "commentThread",
+    # Who wrote the text, set by the editor on shared notes; informational, not a proof.
+    "author",
 }
 THREAD_ID_RE = re.compile(r"^[0-9a-fA-F-]{36}$")
 ALLOWED_CODE_LANGUAGES = {
@@ -389,6 +391,10 @@ def _validate_mark(mark, state):
         if set(attrs) - {"threadId"} or not THREAD_ID_RE.fullmatch(thread_id):
             raise ValidationError("Der Kommentarbezug ist ungültig.")
         state["comment_threads"].add(thread_id.lower())
+    elif mark_type == "author":
+        user_id = attrs.get("userId")
+        if set(attrs) != {"userId"} or type(user_id) is not int or user_id <= 0:
+            raise ValidationError("Die Autorenangabe ist ungültig.")
     elif attrs:
         raise ValidationError(f"Die Textformatierung „{mark_type}“ darf keine Attribute enthalten.")
 

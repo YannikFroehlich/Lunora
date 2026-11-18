@@ -3,7 +3,7 @@ import { Schema } from "@tiptap/pm/model";
 import { EditorState } from "@tiptap/pm/state";
 import { Step } from "@tiptap/pm/transform";
 
-import { collabPlugin, getVersion, receiveTransaction, sendableSteps } from "./collab.js";
+import { collabPlugin, getVersion, insertedRanges, receiveTransaction, sendableSteps } from "./collab.js";
 
 const schema = new Schema({
   nodes: {
@@ -11,6 +11,7 @@ const schema = new Schema({
     paragraph: { content: "text*", toDOM: () => ["p", 0] },
     text: {},
   },
+  marks: { strong: { toDOM: () => ["strong", 0] } },
 });
 
 function editorState(text) {
@@ -111,5 +112,22 @@ describe("live editing", () => {
     alice = sync(alice, server, "alice");
 
     expect(bob.doc.eq(alice.doc)).toBe(true);
+  });
+});
+
+describe("authorship ranges", () => {
+  it("covers inserted text only, mapped through later changes", () => {
+    const state = editorState("Hallo");
+    const typed = state.tr.insertText("neu ", 1);
+    const shifted = state.apply(typed).tr.insertText("X", 1);
+    expect(insertedRanges([typed], () => true)).toEqual([[1, 5]]);
+    expect(insertedRanges([typed, shifted], (tr) => tr === typed)).toEqual([[2, 6]]);
+  });
+
+  it("ignores formatting and deletions", () => {
+    const state = editorState("Hallo");
+    const bold = state.tr.addMark(1, 3, schema.marks.strong.create());
+    const removed = state.tr.delete(1, 3);
+    expect(insertedRanges([bold, removed], () => true)).toEqual([]);
   });
 });

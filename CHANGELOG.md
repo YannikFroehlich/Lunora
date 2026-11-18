@@ -6,6 +6,11 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Shared whiteboards show who else is on the board: their avatars in the header ("… zeichnet
+  gerade" while someone draws) and their pointer with their name on the board.
+- Shared notes remember who wrote what: "Wer hat was geschrieben" in the note's header (or
+  Ctrl+Alt+U) colors each person's text and lists the colors below the editor. Text written before
+  a note was shared has no author.
 - Shared whiteboards update live: what someone draws, erases, moves or retitles shows up for the
   others within about a second, and everybody always sees exactly the same board; Lunora checks
   that after every change and reloads the board if one ever differs. Drawing at the same time no

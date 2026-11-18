@@ -148,6 +148,7 @@
                 <button type="button" data-command="outline" aria-label="Inhaltsverzeichnis" aria-pressed="false"><i class="fa-solid fa-bars-staggered"></i></button>
                 <button type="button" data-command="comments" aria-label="Kommentare"><i class="fa-regular fa-comment"></i></button>
                 <button type="button" data-command="versions" aria-label="Versionsverlauf"><i class="fa-solid fa-clock-rotate-left"></i></button>
+                {% if selected_note_data.shares %}<button type="button" data-command="authors" aria-label="Wer hat was geschrieben" aria-pressed="false"><i class="fa-solid fa-user-pen"></i></button>{% endif %}
                 {% if selected_note_data.can_manage %}<button type="button" data-command="share" aria-label="Teilen"><i class="fa-solid fa-user-plus"></i></button>{% endif %}
                 <button type="button" data-command="duplicate" aria-label="Duplizieren"><i class="fa-regular fa-copy"></i></button>
                 <button type="button" data-command="saveAsTemplate" aria-label="Als Vorlage speichern"><i class="fa-solid fa-layer-group"></i></button>
@@ -279,6 +280,7 @@
             </div>
             <footer class="note-editor-statusbar">
                 <span data-word-count>0 Wörter · 0 Zeichen</span>
+                {% if selected_note_data.shares %}<span class="note-author-legend" data-note-author-legend hidden></span>{% endif %}
             </footer>
             <button type="button" class="note-editor-zoom-indicator" data-editor-zoom-level aria-label="Zoomstufe des Editors, klicken zum Zurücksetzen">100%</button>
             {% if selected_note_data.backlinks %}

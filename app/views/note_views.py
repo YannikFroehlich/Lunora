@@ -130,6 +130,7 @@ SHORTCUT_ACTIONS = {
     "trash",
     "share",
     "versions",
+    "authors",
     "exportPdf",
     "exportMarkdown",
     "exportWord",

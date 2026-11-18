@@ -3,7 +3,7 @@ import json
 from django.contrib.auth.models import User
 from django.test import Client, TestCase
 
-from app.models import Note, NoteActivityNotification, NoteShare, NoteVersion
+from app.models import Note, NoteActivityNotification, NoteShare, NoteTemplate, NoteVersion
 from app.tests.helpers import note_document
 
 
@@ -198,3 +198,41 @@ class NoteCollabTests(TestCase):
         self.assertEqual(self.save(self.editor, document).status_code, 400)
         self.assertEqual(self.save(self.owner, document).status_code, 200)
         self.assertEqual(self.save(self.editor, document).status_code, 200)
+
+    def test_author_marks_travel_and_are_checked(self):
+        author = {"type": "author", "attrs": {"userId": self.editor.id}}
+        self.assertTrue(self.sync(self.editor, 0, [insert_step("Hi", marks=[author])]).json()["accepted"])
+        for bad in ({"type": "author", "attrs": {"userId": "1"}}, {"type": "author", "attrs": {}}):
+            with self.subTest(mark=bad):
+                self.assertEqual(self.sync(self.editor, 1, [insert_step("x", marks=[bad])]).status_code, 400)
+        document = note_document("Start")
+        document["content"][0]["content"][0]["marks"].append(author)
+        self.assertEqual(self.save(self.editor, document, collab_version=1).status_code, 200)
+
+    def test_author_marks_stay_out_of_templates_and_the_public_page(self):
+        from app.services.note_html import render_note_html
+
+        document = note_document("Von Editor")
+        document["content"][0]["content"][0]["marks"].append(
+            {"type": "author", "attrs": {"userId": self.editor.id}}
+        )
+        self.assertEqual(self.save(self.owner, document).status_code, 200)
+        response = self.clients[self.owner].post(
+            "/notes/api/templates/",
+            data=json.dumps({"note_id": self.note.id, "name": "Vorlage"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        template = NoteTemplate.objects.get(owner=self.owner)
+        self.assertNotIn("author", json.dumps(template.document))
+        self.note.refresh_from_db()
+        html = render_note_html(self.note, attachment_url=lambda attachment: "")
+        self.assertIn("Von Editor", html)
+        self.assertNotIn("data-author", html)
+
+    def test_editor_page_offers_the_authors_toggle_on_shared_notes_only(self):
+        response = self.clients[self.owner].get(f"/notes/{self.note.id}/")
+        self.assertContains(response, 'data-command="authors"')
+        self.assertEqual(response.context["selected_note_data"]["viewer_id"], self.owner.id)
+        alone = Note.objects.create(owner=self.owner, title="Allein")
+        self.assertNotContains(self.clients[self.owner].get(f"/notes/{alone.id}/"), 'data-command="authors"')

@@ -33,7 +33,7 @@ import xml from "highlight.js/lib/languages/xml";
 import yaml from "highlight.js/lib/languages/yaml";
 
 import { checklistProgress } from "./checklist-utils.js";
-import { Collaboration, isRemoteTransaction, startCollabSync } from "./collab.js";
+import { Authorship, Collaboration, KEEP_AUTHORS, cursorTone, isRemoteTransaction, startCollabSync } from "./collab.js";
 import { normalizeLinkHref } from "./link-utils.js";
 import { editingLabel } from "./presence-utils.js";
 import { eventToShortcut, findShortcutConflict, mergeShortcuts, shortcutMatches } from "./shortcut-utils.js";
@@ -989,6 +989,7 @@ const COMMAND_DEFAULTS = {
   trash: { label: "In Papierkorb", shortcut: "Mod+Alt+Backspace" },
   share: { label: "Teilen", shortcut: "Mod+Alt+H" },
   outline: { label: "Inhaltsverzeichnis anzeigen/verbergen", shortcut: "Mod+Alt+O" },
+  authors: { label: "Wer hat was geschrieben", shortcut: "Mod+Alt+U" },
   versions: { label: "Versionsverlauf", shortcut: "Mod+Alt+V" },
   exportPdf: { label: "Als PDF exportieren", shortcut: "Mod+Alt+E" },
   exportMarkdown: { label: "Als Markdown exportieren", shortcut: "Mod+Alt+Shift+E" },
@@ -1098,6 +1099,8 @@ function initNotesApp() {
         }),
         CharacterCount,
         Collaboration.configure({ version: note.collab_version || 0 }),
+        // Only shared notes record who wrote what; a note of one person has nothing to tell apart.
+        Authorship.configure({ userId: note.shares?.length ? note.viewer_id : null }),
         NoteImage.configure({ getZoom: () => editorZoom }),
         NoteAttachmentNode,
         MathInline.configure({ onEdit: openMathDialog }),
@@ -1440,6 +1443,7 @@ function initNotesApp() {
       share: openShareDialog,
       comments: openCommentsDialog,
       outline: toggleOutlinePanel,
+      authors: toggleAuthors,
       versions: openVersionsDialog,
       exportPdf: () => exportNote("pdf", "PDF"),
       exportMarkdown: () => exportNote("markdown", "Markdown"),
@@ -1784,6 +1788,46 @@ function initNotesApp() {
     wordCount.title = label;
   }
 
+  // "Wer hat was geschrieben": colors each author's text and lists who has which color.
+  const AUTHORS_STORAGE_KEY = "lunora-note-authors";
+  const authorLegend = document.querySelector("[data-note-author-legend]");
+
+  function setAuthorsShown(shown) {
+    const page = document.querySelector("[data-note-editor]");
+    if (!page || !authorLegend) return;
+    page.classList.toggle("show-authors", shown);
+    authorLegend.hidden = !shown;
+    document
+      .querySelectorAll('[data-command="authors"]')
+      .forEach((button) => button.setAttribute("aria-pressed", String(shown)));
+    if (shown) {
+      const people = [note.owner, ...(note.shares || []).map((share) => ({ id: share.user_id, name: share.name }))];
+      authorLegend.replaceChildren(
+        ...people.map((person) => {
+          const item = document.createElement("span");
+          item.className = `note-author-key tone-${cursorTone(person.id)}`;
+          item.textContent = person.id === note.viewer_id ? `${person.name} (du)` : person.name;
+          return item;
+        }),
+      );
+    }
+    try {
+      localStorage.setItem(AUTHORS_STORAGE_KEY, shown ? "1" : "0");
+    } catch (_error) {
+      // Only a convenience; the toggle still works for this page.
+    }
+  }
+
+  function toggleAuthors() {
+    setAuthorsShown(authorLegend?.hidden ?? false);
+  }
+
+  try {
+    if (note?.shares?.length && localStorage.getItem(AUTHORS_STORAGE_KEY) === "1") setAuthorsShown(true);
+  } catch (_error) {
+    // Browser storage unavailable: start with the authors hidden.
+  }
+
   function toggleOutlinePanel() {
     if (!outlinePanel) return;
     const willShow = outlinePanel.hidden;
@@ -2051,7 +2095,7 @@ function initNotesApp() {
       }
       applying = true;
       titleInput.value = draft.title;
-      editor.commands.setContent(draft.document);
+      editor.chain().setMeta(KEEP_AUTHORS, true).setContent(draft.document).run();
       applying = false;
       dirty = true;
       setSaveStatus("Lokaler Entwurf – ungespeichert");
@@ -3319,7 +3363,7 @@ function initNotesApp() {
     applying = true;
     note = freshNote;
     titleInput.value = note.title;
-    editor.commands.setContent(note.document);
+    editor.chain().setMeta(KEEP_AUTHORS, true).setContent(note.document).run();
     applying = false;
     dirty = false;
     localStorage.removeItem(draftKey());

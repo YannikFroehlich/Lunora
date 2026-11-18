@@ -488,6 +488,7 @@ def serialize_note(note, user, *, include_document=True):
         "checklist_total": note.checklist_total,
         "revision": note.revision,
         "collab_version": note.collab_version,
+        "viewer_id": user.id,
         "permission": permission,
         "can_edit": permission in {"owner", NoteShare.ROLE_EDITOR},
         "can_manage": permission == "owner",
@@ -949,7 +950,8 @@ def _strip_template_hazards(node):
     """A saved template must stand alone: comment threads, mentions of a specific
     person, links to a specific note, and attachments all belong to the source note
     and would either dangle or repeat unexpectedly every time the template is reused,
-    so they are dropped (mentions/links keep their visible label as plain text)."""
+    so they are dropped (mentions/links keep their visible label as plain text), as are
+    the authors of its text."""
     node_type = node.get("type")
     if node_type == "mention":
         label = (node.get("attrs") or {}).get("label", "")
@@ -961,7 +963,7 @@ def _strip_template_hazards(node):
         return None
     marks = node.get("marks")
     if marks:
-        node["marks"] = [mark for mark in marks if mark.get("type") != "commentThread"]
+        node["marks"] = [mark for mark in marks if mark.get("type") not in {"commentThread", "author"}]
     content = node.get("content")
     if content:
         node["content"] = [

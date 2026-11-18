@@ -2,7 +2,7 @@
 // The step bookkeeping follows prosemirror-collab (MIT, Marijn Haverbeke): local steps stay
 // "unconfirmed" until the server has numbered them, steps from others are applied to the
 // confirmed document and the unconfirmed ones rebased on top, so every editor converges.
-import { Extension } from "@tiptap/core";
+import { Extension, Mark } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Step } from "@tiptap/pm/transform";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
@@ -149,6 +149,85 @@ function cursorPlugin() {
     },
   });
 }
+
+// Text a local change inserted, as [from, to] ranges in the document after all `transactions`.
+export function insertedRanges(transactions, isTracked) {
+  let ranges = [];
+  transactions.forEach((tr) => {
+    const tracked = isTracked(tr);
+    tr.mapping.maps.forEach((map) => {
+      ranges = ranges.map(([from, to]) => [map.map(from, 1), map.map(to, -1)]).filter(([from, to]) => to > from);
+      if (tracked) {
+        map.forEach((_oldStart, _oldEnd, newStart, newEnd) => {
+          if (newEnd > newStart) ranges.push([newStart, newEnd]);
+        });
+      }
+    });
+  });
+  return ranges;
+}
+
+export const KEEP_AUTHORS = "lunoraKeepAuthors";
+
+export function keepAuthors(tr) {
+  return tr.setMeta(KEEP_AUTHORS, true);
+}
+
+// "Wer hat was geschrieben": every text this editor types (or pastes) on a shared note gets an
+// `author` mark with the own user id, which travels with the steps like any other formatting.
+// Steps of others, undo/redo and reloads keep the marks they bring.
+export const Authorship = Mark.create({
+  name: "author",
+  inclusive: false,
+  addOptions() {
+    return { userId: null };
+  },
+  addAttributes() {
+    return {
+      userId: {
+        default: null,
+        parseHTML: (element) => Number.parseInt(element.dataset.author, 10) || null,
+        renderHTML: (attributes) =>
+          attributes.userId
+            ? { "data-author": attributes.userId, class: `note-author tone-${cursorTone(attributes.userId)}` }
+            : {},
+      },
+    };
+  },
+  parseHTML() {
+    return [{ tag: "span[data-author]" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["span", HTMLAttributes, 0];
+  },
+  addProseMirrorPlugins() {
+    const userId = this.options.userId;
+    if (!userId) return [];
+    return [
+      new Plugin({
+        appendTransaction(transactions, _oldState, newState) {
+          const ranges = insertedRanges(
+            transactions,
+            (tr) => tr.docChanged && !isRemoteTransaction(tr) && !tr.getMeta("history$") && !tr.getMeta(KEEP_AUTHORS),
+          );
+          if (!ranges.length) return null;
+          const type = newState.schema.marks.author;
+          const mark = type.create({ userId });
+          const tr = newState.tr;
+          ranges.forEach(([from, to]) => {
+            newState.doc.nodesBetween(from, to, (node, pos) => {
+              if (!node.isText || mark.isInSet(node.marks)) return;
+              const start = Math.max(from, pos);
+              const end = Math.min(to, pos + node.nodeSize);
+              tr.removeMark(start, end, type).addMark(start, end, mark);
+            });
+          });
+          return tr.docChanged ? keepAuthors(tr) : null;
+        },
+      }),
+    ];
+  },
+});
 
 export const Collaboration = Extension.create({
   name: "lunoraCollaboration",
