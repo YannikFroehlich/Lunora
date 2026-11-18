@@ -2,6 +2,7 @@ import json
 from unittest import mock
 
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.test import Client, TestCase
 
 from app.models import Whiteboard, WhiteboardOp, WhiteboardShare
@@ -29,6 +30,7 @@ def rect(element_id, x=0):
 
 class WhiteboardLiveTests(TestCase):
     def setUp(self):
+        cache.clear()  # peers and hashes live in the cache, which outlasts each test
         self.owner = User.objects.create_user(username="wb-owner@example.com", password="pw-12345!")
         self.member = User.objects.create_user(username="wb-member@example.com", password="pw-12345!")
         self.stranger = User.objects.create_user(username="wb-stranger@example.com", password="pw-12345!")
@@ -42,8 +44,8 @@ class WhiteboardLiveTests(TestCase):
             client.force_login(user)
             self.clients[user] = client
 
-    def sync(self, user, version, ops=None, tab="tab-aaaaaaaa"):
-        body = {"version": version, "tab": tab}
+    def sync(self, user, version, ops=None, tab="tab-aaaaaaaa", pointer=None, drawing=False):
+        body = {"version": version, "tab": tab, "pointer": pointer, "drawing": drawing}
         if ops is not None:
             body["ops"] = ops
         return self.clients[user].post(
@@ -213,3 +215,44 @@ class WhiteboardLiveTests(TestCase):
     def test_editor_page_points_to_the_sync_endpoint(self):
         response = self.clients[self.member].get(f"/tools/whiteboard/{self.board.pk}/")
         self.assertContains(response, f'data-sync-url="/tools/whiteboard/api/{self.board.pk}/sync/"')
+
+    def test_peers_see_each_other_with_their_pointer(self):
+        self.board.owner.first_name = "Lea"
+        self.board.owner.save()
+        self.sync(self.owner, 1, pointer={"x": 12.34, "y": -5}, drawing=True)
+        peers = self.sync(self.member, 1, tab="tab-bbbbbbbb").json()["peers"]
+        self.assertEqual(len(peers), 1)
+        self.assertEqual(peers[0]["user_id"], self.owner.pk)
+        self.assertEqual(peers[0]["pointer"], {"x": 12.3, "y": -5.0})
+        self.assertTrue(peers[0]["drawing"])
+        self.assertEqual(peers[0]["initials"], "LE")
+        # Own tabs are not listed, the other one is.
+        self.assertEqual(
+            self.sync(self.owner, 1, tab="tab-cccccccc").json()["peers"][0]["user_id"], self.member.pk
+        )
+
+    def test_peers_expire_and_former_members_drop_out(self):
+        with mock.patch("app.services.whiteboards.time.time", return_value=1000.0):
+            self.sync(self.member, 1)
+        with mock.patch(
+            "app.services.whiteboards.time.time", return_value=1000.0 + whiteboards.PEER_TTL_SECONDS + 1
+        ):
+            self.assertEqual(self.sync(self.owner, 1).json()["peers"], [])
+        self.sync(self.member, 1)
+        WhiteboardShare.objects.filter(board=self.board, user=self.member).delete()
+        self.assertEqual(self.sync(self.owner, 1).json()["peers"], [])
+
+    def test_bad_pointers_are_refused(self):
+        for pointer in (
+            {"x": 1},
+            {"x": "1", "y": 2},
+            {"x": True, "y": 2},
+            [1, 2],
+            {"x": 1, "y": float("nan")},
+        ):
+            with self.subTest(pointer=pointer):
+                body = json.dumps({"version": 1, "tab": "tab-aaaaaaaa", "pointer": pointer})
+                response = self.clients[self.owner].post(
+                    f"/tools/whiteboard/api/{self.board.pk}/sync/", data=body, content_type="application/json"
+                )
+                self.assertEqual(response.status_code, 400)

@@ -18,6 +18,7 @@
             <span class="visually-hidden">Titel des Whiteboards</span>
             <input type="text" maxlength="{{ title_max_length }}" value="{{ board.title }}" data-whiteboard-title required>
         </label>
+        <div class="whiteboard-presence" role="group" aria-label="Gerade im Whiteboard" data-whiteboard-presence hidden></div>
         <span class="uml-save-status" role="status" aria-live="polite" data-whiteboard-status>Gespeichert</span>
     </header>
 

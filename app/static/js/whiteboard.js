@@ -75,6 +75,9 @@
   const style = { color: "default", width: 4, size: "m" };
   const nodes = new Map();
   const pointers = new Map();
+  // The others on a shared board (from the live poll) and their pointer nodes.
+  const peerNodes = new Map();
+  let peers = [];
   const history = { undo: [], redo: [] };
   let selection = new Set();
   let tool = "pen";
@@ -99,8 +102,9 @@
   const viewport = svgEl("g");
   const selectionLayer = svgEl("g");
   const guideLayer = svgEl("g");
+  const peerLayer = svgEl("g");
   const overlay = svgEl("g", { "pointer-events": "none" });
-  overlay.append(selectionLayer, guideLayer);
+  overlay.append(selectionLayer, guideLayer, peerLayer);
   svg.replaceChildren(defs, background, viewport, overlay);
 
   // ---- Helpers --------------------------------------------------------------------------------
@@ -261,6 +265,7 @@
     gridPattern.setAttribute("patternTransform", transform);
     zoomLabel.textContent = `${Math.round(view.k * 100)} %`;
     if (selection.size) drawSelection();
+    drawPeers();
     positionTextInput();
   }
 
@@ -1074,8 +1079,106 @@
     again: false,
     timer: null,
     verified: null,
+    pointer: null,
   };
   const shared = root.dataset.shared === "true";
+  const presence = root.querySelector("[data-whiteboard-presence]");
+  const PEER_TONES = ["blue", "green", "red", "violet", "sand"];
+
+  // ---- Who else is here ------------------------------------------------------------------------
+
+  function peerTone(userId) {
+    return PEER_TONES[Math.abs(userId) % PEER_TONES.length];
+  }
+
+  // The others' pointers in board coordinates. The outer group glides to each new position (polls
+  // come once a second); the inner one undoes the zoom so arrow and name keep their screen size.
+  function peerNode(peer) {
+    const node = svgEl("g", { class: `whiteboard-peer tone-${peerTone(peer.user_id)}` });
+    const inner = svgEl("g");
+    inner.append(
+      svgEl("path", { class: "whiteboard-peer-arrow", d: "M0 0L0 17L4.6 12.6L7.8 19.6L10.6 18.4L7.5 11.6L13.4 11.6Z" }),
+    );
+    const label = svgEl("text", { class: "whiteboard-peer-label", x: 15, y: 27 });
+    label.textContent = peer.name;
+    inner.append(label);
+    node.append(inner);
+    return node;
+  }
+
+  function drawPeers() {
+    const shown = new Set();
+    peers.forEach((peer) => {
+      if (!peer.pointer) return;
+      shown.add(peer.client_id);
+      let node = peerNodes.get(peer.client_id);
+      if (!node) {
+        node = peerNode(peer);
+        peerNodes.set(peer.client_id, node);
+        peerLayer.append(node);
+      }
+      node.style.transform = `translate(${peer.pointer.x}px, ${peer.pointer.y}px)`;
+      node.firstChild.setAttribute("transform", `scale(${1 / view.k})`);
+    });
+    peerNodes.forEach((node, id) => {
+      if (shown.has(id)) return;
+      node.remove();
+      peerNodes.delete(id);
+    });
+  }
+
+  function renderPresence() {
+    if (!presence) return;
+    const people = new Map();
+    peers.forEach((peer) => {
+      const known = people.get(peer.user_id);
+      people.set(peer.user_id, { ...peer, drawing: Boolean(known?.drawing || peer.drawing) });
+    });
+    const avatars = [...people.values()].map((person) => {
+      const avatar = document.createElement("span");
+      avatar.className = `avatar small tone-${peerTone(person.user_id)}${person.drawing ? " is-drawing" : ""}`;
+      avatar.title = person.drawing ? `${person.name} zeichnet gerade` : `${person.name} ist hier`;
+      if (person.avatar_url) {
+        const image = document.createElement("img");
+        image.src = person.avatar_url;
+        image.alt = `Profilbild von ${person.name}`;
+        avatar.append(image);
+      } else {
+        avatar.textContent = person.initials;
+        avatar.setAttribute("role", "img");
+        avatar.setAttribute("aria-label", avatar.title);
+      }
+      return avatar;
+    });
+    const drawing = [...people.values()].filter((person) => person.drawing).map((person) => person.name);
+    if (drawing.length) {
+      const label = document.createElement("span");
+      label.className = "whiteboard-presence-label";
+      label.textContent =
+        drawing.length === 1
+          ? `${drawing[0]} zeichnet gerade`
+          : `${drawing.slice(0, -1).join(", ")} und ${drawing.at(-1)} zeichnen gerade`;
+      avatars.push(label);
+    }
+    presence.replaceChildren(...avatars);
+    presence.hidden = !people.size;
+  }
+
+  function showPeers(next) {
+    peers = next || [];
+    drawPeers();
+    renderPresence();
+  }
+
+  if (shared) {
+    svg.addEventListener("pointermove", (event) => {
+      const world = toWorld(event.clientX, event.clientY);
+      live.pointer = { x: Math.round(world.x * 10) / 10, y: Math.round(world.y * 10) / 10 };
+    });
+    svg.addEventListener("pointerleave", () => {
+      live.pointer = null;
+    });
+  }
 
   function markDirty() {
     setStatus("Ungespeicherte Änderungen", "dirty");
@@ -1142,11 +1245,6 @@
       live.again = true;
       return;
     }
-    // A drag in progress changes the board as it goes; it is sent once it's finished.
-    if (interaction) {
-      schedule(300);
-      return;
-    }
     flush();
     live.inflight = true;
     const sent = live.pending.length;
@@ -1157,7 +1255,13 @@
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
-        body: JSON.stringify({ version: live.version, tab: live.tab, ops: sent ? live.pending : undefined }),
+        body: JSON.stringify({
+          version: live.version,
+          tab: live.tab,
+          ops: sent ? live.pending : undefined,
+          pointer: live.pointer,
+          drawing: Boolean(interaction),
+        }),
       });
       const data = await response.json().catch(() => ({}));
       if (response.status === 400 && sent) {
@@ -1181,6 +1285,8 @@
         else await reload();
       }
       applyTitle(data.title);
+      showPeers(data.peers);
+      // During a drag the board isn't swapped; the others' changes show once it's finished.
       if (!interaction) {
         flush();
         refreshVisible();

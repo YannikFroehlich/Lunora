@@ -7,7 +7,9 @@ exactly the same board. Whole-board saves (`save_whiteboard`, the plain API) are
 against `Whiteboard.revision` and make open editors reload.
 """
 
+import math
 import re
+import time
 from itertools import pairwise
 
 from django.core.cache import cache
@@ -15,8 +17,10 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Max, Q
 
-from app.models import UserNotification, Whiteboard, WhiteboardOp, WhiteboardShare
+from app.models import Conversation, UserNotification, Whiteboard, WhiteboardOp, WhiteboardShare
+from app.services.notes import _profile_image_url, display_name
 from app.services.notifications import materialize_whiteboard_share_notification
+from app.services.uml_content import MAX_COORDINATE
 from app.services.vocabulary import resolve_share_recipient
 from app.services.whiteboard_content import (
     MAX_OPS_PER_PUSH,
@@ -31,6 +35,8 @@ MAX_WHITEBOARD_SHARES = 10
 # Operations kept for editors that lag behind; older ones reload the whole board.
 OP_HISTORY = 500
 TAB_RE = re.compile(r"^[A-Za-z0-9_-]{8,40}$")
+# Who else has the board open, with their pointer; kept in the cache, refreshed by every poll.
+PEER_TTL_SECONDS = 10
 TITLE_MAX_LENGTH = Whiteboard._meta.get_field("title").max_length
 
 
@@ -117,17 +123,19 @@ def _apply_push(board, client_id, ops):
     board.ops.filter(version__lte=board.revision - OP_HISTORY).delete()
 
 
-def sync_whiteboard(board_id, user, *, version, tab, ops=None):
+def sync_whiteboard(board_id, user, *, version, tab, ops=None, pointer=None, drawing=False):
     """Store an editor's operations and return everything after `version`; None without access.
 
     The answer holds the operations in the order the server applied them (the editor's own
     included), the newest version, the hash of the board at that version, and `acked`, the
     editor's last stored change. `resync` asks the editor to load the whole board again.
+    `peers` lists the others who have the board open, with their pointer on it.
     """
     if type(version) is not int or version < 0:
         raise ValidationError("Der Bearbeitungsstand ist ungültig.")
     if not isinstance(tab, str) or not TAB_RE.fullmatch(tab):
         raise ValidationError("Die Sitzungskennung ist ungültig.")
+    pointer = _clean_pointer(pointer)
     client_id = f"{user.pk}-{tab}"
     with transaction.atomic():
         boards = accessible_whiteboards(user).filter(pk=board_id)
@@ -153,7 +161,47 @@ def sync_whiteboard(board_id, user, *, version, tab, ops=None):
         "hash": _board_hash(board),
         "title": board.title,
         "resync": resync,
+        "peers": _exchange_peers(board, user, client_id, pointer, drawing is True),
     }
+
+
+def _clean_pointer(pointer):
+    if pointer is None:
+        return None
+    if not isinstance(pointer, dict) or set(pointer) != {"x", "y"}:
+        raise ValidationError("Die Zeigerposition ist ungültig.")
+    cleaned = {}
+    for key in ("x", "y"):
+        value = pointer[key]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            raise ValidationError("Die Zeigerposition ist ungültig.")
+        cleaned[key] = round(max(-MAX_COORDINATE, min(MAX_COORDINATE, float(value))), 1)
+    return cleaned
+
+
+def _exchange_peers(board, user, client_id, pointer, drawing):
+    # ponytail: read-modify-write without a lock; two polls at once can drop one peer until its
+    # next poll a second later, which is fine for something shown only for orientation.
+    key = f"whiteboard-peers:{board.pk}"
+    now = time.time()
+    peers = {name: peer for name, peer in (cache.get(key) or {}).items() if peer["until"] > now}
+    previous = peers.get(client_id)
+    peers[client_id] = {
+        "user_id": user.pk,
+        "name": previous["name"] if previous else display_name(user),
+        "initials": previous["initials"] if previous else Conversation.initials_for_user(user),
+        "avatar_url": previous["avatar_url"] if previous else _profile_image_url(user),
+        "pointer": pointer,
+        "drawing": drawing,
+        "until": now + PEER_TTL_SECONDS,
+    }
+    cache.set(key, peers, PEER_TTL_SECONDS)
+    members = {board.owner_id, *board.shares.values_list("user_id", flat=True)}
+    return [
+        {"client_id": name, **{field: peer[field] for field in peer if field != "until"}}
+        for name, peer in peers.items()
+        if peer["user_id"] != user.pk and peer["user_id"] in members
+    ]
 
 
 def share_whiteboard(board, identifier):

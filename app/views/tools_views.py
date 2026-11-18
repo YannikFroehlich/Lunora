@@ -700,6 +700,8 @@ def whiteboard_sync_api(request, board_id):
             version=payload.get("version"),
             tab=payload.get("tab"),
             ops=payload.get("ops"),
+            pointer=payload.get("pointer"),
+            drawing=payload.get("drawing"),
         )
     except ValidationError as error:
         return JsonResponse({"ok": False, "error": " ".join(error.messages)}, status=400, headers=headers)
