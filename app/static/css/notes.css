@@ -758,6 +758,66 @@
   white-space: nowrap;
 }
 
+/* "Wer hat was geschrieben" (Authorship in frontend/collab.js): each author's text in their tone. */
+.note-editor-page.show-authors .note-author {
+  background: color-mix(in srgb, var(--tone) 32%, transparent);
+  box-shadow: inset 0 -2px 0 var(--tone);
+}
+
+.note-author-legend {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-left: 14px;
+}
+
+.note-author-legend[hidden] {
+  display: none;
+}
+
+.note-author-key::before {
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--tone);
+  vertical-align: -1px;
+}
+
+/* Cursors and selections of the others while live editing (frontend/collab.js). */
+.note-remote-caret {
+  position: relative;
+  margin-right: -1px;
+  margin-left: -1px;
+  border-right: 1px solid var(--tone);
+  border-left: 1px solid var(--tone);
+  pointer-events: none;
+  word-break: normal;
+}
+
+.note-remote-caret-label {
+  position: absolute;
+  bottom: 100%;
+  left: -1px;
+  padding: 1px 5px;
+  border-radius: var(--radius-xs) var(--radius-xs) var(--radius-xs) 0;
+  background: var(--tone);
+  color: var(--color-on-accent);
+  font-family: Inter, sans-serif;
+  font-size: var(--text-2xs);
+  font-style: normal;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.note-remote-selection {
+  background: color-mix(in srgb, var(--tone) 35%, transparent);
+}
+
 .note-presence-stack .avatar img {
   display: block;
   width: 100%;

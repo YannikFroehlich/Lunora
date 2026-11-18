@@ -9,8 +9,6 @@
   const MAX_ZOOM = 8;
   const HISTORY_LIMIT = 200;
   const MERGE_MS = 1500;
-  const SAVE_DELAY = 1200;
-  const POLL_INTERVAL = 5000;
   const SIMPLIFY_PIXELS = 0.75;
   const ERASER_PIXELS = 10;
   const FIT_MAX_ZOOM = 4;
@@ -50,10 +48,15 @@
     o: "ellipse",
     t: "text",
     g: "fill",
+    c: "comment",
   };
 
   const payload = JSON.parse(document.getElementById("whiteboard-data").textContent);
   const saveUrl = root.dataset.saveUrl;
+  const syncUrl = root.dataset.syncUrl;
+  const commentsUrl = root.dataset.commentsUrl;
+  const commentLayer = root.querySelector("[data-whiteboard-comment-layer]");
+  const commentPopover = root.querySelector("[data-whiteboard-comment-popover]");
   const csrfToken = document.querySelector("meta[name='csrf-token']")?.content || "";
   const svg = root.querySelector("[data-whiteboard-canvas]");
   const canvasWrap = svg.parentElement;
@@ -76,9 +79,12 @@
   const style = { color: "default", width: 4, size: "m" };
   const nodes = new Map();
   const pointers = new Map();
+  // The others on a shared board (from the live poll) and their pointer nodes.
+  const peerNodes = new Map();
+  let peers = [];
+  // Comment threads on the board and the one open in the popover ({threadId} or {draft: {x, y}}).
+  const commentState = { threads: [], signature: null, open: null };
   const history = { undo: [], redo: [] };
-  const saveState = { dirty: false, saving: false, again: false, timer: null, force: false };
-  let revision = payload.revision;
   let selection = new Set();
   let tool = "pen";
   let spaceHeld = false;
@@ -102,8 +108,9 @@
   const viewport = svgEl("g");
   const selectionLayer = svgEl("g");
   const guideLayer = svgEl("g");
+  const peerLayer = svgEl("g");
   const overlay = svgEl("g", { "pointer-events": "none" });
-  overlay.append(selectionLayer, guideLayer);
+  overlay.append(selectionLayer, guideLayer, peerLayer);
   svg.replaceChildren(defs, background, viewport, overlay);
 
   // ---- Helpers --------------------------------------------------------------------------------
@@ -264,6 +271,8 @@
     gridPattern.setAttribute("patternTransform", transform);
     zoomLabel.textContent = `${Math.round(view.k * 100)} %`;
     if (selection.size) drawSelection();
+    drawPeers();
+    positionComments();
     positionTextInput();
   }
 
@@ -862,11 +871,12 @@
     const original = current.element;
     if (original) {
       nodes.get(original.id)?.removeAttribute("visibility");
-      const index = doc.elements.indexOf(original);
+      // By id: a live update may have replaced the element object while the text was open.
+      const index = doc.elements.findIndex((item) => item.id === original.id);
       if (index === -1) return;
-      if (!text.trim()) commit([{ index, element: original }], []);
-      else if (text !== original.text)
-        commit([{ index, element: original }], [{ index, element: { ...original, text } }]);
+      const element = doc.elements[index];
+      if (!text.trim()) commit([{ index, element }], []);
+      else if (text !== element.text) commit([{ index, element }], [{ index, element: { ...element, text } }]);
       return;
     }
     if (!text.trim()) return;
@@ -935,6 +945,7 @@
       }
       if (pointers.size > 2) return;
     }
+    if (commentState.open && tool !== "comment") closeComment();
     if (editing) {
       // The first click outside an open text finishes it instead of starting something new.
       closeText();
@@ -954,6 +965,8 @@
       // The text field opens on release: focus moves to the canvas on press and would close it again.
       else if (tool === "text") interaction = { type: "text", world };
       else if (tool === "fill") fillAt(world);
+      // Like text, the comment opens on release so the canvas focus doesn't take it away again.
+      else if (tool === "comment") interaction = { type: "comment", world };
       else if (SHAPE_TOOLS.has(tool) && canAdd())
         interaction = { type: "shape", kind: tool, start: snapPoint(world), draft: null };
     }
@@ -1015,6 +1028,7 @@
     else if (current.type === "move") finishMove(current);
     else if (current.type === "resize") finishResize(current);
     else if (current.type === "marquee") finishMarquee(current);
+    else if (current.type === "comment") showComment({ draft: current.world });
     else if (current.type === "text") {
       const element = topElementAt(current.world);
       if (element?.type === "text") openText(null, element);
@@ -1054,106 +1068,482 @@
     statusLabel.dataset.state = state || "";
   }
 
-  function markDirty() {
-    saveState.dirty = true;
-    setStatus("Ungespeicherte Änderungen", "dirty");
-    window.clearTimeout(saveState.timer);
-    saveState.timer = window.setTimeout(save, SAVE_DELAY);
+  // ---- Live editing ---------------------------------------------------------------------------
+  // Changes go to the server as operations (diffElements against the board as last sent) and come
+  // back in the order the server applied them, everyone's included. `confirmed` is the board as the
+  // server has it at `version`; what's shown is that plus this tab's operations still on their way.
+  // Every editor applies the same operations to the same elements as the server cleaned them, and
+  // the server's hash of the board proves it, so all of them end up with exactly the same board.
+
+  const PUSH_DELAY = 150;
+  const RETRY_DELAY = 2000;
+  const LIVE_POLL = 1000;
+  const live = {
+    tab: Array.from(crypto.getRandomValues(new Uint8Array(12)), (byte) => byte.toString(16).padStart(2, "0")).join(""),
+    version: payload.revision,
+    confirmed: [...doc.elements],
+    base: [...doc.elements],
+    baseTitle: payload.title,
+    pending: [],
+    seq: 0,
+    inflight: false,
+    again: false,
+    timer: null,
+    verified: null,
+    pointer: null,
+  };
+  const shared = root.dataset.shared === "true";
+  const presence = root.querySelector("[data-whiteboard-presence]");
+  const PEER_TONES = ["blue", "green", "red", "violet", "sand"];
+
+  // ---- Who else is here ------------------------------------------------------------------------
+
+  function peerTone(userId) {
+    return PEER_TONES[Math.abs(userId) % PEER_TONES.length];
   }
 
-  async function save() {
-    window.clearTimeout(saveState.timer);
-    if (saveState.saving) {
-      saveState.again = true;
-      return;
-    }
-    if (!saveState.dirty) return;
-    const title = titleInput.value.trim();
-    if (!title) {
-      setStatus("Titel fehlt", "error");
-      return;
-    }
-    saveState.saving = true;
-    saveState.dirty = false;
-    setStatus("Speichert …", "saving");
-    const force = saveState.force;
-    saveState.force = false;
-    try {
-      const response = await fetch(saveUrl, {
-        method: "PUT",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
-        body: JSON.stringify({ title, document: doc, base_revision: revision, conflict_resolution: force }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (response.status === 409 && data.board) {
-        resolveConflict(data.board);
-        return;
-      }
-      if (!response.ok || !data.ok) throw new Error(data.error || `Fehler ${response.status}`);
-      revision = data.revision;
-      if (!saveState.dirty) setStatus("Gespeichert", "saved");
-      document.title = `${title} | Whiteboard | Lunora`;
-    } catch (error) {
-      saveState.dirty = true;
-      setStatus(`Nicht gespeichert: ${error.message}`, "error");
-    } finally {
-      saveState.saving = false;
-      if (saveState.again) {
-        saveState.again = false;
-        save();
-      }
-    }
-  }
-
-  // Someone else saved in between: keep this version (overwrite theirs) or take theirs.
-  function resolveConflict(board) {
-    const keepMine = window.confirm(
-      "Jemand anderes hat das Whiteboard inzwischen geändert.\n\nOK: deine Version speichern (überschreibt die andere).\nAbbrechen: die andere Version laden (deine letzten Änderungen gehen verloren).",
+  // The others' pointers in board coordinates. The outer group glides to each new position (polls
+  // come once a second); the inner one undoes the zoom so arrow and name keep their screen size.
+  function peerNode(peer) {
+    const node = svgEl("g", { class: `whiteboard-peer tone-${peerTone(peer.user_id)}` });
+    const inner = svgEl("g");
+    inner.append(
+      svgEl("path", { class: "whiteboard-peer-arrow", d: "M0 0L0 17L4.6 12.6L7.8 19.6L10.6 18.4L7.5 11.6L13.4 11.6Z" }),
     );
-    if (keepMine) {
-      saveState.force = true;
-      saveState.dirty = true;
-      saveState.again = true;
-    } else {
-      saveState.dirty = false;
-      applyRemote(board);
-    }
+    const label = svgEl("text", { class: "whiteboard-peer-label", x: 15, y: 27 });
+    label.textContent = peer.name;
+    inner.append(label);
+    node.append(inner);
+    return node;
   }
 
-  // Replaces the board with a version saved elsewhere. Undo steps refer to the old version, so
-  // they are dropped.
-  function applyRemote(board) {
-    revision = board.revision;
-    doc.elements = format.normalizeDocument(board.document).elements;
-    if (document.activeElement !== titleInput) titleInput.value = board.title;
-    history.undo = [];
-    history.redo = [];
+  function drawPeers() {
+    const shown = new Set();
+    peers.forEach((peer) => {
+      if (!peer.pointer) return;
+      shown.add(peer.client_id);
+      let node = peerNodes.get(peer.client_id);
+      if (!node) {
+        node = peerNode(peer);
+        peerNodes.set(peer.client_id, node);
+        peerLayer.append(node);
+      }
+      node.style.transform = `translate(${peer.pointer.x}px, ${peer.pointer.y}px)`;
+      node.firstChild.setAttribute("transform", `scale(${1 / view.k})`);
+    });
+    peerNodes.forEach((node, id) => {
+      if (shown.has(id)) return;
+      node.remove();
+      peerNodes.delete(id);
+    });
+  }
+
+  function renderPresence() {
+    if (!presence) return;
+    const people = new Map();
+    peers.forEach((peer) => {
+      const known = people.get(peer.user_id);
+      people.set(peer.user_id, { ...peer, drawing: Boolean(known?.drawing || peer.drawing) });
+    });
+    const avatars = [...people.values()].map((person) => {
+      const avatar = document.createElement("span");
+      avatar.className = `avatar small tone-${peerTone(person.user_id)}${person.drawing ? " is-drawing" : ""}`;
+      avatar.title = person.drawing ? `${person.name} zeichnet gerade` : `${person.name} ist hier`;
+      if (person.avatar_url) {
+        const image = document.createElement("img");
+        image.src = person.avatar_url;
+        image.alt = `Profilbild von ${person.name}`;
+        avatar.append(image);
+      } else {
+        avatar.textContent = person.initials;
+        avatar.setAttribute("role", "img");
+        avatar.setAttribute("aria-label", avatar.title);
+      }
+      return avatar;
+    });
+    const drawing = [...people.values()].filter((person) => person.drawing).map((person) => person.name);
+    if (drawing.length) {
+      const label = document.createElement("span");
+      label.className = "whiteboard-presence-label";
+      label.textContent =
+        drawing.length === 1
+          ? `${drawing[0]} zeichnet gerade`
+          : `${drawing.slice(0, -1).join(", ")} und ${drawing.at(-1)} zeichnen gerade`;
+      avatars.push(label);
+    }
+    presence.replaceChildren(...avatars);
+    presence.hidden = !people.size;
+  }
+
+  function showPeers(next) {
+    peers = next || [];
+    drawPeers();
+    renderPresence();
+  }
+
+  if (shared) {
+    svg.addEventListener("pointermove", (event) => {
+      const world = toWorld(event.clientX, event.clientY);
+      live.pointer = { x: Math.round(world.x * 10) / 10, y: Math.round(world.y * 10) / 10 };
+    });
+    svg.addEventListener("pointerleave", () => {
+      live.pointer = null;
+    });
+  }
+
+  function markDirty() {
+    setStatus("Ungespeicherte Änderungen", "dirty");
+    schedule(PUSH_DELAY);
+  }
+
+  function schedule(delay) {
+    window.clearTimeout(live.timer);
+    live.timer = window.setTimeout(exchange, delay);
+  }
+
+  function hasUnsent() {
+    return doc.elements.length !== live.base.length || doc.elements.some((item, i) => item !== live.base[i]);
+  }
+
+  // Turns everything changed since the last call into numbered operations.
+  function flush() {
+    const ops = hasUnsent() ? format.diffElements(live.base, doc.elements) : [];
+    const title = titleInput.value.trim();
+    if (title && title !== live.baseTitle) {
+      ops.push({ op: "title", title });
+      live.baseTitle = title;
+    }
+    ops.forEach((op) => {
+      live.seq += 1;
+      live.pending.push({ ...op, seq: live.seq });
+    });
+    live.base = [...doc.elements];
+  }
+
+  // Shows the confirmed board plus the own operations still pending.
+  function refreshVisible() {
+    const next = format.applyOps(live.confirmed, live.pending);
+    live.base = [...next];
+    if (next.length === doc.elements.length && next.every((item, i) => item === doc.elements[i])) return;
+    doc.elements = next;
     render();
     selection = new Set([...selection].filter((id) => nodes.has(id)));
     drawSelection();
-    updateHistoryButtons();
-    setStatus("Gespeichert", "saved");
   }
 
-  // Shared boards pick up the others' changes while this editor has nothing unsaved.
-  if (root.dataset.shared === "true") {
-    window.setInterval(async () => {
-      if (document.hidden || saveState.dirty || saveState.saving || interaction || editing) return;
-      try {
-        const response = await fetch(`${saveUrl}?revision=${revision}`, { credentials: "same-origin" });
-        const data = await response.json();
-        if (data.board && !saveState.dirty && !saveState.saving && !interaction && !editing) applyRemote(data.board);
-      } catch (_error) {
-        // Offline or a hiccup: the next poll tries again.
-      }
-    }, POLL_INTERVAL);
+  // Takes over a title someone else set, unless this tab is changing its own.
+  function applyTitle(title) {
+    if (title === live.baseTitle || document.activeElement === titleInput) return;
+    if (live.pending.some((op) => op.op === "title") || titleInput.value.trim() !== live.baseTitle) return;
+    titleInput.value = title;
+    live.baseTitle = title;
+    document.title = `${title} | Whiteboard | Lunora`;
   }
+
+  async function reload() {
+    const response = await fetch(saveUrl, { credentials: "same-origin" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.board) throw new Error(data.error || `Fehler ${response.status}`);
+    live.confirmed = format.normalizeDocument(data.board.document).elements;
+    live.version = data.board.revision;
+    live.verified = live.version;
+    applyTitle(data.board.title);
+  }
+
+  async function exchange() {
+    window.clearTimeout(live.timer);
+    if (live.inflight) {
+      live.again = true;
+      return;
+    }
+    flush();
+    live.inflight = true;
+    const sent = live.pending.length;
+    let delay = null;
+    if (sent) setStatus("Speichert …", "saving");
+    try {
+      const response = await fetch(syncUrl, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+        body: JSON.stringify({
+          version: live.version,
+          tab: live.tab,
+          ops: sent ? live.pending : undefined,
+          pointer: live.pointer,
+          drawing: Boolean(interaction),
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 400 && sent) {
+        // The server refused these changes (a limit, most likely): drop them and show its board.
+        live.pending = [];
+        await reload();
+        if (!interaction) refreshVisible();
+        setStatus(`Nicht gespeichert: ${data.error || "ungültige Änderung"}`, "error");
+        return;
+      }
+      if (!response.ok || !data.ok) throw new Error(data.error || `Fehler ${response.status}`);
+      if (data.resync) await reload();
+      else {
+        live.confirmed = format.applyOps(live.confirmed, data.ops);
+        live.version = data.version;
+      }
+      live.pending = live.pending.filter((op) => op.seq > data.acked);
+      // Proof that this tab has exactly the server's board; anything else loads it again.
+      if (live.verified !== live.version) {
+        if ((await format.boardHash(live.confirmed)) === data.hash) live.verified = live.version;
+        else await reload();
+      }
+      applyTitle(data.title);
+      showPeers(data.peers);
+      if (data.comments !== commentState.signature) {
+        // The first answer only records the state the page loaded with.
+        if (commentState.signature !== null) loadComments();
+        commentState.signature = data.comments;
+      }
+      // During a drag the board isn't swapped; the others' changes show once it's finished.
+      if (!interaction) {
+        flush();
+        refreshVisible();
+      }
+      if (!live.pending.length && !hasUnsent()) {
+        setStatus("Gespeichert", "saved");
+        document.title = `${live.baseTitle} | Whiteboard | Lunora`;
+      }
+    } catch (error) {
+      setStatus(`Nicht gespeichert: ${error.message}`, "error");
+      delay = RETRY_DELAY;
+    } finally {
+      live.inflight = false;
+      if (live.again || live.pending.length || hasUnsent()) delay ??= PUSH_DELAY;
+      else if (shared && !document.hidden) delay ??= LIVE_POLL;
+      live.again = false;
+      if (delay !== null) schedule(delay);
+    }
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) exchange();
+  });
+  if (shared) exchange();
 
   titleInput.addEventListener("input", markDirty);
   window.addEventListener("beforeunload", (event) => {
-    if (saveState.dirty || saveState.saving) event.preventDefault();
+    if (live.pending.length || hasUnsent() || live.inflight) event.preventDefault();
   });
+
+  // ---- Comments -------------------------------------------------------------------------------
+  // Threads pinned to spots on the board (whiteboard_comments_api). Pins and the popover are HTML
+  // over the canvas, so they can be focused and read out; the live poll's `comments` signature says
+  // when to load them again.
+
+  async function loadComments() {
+    try {
+      const response = await fetch(commentsUrl, { credentials: "same-origin" });
+      const data = await response.json();
+      if (!response.ok || !data.ok) return;
+      commentState.threads = data.threads;
+      renderComments();
+    } catch (_error) {
+      // Offline: the next signature change loads them again.
+    }
+  }
+
+  async function postComment(payload) {
+    try {
+      const response = await fetch(commentsUrl, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) throw new Error(data.error || `Fehler ${response.status}`);
+      commentState.threads = data.threads;
+      return data;
+    } catch (error) {
+      showHint(`Kommentar nicht gespeichert: ${error.message}`);
+      return null;
+    }
+  }
+
+  function commentPoint(x, y) {
+    const svgRect = svg.getBoundingClientRect();
+    const wrapRect = canvasWrap.getBoundingClientRect();
+    return {
+      left: svgRect.left - wrapRect.left - canvasWrap.clientLeft + view.x + x * view.k,
+      top: svgRect.top - wrapRect.top - canvasWrap.clientTop + view.y + y * view.k,
+    };
+  }
+
+  function openThread() {
+    const open = commentState.open;
+    return open?.threadId ? commentState.threads.find((thread) => thread.id === open.threadId) : null;
+  }
+
+  function renderComments() {
+    if (!commentLayer) return;
+    const pins = commentState.threads.map((thread) => {
+      const first = thread.comments[0];
+      const pin = document.createElement("button");
+      pin.type = "button";
+      pin.className = "whiteboard-comment-pin";
+      pin.classList.toggle("is-resolved", thread.resolved);
+      pin.classList.toggle("is-open", commentState.open?.threadId === thread.id);
+      pin.dataset.commentThread = thread.id;
+      const state = thread.resolved ? " (erledigt)" : "";
+      pin.setAttribute("aria-label", `Kommentar von ${first?.author || "?"}${state}: ${first?.body || ""}`);
+      pin.title = `${first?.author || ""}: ${first?.body || ""}`;
+      const glyph = document.createElement("i");
+      glyph.className = thread.resolved ? "fa-solid fa-check" : "fa-solid fa-comment";
+      glyph.setAttribute("aria-hidden", "true");
+      pin.append(glyph);
+      if (thread.comments.length > 1) {
+        const count = document.createElement("span");
+        count.textContent = thread.comments.length;
+        pin.append(count);
+      }
+      return pin;
+    });
+    commentLayer.replaceChildren(...pins);
+    if (commentState.open) renderPopover();
+    positionComments();
+  }
+
+  function positionComments() {
+    if (!commentLayer) return;
+    commentLayer.querySelectorAll("[data-comment-thread]").forEach((pin) => {
+      const thread = commentState.threads.find((item) => item.id === Number(pin.dataset.commentThread));
+      if (!thread) return;
+      const point = commentPoint(thread.x, thread.y);
+      pin.style.left = `${point.left}px`;
+      pin.style.top = `${point.top}px`;
+    });
+    if (!commentState.open || commentPopover.hidden) return;
+    const spot = openThread() || commentState.open.draft;
+    if (!spot) return;
+    const point = commentPoint(spot.x, spot.y);
+    const maxLeft = canvasWrap.clientWidth - commentPopover.offsetWidth - 8;
+    const maxTop = canvasWrap.clientHeight - commentPopover.offsetHeight - 8;
+    commentPopover.style.left = `${Math.max(8, Math.min(point.left + 18, maxLeft))}px`;
+    commentPopover.style.top = `${Math.max(8, Math.min(point.top - 12, maxTop))}px`;
+  }
+
+  function renderPopover() {
+    const thread = openThread();
+    if (commentState.open.threadId && !thread) {
+      closeComment();
+      return;
+    }
+    commentPopover.querySelector("[data-comment-heading]").textContent = thread
+      ? `Kommentar${thread.resolved ? " (erledigt)" : ""}`
+      : "Neuer Kommentar";
+    commentPopover.querySelector("[data-comment-list]").replaceChildren(
+      ...(thread?.comments || []).map((comment) => {
+        const item = document.createElement("li");
+        const head = document.createElement("div");
+        head.className = "whiteboard-comment-meta";
+        const author = document.createElement("strong");
+        author.textContent = comment.author;
+        const when = document.createElement("small");
+        when.textContent = comment.created_label;
+        head.append(author, when);
+        if (comment.can_delete) {
+          const remove = document.createElement("button");
+          remove.type = "button";
+          remove.className = "whiteboard-comment-delete";
+          remove.dataset.commentDelete = comment.id;
+          remove.setAttribute("aria-label", "Kommentar löschen");
+          remove.title = "Löschen";
+          remove.innerHTML = '<i class="fa-regular fa-trash-can" aria-hidden="true"></i>';
+          head.append(remove);
+        }
+        const body = document.createElement("p");
+        body.textContent = comment.body;
+        item.append(head, body);
+        return item;
+      }),
+    );
+    const resolve = commentPopover.querySelector("[data-comment-resolve]");
+    resolve.hidden = !thread;
+    resolve.textContent = thread?.resolved ? "Wieder öffnen" : "Erledigt";
+    commentPopover.querySelector("[data-comment-submit]").textContent = thread ? "Antworten" : "Kommentieren";
+    commentPopover.hidden = false;
+    positionComments();
+  }
+
+  function showComment(open) {
+    commentState.open = open;
+    renderComments();
+    renderPopover();
+    commentPopover.querySelector("[data-comment-body]").focus({ preventScroll: true });
+  }
+
+  function closeComment() {
+    const threadId = commentState.open?.threadId;
+    commentState.open = null;
+    commentPopover.hidden = true;
+    commentPopover.querySelector("[data-comment-body]").value = "";
+    renderComments();
+    // Back to the pin the popover belonged to, or to the canvas for a draft.
+    const pin = threadId && commentLayer.querySelector(`[data-comment-thread="${threadId}"]`);
+    (pin || svg).focus({ preventScroll: true });
+  }
+
+  if (commentPopover) {
+    commentLayer.addEventListener("click", (event) => {
+      const pin = event.target.closest("[data-comment-thread]");
+      if (pin) showComment({ threadId: Number(pin.dataset.commentThread) });
+    });
+    commentPopover.querySelector("[data-comment-form]").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const field = commentPopover.querySelector("[data-comment-body]");
+      const thread = openThread();
+      const draft = commentState.open?.draft;
+      const payload = thread
+        ? { action: "add", thread_id: thread.id, body: field.value }
+        : { action: "add", x: draft.x, y: draft.y, body: field.value };
+      const data = await postComment(payload);
+      if (!data) return;
+      field.value = "";
+      showComment({ threadId: data.thread_id });
+    });
+    commentPopover.addEventListener("click", async (event) => {
+      if (event.target.closest("[data-comment-close]")) {
+        closeComment();
+        return;
+      }
+      const thread = openThread();
+      if (event.target.closest("[data-comment-resolve]") && thread) {
+        if (await postComment({ action: thread.resolved ? "reopen" : "resolve", thread_id: thread.id })) {
+          renderComments();
+        }
+        return;
+      }
+      const remove = event.target.closest("[data-comment-delete]");
+      if (remove && window.confirm("Diesen Kommentar löschen?")) {
+        if (await postComment({ action: "delete", comment_id: Number(remove.dataset.commentDelete) })) {
+          renderComments();
+        }
+      }
+    });
+    commentPopover.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        closeComment();
+      } else if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        commentPopover.querySelector("[data-comment-form]").requestSubmit();
+      }
+    });
+    loadComments().then(() => {
+      // A link from the inbox opens its thread.
+      const wanted = Number(new URLSearchParams(window.location.search).get("comment"));
+      if (wanted && commentState.threads.some((thread) => thread.id === wanted)) showComment({ threadId: wanted });
+    });
+  }
 
   // ---- Export & import ------------------------------------------------------------------------
 
@@ -1358,6 +1748,8 @@
       if (element?.type === "text") openText(null, element);
     } else if (tool === "text") {
       openText(center);
+    } else if (tool === "comment") {
+      showComment({ draft: center });
     } else if (SHAPE_TOOLS.has(tool) && canAdd()) {
       const w = 160 / view.k;
       const h = (tool === "line" || tool === "arrow" ? 0 : 100) / view.k;
@@ -1411,8 +1803,7 @@
     const key = event.key.toLowerCase();
     if (modifier && key === "s") {
       event.preventDefault();
-      saveState.dirty = true;
-      save();
+      exchange();
       return;
     }
     if (isTyping(event.target)) return;

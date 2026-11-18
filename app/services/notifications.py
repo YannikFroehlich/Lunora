@@ -64,6 +64,7 @@ NOTIFICATION_PRESENTATION = {
     UserNotification.KIND_SHOPPING_SHARE: ("fa-basket-shopping", "Einkauf", "tools"),
     UserNotification.KIND_EXPENSE_GROUP: ("fa-scale-balanced", "Ausgaben", "tools"),
     UserNotification.KIND_WHITEBOARD_SHARE: ("fa-pen-ruler", "Whiteboard", "tools"),
+    UserNotification.KIND_WHITEBOARD_COMMENT: ("fa-comment", "Whiteboard", "tools"),
     UserNotification.KIND_SECURITY_ALERT: ("fa-shield-halved", "Sicherheit", "security"),
 }
 
@@ -323,6 +324,26 @@ def materialize_whiteboard_share_notification(share):
                 "url": f"/tools/whiteboard/{board.pk}/",
                 "source_key": f"whiteboard-share:{share.pk}",
             }
+        ]
+    )
+
+
+def materialize_whiteboard_comment_notification(comment, recipient_ids):
+    """Tells the board's other members about a new comment; one inbox row per comment and person."""
+    board = comment.board
+    thread_id = comment.parent_id or comment.pk
+    return _create_missing_user_notifications(
+        [
+            {
+                "recipient_id": recipient_id,
+                "actor_id": comment.author_id,
+                "kind": UserNotification.KIND_WHITEBOARD_COMMENT,
+                "title": f"{_display_name(comment.author)} kommentiert „{board.title}“",
+                "body": comment.body[:200],
+                "url": f"/tools/whiteboard/{board.pk}/?comment={thread_id}",
+                "source_key": f"whiteboard-comment:{comment.pk}",
+            }
+            for recipient_id in recipient_ids
         ]
     )
 
@@ -1124,7 +1145,11 @@ def send_pending_user_notification_emails(
     if include_vocabulary_shares:
         kinds.append(UserNotification.KIND_VOCABULARY_SHARE)
     if include_shopping_shares:
-        kinds += [UserNotification.KIND_SHOPPING_SHARE, UserNotification.KIND_WHITEBOARD_SHARE]
+        kinds += [
+            UserNotification.KIND_SHOPPING_SHARE,
+            UserNotification.KIND_WHITEBOARD_SHARE,
+            UserNotification.KIND_WHITEBOARD_COMMENT,
+        ]
     if include_expense_groups:
         kinds.append(UserNotification.KIND_EXPENSE_GROUP)
     if include_weather:

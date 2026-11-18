@@ -1299,6 +1299,26 @@ class NotesTests(TestCase):
         self.owner.profile.refresh_from_db()
         self.assertEqual(self.owner.profile.note_shortcuts, {"save": "Alt+S", "bold": ""})
 
+    def test_shortcut_actions_mirror_the_editor(self):
+        import re
+        from pathlib import Path
+
+        from django.conf import settings
+
+        from app.views.note_views import SHORTCUT_ACTIONS
+
+        source = Path(settings.BASE_DIR, "frontend/notes.js").read_text(encoding="utf-8")
+        block = source[source.index("const COMMAND_DEFAULTS = {") :]
+        block = block[: block.index("\n};")]
+        entries = re.findall(r'^  (\w+): \{ label: "[^"]*", shortcut: ("(?:[^"\\]|\\.)*") \}', block, re.M)
+        defaults = {action: json.loads(shortcut) for action, shortcut in entries}
+        self.assertEqual(set(defaults), SHORTCUT_ACTIONS)
+        # What the dialog sends when someone saves without changing anything.
+        response = self.client.patch(
+            "/notes/api/shortcuts/", data=json.dumps({"shortcuts": defaults}), content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+
     def test_expired_trash_is_purged_with_private_files(self):
         note = self.create_note()
         note.deleted_at = timezone.now() - timedelta(days=31)

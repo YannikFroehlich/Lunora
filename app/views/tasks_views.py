@@ -88,7 +88,8 @@ def tasks(request):
             materialize_task_assignment_notifications([task])
             materialize_task_share_notifications(task_form.save_shares(task))
             django_messages.success(request, _created_message(task, task_form.quick_add_result, request.user))
-            return redirect(request.get_full_path())
+            # The command palette adds tasks from any page and wants to stay there.
+            return redirect(local_return_to(request) or request.get_full_path())
     elif form_name == "task_timer":
         task = visible_tasks(request.user).filter(pk=_positive_int(request.POST.get("task_id"))).first()
         if task is None:

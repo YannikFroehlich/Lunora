@@ -32,6 +32,7 @@ urlpatterns = [
     path("home/dashboard-layout/", view.dashboard_layout_update, name="dashboard_layout_update"),
     path("home/weather/", view.dashboard_weather, name="dashboard_weather"),
     path("home/bookmarks/", view.dashboard_bookmarks, name="dashboard_bookmarks"),
+    path("home/countdowns/", view.dashboard_countdowns, name="dashboard_countdowns"),
     path("search/", view.global_search, name="global_search"),
     path("settings/", view.settings, name="settings"),
     path("settings/export/", view.data_export, name="data_export"),
@@ -66,6 +67,12 @@ urlpatterns = [
     path("tools/whiteboard/", view.whiteboards, name="whiteboards"),
     path("tools/whiteboard/<int:board_id>/", view.whiteboard_editor, name="whiteboard_editor"),
     path("tools/whiteboard/api/<int:board_id>/", view.whiteboard_api, name="whiteboard_api"),
+    path("tools/whiteboard/api/<int:board_id>/sync/", view.whiteboard_sync_api, name="whiteboard_sync_api"),
+    path(
+        "tools/whiteboard/api/<int:board_id>/comments/",
+        view.whiteboard_comments_api,
+        name="whiteboard_comments_api",
+    ),
     path("tools/wishlist/", view.wish_lists, name="wish_lists"),
     path("tools/wishlist/<int:list_id>/", view.wish_list_detail, name="wish_list_detail"),
     path("tools/wishlist/image/<int:item_id>/", view.wish_item_image, name="wish_item_image"),
@@ -174,6 +181,7 @@ urlpatterns = [
     path("notes/api/<int:note_id>/", view.note_detail_api, name="note_detail_api"),
     path("notes/api/<int:note_id>/actions/", view.note_action_api, name="note_action_api"),
     path("notes/api/<int:note_id>/presence/", view.note_presence_api, name="note_presence_api"),
+    path("notes/api/<int:note_id>/collab/", view.note_collab_api, name="note_collab_api"),
     path(
         "notes/api/<int:note_id>/folder/",
         view.note_folder_assignment_api,

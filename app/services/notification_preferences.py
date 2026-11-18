@@ -67,6 +67,7 @@ KIND_TO_CATEGORY = {
     UserNotification.KIND_VOCABULARY_SHARE: NotificationPreference.CATEGORY_TOOLS,
     UserNotification.KIND_SHOPPING_SHARE: NotificationPreference.CATEGORY_TOOLS,
     UserNotification.KIND_WHITEBOARD_SHARE: NotificationPreference.CATEGORY_TOOLS,
+    UserNotification.KIND_WHITEBOARD_COMMENT: NotificationPreference.CATEGORY_TOOLS,
     UserNotification.KIND_EXPENSE_GROUP: NotificationPreference.CATEGORY_TOOLS,
     UserNotification.KIND_HABIT_REMINDER: NotificationPreference.CATEGORY_TOOLS,
     UserNotification.KIND_CHAT_MENTION: NotificationPreference.CATEGORY_MESSAGES,

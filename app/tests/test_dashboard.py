@@ -11,6 +11,7 @@ from app.models import (
     Bookmark,
     CalendarEvent,
     CalendarReminder,
+    Countdown,
     ExpenseGroup,
     ExpenseGroupMember,
     MealPlanEntry,
@@ -21,6 +22,7 @@ from app.models import (
     SystemSettings,
     Task,
     UserNotification,
+    VacationPeriod,
     VacationYear,
 )
 from app.services.dashboard import (
@@ -97,6 +99,7 @@ class DashboardCustomizationTests(TestCase):
             "shopping",
             "meal_plan",
             "expenses",
+            "countdown",
         ]
         self.profile.dashboard_layout = self._layout(order=order)
         self.profile.save(update_fields=["dashboard_layout"])
@@ -311,6 +314,7 @@ class DashboardCustomizationTests(TestCase):
                 "shopping",
                 "meal_plan",
                 "expenses",
+                "countdown",
             ],
             hidden=["clock", "weather"],
             widgets={
@@ -735,3 +739,66 @@ class DashboardMealAndExpenseWidgetTests(TestCase):
         self.assertContains(response, "Linseneintopf")
         self.assertEqual(response.context["dashboard_expenses"][0]["label"], "-45,00 €")
         self.assertContains(response, "du schuldest noch etwas")
+
+
+class DashboardCountdownWidgetTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="tara", email="tara@example.com", password="secret-12345"
+        )
+        Profile.objects.create(user=self.user, display_name="Tara")
+        self.client.force_login(self.user)
+        self.today = localtime_for_user(timezone.now(), self.user).date()
+
+    def test_countdowns_are_added_counted_and_removed_per_user(self):
+        target = self.today + timedelta(days=12)
+        response = self.client.post(
+            "/home/countdowns/",
+            {"form_name": "countdown_add", "title": "Konzert", "date": target.isoformat()},
+        )
+        self.assertRedirects(response, "/home/", fetch_redirect_response=False)
+        countdown = Countdown.objects.get(owner=self.user)
+        other = User.objects.create_user(username="ole", password="secret-12345")
+        foreign = Countdown.objects.create(owner=other, title="Fremd", date=target)
+
+        response = self.client.get("/home/")
+        items = response.context["dashboard_countdowns"]
+        self.assertEqual(
+            [(item["title"], item["days"], item["label"]) for item in items], [("Konzert", 12, "in 12 Tagen")]
+        )
+        self.assertContains(response, 'data-dialog-open="countdown-dialog"')
+        self.assertNotContains(response, "Fremd")
+
+        self.client.post("/home/countdowns/", {"form_name": "countdown_delete", "countdown_id": foreign.id})
+        self.client.post("/home/countdowns/", {"form_name": "countdown_delete", "countdown_id": countdown.id})
+        self.assertFalse(Countdown.objects.filter(owner=self.user).exists())
+        self.assertTrue(Countdown.objects.filter(pk=foreign.pk).exists())
+
+    def test_past_dates_are_refused_and_passed_countdowns_disappear(self):
+        yesterday = self.today - timedelta(days=1)
+        self.client.post(
+            "/home/countdowns/",
+            {"form_name": "countdown_add", "title": "Gestern", "date": yesterday.isoformat()},
+        )
+        self.assertFalse(Countdown.objects.exists())
+        Countdown.objects.create(owner=self.user, title="Vorbei", date=yesterday)
+        Countdown.objects.create(owner=self.user, title="Heute", date=self.today)
+        items = self.client.get("/home/").context["dashboard_countdowns"]
+        self.assertEqual([(item["title"], item["label"]) for item in items], [("Heute", "heute")])
+
+    def test_next_vacation_counts_down_and_running_one_shows_its_end(self):
+        VacationPeriod.objects.create(
+            user=self.user, start_date=self.today + timedelta(days=1), end_date=self.today + timedelta(days=5)
+        )
+        items = self.client.get("/home/").context["dashboard_countdowns"]
+        self.assertEqual(
+            [(item["title"], item["label"], item["running"]) for item in items],
+            [("Tarifurlaub", "morgen", False)],
+        )
+
+        VacationPeriod.objects.create(
+            user=self.user, start_date=self.today, end_date=self.today + timedelta(days=2)
+        )
+        item = self.client.get("/home/").context["dashboard_countdowns"][0]
+        self.assertTrue(item["running"])
+        self.assertTrue(item["label"].startswith("noch bis "))

@@ -24,6 +24,7 @@ from app.models import (
     Profile,
 )
 from app.services.docx_import import import_docx_upload
+from app.services.note_collab import sync_note
 from app.services.note_content import NOTE_TEMPLATE_LABELS, NOTE_TEMPLATES
 from app.services.note_docx import CONTENT_TYPE as DOCX_CONTENT_TYPE
 from app.services.note_docx import note_docx_filename, render_note_docx
@@ -78,6 +79,8 @@ from app.services.notes import (
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.user_preferences import format_user_datetime
 
+# Every action of COMMAND_DEFAULTS in frontend/notes.js: the shortcut dialog always sends all of them,
+# so one missing here refuses every save (NotesTests.test_shortcut_actions_mirror_the_editor).
 SHORTCUT_ACTIONS = {
     "save",
     "undo",
@@ -129,14 +132,25 @@ SHORTCUT_ACTIONS = {
     "trash",
     "share",
     "versions",
+    "authors",
     "exportPdf",
     "exportMarkdown",
     "exportWord",
     "saveAsTemplate",
     "shortcutSettings",
+    "outline",
+    "comments",
+    "addComment",
+    "print",
+    "codeBlock",
+    "subscript",
+    "superscript",
+    "insertFormField",
+    "toggleHeaderRow",
+    "toggleHeaderColumn",
 }
 RESERVED_SHORTCUTS = {"Mod+W", "Mod+T", "Mod+N", "Mod+L", "Mod+R", "Mod+Shift+N"}
-SHORTCUT_RE = re.compile(r"^(?=.{3,40}$)(?=.*(?:Mod|Ctrl|Alt|Shift)\+)[A-Za-z0-9+\[\]\\\-]+$")
+SHORTCUT_RE = re.compile(r"^(?=.{3,40}$)(?=.*(?:Mod|Ctrl|Alt|Shift)\+)[A-Za-z0-9+\[\]\\\-.,;/=]+$")
 
 
 def _json_body(request):
@@ -583,6 +597,7 @@ def note_detail_api(request, note_id):
             document=payload.get("document"),
             base_revision=int(payload.get("base_revision", 0)),
             conflict_resolution=bool(payload.get("conflict_resolution")),
+            collab_version=_optional_collab_version(payload.get("collab_version")),
         )
         return JsonResponse({"ok": True, "note": serialize_note(note, request.user)})
     except NoteConflictError as error:
@@ -828,6 +843,43 @@ def note_presence_api(request, note_id):
             "revision": note.revision,
         }
     )
+
+
+def _optional_collab_version(value):
+    if value is None:
+        return None
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValidationError("Der Bearbeitungsstand ist ungültig.")
+    return value
+
+
+@login_required
+@require_http_methods(["POST"])
+def note_collab_api(request, note_id):
+    disabled = _feature_guard(request, json_response=True)
+    if disabled:
+        return disabled
+    try:
+        payload = _json_body(request)
+        if not isinstance(payload, dict):
+            raise ValidationError("Die Anfrage ist ungültig.")
+        result = sync_note(
+            request.user,
+            note_id,
+            version=payload.get("version"),
+            tab=payload.get("tab"),
+            steps=payload.get("steps"),
+            selection=payload.get("selection"),
+        )
+    except Note.DoesNotExist:
+        return _error_response("Notiz nicht gefunden.", status=404)
+    except PermissionDenied as error:
+        return _error_response(error, status=403)
+    except ValidationError as error:
+        return _error_response(error)
+    response = JsonResponse({"ok": True, **result})
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 @login_required

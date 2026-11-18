@@ -5,7 +5,7 @@ from urllib.parse import urlsplit
 
 from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -21,6 +21,7 @@ from app.services.recipes import (
     add_ingredients_to_list,
     add_week_to_list,
     ingredient_rows,
+    instruction_steps,
     meal_plan_week,
     plan_recipe,
     scale_quantity,
@@ -42,6 +43,7 @@ from app.services.time_tracking import running_entry, start_timer, stop_timer, w
 from app.services.trash import trash_habit, trash_recipe
 from app.services.uml_content import validate_uml_document
 from app.services.user_preferences import format_user_date, format_user_datetime, localtime_for_user
+from app.services.whiteboard_comments import add_comment, comment_threads, delete_comment, set_resolved
 from app.services.whiteboard_content import validate_whiteboard_document
 from app.services.whiteboard_preview import whiteboard_preview_svg
 from app.services.whiteboards import (
@@ -50,6 +52,7 @@ from app.services.whiteboards import (
     end_whiteboard_share,
     save_whiteboard,
     share_whiteboard,
+    sync_whiteboard,
 )
 from app.view_models import get_tools_context
 from app.views.navigation import local_return_to, posted_id
@@ -465,6 +468,7 @@ def recipe_detail(request, recipe_id):
             "is_scaled": factor != 1,
             "shopping_lists": _shopping_list_options(request.user),
             "edit_open": form.errors or not (recipe.ingredients or recipe.instructions),
+            "steps": instruction_steps(recipe.instructions),
         },
     )
 
@@ -678,6 +682,81 @@ def whiteboard_editor(request, board_id):
             "title_max_length": UML_TITLE_MAX_LENGTH,
         },
     )
+
+
+@login_required
+@require_http_methods(["POST"])
+def whiteboard_sync_api(request, board_id):
+    if not feature_enabled("tools"):
+        return disabled_feature_response(request, "tools", json_response=True)
+    headers = {"Cache-Control": "no-store"}
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except (ValueError, RecursionError):
+        return JsonResponse({"ok": False, "error": "Die Anfrage muss gültiges JSON sein."}, status=400)
+    if not isinstance(payload, dict):
+        return JsonResponse({"ok": False, "error": "Die Anfrage ist ungültig."}, status=400)
+    try:
+        result = sync_whiteboard(
+            board_id,
+            request.user,
+            version=payload.get("version"),
+            tab=payload.get("tab"),
+            ops=payload.get("ops"),
+            pointer=payload.get("pointer"),
+            drawing=payload.get("drawing"),
+        )
+    except ValidationError as error:
+        return JsonResponse({"ok": False, "error": " ".join(error.messages)}, status=400, headers=headers)
+    if result is None:
+        return JsonResponse({"ok": False, "error": "Whiteboard nicht gefunden."}, status=404, headers=headers)
+    return JsonResponse({"ok": True, **result}, headers=headers)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def whiteboard_comments_api(request, board_id):
+    """GET lists the board's comment threads; POST {action: add|resolve|reopen|delete} changes them."""
+    if not feature_enabled("tools"):
+        return disabled_feature_response(request, "tools", json_response=True)
+    headers = {"Cache-Control": "no-store"}
+    board = accessible_whiteboards(request.user).filter(pk=board_id).first()
+    if board is None:
+        return JsonResponse({"ok": False, "error": "Whiteboard nicht gefunden."}, status=404, headers=headers)
+    if request.method == "POST":
+        try:
+            payload = json.loads(request.body.decode("utf-8"))
+        except (ValueError, RecursionError):
+            return JsonResponse({"ok": False, "error": "Die Anfrage muss gültiges JSON sein."}, status=400)
+        action = payload.get("action") if isinstance(payload, dict) else None
+        try:
+            if action == "add":
+                comment = add_comment(
+                    board,
+                    request.user,
+                    body=payload.get("body"),
+                    x=payload.get("x"),
+                    y=payload.get("y"),
+                    thread_id=payload.get("thread_id"),
+                )
+                created = comment.parent_id or comment.pk
+            elif action in ("resolve", "reopen"):
+                set_resolved(board, payload.get("thread_id"), action == "resolve")
+                created = None
+            elif action == "delete":
+                delete_comment(board, request.user, payload.get("comment_id"))
+                created = None
+            else:
+                raise ValidationError("Unbekannte Aktion.")
+        except PermissionDenied as error:
+            return JsonResponse({"ok": False, "error": str(error)}, status=403, headers=headers)
+        except ValidationError as error:
+            return JsonResponse({"ok": False, "error": " ".join(error.messages)}, status=400, headers=headers)
+        return JsonResponse(
+            {"ok": True, "thread_id": created, "threads": comment_threads(board, request.user)},
+            headers=headers,
+        )
+    return JsonResponse({"ok": True, "threads": comment_threads(board, request.user)}, headers=headers)
 
 
 @login_required

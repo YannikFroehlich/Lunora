@@ -6,6 +6,34 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Comments on whiteboards: the new comment tool (C) pins a note to a spot on the board; everyone on
+  the board can reply and mark it done, and new comments land in the others' inbox with a link
+  that opens them.
+- Quick capture in the command palette (Ctrl+K): type something like "Zahnarzt morgen 15 Uhr" and
+  pick "Aufgabe anlegen" or "Termin anlegen"; date, time, !priority and #labels are read like in
+  the tasks' quick add, and you stay on the page you were on.
+- Cooking mode for recipes: "Kochmodus" shows the preparation one step at a time in large print,
+  with the ingredients at hand, arrow keys to move on, and the screen kept on while cooking.
+- New dashboard widget "Countdown": days until dates you add (concert, trip, deadline), plus your
+  next vacation from the vacation planner.
+- Saving note hotkeys works again: the server refused every save because it didn't know several
+  editor actions (table of contents, comments, print, code block, sub- and superscript, …) and
+  keys with a period or comma such as Ctrl+. for superscript.
+- Shared whiteboards show who else is on the board: their avatars in the header ("… zeichnet
+  gerade" while someone draws) and their pointer with their name on the board.
+- Shared notes remember who wrote what: "Wer hat was geschrieben" in the note's header (or
+  Ctrl+Alt+U) colors each person's text and lists the colors below the editor. Text written before
+  a note was shared has no author.
+- Shared whiteboards update live: what someone draws, erases, moves or retitles shows up for the
+  others within about a second, and everybody always sees exactly the same board; Lunora checks
+  that after every change and reloads the board if one ever differs. Drawing at the same time no
+  longer ends in the "Jemand anderes hat das Whiteboard inzwischen geändert" question, and undo
+  keeps working after the others' changes.
+- Shared notes can be edited by several people at the same time: everyone's typing shows up for the
+  others within about a second, including where they're writing and what they've selected, and
+  nobody's text gets overwritten or ends in the "Konflikt" dialog any more. Undo only takes back
+  your own changes. People with read access watch along live.
+- A shared note can now be saved by editors even when it links to a note only its author can open.
 - The wish list ("Wunschliste") takes links from other online shops too, not only Amazon: title,
   price, picture, rating and availability come from the product data most shops embed for search
   engines. Product pictures are now loaded through Lunora instead of straight from the shop, so the

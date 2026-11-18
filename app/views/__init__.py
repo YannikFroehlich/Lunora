@@ -18,7 +18,15 @@ from .calendar_views import (
     calendar_feed,
     calendar_free_slots,
 )
-from .core_views import dashboard_bookmarks, dashboard_layout_update, data_export, healthz, home, settings
+from .core_views import (
+    dashboard_bookmarks,
+    dashboard_countdowns,
+    dashboard_layout_update,
+    data_export,
+    healthz,
+    home,
+    settings,
+)
 from .expense_views import expense_group_detail, expense_groups
 from .message_views import chat_attachment_download, chat_typing_ping, messages, messages_live_updates
 from .note_views import (
@@ -26,6 +34,7 @@ from .note_views import (
     note_attachment_download,
     note_attachment_upload_api,
     note_bulk_action_api,
+    note_collab_api,
     note_comment_thread_api,
     note_comments_api,
     note_create_api,
@@ -79,7 +88,9 @@ from .tools_views import (
     uml_diagram_editor,
     uml_diagrams,
     whiteboard_api,
+    whiteboard_comments_api,
     whiteboard_editor,
+    whiteboard_sync_api,
     whiteboards,
 )
 from .trash_views import trash
@@ -136,6 +147,7 @@ __all__ = [
     "note_markdown_export",
     "note_docx_export",
     "note_action_api",
+    "note_collab_api",
     "note_presence_api",
     "note_bulk_action_api",
     "note_folders_api",
@@ -168,12 +180,15 @@ __all__ = [
     "habits",
     "focus_timer",
     "dashboard_bookmarks",
+    "dashboard_countdowns",
     "uml_diagrams",
     "uml_diagram_editor",
     "uml_diagram_api",
     "whiteboards",
     "whiteboard_editor",
     "whiteboard_api",
+    "whiteboard_comments_api",
+    "whiteboard_sync_api",
     "wish_lists",
     "wish_list_detail",
     "wish_item_image",

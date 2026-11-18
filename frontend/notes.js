@@ -33,6 +33,7 @@ import xml from "highlight.js/lib/languages/xml";
 import yaml from "highlight.js/lib/languages/yaml";
 
 import { checklistProgress } from "./checklist-utils.js";
+import { Authorship, Collaboration, KEEP_AUTHORS, cursorTone, isRemoteTransaction, startCollabSync } from "./collab.js";
 import { normalizeLinkHref } from "./link-utils.js";
 import { editingLabel } from "./presence-utils.js";
 import { eventToShortcut, findShortcutConflict, mergeShortcuts, shortcutMatches } from "./shortcut-utils.js";
@@ -988,6 +989,7 @@ const COMMAND_DEFAULTS = {
   trash: { label: "In Papierkorb", shortcut: "Mod+Alt+Backspace" },
   share: { label: "Teilen", shortcut: "Mod+Alt+H" },
   outline: { label: "Inhaltsverzeichnis anzeigen/verbergen", shortcut: "Mod+Alt+O" },
+  authors: { label: "Wer hat was geschrieben", shortcut: "Mod+Alt+U" },
   versions: { label: "Versionsverlauf", shortcut: "Mod+Alt+V" },
   exportPdf: { label: "Als PDF exportieren", shortcut: "Mod+Alt+E" },
   exportMarkdown: { label: "Als Markdown exportieren", shortcut: "Mod+Alt+Shift+E" },
@@ -1002,6 +1004,7 @@ function initNotesApp() {
   const savedOverrides = readJsonScript("note-shortcut-overrides", {});
   let commands = mergeShortcuts(COMMAND_DEFAULTS, savedOverrides);
   let editor = null;
+  let collab = null;
   let dirty = false;
   let saving = false;
   let editGeneration = 0;
@@ -1095,6 +1098,9 @@ function initNotesApp() {
           },
         }),
         CharacterCount,
+        Collaboration.configure({ version: note.collab_version || 0 }),
+        // Only shared notes record who wrote what; a note of one person has nothing to tell apart.
+        Authorship.configure({ userId: note.shares?.length ? note.viewer_id : null }),
         NoteImage.configure({ getZoom: () => editorZoom }),
         NoteAttachmentNode,
         MathInline.configure({ onEdit: openMathDialog }),
@@ -1179,13 +1185,31 @@ function initNotesApp() {
           return true;
         },
       },
-      onUpdate: () => {
+      onUpdate: ({ transaction }) => {
         updateCounts();
         updateToolbarState();
-        markDirty();
+        if (!isRemoteTransaction(transaction)) markDirty();
         if (outlinePanel && !outlinePanel.hidden) updateOutline();
       },
       onSelectionUpdate: updateToolbarState,
+    });
+    let firstSync = true;
+    collab = startCollabSync({
+      editor,
+      url: `/notes/api/${note.id}/collab/`,
+      canEdit: Boolean(note.can_edit && !note.is_deleted),
+      request: requestJson,
+      reload: async () => {
+        const { response, data } = await requestJson(`/notes/api/${note.id}/`);
+        return response.ok && data.ok ? data.note : null;
+      },
+      onSynced: (info) => {
+        applyCollabInfo(info);
+        // Steps nobody stored yet (their author left before saving): store them now.
+        if (firstSync && info.steps.length) markDirty();
+        firstSync = false;
+      },
+      onBroken: () => setSaveStatus("Live-Abgleich unterbrochen – bitte Seite neu laden"),
     });
     restoreLocalDraft();
     updateCounts();
@@ -1419,6 +1443,7 @@ function initNotesApp() {
       share: openShareDialog,
       comments: openCommentsDialog,
       outline: toggleOutlinePanel,
+      authors: toggleAuthors,
       versions: openVersionsDialog,
       exportPdf: () => exportNote("pdf", "PDF"),
       exportMarkdown: () => exportNote("markdown", "Markdown"),
@@ -1763,6 +1788,46 @@ function initNotesApp() {
     wordCount.title = label;
   }
 
+  // "Wer hat was geschrieben": colors each author's text and lists who has which color.
+  const AUTHORS_STORAGE_KEY = "lunora-note-authors";
+  const authorLegend = document.querySelector("[data-note-author-legend]");
+
+  function setAuthorsShown(shown) {
+    const page = document.querySelector("[data-note-editor]");
+    if (!page || !authorLegend) return;
+    page.classList.toggle("show-authors", shown);
+    authorLegend.hidden = !shown;
+    document
+      .querySelectorAll('[data-command="authors"]')
+      .forEach((button) => button.setAttribute("aria-pressed", String(shown)));
+    if (shown) {
+      const people = [note.owner, ...(note.shares || []).map((share) => ({ id: share.user_id, name: share.name }))];
+      authorLegend.replaceChildren(
+        ...people.map((person) => {
+          const item = document.createElement("span");
+          item.className = `note-author-key tone-${cursorTone(person.id)}`;
+          item.textContent = person.id === note.viewer_id ? `${person.name} (du)` : person.name;
+          return item;
+        }),
+      );
+    }
+    try {
+      localStorage.setItem(AUTHORS_STORAGE_KEY, shown ? "1" : "0");
+    } catch (_error) {
+      // Only a convenience; the toggle still works for this page.
+    }
+  }
+
+  function toggleAuthors() {
+    setAuthorsShown(authorLegend?.hidden ?? false);
+  }
+
+  try {
+    if (note?.shares?.length && localStorage.getItem(AUTHORS_STORAGE_KEY) === "1") setAuthorsShown(true);
+  } catch (_error) {
+    // Browser storage unavailable: start with the authors hidden.
+  }
+
   function toggleOutlinePanel() {
     if (!outlinePanel) return;
     const willShow = outlinePanel.hidden;
@@ -1836,6 +1901,19 @@ function initNotesApp() {
     window.clearTimeout(debounceTimer);
     debounceTimer = window.setTimeout(() => saveNow(), 1000);
     if (!maxWaitTimer) maxWaitTimer = window.setTimeout(() => saveNow(), 5000);
+    collab?.push();
+  }
+
+  // Title and revision as the live-editing poll reports them; a title typed here wins.
+  function applyCollabInfo(info) {
+    if (!note) return;
+    note.revision = info.revision;
+    if (info.title === note.title) return;
+    if (titleInput && titleInput.value === note.title && document.activeElement !== titleInput) {
+      titleInput.value = info.title;
+    }
+    note.title = info.title;
+    updateNoteCard(note);
   }
 
   function saveNow(options = {}) {
@@ -1858,10 +1936,20 @@ function initNotesApp() {
       debounceTimer = null;
       maxWaitTimer = null;
       setSaveStatus("Speichern …");
-      const payload = { ...currentPayload(), conflict_resolution: resolveConflict };
-      if (resolveConflict && conflictServerNote) payload.base_revision = conflictServerNote.revision;
 
       try {
+        // While live editing works, the confirmed document of the step log is stored; when it
+        // broke, a plain save resets the log and the others reload this state.
+        const snapshot = collab && !collab.broken && !resolveConflict ? await collab.snapshot() : null;
+        if (collab && !collab.broken && !resolveConflict && !snapshot) {
+          dirty = true;
+          window.clearTimeout(retryTimer);
+          retryTimer = window.setTimeout(() => saveNow(), 1000);
+          return false;
+        }
+        const payload = { ...currentPayload(), conflict_resolution: resolveConflict };
+        if (snapshot) Object.assign(payload, { document: snapshot.document, collab_version: snapshot.version });
+        if (resolveConflict && conflictServerNote) payload.base_revision = conflictServerNote.revision;
         const { response, data } = await requestJson(`/notes/api/${note.id}/`, {
           method: "PATCH",
           body: JSON.stringify(payload),
@@ -2007,7 +2095,7 @@ function initNotesApp() {
       }
       applying = true;
       titleInput.value = draft.title;
-      editor.commands.setContent(draft.document);
+      editor.chain().setMeta(KEEP_AUTHORS, true).setContent(draft.document).run();
       applying = false;
       dirty = true;
       setSaveStatus("Lokaler Entwurf – ungespeichert");
@@ -3275,7 +3363,7 @@ function initNotesApp() {
     applying = true;
     note = freshNote;
     titleInput.value = note.title;
-    editor.commands.setContent(note.document);
+    editor.chain().setMeta(KEEP_AUTHORS, true).setContent(note.document).run();
     applying = false;
     dirty = false;
     localStorage.removeItem(draftKey());
@@ -3347,22 +3435,6 @@ function initNotesApp() {
     presenceStack.hidden = viewers.length === 0;
   }
 
-  async function checkForRemoteUpdate(serverRevision) {
-    if (!note || !editor || serverRevision === note.revision || conflictServerNote) return;
-    const { response, data } = await requestJson(`/notes/api/${note.id}/`);
-    if (!response.ok || !data.ok || data.note.revision === note.revision) return;
-    if (dirty) {
-      conflictServerNote = data.note;
-      setSaveStatus("Konflikt – nicht gespeichert");
-      conflictDialog?.showModal();
-    } else {
-      applyServerNote(data.note);
-      setSaveStatus(
-        `Aktualisiert ${new Date(data.note.updated_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
-      );
-    }
-  }
-
   async function pingPresence() {
     if (!note || kickedOut) return;
     const editing = editedSincePing;
@@ -3379,7 +3451,6 @@ function initNotesApp() {
     }
     if (!response.ok || !data.ok) return;
     renderPresence(data.viewers);
-    await checkForRemoteUpdate(data.revision);
   }
 
   function leavePresence() {

@@ -34,6 +34,7 @@ from app.services.system_settings import disabled_feature_response, feature_enab
 from app.services.trash import trash_events
 from app.services.user_preferences import format_user_date, format_user_time, localtime_for_user
 from app.view_models import get_calendar_context, get_calendar_event_detail_context
+from app.views.navigation import local_return_to
 from app.views.trash_views import trashed_message
 
 # The calendars panel edits, refreshes and removes subscriptions; adding one stays in settings.
@@ -79,7 +80,8 @@ def calendar(request):
             if not event.is_all_day:
                 when = f"{when}, {format_user_time(event.start_at, request.user)}"
             django_messages.success(request, f"Termin „{event.title}“ am {when} eingetragen.")
-            return redirect(request.get_full_path())
+            # The command palette adds events from any page and wants to stay there.
+            return redirect(local_return_to(request) or request.get_full_path())
 
     if request.method == "POST" and request.POST.get("form_name") == "calendar_event_edit":
         if not calendar_event_creation_enabled:
