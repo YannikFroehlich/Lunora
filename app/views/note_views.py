@@ -79,6 +79,8 @@ from app.services.notes import (
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.user_preferences import format_user_datetime
 
+# Every action of COMMAND_DEFAULTS in frontend/notes.js: the shortcut dialog always sends all of them,
+# so one missing here refuses every save (NotesTests.test_shortcut_actions_mirror_the_editor).
 SHORTCUT_ACTIONS = {
     "save",
     "undo",
@@ -136,9 +138,19 @@ SHORTCUT_ACTIONS = {
     "exportWord",
     "saveAsTemplate",
     "shortcutSettings",
+    "outline",
+    "comments",
+    "addComment",
+    "print",
+    "codeBlock",
+    "subscript",
+    "superscript",
+    "insertFormField",
+    "toggleHeaderRow",
+    "toggleHeaderColumn",
 }
 RESERVED_SHORTCUTS = {"Mod+W", "Mod+T", "Mod+N", "Mod+L", "Mod+R", "Mod+Shift+N"}
-SHORTCUT_RE = re.compile(r"^(?=.{3,40}$)(?=.*(?:Mod|Ctrl|Alt|Shift)\+)[A-Za-z0-9+\[\]\\\-]+$")
+SHORTCUT_RE = re.compile(r"^(?=.{3,40}$)(?=.*(?:Mod|Ctrl|Alt|Shift)\+)[A-Za-z0-9+\[\]\\\-.,;/=]+$")
 
 
 def _json_body(request):
