@@ -101,8 +101,7 @@ export function cursorTone(userId) {
   return CURSOR_TONES[Math.abs(userId) % CURSOR_TONES.length];
 }
 
-// Several cursors at one position share a caret, else their labels sit exactly on top of each
-// other and the adjacent uneditable widgets trip up the local caret.
+// Several cursors at one position share a caret, else their labels sit exactly on top of each other.
 export function caretGroups(cursors, max) {
   const groups = new Map();
   cursors.forEach((cursor) => {
