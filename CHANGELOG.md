@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Whiteboards can go fullscreen from the toolbar, and on phones the drawing area now fits the
+  visible screen instead of hiding behind the browser's address bar.
 - Comments on whiteboards: the new comment tool (C) pins a note to a spot on the board; everyone on
   the board can reply and mark it done, and new comments land in the others' inbox with a link
   that opens them.

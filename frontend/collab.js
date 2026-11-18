@@ -101,14 +101,31 @@ export function cursorTone(userId) {
   return CURSOR_TONES[Math.abs(userId) % CURSOR_TONES.length];
 }
 
-function caretElement(cursor) {
+// Several cursors at one position share a caret, else their labels sit exactly on top of each
+// other and the adjacent uneditable widgets trip up the local caret.
+export function caretGroups(cursors, max) {
+  const groups = new Map();
+  cursors.forEach((cursor) => {
+    const head = clamp(cursor.head, 0, max);
+    if (!groups.has(head)) groups.set(head, []);
+    groups.get(head).push(cursor);
+  });
+  return [...groups].map(([head, members]) => ({ head, cursors: members }));
+}
+
+function caretElement(cursors) {
   const caret = document.createElement("span");
-  caret.className = `note-remote-caret tone-${cursorTone(cursor.user_id)}`;
+  caret.className = `note-remote-caret tone-${cursorTone(cursors[0].user_id)}`;
   caret.setAttribute("aria-hidden", "true");
-  const label = document.createElement("span");
-  label.className = "note-remote-caret-label";
-  label.textContent = cursor.name;
-  caret.append(label);
+  const labels = document.createElement("span");
+  labels.className = "note-remote-caret-labels";
+  cursors.forEach((cursor) => {
+    const label = document.createElement("span");
+    label.className = `note-remote-caret-label tone-${cursorTone(cursor.user_id)}`;
+    label.textContent = cursor.name;
+    labels.append(label);
+  });
+  caret.append(labels);
   return caret;
 }
 
@@ -120,15 +137,17 @@ function cursorDecorations(doc, cursors) {
   cursors.forEach((cursor) => {
     const head = clamp(cursor.head, 0, max);
     const anchor = clamp(cursor.anchor, 0, max);
-    const tone = `tone-${cursorTone(cursor.user_id)}`;
     if (anchor !== head) {
       decorations.push(
-        Decoration.inline(Math.min(anchor, head), Math.max(anchor, head), { class: `note-remote-selection ${tone}` }),
+        Decoration.inline(Math.min(anchor, head), Math.max(anchor, head), {
+          class: `note-remote-selection tone-${cursorTone(cursor.user_id)}`,
+        }),
       );
     }
-    decorations.push(
-      Decoration.widget(head, () => caretElement(cursor), { key: `${cursor.client_id}-${cursor.name}` }),
-    );
+  });
+  caretGroups(cursors, max).forEach(({ head, cursors: members }) => {
+    const key = members.map((cursor) => `${cursor.client_id}-${cursor.name}`).join("|");
+    decorations.push(Decoration.widget(head, () => caretElement(members), { key }));
   });
   return DecorationSet.create(doc, decorations);
 }

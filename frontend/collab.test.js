@@ -3,7 +3,7 @@ import { Schema } from "@tiptap/pm/model";
 import { EditorState } from "@tiptap/pm/state";
 import { Step } from "@tiptap/pm/transform";
 
-import { collabPlugin, getVersion, insertedRanges, receiveTransaction, sendableSteps } from "./collab.js";
+import { caretGroups, collabPlugin, getVersion, insertedRanges, receiveTransaction, sendableSteps } from "./collab.js";
 
 const schema = new Schema({
   nodes: {
@@ -129,5 +129,27 @@ describe("authorship ranges", () => {
     const bold = state.tr.addMark(1, 3, schema.marks.strong.create());
     const removed = state.tr.delete(1, 3);
     expect(insertedRanges([bold, removed], () => true)).toEqual([]);
+  });
+});
+
+describe("caretGroups", () => {
+  it("puts cursors at the same position into one caret", () => {
+    const cursors = [
+      { client_id: "1-a", user_id: 1, name: "Anna", anchor: 3, head: 3 },
+      { client_id: "2-b", user_id: 2, name: "Ben", anchor: 3, head: 3 },
+      { client_id: "3-c", user_id: 3, name: "Cleo", anchor: 1, head: 5 },
+    ];
+    expect(caretGroups(cursors, 10)).toEqual([
+      { head: 3, cursors: [cursors[0], cursors[1]] },
+      { head: 5, cursors: [cursors[2]] },
+    ]);
+  });
+
+  it("groups positions only after clamping them to the document", () => {
+    const cursors = [
+      { client_id: "1-a", user_id: 1, name: "Anna", anchor: 40, head: 40 },
+      { client_id: "2-b", user_id: 2, name: "Ben", anchor: 12, head: 12 },
+    ];
+    expect(caretGroups(cursors, 8)).toEqual([{ head: 8, cursors }]);
   });
 });
