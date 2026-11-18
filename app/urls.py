@@ -73,6 +73,8 @@ urlpatterns = [
         view.whiteboard_comments_api,
         name="whiteboard_comments_api",
     ),
+    path("tools/kanban/", view.kanban_boards, name="kanban_boards"),
+    path("tools/kanban/<int:board_id>/", view.kanban_board, name="kanban_board"),
     path("tools/wishlist/", view.wish_lists, name="wish_lists"),
     path("tools/wishlist/<int:list_id>/", view.wish_list_detail, name="wish_list_detail"),
     path("tools/wishlist/image/<int:item_id>/", view.wish_item_image, name="wish_item_image"),
@@ -153,6 +155,7 @@ urlpatterns = [
         name="note_template_detail_api",
     ),
     path("notes/api/folders/", view.note_folders_api, name="note_folders_api"),
+    path("notes/folders/<int:folder_id>/share/", view.note_folder_share, name="note_folder_share"),
     path("notes/api/tree/move/", view.note_tree_move_api, name="note_tree_move_api"),
     path("notes/api/bulk-action/", view.note_bulk_action_api, name="note_bulk_action_api"),
     path(

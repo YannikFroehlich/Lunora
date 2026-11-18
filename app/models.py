@@ -1098,6 +1098,101 @@ class WhiteboardShare(models.Model):
         return f"{self.board} -> {self.user}"
 
 
+class KanbanBoard(models.Model):
+    """A free kanban board with its own columns and swimlanes (app/services/kanban.py).
+
+    ``updated_at`` is bumped by every change on the board, cards included, so shared boards can
+    poll it to see whether someone else changed something."""
+
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="kanban_boards"
+    )
+    title = models.CharField(max_length=120)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at", "-id"]
+
+    def __str__(self):
+        return self.title
+
+
+class KanbanBoardShare(models.Model):
+    """Someone the owner shares a board with; members edit columns, lanes and cards like the owner."""
+
+    board = models.ForeignKey(KanbanBoard, on_delete=models.CASCADE, related_name="shares")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="shared_kanban_boards"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        constraints = [models.UniqueConstraint(fields=["board", "user"], name="unique_kanban_board_share")]
+
+    def __str__(self):
+        return f"{self.board} -> {self.user}"
+
+
+class KanbanColumn(models.Model):
+    board = models.ForeignKey(KanbanBoard, on_delete=models.CASCADE, related_name="columns")
+    title = models.CharField(max_length=60)
+    position = models.PositiveIntegerField(default=0)
+    # Cards a column should hold at most; more are allowed but shown as over the limit.
+    wip_limit = models.PositiveSmallIntegerField(blank=True, null=True)
+
+    class Meta:
+        ordering = ["position", "id"]
+
+    def __str__(self):
+        return self.title
+
+
+class KanbanLane(models.Model):
+    """A swimlane: a row across all columns. A board always keeps at least one."""
+
+    board = models.ForeignKey(KanbanBoard, on_delete=models.CASCADE, related_name="lanes")
+    title = models.CharField(max_length=60)
+    position = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["position", "id"]
+
+    def __str__(self):
+        return self.title
+
+
+class KanbanCard(models.Model):
+    COLOR_CHOICES = [("", "Keine"), *TASK_COLOR_CHOICES]
+
+    board = models.ForeignKey(KanbanBoard, on_delete=models.CASCADE, related_name="cards")
+    column = models.ForeignKey(KanbanColumn, on_delete=models.CASCADE, related_name="cards")
+    lane = models.ForeignKey(KanbanLane, on_delete=models.CASCADE, related_name="cards")
+    title = models.CharField(max_length=200)
+    description = models.TextField(max_length=4000, blank=True)
+    color = models.CharField(max_length=12, choices=COLOR_CHOICES, default="", blank=True)
+    due_date = models.DateField(blank=True, null=True)
+    # Always the owner or a member of the board; cleared when they leave it.
+    assignee = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, blank=True, null=True, related_name="+"
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, blank=True, null=True, related_name="+"
+    )
+    # Order inside its column/lane cell.
+    position = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["position", "id"]
+        indexes = [models.Index(fields=["board", "column", "lane", "position"], name="kanbancard_cell_idx")]
+
+    def __str__(self):
+        return self.title
+
+
 VOCABULARY_LANGUAGE_CHOICES = [
     ("de", "Deutsch"),
     ("en", "Englisch"),
@@ -1596,6 +1691,9 @@ class UserNotification(models.Model):
     KIND_EXPENSE_GROUP = "expense_group"
     KIND_WHITEBOARD_SHARE = "whiteboard_share"
     KIND_WHITEBOARD_COMMENT = "whiteboard_comment"
+    KIND_KANBAN_SHARE = "kanban_share"
+    KIND_KANBAN_ASSIGNMENT = "kanban_assignment"
+    KIND_NOTE_FOLDER_SHARE = "note_folder_share"
     KIND_SECURITY_ALERT = "security_alert"
     KIND_CHOICES = [
         (KIND_CALENDAR_REMINDER, "Kalendererinnerung"),
@@ -1617,6 +1715,9 @@ class UserNotification(models.Model):
         (KIND_EXPENSE_GROUP, "Geteilte Ausgaben"),
         (KIND_WHITEBOARD_SHARE, "Geteiltes Whiteboard"),
         (KIND_WHITEBOARD_COMMENT, "Whiteboard-Kommentar"),
+        (KIND_KANBAN_SHARE, "Geteiltes Kanban-Board"),
+        (KIND_KANBAN_ASSIGNMENT, "Kanban-Karte zugewiesen"),
+        (KIND_NOTE_FOLDER_SHARE, "Geteilter Notizordner"),
         (KIND_SECURITY_ALERT, "Sicherheitswarnung"),
     ]
 
@@ -2026,6 +2127,11 @@ class NoteShare(models.Model):
     note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name="shares")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="shared_notes")
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default=ROLE_READER)
+    # The shared folder this share comes from (app/services/note_folder_shares.py), which adds and
+    # removes it as notes move; null for a share made by hand, which folder sharing never touches.
+    via_folder = models.ForeignKey(
+        "NoteFolder", on_delete=models.CASCADE, blank=True, null=True, related_name="+"
+    )
     first_opened_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -2036,6 +2142,31 @@ class NoteShare(models.Model):
 
     def __str__(self):
         return f"{self.user} – {self.note} ({self.role})"
+
+
+class NoteFolderShare(models.Model):
+    """A folder its owner shares with someone (app/services/note_folder_shares.py).
+
+    The owner's notes in the folder or its subfolders are shared with the member in the member's
+    role and appear in ``mirror``, a folder of the member's own. An editor's own notes in that
+    mirror are shared back with the owner and the other members."""
+
+    folder = models.ForeignKey(NoteFolder, on_delete=models.CASCADE, related_name="shares")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="shared_note_folders"
+    )
+    role = models.CharField(max_length=10, choices=NoteShare.ROLE_CHOICES, default=NoteShare.ROLE_READER)
+    mirror = models.OneToOneField(
+        NoteFolder, on_delete=models.SET_NULL, blank=True, null=True, related_name="mirror_of"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        constraints = [models.UniqueConstraint(fields=["folder", "user"], name="unique_note_folder_share")]
+
+    def __str__(self):
+        return f"{self.folder} -> {self.user} ({self.role})"
 
 
 class NoteUserState(models.Model):

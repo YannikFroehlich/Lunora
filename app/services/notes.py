@@ -197,6 +197,12 @@ def get_note_state(note, user):
     return state
 
 
+def _sync_folder_shares(note):
+    from app.services.note_folder_shares import sync_note_shares
+
+    sync_note_shares(note)
+
+
 def _next_tree_position(user, folder_id):
     folder_max = (
         NoteFolder.objects.filter(owner=user, parent_id=folder_id).aggregate(value=Max("position"))["value"]
@@ -277,7 +283,10 @@ def rename_note_folder(user, folder_id, *, name):
 
 @transaction.atomic
 def delete_note_folder(user, folder_id):
+    from app.services.note_folder_shares import end_shares_of_deleted_folder
+
     folder = get_note_folder(user, folder_id, for_update=True)
+    end_shares_of_deleted_folder(folder)
     parent_id = folder.parent_id
     siblings = _tree_container_items(user, parent_id)
     contents = _tree_container_items(user, folder.id)
@@ -308,6 +317,8 @@ def set_note_folder(user, note_id, folder_id):
         state.folder = folder
         state.position = _next_tree_position(user, folder.id if folder else None)
         state.save(update_fields=["folder", "position"])
+        if note.owner_id == user.id:
+            _sync_folder_shares(note)
     return note
 
 
@@ -435,6 +446,12 @@ def move_note_tree_item(user, *, item_type, item_id, placement, target_type=None
         {"type": item_type, "id": item_id, "position": 0, "object": moved_object},
     )
     _reindex_tree_container(items, destination_id)
+    from app.services.note_folder_shares import sync_folder_tree
+
+    if moved_folder:
+        sync_folder_tree(user.id, moved_folder.id)
+    elif moved_note.owner_id == user.id:
+        _sync_folder_shares(moved_note)
     return moved_note or moved_folder
 
 
@@ -459,6 +476,8 @@ def create_note(user, *, title="Unbenannte Notiz", template="blank", custom_temp
         folder=folder,
         position=_next_tree_position(user, folder.id if folder else None),
     )
+    if folder:
+        _sync_folder_shares(note)
     return note
 
 
@@ -1059,9 +1078,11 @@ def share_note(owner, note_id, target_user_id, role):
     if not target or target.id == owner.id:
         raise ValidationError("Der ausgewählte Benutzer ist ungültig.")
     share, created = NoteShare.objects.get_or_create(note=note, user=target, defaults={"role": role})
-    if not created and share.role != role:
+    # Shared by hand now, so moving the note out of a shared folder no longer takes it away.
+    if not created and (share.role != role or share.via_folder_id):
         share.role = role
-        share.save(update_fields=["role"])
+        share.via_folder = None
+        share.save(update_fields=["role", "via_folder"])
     NoteUserState.objects.get_or_create(note=note, user=target)
     if created:
         from app.services.notifications import materialize_note_share_notifications

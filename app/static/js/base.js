@@ -647,8 +647,8 @@ function swapSoftRegions(freshDocument) {
     if (!fresh) return;
     const openDetails = [...region.querySelectorAll("details[open][id]")].map((details) => details.id);
     const scrolled = [...region.querySelectorAll("[id]")]
-      .filter((element) => element.scrollTop)
-      .map((element) => [element.id, element.scrollTop]);
+      .filter((element) => element.scrollTop || element.scrollLeft)
+      .map((element) => [element.id, element.scrollTop, element.scrollLeft]);
     // The region element itself stays, so scripts holding it keep working; only its attributes
     // and children follow the server.
     [...region.attributes].forEach(({ name }) => {
@@ -660,9 +660,9 @@ function swapSoftRegions(freshDocument) {
       const details = document.getElementById(id);
       if (details) details.open = true;
     });
-    scrolled.forEach(([id, top]) => {
+    scrolled.forEach(([id, top, left]) => {
       const element = document.getElementById(id);
-      if (element) element.scrollTop = top;
+      if (element) element.scrollTo(left, top);
     });
   });
 
@@ -690,6 +690,9 @@ function swapSoftRegions(freshDocument) {
 
   document.dispatchEvent(new CustomEvent("lunora:soft-update"));
 }
+
+// For pages that reload their regions on their own, e.g. when a shared board changed elsewhere.
+window.lunoraSwapSoftRegions = swapSoftRegions;
 
 // The normal, full-page submit; the submit button's name/value goes last, so it wins over a
 // hidden field of the same name exactly as when the button itself is pressed.

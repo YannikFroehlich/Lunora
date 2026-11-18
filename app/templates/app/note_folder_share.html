@@ -1,0 +1,82 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}{{ folder.name }} teilen | Notizen | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell tools-shell">
+    <div class="soft-contents" id="folder-share" data-soft-region>
+    <header class="page-hero">
+        <div>
+            <a class="tools-back-link" href="{% url 'notes' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Notizen</a>
+            <h1>{{ folder.name }}</h1>
+            <p>{% if incoming %}Geteilt von {{ incoming_owner }} · du bist {{ incoming.get_role_display }}{% elif members %}Geteilt mit {{ members|length }} Person(en){% else %}Ordner teilen{% endif %}</p>
+        </div>
+        <i class="fa-solid fa-folder-open hero-branch" aria-hidden="true"></i>
+    </header>
+
+    {% if incoming %}
+    <section class="glass-panel folder-share-panel">
+        <p>
+            {% if incoming.role == "editor" %}
+            Du kannst die Notizen in diesem Ordner bearbeiten. Eigene Notizen, die du hineinlegst oder darin anlegst, sehen auch {{ incoming_owner }} und alle anderen, mit denen der Ordner geteilt ist.
+            {% else %}
+            Du kannst die Notizen in diesem Ordner lesen. Neue Notizen von {{ incoming_owner }} erscheinen hier von selbst.
+            {% endif %}
+        </p>
+        <form method="post" data-no-soft data-confirm="Den Ordner „{{ folder.name }}“ wirklich verlassen? Die Notizen von {{ incoming_owner }} verschwinden dann aus deiner Liste.">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="folder_leave">
+            <button class="ghost-button kanban-danger" type="submit"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i> Ordner verlassen</button>
+        </form>
+    </section>
+    {% else %}
+    <section class="glass-panel folder-share-panel">
+        <p>Alle deine Notizen in diesem Ordner und seinen Unterordnern sind für diese Personen sichtbar, auch die, die du später hineinlegst. Bearbeiter können sie ändern und eigene Notizen in den Ordner legen, die dann alle sehen. Ziehst du eine Notiz heraus, ist sie nicht mehr geteilt.</p>
+        {% if members %}
+        <ul class="folder-share-members">
+            {% for member in members %}
+            <li>
+                <span>{{ member.name }}</span>
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="folder_share_role">
+                    <input type="hidden" name="share_id" value="{{ member.share.id }}">
+                    <select name="role" aria-label="Rolle von {{ member.name }}" data-auto-submit>
+                        {% for value, label in role_choices %}<option value="{{ value }}"{% if value == member.share.role %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                    </select>
+                </form>
+                <form method="post" data-confirm="{{ member.name }} wirklich aus dem Ordner entfernen?">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="folder_unshare">
+                    <input type="hidden" name="share_id" value="{{ member.share.id }}">
+                    <button class="icon-button" type="submit" aria-label="{{ member.name }} entfernen" title="Entfernen"><i class="fa-solid fa-user-minus" aria-hidden="true"></i></button>
+                </form>
+            </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+        <form class="folder-share-form" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="folder_share">
+            <label class="vocab-field">
+                <span>E-Mail oder Benutzername</span>
+                <input type="text" name="identifier" maxlength="254" autocomplete="off" required>
+            </label>
+            <label class="vocab-field">
+                <span>Rolle</span>
+                <select name="role">
+                    {% for value, label in role_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                </select>
+            </label>
+            <button class="primary-button" type="submit"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i> Teilen</button>
+        </form>
+    </section>
+    {% endif %}
+    </div>
+</section>
+{% endblock %}

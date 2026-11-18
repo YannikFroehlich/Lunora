@@ -47,6 +47,7 @@ from app.services.dashboard import (
 )
 from app.services.expenses import balances, euro, user_groups
 from app.services.habits import habit_items
+from app.services.kanban import accessible_boards
 from app.services.message_queries import unread_total_for_user
 from app.services.notifications import dashboard_latest_notifications
 from app.services.shopping import group_items
@@ -495,6 +496,13 @@ TOOLS = (
         "url_name": "whiteboards",
     },
     {
+        "id": "kanban",
+        "title": "Kanban-Board",
+        "description": "Eigene Spalten und Swimlanes, Karten per Drag & Drop verschieben, gemeinsam planen.",
+        "icon": "fa-table-columns",
+        "url_name": "kanban_boards",
+    },
+    {
         "id": "vocabulary",
         "title": "Vokabeltrainer",
         "description": "Vokabellisten anlegen, per Karteikarte, Eintippen oder Multiple Choice abfragen – mit Lernkartei.",
@@ -507,6 +515,7 @@ TOOLS = (
 def get_tools_context(user):
     diagram_count = UmlDiagram.objects.filter(owner=user).count()
     whiteboard_count = accessible_whiteboards(user).count()
+    kanban_count = accessible_boards(user).count()
     vocabulary_count = VocabularyList.objects.filter(owner=user).count()
     due_cards = (
         VocabularyCard.objects.filter(vocabulary_list__owner=user).filter(due_filter(timezone.now())).count()
@@ -523,6 +532,7 @@ def get_tools_context(user):
         "focus": "Läuft direkt im Browser",
         "uml": f"{diagram_count} Diagramm(e)" if diagram_count else "Noch keine Diagramme",
         "whiteboard": f"{whiteboard_count} Whiteboard(s)" if whiteboard_count else "Noch keine Whiteboards",
+        "kanban": f"{kanban_count} Board(s)" if kanban_count else "Noch keine Boards",
         "vocabulary": (
             f"{vocabulary_count} Liste(n) · {due_cards} fällig"
             if vocabulary_count

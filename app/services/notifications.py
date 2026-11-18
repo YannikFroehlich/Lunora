@@ -65,6 +65,9 @@ NOTIFICATION_PRESENTATION = {
     UserNotification.KIND_EXPENSE_GROUP: ("fa-scale-balanced", "Ausgaben", "tools"),
     UserNotification.KIND_WHITEBOARD_SHARE: ("fa-pen-ruler", "Whiteboard", "tools"),
     UserNotification.KIND_WHITEBOARD_COMMENT: ("fa-comment", "Whiteboard", "tools"),
+    UserNotification.KIND_KANBAN_SHARE: ("fa-table-columns", "Kanban", "tools"),
+    UserNotification.KIND_KANBAN_ASSIGNMENT: ("fa-user-check", "Kanban", "tools"),
+    UserNotification.KIND_NOTE_FOLDER_SHARE: ("fa-folder-open", "Freigabe", "note"),
     UserNotification.KIND_SECURITY_ALERT: ("fa-shield-halved", "Sicherheit", "security"),
 }
 
@@ -323,6 +326,56 @@ def materialize_whiteboard_share_notification(share):
                 "body": board.title,
                 "url": f"/tools/whiteboard/{board.pk}/",
                 "source_key": f"whiteboard-share:{share.pk}",
+            }
+        ]
+    )
+
+
+def materialize_kanban_share_notification(share):
+    board = share.board
+    return _create_missing_user_notifications(
+        [
+            {
+                "recipient_id": share.user_id,
+                "actor_id": board.owner_id,
+                "kind": UserNotification.KIND_KANBAN_SHARE,
+                "title": f"{_display_name(board.owner)} teilt ein Kanban-Board mit dir",
+                "body": board.title,
+                "url": f"/tools/kanban/{board.pk}/",
+                "source_key": f"kanban-share:{share.pk}",
+            }
+        ]
+    )
+
+
+def materialize_kanban_assignment_notification(card, actor):
+    return _create_missing_user_notifications(
+        [
+            {
+                "recipient_id": card.assignee_id,
+                "actor_id": actor.pk,
+                "kind": UserNotification.KIND_KANBAN_ASSIGNMENT,
+                "title": f"{_display_name(actor)} weist dir eine Karte zu",
+                "body": f"{card.title} · {card.board.title}"[:500],
+                "url": f"/tools/kanban/{card.board_id}/#card-{card.pk}",
+                "source_key": f"kanban-card:{card.pk}:{card.assignee_id}",
+            }
+        ]
+    )
+
+
+def materialize_note_folder_share_notification(folder_share):
+    folder = folder_share.folder
+    return _create_missing_user_notifications(
+        [
+            {
+                "recipient_id": folder_share.user_id,
+                "actor_id": folder.owner_id,
+                "kind": UserNotification.KIND_NOTE_FOLDER_SHARE,
+                "title": f"{_display_name(folder.owner)} teilt einen Notizordner mit dir",
+                "body": folder.name,
+                "url": "/notes/",
+                "source_key": f"note-folder-share:{folder_share.pk}",
             }
         ]
     )
@@ -1141,7 +1194,7 @@ def send_pending_user_notification_emails(
     current_time = now or timezone.now()
     kinds = []
     if include_note_shares:
-        kinds.append(UserNotification.KIND_NOTE_SHARE)
+        kinds += [UserNotification.KIND_NOTE_SHARE, UserNotification.KIND_NOTE_FOLDER_SHARE]
     if include_vocabulary_shares:
         kinds.append(UserNotification.KIND_VOCABULARY_SHARE)
     if include_shopping_shares:
@@ -1149,6 +1202,8 @@ def send_pending_user_notification_emails(
             UserNotification.KIND_SHOPPING_SHARE,
             UserNotification.KIND_WHITEBOARD_SHARE,
             UserNotification.KIND_WHITEBOARD_COMMENT,
+            UserNotification.KIND_KANBAN_SHARE,
+            UserNotification.KIND_KANBAN_ASSIGNMENT,
         ]
     if include_expense_groups:
         kinds.append(UserNotification.KIND_EXPENSE_GROUP)

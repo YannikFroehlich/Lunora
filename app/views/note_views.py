@@ -29,6 +29,13 @@ from app.services.note_content import NOTE_TEMPLATE_LABELS, NOTE_TEMPLATES
 from app.services.note_docx import CONTENT_TYPE as DOCX_CONTENT_TYPE
 from app.services.note_docx import note_docx_filename, render_note_docx
 from app.services.note_files import NOTE_FILE_ACCEPT, NOTE_IMAGE_ACCEPT
+from app.services.note_folder_shares import (
+    end_folder_share,
+    folder_share_labels,
+    folder_share_page,
+    set_folder_share_role,
+    share_folder,
+)
 from app.services.note_html import render_note_html
 from app.services.note_markdown import note_markdown_filename, render_note_markdown
 from app.services.note_pdf import note_pdf_filename, render_note_pdf
@@ -78,6 +85,7 @@ from app.services.notes import (
 )
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.user_preferences import format_user_datetime
+from app.views.navigation import posted_id
 
 # Every action of COMMAND_DEFAULTS in frontend/notes.js: the shortcut dialog always sends all of them,
 # so one missing here refuses every save (NotesTests.test_shortcut_actions_mirror_the_editor).
@@ -190,6 +198,7 @@ def _optional_positive_int(value, label):
 
 def _build_note_navigation(user, note_items, selected_folder_id=None, *, custom_order=True):
     folders = list(NoteFolder.objects.filter(owner=user).values("id", "name", "parent_id", "position"))
+    share_labels = folder_share_labels(user)
     nodes = {
         item["id"]: {
             "kind": "folder",
@@ -200,6 +209,7 @@ def _build_note_navigation(user, note_items, selected_folder_id=None, *, custom_
             "items": [],
             "child_folders": [],
             "contains_selected": False,
+            "share_label": share_labels.get(item["id"], ""),
         }
         for item in folders
     }
@@ -266,6 +276,41 @@ def _build_note_navigation(user, note_items, selected_folder_id=None, *, custom_
                 tree_items.append(node)
             visit(node, 0)
     return tree_items, options
+
+
+@login_required
+def note_folder_share(request, folder_id):
+    disabled = _feature_guard(request)
+    if disabled:
+        return disabled
+    try:
+        context = folder_share_page(request.user, folder_id)
+    except NoteFolder.DoesNotExist as error:
+        raise Http404 from error
+    folder = context["folder"]
+
+    form_name = request.POST.get("form_name") if request.method == "POST" else None
+    if form_name == "folder_leave" and context["incoming"]:
+        end_folder_share(context["incoming"])
+        django_messages.success(request, f"Du hast den Ordner „{folder.name}“ verlassen.")
+        return redirect("notes")
+    if form_name == "folder_share":
+        error = share_folder(
+            request.user, folder.pk, request.POST.get("identifier", "")[:254], request.POST.get("role", "")
+        )
+        if error:
+            django_messages.error(request, error)
+        else:
+            django_messages.success(request, "Der Ordner ist jetzt geteilt.")
+    elif form_name == "folder_share_role":
+        set_folder_share_role(request.user, posted_id(request, "share_id"), request.POST.get("role", ""))
+    elif form_name == "folder_unshare":
+        share = folder.shares.filter(pk=posted_id(request, "share_id")).first()
+        if share:
+            end_folder_share(share)
+    if form_name:
+        return redirect("note_folder_share", folder_id=folder.pk)
+    return render(request, "app/note_folder_share.html", {**context, "active_page": "notes"})
 
 
 @login_required

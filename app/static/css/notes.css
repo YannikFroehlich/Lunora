@@ -214,7 +214,8 @@
 }
 
 .notes-tree-toolbar button,
-.note-folder-actions button {
+.note-folder-actions button,
+.note-folder-actions a {
   color: var(--color-muted);
   background: transparent;
   border: 0;
@@ -230,7 +231,9 @@
 .notes-tree-toolbar button:hover,
 .notes-tree-toolbar button:focus-visible,
 .note-folder-actions button:hover,
-.note-folder-actions button:focus-visible {
+.note-folder-actions button:focus-visible,
+.note-folder-actions a:hover,
+.note-folder-actions a:focus-visible {
   color: var(--color-accent-strong);
   background: color-mix(in srgb, var(--color-accent) 16%, transparent);
 }
@@ -358,7 +361,18 @@
   opacity: 1;
 }
 
-.note-folder-actions button {
+.note-folder-shared {
+  color: var(--color-muted);
+  font-size: var(--text-2xs);
+}
+
+.note-folder-actions a {
+  display: inline-grid;
+  place-items: center;
+}
+
+.note-folder-actions button,
+.note-folder-actions a {
   width: 25px;
   height: 25px;
   padding: 0;

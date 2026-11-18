@@ -2884,6 +2884,10 @@ function initNotesApp() {
     }
 
     if (!folderId || !folder) return;
+    if (action === "share") {
+      window.location.assign(`/notes/folders/${folderId}/share/`);
+      return;
+    }
     if (action === "rename") {
       const name = window.prompt("Neuer Ordnername", folder.dataset.folderName || "");
       if (name === null) return;

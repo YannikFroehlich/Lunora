@@ -6,6 +6,14 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Kanban boards (Werkzeuge → Kanban-Board): your own columns and swimlanes, cards with
+  description, color, due date and someone responsible, moved by drag and drop or Alt+arrow keys.
+  Columns can have a card limit (WIP) that turns red when exceeded. Boards can be shared; members
+  edit everything, see the others' changes within a few seconds and get an inbox note when a card
+  is assigned to them.
+- Shared note folders: "Teilen" on a folder shares every note in it and its subfolders, including
+  notes put there later, as reader or editor. The folder shows up in the other person's note list,
+  editors can add their own notes for everyone, and moving a note out of the folder unshares it.
 - Whiteboards can go fullscreen from the toolbar, and on phones the drawing area now fits the
   visible screen instead of hiding behind the browser's address bar.
 - Comments on whiteboards: the new comment tool (C) pins a note to a spot on the board; everyone on

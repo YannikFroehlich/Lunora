@@ -28,6 +28,7 @@ from .core_views import (
     settings,
 )
 from .expense_views import expense_group_detail, expense_groups
+from .kanban_views import kanban_board, kanban_boards
 from .message_views import chat_attachment_download, chat_typing_ping, messages, messages_live_updates
 from .note_views import (
     note_action_api,
@@ -42,6 +43,7 @@ from .note_views import (
     note_docx_export,
     note_folder_assignment_api,
     note_folder_detail_api,
+    note_folder_share,
     note_folders_api,
     note_import,
     note_link_candidates_api,
@@ -152,6 +154,7 @@ __all__ = [
     "note_bulk_action_api",
     "note_folders_api",
     "note_folder_detail_api",
+    "note_folder_share",
     "note_folder_assignment_api",
     "note_shares_api",
     "note_share_delete_api",
@@ -189,6 +192,8 @@ __all__ = [
     "whiteboard_api",
     "whiteboard_comments_api",
     "whiteboard_sync_api",
+    "kanban_boards",
+    "kanban_board",
     "wish_lists",
     "wish_list_detail",
     "wish_item_image",
