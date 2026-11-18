@@ -58,6 +58,8 @@ TRASH_RETENTION = timedelta(days=30)
 FOLDER_MAX_DEPTH = 12
 TREE_POSITION_STEP = 1000
 MAX_NOTE_TEMPLATES = 30
+# Steps kept behind the stored snapshot, so a briefly lagging editor can still catch up.
+COLLAB_STEP_HISTORY = 1000
 
 
 class NoteConflictError(Exception):
@@ -485,6 +487,7 @@ def serialize_note(note, user, *, include_document=True):
         "checklist_done": note.checklist_done,
         "checklist_total": note.checklist_total,
         "revision": note.revision,
+        "collab_version": note.collab_version,
         "permission": permission,
         "can_edit": permission in {"owner", NoteShare.ROLE_EDITOR},
         "can_manage": permission == "owner",
@@ -519,19 +522,46 @@ def serialize_note(note, user, *, include_document=True):
     return payload
 
 
+def collab_head(note):
+    """Version of the newest live-editing step of a note (its stored version without any)."""
+    newest = note.collab_steps.aggregate(newest=Max("version"))["newest"] or 0
+    return max(note.collab_version, newest)
+
+
+def _reset_collab(note):
+    """A write that didn't come from the step log starts a new one; open editors reload."""
+    note.collab_version = collab_head(note) + 1
+    note.collab_steps.all().delete()
+
+
 @transaction.atomic
-def save_note(user, note_id, *, title, document, base_revision, conflict_resolution=False):
+def save_note(
+    user, note_id, *, title, document, base_revision, conflict_resolution=False, collab_version=None
+):
+    """Store a note. ``collab_version`` marks a snapshot of the live-editing log at that
+    version: every editor computes the same document from the same steps, so such saves
+    skip the revision check, and one older than the stored snapshot only keeps its title."""
     note = get_accessible_note(user, note_id, for_update=True)
     if not can_edit_note(note, user):
         raise PermissionDenied("Du darfst diese Notiz nicht bearbeiten.")
-    if note.revision != base_revision:
+    if collab_version is None and note.revision != base_revision:
         raise NoteConflictError(note)
+    if collab_version is not None and collab_version > collab_head(note):
+        raise ValidationError("Dieser Bearbeitungsstand ist dem Server unbekannt.")
 
     clean_title = str(title or "").strip()
     if not clean_title:
         clean_title = "Unbenannte Notiz"
     if len(clean_title) > 200:
         raise ValidationError("Der Titel darf maximal 200 Zeichen lang sein.")
+    if collab_version is not None and collab_version < note.collab_version:
+        if clean_title != note.title:
+            note.title = clean_title
+            note.revision += 1
+            note.last_edited_by = user
+            note.updated_at = timezone.now()
+            note.save(update_fields=["title", "revision", "last_edited_by", "updated_at"])
+        return note
     validated = validate_note_document(document)
     attachment_ids = validated["attachments"]
     mention_ids = validated["mentions"]
@@ -540,8 +570,15 @@ def save_note(user, note_id, *, title, document, base_revision, conflict_resolut
     _validate_attachment_references(note, attachment_ids)
     _validate_mention_references(note, mention_ids)
     _validate_comment_thread_references(note, comment_thread_ids)
-    _validate_note_link_references(user, note_link_ids)
-    new_mention_ids = mention_ids - extract_mention_user_ids(note.document) - {user.id}
+    # Links someone else added stay valid even when this editor can't open their target.
+    _validate_note_link_references(
+        user, note_link_ids - set(note.outgoing_links.values_list("target_note_id", flat=True))
+    )
+    # Live-edited mentions notify when their step arrives (note_collab.py), by their author.
+    if collab_version is None:
+        new_mention_ids = mention_ids - extract_mention_user_ids(note.document) - {user.id}
+    else:
+        new_mention_ids = set()
 
     if conflict_resolution:
         _create_version(note, user, NoteVersion.REASON_CONFLICT)
@@ -554,7 +591,22 @@ def save_note(user, note_id, *, title, document, base_revision, conflict_resolut
     note.revision += 1
     note.last_edited_by = user
     note.updated_at = timezone.now()
-    note.save(update_fields=["title", "document", "plain_text", "revision", "last_edited_by", "updated_at"])
+    if collab_version is None:
+        _reset_collab(note)
+    else:
+        note.collab_version = collab_version
+        note.collab_steps.filter(version__lte=collab_version - COLLAB_STEP_HISTORY).delete()
+    note.save(
+        update_fields=[
+            "title",
+            "document",
+            "plain_text",
+            "revision",
+            "collab_version",
+            "last_edited_by",
+            "updated_at",
+        ]
+    )
     _set_note_links(note, note_link_ids)
     prune_note_versions(note)
     if new_mention_ids:
@@ -692,7 +744,18 @@ def restore_note_version(user, note_id, version_id, *, base_revision):
     note.revision += 1
     note.last_edited_by = user
     note.updated_at = timezone.now()
-    note.save(update_fields=["title", "document", "plain_text", "revision", "last_edited_by", "updated_at"])
+    _reset_collab(note)
+    note.save(
+        update_fields=[
+            "title",
+            "document",
+            "plain_text",
+            "revision",
+            "collab_version",
+            "last_edited_by",
+            "updated_at",
+        ]
+    )
     _set_note_links(note, validated["note_links"])
     prune_note_versions(note)
     return note

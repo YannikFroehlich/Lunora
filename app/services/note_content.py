@@ -220,39 +220,42 @@ def _validate_node(node, *, depth, state):
             raise ValidationError("Tabellen dürfen maximal 20×20 Zellen groß sein.")
 
 
+NODE_ATTRIBUTES = {
+    "paragraph": {"textAlign", *BLOCK_BOX_ATTRIBUTES},
+    "heading": {"level", "textAlign", *BLOCK_BOX_ATTRIBUTES},
+    "orderedList": {"start", "type"},
+    "codeBlock": {"language"},
+    "taskItem": {"checked"},
+    "tableCell": {
+        "colspan",
+        "rowspan",
+        "colwidth",
+        "backgroundColor",
+        "align",
+        "borderColor",
+        "borderLeft",
+    },
+    "tableHeader": {
+        "colspan",
+        "rowspan",
+        "colwidth",
+        "backgroundColor",
+        "align",
+        "borderColor",
+        "borderLeft",
+    },
+    "noteImage": {"attachmentId", "alt", "title", "width", "float", "floatX", "floatY"},
+    "noteAttachment": {"attachmentId", "name", "size"},
+    "mention": {"userId", "label"},
+    "noteLink": {"noteId", "label"},
+    "mathInline": {"latex"},
+    "mathBlock": {"latex"},
+    "formField": {"placeholder", "value"},
+}
+
+
 def _validate_node_attrs(node_type, attrs, state):
-    allowed = {
-        "paragraph": {"textAlign", *BLOCK_BOX_ATTRIBUTES},
-        "heading": {"level", "textAlign", *BLOCK_BOX_ATTRIBUTES},
-        "orderedList": {"start", "type"},
-        "codeBlock": {"language"},
-        "taskItem": {"checked"},
-        "tableCell": {
-            "colspan",
-            "rowspan",
-            "colwidth",
-            "backgroundColor",
-            "align",
-            "borderColor",
-            "borderLeft",
-        },
-        "tableHeader": {
-            "colspan",
-            "rowspan",
-            "colwidth",
-            "backgroundColor",
-            "align",
-            "borderColor",
-            "borderLeft",
-        },
-        "noteImage": {"attachmentId", "alt", "title", "width", "float", "floatX", "floatY"},
-        "noteAttachment": {"attachmentId", "name", "size"},
-        "mention": {"userId", "label"},
-        "noteLink": {"noteId", "label"},
-        "mathInline": {"latex"},
-        "mathBlock": {"latex"},
-        "formField": {"placeholder", "value"},
-    }.get(node_type, set())
+    allowed = NODE_ATTRIBUTES.get(node_type, set())
     if set(attrs) - allowed:
         raise ValidationError(f"Das Element „{node_type}“ enthält unerlaubte Attribute.")
     if "textAlign" in attrs and attrs["textAlign"] not in ALLOWED_ALIGNMENTS:
@@ -388,6 +391,123 @@ def _validate_mark(mark, state):
         state["comment_threads"].add(thread_id.lower())
     elif attrs:
         raise ValidationError(f"Die Textformatierung „{mark_type}“ darf keine Attribute enthalten.")
+
+
+MAX_STEPS_PER_PUSH = 500
+MAX_STEP_POSITION = MAX_TEXT_CHARACTERS + 2 * MAX_DOCUMENT_NODES
+# Required keys and optional keys of the ProseMirror step JSON the editor produces.
+STEP_FIELDS = {
+    "replace": ({"from", "to"}, {"slice", "structure"}),
+    "replaceAround": ({"from", "to", "gapFrom", "gapTo", "insert"}, {"slice", "structure"}),
+    "addMark": ({"from", "to", "mark"}, set()),
+    "removeMark": ({"from", "to", "mark"}, set()),
+    "attr": ({"pos", "attr"}, {"value"}),
+}
+STEP_POSITION_FIELDS = ("from", "to", "gapFrom", "gapTo", "insert", "pos")
+# Attribute steps never change what a node points at, so these stay out of them; the
+# fillers make the other checks of a node type pass when only one attribute is looked at.
+STEP_REFERENCE_ATTRIBUTES = {"attachmentId", "userId", "noteId"}
+_STEP_ATTR_FILLERS = {
+    "noteImage": {"attachmentId": "00000000-0000-0000-0000-000000000000"},
+    "noteAttachment": {"attachmentId": "00000000-0000-0000-0000-000000000000"},
+    "mention": {"userId": 1, "label": "x"},
+    "noteLink": {"noteId": 1, "label": "x"},
+    "mathInline": {"latex": "x"},
+    "mathBlock": {"latex": "x"},
+    "heading": {"level": 1},
+}
+
+
+def validate_note_steps(steps):
+    """Check live-editing steps against the same allowlists as a whole document.
+
+    The server never applies steps, so it can't see the document they land in; it checks
+    everything a step adds (inserted content, marks, attribute values). Returns the
+    references the steps add, for the same ownership checks as a document save.
+    """
+    if not isinstance(steps, list) or not 0 < len(steps) <= MAX_STEPS_PER_PUSH:
+        raise ValidationError("Die Änderungen sind ungültig.")
+    try:
+        encoded = json.dumps(steps, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    except (TypeError, ValueError) as error:
+        raise ValidationError("Die Änderungen enthalten ungültige Daten.") from error
+    if len(encoded) > MAX_DOCUMENT_BYTES:
+        raise ValidationError("Die Änderungen sind zu groß.")
+    state = _empty_state()
+    for step in steps:
+        _validate_step(step, state)
+    if state["characters"] > MAX_TEXT_CHARACTERS:
+        raise ValidationError("Die Änderungen enthalten zu viel Text.")
+    return {key: state[key] for key in ("attachments", "mentions", "comment_threads", "note_links")}
+
+
+def _empty_state():
+    return {
+        "nodes": 0,
+        "characters": 0,
+        "attachments": set(),
+        "mentions": set(),
+        "comment_threads": set(),
+        "note_links": set(),
+    }
+
+
+def _validate_step(step, state):
+    if not isinstance(step, dict) or step.get("stepType") not in STEP_FIELDS:
+        raise ValidationError("Eine Änderung hat einen unbekannten Typ.")
+    required, optional = STEP_FIELDS[step["stepType"]]
+    keys = set(step) - {"stepType"}
+    if not required <= keys or keys - required - optional:
+        raise ValidationError("Eine Änderung enthält unbekannte Felder.")
+    for key in STEP_POSITION_FIELDS:
+        if key in step and (
+            not isinstance(step[key], int)
+            or isinstance(step[key], bool)
+            or not 0 <= step[key] <= MAX_STEP_POSITION
+        ):
+            raise ValidationError("Eine Änderung verweist auf eine ungültige Stelle.")
+    if "from" in step and step["to"] < step["from"]:
+        raise ValidationError("Eine Änderung verweist auf eine ungültige Stelle.")
+    if "structure" in step and not isinstance(step["structure"], bool):
+        raise ValidationError("Eine Änderung ist ungültig.")
+
+    if "slice" in step:
+        piece = step["slice"]
+        if not isinstance(piece, dict) or set(piece) - {"content", "openStart", "openEnd"}:
+            raise ValidationError("Eingefügter Inhalt ist ungültig.")
+        for key in ("openStart", "openEnd"):
+            value = piece.get(key, 0)
+            if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value <= MAX_DOCUMENT_DEPTH:
+                raise ValidationError("Eingefügter Inhalt ist ungültig.")
+        content = piece.get("content") or []
+        if not isinstance(content, list):
+            raise ValidationError("Eingefügter Inhalt ist ungültig.")
+        for node in content:
+            if isinstance(node, dict) and node.get("type") == "doc":
+                raise ValidationError("Eingefügter Inhalt ist ungültig.")
+            _validate_node(node, depth=0, state=state)
+    elif step["stepType"] == "addMark":
+        _validate_mark(step["mark"], state)
+    elif step["stepType"] == "removeMark":
+        # Removing can't add anything, so the reference it names needs no check.
+        _validate_mark(step["mark"], _empty_state())
+    elif step["stepType"] == "attr":
+        _validate_step_attribute(step["attr"], step.get("value"))
+
+
+def _validate_step_attribute(name, value):
+    if not isinstance(name, str) or name in STEP_REFERENCE_ATTRIBUTES:
+        raise ValidationError("Diese Attributänderung ist nicht erlaubt.")
+    node_types = [node_type for node_type, allowed in NODE_ATTRIBUTES.items() if name in allowed]
+    for node_type in node_types:
+        try:
+            _validate_node_attrs(
+                node_type, {**_STEP_ATTR_FILLERS.get(node_type, {}), name: value}, _empty_state()
+            )
+        except ValidationError:
+            continue
+        return
+    raise ValidationError("Diese Attributänderung ist nicht erlaubt.")
 
 
 def safe_link_href(href):

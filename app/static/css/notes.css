@@ -758,6 +758,38 @@
   white-space: nowrap;
 }
 
+/* Cursors and selections of the others while live editing (frontend/collab.js). */
+.note-remote-caret {
+  position: relative;
+  margin-right: -1px;
+  margin-left: -1px;
+  border-right: 1px solid var(--tone);
+  border-left: 1px solid var(--tone);
+  pointer-events: none;
+  word-break: normal;
+}
+
+.note-remote-caret-label {
+  position: absolute;
+  bottom: 100%;
+  left: -1px;
+  padding: 1px 5px;
+  border-radius: var(--radius-xs) var(--radius-xs) var(--radius-xs) 0;
+  background: var(--tone);
+  color: var(--color-on-accent);
+  font-family: Inter, sans-serif;
+  font-size: var(--text-2xs);
+  font-style: normal;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.note-remote-selection {
+  background: color-mix(in srgb, var(--tone) 35%, transparent);
+}
+
 .note-presence-stack .avatar img {
   display: block;
   width: 100%;

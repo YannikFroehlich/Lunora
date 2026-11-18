@@ -24,6 +24,7 @@ from app.models import (
     Profile,
 )
 from app.services.docx_import import import_docx_upload
+from app.services.note_collab import sync_note
 from app.services.note_content import NOTE_TEMPLATE_LABELS, NOTE_TEMPLATES
 from app.services.note_docx import CONTENT_TYPE as DOCX_CONTENT_TYPE
 from app.services.note_docx import note_docx_filename, render_note_docx
@@ -583,6 +584,7 @@ def note_detail_api(request, note_id):
             document=payload.get("document"),
             base_revision=int(payload.get("base_revision", 0)),
             conflict_resolution=bool(payload.get("conflict_resolution")),
+            collab_version=_optional_collab_version(payload.get("collab_version")),
         )
         return JsonResponse({"ok": True, "note": serialize_note(note, request.user)})
     except NoteConflictError as error:
@@ -828,6 +830,43 @@ def note_presence_api(request, note_id):
             "revision": note.revision,
         }
     )
+
+
+def _optional_collab_version(value):
+    if value is None:
+        return None
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValidationError("Der Bearbeitungsstand ist ungültig.")
+    return value
+
+
+@login_required
+@require_http_methods(["POST"])
+def note_collab_api(request, note_id):
+    disabled = _feature_guard(request, json_response=True)
+    if disabled:
+        return disabled
+    try:
+        payload = _json_body(request)
+        if not isinstance(payload, dict):
+            raise ValidationError("Die Anfrage ist ungültig.")
+        result = sync_note(
+            request.user,
+            note_id,
+            version=payload.get("version"),
+            tab=payload.get("tab"),
+            steps=payload.get("steps"),
+            selection=payload.get("selection"),
+        )
+    except Note.DoesNotExist:
+        return _error_response("Notiz nicht gefunden.", status=404)
+    except PermissionDenied as error:
+        return _error_response(error, status=403)
+    except ValidationError as error:
+        return _error_response(error)
+    response = JsonResponse({"ok": True, **result})
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 @login_required

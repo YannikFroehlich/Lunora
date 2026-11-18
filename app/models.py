@@ -1861,6 +1861,8 @@ class Note(models.Model):
     # Only filled on PostgreSQL, by save(); stays NULL on SQLite, which searches by substring.
     search_vector = SearchVectorField(blank=True, null=True, editable=False)
     revision = models.PositiveIntegerField(default=1)
+    # Number of live-editing steps (NoteStep) already contained in ``document``; see note_collab.py.
+    collab_version = models.PositiveIntegerField(default=0)
     last_edited_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -2036,6 +2038,21 @@ class NoteViewerPresence(models.Model):
         ]
         indexes = [
             models.Index(fields=["note", "present_until"], name="notepresence_note_until_idx"),
+        ]
+
+
+class NoteStep(models.Model):
+    """One ProseMirror step of the live-editing log; ``version`` numbers the steps per note."""
+
+    note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name="collab_steps")
+    version = models.PositiveIntegerField()
+    # "<user id>-<tab id>", set by the server so nobody can pass steps off as someone else's.
+    client_id = models.CharField(max_length=60)
+    data = models.JSONField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["note", "version"], name="unique_note_step_version"),
         ]
 
 

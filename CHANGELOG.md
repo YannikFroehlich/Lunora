@@ -6,6 +6,11 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Shared notes can be edited by several people at the same time: everyone's typing shows up for the
+  others within about a second, including where they're writing and what they've selected, and
+  nobody's text gets overwritten or ends in the "Konflikt" dialog any more. Undo only takes back
+  your own changes. People with read access watch along live.
+- A shared note can now be saved by editors even when it links to a note only its author can open.
 - The wish list ("Wunschliste") takes links from other online shops too, not only Amazon: title,
   price, picture, rating and availability come from the product data most shops embed for search
   engines. Product pictures are now loaded through Lunora instead of straight from the shop, so the
