@@ -620,7 +620,8 @@ class TaskTests(TestCase):
 
     def test_task_counts_include_today_and_upcoming_buckets(self):
         now = timezone.now()
-        Task.objects.create(user=self.user, title="Heute fällig", due_at=now + timedelta(hours=2))
+        # Due right now, so it stays on today's date whatever time the suite runs.
+        Task.objects.create(user=self.user, title="Heute fällig", due_at=now)
         Task.objects.create(user=self.user, title="Nächste Woche", due_at=now + timedelta(days=3))
         Task.objects.create(user=self.user, title="Weit weg", due_at=now + timedelta(days=30))
         self._login()
