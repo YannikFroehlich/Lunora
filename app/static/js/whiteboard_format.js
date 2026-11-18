@@ -404,7 +404,105 @@
     return `M${barb(-1)}L${x2} ${y2}L${barb(1)}`;
   }
 
+  // ---- Live editing -------------------------------------------------------------------------
+  // Operations on the element list, applied by the same rules as apply_whiteboard_ops in
+  // app/services/whiteboard_content.py; change both sides together.
+
+  function indexOfId(elements, id) {
+    return elements.findIndex((item) => item.id === id);
+  }
+
+  function applyOps(elements, ops) {
+    const result = [...elements];
+    ops.forEach((op) => {
+      if (op.op === "title") return;
+      const target = op.op === "put" ? op.element.id : op.id;
+      const current = indexOfId(result, target);
+      if (current === -1 && op.op !== "put") return;
+      const previous = current === -1 ? null : result.splice(current, 1)[0];
+      if (op.op === "delete") return;
+      const element = op.op === "put" ? op.element : previous;
+      let index;
+      if (!("after" in op)) index = current === -1 ? result.length : current;
+      else if (op.after === null) index = 0;
+      else {
+        const anchor = indexOfId(result, op.after);
+        index = anchor === -1 ? result.length : anchor + 1;
+      }
+      result.splice(index, 0, element);
+    });
+    return result;
+  }
+
+  // Positions (into `values`) of a longest strictly increasing subsequence.
+  function increasingRun(values) {
+    const tails = [];
+    const previous = new Array(values.length);
+    values.forEach((value, i) => {
+      let low = 0;
+      let high = tails.length;
+      while (low < high) {
+        const middle = (low + high) >> 1;
+        if (values[tails[middle]] < value) low = middle + 1;
+        else high = middle;
+      }
+      previous[i] = low ? tails[low - 1] : -1;
+      tails[low] = i;
+    });
+    const run = new Set();
+    for (let i = tails.length ? tails[tails.length - 1] : -1; i !== -1; i = previous[i]) run.add(i);
+    return run;
+  }
+
+  // The operations that turn `before` into `after`. Elements are never mutated, so a changed
+  // element is a different object; the longest run that kept its order stays put and only the
+  // rest is moved, which keeps the others' concurrent changes to the order intact.
+  function diffElements(before, after) {
+    const oldIndex = new Map(before.map((item, index) => [item.id, index]));
+    const nextIds = new Set(after.map((item) => item.id));
+    const ops = before.filter((item) => !nextIds.has(item.id)).map((item) => ({ op: "delete", id: item.id }));
+    const common = after.filter((item) => oldIndex.has(item.id));
+    const kept = new Set([...increasingRun(common.map((item) => oldIndex.get(item.id)))].map((i) => common[i].id));
+    after.forEach((item, index) => {
+      const anchor = index ? after[index - 1].id : null;
+      const old = oldIndex.has(item.id) ? before[oldIndex.get(item.id)] : null;
+      if (!old) ops.push({ op: "put", element: item, after: anchor });
+      else if (!kept.has(item.id)) {
+        ops.push(
+          old === item ? { op: "move", id: item.id, after: anchor } : { op: "put", element: item, after: anchor },
+        );
+      } else if (old !== item) ops.push({ op: "put", element: item });
+    });
+    return ops;
+  }
+
+  // Sorted keys and \\uXXXX for everything outside ASCII, like Python's json.dumps(sort_keys=True).
+  function canonicalJson(value) {
+    if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+    if (value && typeof value === "object") {
+      const keys = Object.keys(value).sort();
+      return `{${keys.map((key) => `${canonicalJson(key)}:${canonicalJson(value[key])}`).join(",")}}`;
+    }
+    if (typeof value === "string") {
+      return JSON.stringify(value).replace(
+        /[\u0080-￿]/g,
+        (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`,
+      );
+    }
+    return JSON.stringify(value);
+  }
+
+  async function boardHash(elements) {
+    const bytes = new TextEncoder().encode(canonicalJson(elements));
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+
   globalThis.LunoraWhiteboardFormat = {
+    applyOps,
+    diffElements,
+    canonicalJson,
+    boardHash,
     COLORS,
     WIDTHS,
     LIMITS,

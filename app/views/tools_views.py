@@ -50,6 +50,7 @@ from app.services.whiteboards import (
     end_whiteboard_share,
     save_whiteboard,
     share_whiteboard,
+    sync_whiteboard,
 )
 from app.view_models import get_tools_context
 from app.views.navigation import local_return_to, posted_id
@@ -678,6 +679,33 @@ def whiteboard_editor(request, board_id):
             "title_max_length": UML_TITLE_MAX_LENGTH,
         },
     )
+
+
+@login_required
+@require_http_methods(["POST"])
+def whiteboard_sync_api(request, board_id):
+    if not feature_enabled("tools"):
+        return disabled_feature_response(request, "tools", json_response=True)
+    headers = {"Cache-Control": "no-store"}
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except (ValueError, RecursionError):
+        return JsonResponse({"ok": False, "error": "Die Anfrage muss gültiges JSON sein."}, status=400)
+    if not isinstance(payload, dict):
+        return JsonResponse({"ok": False, "error": "Die Anfrage ist ungültig."}, status=400)
+    try:
+        result = sync_whiteboard(
+            board_id,
+            request.user,
+            version=payload.get("version"),
+            tab=payload.get("tab"),
+            ops=payload.get("ops"),
+        )
+    except ValidationError as error:
+        return JsonResponse({"ok": False, "error": " ".join(error.messages)}, status=400, headers=headers)
+    if result is None:
+        return JsonResponse({"ok": False, "error": "Whiteboard nicht gefunden."}, status=404, headers=headers)
+    return JsonResponse({"ok": True, **result}, headers=headers)
 
 
 @login_required

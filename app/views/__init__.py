@@ -81,6 +81,7 @@ from .tools_views import (
     uml_diagrams,
     whiteboard_api,
     whiteboard_editor,
+    whiteboard_sync_api,
     whiteboards,
 )
 from .trash_views import trash
@@ -176,6 +177,7 @@ __all__ = [
     "whiteboards",
     "whiteboard_editor",
     "whiteboard_api",
+    "whiteboard_sync_api",
     "wish_lists",
     "wish_list_detail",
     "wish_item_image",

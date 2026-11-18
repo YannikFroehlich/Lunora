@@ -1,3 +1,4 @@
+import hashlib
 import json
 
 from django.core.exceptions import ValidationError
@@ -137,3 +138,101 @@ def _size(value):
     if size < 0:
         raise ValidationError("Eine Größe ist ungültig.")
     return size
+
+
+# ---- Live editing -------------------------------------------------------------------------------
+# A change is one operation on the element list. The server applies operations in the order it
+# received them and every editor applies the same ones in the same order with the same rules
+# (applyOps in app/static/js/whiteboard_format.js mirrors apply_whiteboard_ops), using the elements
+# exactly as the server cleaned them; whiteboard_hash lets editors prove they ended up identical.
+
+MAX_OPS_PER_PUSH = 2 * MAX_ELEMENTS + 1
+OP_KEYS = {
+    # "after" places the element right above that one (None: at the bottom, unknown: on top);
+    # a put without "after" keeps an existing element where it is.
+    "put": ({"op", "seq", "element"}, {"after"}),
+    "move": ({"op", "seq", "id", "after"}, set()),
+    "delete": ({"op", "seq", "id"}, set()),
+    "title": ({"op", "seq", "title"}, set()),
+}
+
+
+def clean_whiteboard_op(op):
+    """A checked copy of one client operation (elements cleaned like in a document)."""
+    if not isinstance(op, dict) or op.get("op") not in OP_KEYS:
+        raise ValidationError("Eine Änderung ist ungültig.")
+    required, optional = OP_KEYS[op["op"]]
+    if not required <= set(op) or set(op) - required - optional:
+        raise ValidationError("Eine Änderung enthält unbekannte oder fehlende Felder.")
+    if type(op["seq"]) is not int or op["seq"] <= 0:
+        raise ValidationError("Eine Änderung ist ungültig.")
+    cleaned = {"op": op["op"], "seq": op["seq"]}
+    if op["op"] == "title":
+        if not isinstance(op["title"], str):
+            raise ValidationError("Der Titel ist ungültig.")
+        cleaned["title"] = op["title"]
+        return cleaned
+    if op["op"] == "put":
+        cleaned["element"] = validate_whiteboard_document(
+            {"version": WHITEBOARD_DOCUMENT_VERSION, "elements": [op["element"]]}
+        )["elements"][0]
+        target = cleaned["element"]["id"]
+    else:
+        target = _unique_id(op["id"], set())
+        cleaned["id"] = target
+    if "after" in op:
+        after = op["after"]
+        if after is not None and (
+            not isinstance(after, str) or not ID_PATTERN.match(after) or after == target
+        ):
+            raise ValidationError("Eine Änderung verweist auf ein ungültiges Element.")
+        cleaned["after"] = after
+    return cleaned
+
+
+def _index_of(elements, element_id):
+    return next((index for index, item in enumerate(elements) if item["id"] == element_id), None)
+
+
+def apply_whiteboard_ops(elements, ops):
+    """The element list after the operations; never fails, so every editor gets the same result."""
+    # ponytail: linear id lookups, O(ops × elements); fine up to an import of a full board.
+    result = list(elements)
+    for op in ops:
+        kind = op["op"]
+        if kind == "title":
+            continue
+        target = op["element"]["id"] if kind == "put" else op["id"]
+        current = _index_of(result, target)
+        if current is None and kind != "put":
+            continue
+        previous = result.pop(current) if current is not None else None
+        if kind == "delete":
+            continue
+        element = op["element"] if kind == "put" else previous
+        if "after" not in op:
+            index = len(result) if current is None else current
+        elif op["after"] is None:
+            index = 0
+        else:
+            anchor = _index_of(result, op["after"])
+            index = len(result) if anchor is None else anchor + 1
+        result.insert(index, element)
+    return result
+
+
+def _canonical(value):
+    # JavaScript writes 5.0 as 5; everything else already serializes the same in both languages.
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, list):
+        return [_canonical(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _canonical(item) for key, item in value.items()}
+    return value
+
+
+def whiteboard_hash(elements):
+    """SHA-256 of the elements as sorted-key, ASCII-escaped JSON (boardHash in whiteboard_format.js)."""
+    text = json.dumps(_canonical(elements), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(text.encode("ascii")).hexdigest()

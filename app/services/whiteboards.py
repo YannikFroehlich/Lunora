@@ -1,18 +1,37 @@
-"""Whiteboard access, sharing and conflict-checked saves.
+"""Whiteboard access, sharing, live editing and conflict-checked saves.
 
 The owner and everyone the board is shared with have the same drawing rights; only the owner
-shares, unshares, and deletes. Saves are checked against `Whiteboard.revision`, so two people
-drawing at once never silently overwrite each other.
+shares, unshares, and deletes. The editor sends its changes as operations (`sync_whiteboard`),
+which the server applies in arrival order and hands to the other editors, so everyone sees
+exactly the same board. Whole-board saves (`save_whiteboard`, the plain API) are checked
+against `Whiteboard.revision` and make open editors reload.
 """
 
-from django.db import transaction
-from django.db.models import Q
+import re
+from itertools import pairwise
 
-from app.models import UserNotification, Whiteboard, WhiteboardShare
+from django.core.cache import cache
+from django.core.exceptions import ValidationError
+from django.db import transaction
+from django.db.models import Max, Q
+
+from app.models import UserNotification, Whiteboard, WhiteboardOp, WhiteboardShare
 from app.services.notifications import materialize_whiteboard_share_notification
 from app.services.vocabulary import resolve_share_recipient
+from app.services.whiteboard_content import (
+    MAX_OPS_PER_PUSH,
+    WHITEBOARD_DOCUMENT_VERSION,
+    apply_whiteboard_ops,
+    clean_whiteboard_op,
+    validate_whiteboard_document,
+    whiteboard_hash,
+)
 
 MAX_WHITEBOARD_SHARES = 10
+# Operations kept for editors that lag behind; older ones reload the whole board.
+OP_HISTORY = 500
+TAB_RE = re.compile(r"^[A-Za-z0-9_-]{8,40}$")
+TITLE_MAX_LENGTH = Whiteboard._meta.get_field("title").max_length
 
 
 class WhiteboardConflictError(Exception):
@@ -40,6 +59,101 @@ def save_whiteboard(board_id, user, *, title, document, base_revision, force=Fal
         board.revision += 1
         board.save(update_fields=["title", "document", "revision", "updated_at"])
         return board
+
+
+def _board_hash(board):
+    # updated_at as well: a reused primary key (SQLite) must not find an old board's hash.
+    key = f"whiteboard-hash:{board.pk}:{board.revision}:{board.updated_at.timestamp()}"
+    value = cache.get(key)
+    if value is None:
+        value = whiteboard_hash(board.document["elements"])
+        cache.set(key, value, 300)
+    return value
+
+
+def _clean_title(value):
+    title = value.strip()
+    if not title:
+        raise ValidationError("Der Titel darf nicht leer sein.")
+    if len(title) > TITLE_MAX_LENGTH:
+        raise ValidationError(f"Der Titel darf höchstens {TITLE_MAX_LENGTH} Zeichen lang sein.")
+    return title
+
+
+def _apply_push(board, client_id, ops):
+    if not isinstance(ops, list) or len(ops) > MAX_OPS_PER_PUSH:
+        raise ValidationError("Die Änderungen sind ungültig.")
+    cleaned = [clean_whiteboard_op(op) for op in ops]
+    if any(later["seq"] <= earlier["seq"] for earlier, later in pairwise(cleaned)):
+        raise ValidationError("Die Änderungen sind ungültig.")
+    last_seq = board.ops.filter(client_id=client_id).aggregate(last=Max("seq"))["last"] or 0
+    # A push whose answer got lost comes again; what the log already has is skipped.
+    fresh = [op for op in cleaned if op["seq"] > last_seq]
+    if not fresh:
+        return
+    for op in fresh:
+        if op["op"] == "title":
+            op["title"] = _clean_title(op["title"])
+            board.title = op["title"]
+    elements = apply_whiteboard_ops(board.document["elements"], fresh)
+    board.document = validate_whiteboard_document(
+        {"version": WHITEBOARD_DOCUMENT_VERSION, "elements": elements}
+    )
+    start = board.revision
+    board.revision += len(fresh)
+    board.save(update_fields=["title", "document", "revision", "updated_at"])
+    WhiteboardOp.objects.bulk_create(
+        [
+            WhiteboardOp(
+                board=board,
+                version=start + index,
+                client_id=client_id,
+                seq=op["seq"],
+                data={key: value for key, value in op.items() if key != "seq"},
+            )
+            for index, op in enumerate(fresh, start=1)
+        ]
+    )
+    board.ops.filter(version__lte=board.revision - OP_HISTORY).delete()
+
+
+def sync_whiteboard(board_id, user, *, version, tab, ops=None):
+    """Store an editor's operations and return everything after `version`; None without access.
+
+    The answer holds the operations in the order the server applied them (the editor's own
+    included), the newest version, the hash of the board at that version, and `acked`, the
+    editor's last stored change. `resync` asks the editor to load the whole board again.
+    """
+    if type(version) is not int or version < 0:
+        raise ValidationError("Der Bearbeitungsstand ist ungültig.")
+    if not isinstance(tab, str) or not TAB_RE.fullmatch(tab):
+        raise ValidationError("Die Sitzungskennung ist ungültig.")
+    client_id = f"{user.pk}-{tab}"
+    with transaction.atomic():
+        boards = accessible_whiteboards(user).filter(pk=board_id)
+        # The row lock puts concurrent pushes in one order; plain polls don't need it.
+        board = (boards.select_for_update() if ops else boards).first()
+        if board is None:
+            return None
+        if ops:
+            _apply_push(board, client_id, ops)
+        head = board.revision
+        missing = []
+        if version < head:
+            missing = list(
+                board.ops.filter(version__gt=version).order_by("version").values_list("data", flat=True)
+            )
+        acked = board.ops.filter(client_id=client_id).aggregate(last=Max("seq"))["last"] or 0
+    # Operations from before a whole-board save (or long pruned) can't be replayed.
+    resync = version > head or len(missing) != head - version
+    return {
+        "version": head,
+        "ops": [] if resync else missing,
+        "acked": acked,
+        "hash": _board_hash(board),
+        "title": board.title,
+        "resync": resync,
+    }
 
 
 def share_whiteboard(board, identifier):

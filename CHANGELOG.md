@@ -6,6 +6,11 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Shared whiteboards update live: what someone draws, erases, moves or retitles shows up for the
+  others within about a second, and everybody always sees exactly the same board; Lunora checks
+  that after every change and reloads the board if one ever differs. Drawing at the same time no
+  longer ends in the "Jemand anderes hat das Whiteboard inzwischen geändert" question, and undo
+  keeps working after the others' changes.
 - Shared notes can be edited by several people at the same time: everyone's typing shows up for the
   others within about a second, including where they're writing and what they've selected, and
   nobody's text gets overwritten or ends in the "Konflikt" dialog any more. Undo only takes back

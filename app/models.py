@@ -1017,7 +1017,8 @@ class Whiteboard(models.Model):
     document = models.JSONField(default=empty_whiteboard_document)
     # The board's text elements, derived from `document` in save() for the global search.
     plain_text = models.TextField(blank=True, default="")
-    # Bumped by every save through the API; a stale base revision is refused with 409.
+    # Bumped by every save and by every live-editing change (WhiteboardOp); a plain save with a stale
+    # base revision is refused with 409.
     revision = models.PositiveIntegerField(default=1)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -1035,6 +1036,24 @@ class Whiteboard(models.Model):
             if update_fields is not None:
                 kwargs["update_fields"] = {*update_fields, "plain_text"}
         super().save(*args, **kwargs)
+
+
+class WhiteboardOp(models.Model):
+    """One change of the live-editing log; ``version`` is the board revision it produced."""
+
+    board = models.ForeignKey(Whiteboard, on_delete=models.CASCADE, related_name="ops")
+    version = models.PositiveIntegerField()
+    # "<user id>-<tab id>", set by the server; ``seq`` counts that tab's changes so a resent
+    # push isn't applied twice.
+    client_id = models.CharField(max_length=60)
+    seq = models.PositiveIntegerField()
+    data = models.JSONField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["board", "version"], name="unique_whiteboard_op_version")
+        ]
+        indexes = [models.Index(fields=["board", "client_id", "seq"], name="whiteboardop_client_seq_idx")]
 
 
 class WhiteboardShare(models.Model):

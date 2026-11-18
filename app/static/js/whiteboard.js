@@ -9,8 +9,6 @@
   const MAX_ZOOM = 8;
   const HISTORY_LIMIT = 200;
   const MERGE_MS = 1500;
-  const SAVE_DELAY = 1200;
-  const POLL_INTERVAL = 5000;
   const SIMPLIFY_PIXELS = 0.75;
   const ERASER_PIXELS = 10;
   const FIT_MAX_ZOOM = 4;
@@ -54,6 +52,7 @@
 
   const payload = JSON.parse(document.getElementById("whiteboard-data").textContent);
   const saveUrl = root.dataset.saveUrl;
+  const syncUrl = root.dataset.syncUrl;
   const csrfToken = document.querySelector("meta[name='csrf-token']")?.content || "";
   const svg = root.querySelector("[data-whiteboard-canvas]");
   const canvasWrap = svg.parentElement;
@@ -77,8 +76,6 @@
   const nodes = new Map();
   const pointers = new Map();
   const history = { undo: [], redo: [] };
-  const saveState = { dirty: false, saving: false, again: false, timer: null, force: false };
-  let revision = payload.revision;
   let selection = new Set();
   let tool = "pen";
   let spaceHeld = false;
@@ -862,11 +859,12 @@
     const original = current.element;
     if (original) {
       nodes.get(original.id)?.removeAttribute("visibility");
-      const index = doc.elements.indexOf(original);
+      // By id: a live update may have replaced the element object while the text was open.
+      const index = doc.elements.findIndex((item) => item.id === original.id);
       if (index === -1) return;
-      if (!text.trim()) commit([{ index, element: original }], []);
-      else if (text !== original.text)
-        commit([{ index, element: original }], [{ index, element: { ...original, text } }]);
+      const element = doc.elements[index];
+      if (!text.trim()) commit([{ index, element }], []);
+      else if (text !== element.text) commit([{ index, element }], [{ index, element: { ...element, text } }]);
       return;
     }
     if (!text.trim()) return;
@@ -1054,105 +1052,163 @@
     statusLabel.dataset.state = state || "";
   }
 
+  // ---- Live editing ---------------------------------------------------------------------------
+  // Changes go to the server as operations (diffElements against the board as last sent) and come
+  // back in the order the server applied them, everyone's included. `confirmed` is the board as the
+  // server has it at `version`; what's shown is that plus this tab's operations still on their way.
+  // Every editor applies the same operations to the same elements as the server cleaned them, and
+  // the server's hash of the board proves it, so all of them end up with exactly the same board.
+
+  const PUSH_DELAY = 150;
+  const RETRY_DELAY = 2000;
+  const LIVE_POLL = 1000;
+  const live = {
+    tab: Array.from(crypto.getRandomValues(new Uint8Array(12)), (byte) => byte.toString(16).padStart(2, "0")).join(""),
+    version: payload.revision,
+    confirmed: [...doc.elements],
+    base: [...doc.elements],
+    baseTitle: payload.title,
+    pending: [],
+    seq: 0,
+    inflight: false,
+    again: false,
+    timer: null,
+    verified: null,
+  };
+  const shared = root.dataset.shared === "true";
+
   function markDirty() {
-    saveState.dirty = true;
     setStatus("Ungespeicherte Änderungen", "dirty");
-    window.clearTimeout(saveState.timer);
-    saveState.timer = window.setTimeout(save, SAVE_DELAY);
+    schedule(PUSH_DELAY);
   }
 
-  async function save() {
-    window.clearTimeout(saveState.timer);
-    if (saveState.saving) {
-      saveState.again = true;
-      return;
-    }
-    if (!saveState.dirty) return;
+  function schedule(delay) {
+    window.clearTimeout(live.timer);
+    live.timer = window.setTimeout(exchange, delay);
+  }
+
+  function hasUnsent() {
+    return doc.elements.length !== live.base.length || doc.elements.some((item, i) => item !== live.base[i]);
+  }
+
+  // Turns everything changed since the last call into numbered operations.
+  function flush() {
+    const ops = hasUnsent() ? format.diffElements(live.base, doc.elements) : [];
     const title = titleInput.value.trim();
-    if (!title) {
-      setStatus("Titel fehlt", "error");
-      return;
+    if (title && title !== live.baseTitle) {
+      ops.push({ op: "title", title });
+      live.baseTitle = title;
     }
-    saveState.saving = true;
-    saveState.dirty = false;
-    setStatus("Speichert …", "saving");
-    const force = saveState.force;
-    saveState.force = false;
-    try {
-      const response = await fetch(saveUrl, {
-        method: "PUT",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
-        body: JSON.stringify({ title, document: doc, base_revision: revision, conflict_resolution: force }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (response.status === 409 && data.board) {
-        resolveConflict(data.board);
-        return;
-      }
-      if (!response.ok || !data.ok) throw new Error(data.error || `Fehler ${response.status}`);
-      revision = data.revision;
-      if (!saveState.dirty) setStatus("Gespeichert", "saved");
-      document.title = `${title} | Whiteboard | Lunora`;
-    } catch (error) {
-      saveState.dirty = true;
-      setStatus(`Nicht gespeichert: ${error.message}`, "error");
-    } finally {
-      saveState.saving = false;
-      if (saveState.again) {
-        saveState.again = false;
-        save();
-      }
-    }
+    ops.forEach((op) => {
+      live.seq += 1;
+      live.pending.push({ ...op, seq: live.seq });
+    });
+    live.base = [...doc.elements];
   }
 
-  // Someone else saved in between: keep this version (overwrite theirs) or take theirs.
-  function resolveConflict(board) {
-    const keepMine = window.confirm(
-      "Jemand anderes hat das Whiteboard inzwischen geändert.\n\nOK: deine Version speichern (überschreibt die andere).\nAbbrechen: die andere Version laden (deine letzten Änderungen gehen verloren).",
-    );
-    if (keepMine) {
-      saveState.force = true;
-      saveState.dirty = true;
-      saveState.again = true;
-    } else {
-      saveState.dirty = false;
-      applyRemote(board);
-    }
-  }
-
-  // Replaces the board with a version saved elsewhere. Undo steps refer to the old version, so
-  // they are dropped.
-  function applyRemote(board) {
-    revision = board.revision;
-    doc.elements = format.normalizeDocument(board.document).elements;
-    if (document.activeElement !== titleInput) titleInput.value = board.title;
-    history.undo = [];
-    history.redo = [];
+  // Shows the confirmed board plus the own operations still pending.
+  function refreshVisible() {
+    const next = format.applyOps(live.confirmed, live.pending);
+    live.base = [...next];
+    if (next.length === doc.elements.length && next.every((item, i) => item === doc.elements[i])) return;
+    doc.elements = next;
     render();
     selection = new Set([...selection].filter((id) => nodes.has(id)));
     drawSelection();
-    updateHistoryButtons();
-    setStatus("Gespeichert", "saved");
   }
 
-  // Shared boards pick up the others' changes while this editor has nothing unsaved.
-  if (root.dataset.shared === "true") {
-    window.setInterval(async () => {
-      if (document.hidden || saveState.dirty || saveState.saving || interaction || editing) return;
-      try {
-        const response = await fetch(`${saveUrl}?revision=${revision}`, { credentials: "same-origin" });
-        const data = await response.json();
-        if (data.board && !saveState.dirty && !saveState.saving && !interaction && !editing) applyRemote(data.board);
-      } catch (_error) {
-        // Offline or a hiccup: the next poll tries again.
-      }
-    }, POLL_INTERVAL);
+  // Takes over a title someone else set, unless this tab is changing its own.
+  function applyTitle(title) {
+    if (title === live.baseTitle || document.activeElement === titleInput) return;
+    if (live.pending.some((op) => op.op === "title") || titleInput.value.trim() !== live.baseTitle) return;
+    titleInput.value = title;
+    live.baseTitle = title;
+    document.title = `${title} | Whiteboard | Lunora`;
   }
+
+  async function reload() {
+    const response = await fetch(saveUrl, { credentials: "same-origin" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.board) throw new Error(data.error || `Fehler ${response.status}`);
+    live.confirmed = format.normalizeDocument(data.board.document).elements;
+    live.version = data.board.revision;
+    live.verified = live.version;
+    applyTitle(data.board.title);
+  }
+
+  async function exchange() {
+    window.clearTimeout(live.timer);
+    if (live.inflight) {
+      live.again = true;
+      return;
+    }
+    // A drag in progress changes the board as it goes; it is sent once it's finished.
+    if (interaction) {
+      schedule(300);
+      return;
+    }
+    flush();
+    live.inflight = true;
+    const sent = live.pending.length;
+    let delay = null;
+    if (sent) setStatus("Speichert …", "saving");
+    try {
+      const response = await fetch(syncUrl, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+        body: JSON.stringify({ version: live.version, tab: live.tab, ops: sent ? live.pending : undefined }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 400 && sent) {
+        // The server refused these changes (a limit, most likely): drop them and show its board.
+        live.pending = [];
+        await reload();
+        if (!interaction) refreshVisible();
+        setStatus(`Nicht gespeichert: ${data.error || "ungültige Änderung"}`, "error");
+        return;
+      }
+      if (!response.ok || !data.ok) throw new Error(data.error || `Fehler ${response.status}`);
+      if (data.resync) await reload();
+      else {
+        live.confirmed = format.applyOps(live.confirmed, data.ops);
+        live.version = data.version;
+      }
+      live.pending = live.pending.filter((op) => op.seq > data.acked);
+      // Proof that this tab has exactly the server's board; anything else loads it again.
+      if (live.verified !== live.version) {
+        if ((await format.boardHash(live.confirmed)) === data.hash) live.verified = live.version;
+        else await reload();
+      }
+      applyTitle(data.title);
+      if (!interaction) {
+        flush();
+        refreshVisible();
+      }
+      if (!live.pending.length && !hasUnsent()) {
+        setStatus("Gespeichert", "saved");
+        document.title = `${live.baseTitle} | Whiteboard | Lunora`;
+      }
+    } catch (error) {
+      setStatus(`Nicht gespeichert: ${error.message}`, "error");
+      delay = RETRY_DELAY;
+    } finally {
+      live.inflight = false;
+      if (live.again || live.pending.length || hasUnsent()) delay ??= PUSH_DELAY;
+      else if (shared && !document.hidden) delay ??= LIVE_POLL;
+      live.again = false;
+      if (delay !== null) schedule(delay);
+    }
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) exchange();
+  });
+  if (shared) exchange();
 
   titleInput.addEventListener("input", markDirty);
   window.addEventListener("beforeunload", (event) => {
-    if (saveState.dirty || saveState.saving) event.preventDefault();
+    if (live.pending.length || hasUnsent() || live.inflight) event.preventDefault();
   });
 
   // ---- Export & import ------------------------------------------------------------------------
@@ -1411,8 +1467,7 @@
     const key = event.key.toLowerCase();
     if (modifier && key === "s") {
       event.preventDefault();
-      saveState.dirty = true;
-      save();
+      exchange();
       return;
     }
     if (isTyping(event.target)) return;
