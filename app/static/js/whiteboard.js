@@ -68,6 +68,7 @@
   const widthOptions = root.querySelector("[data-whiteboard-widths]");
   const eraserModeSelect = root.querySelector("[data-whiteboard-eraser-mode]");
   const gridButton = root.querySelector("[data-whiteboard-action='grid']");
+  const fullscreenButton = root.querySelector("[data-whiteboard-action='fullscreen']");
   const sizeSelect = root.querySelector("[data-whiteboard-text-size]");
   const textInput = root.querySelector("[data-whiteboard-text]");
   const exportMenu = root.querySelector(".uml-export-menu");
@@ -1770,7 +1771,31 @@
     front: () => reorderSelection(true),
     back: () => reorderSelection(false),
     grid: () => setGrid(!gridOn),
+    fullscreen: toggleFullscreen,
   };
+
+  async function toggleFullscreen() {
+    try {
+      if (document.fullscreenElement === root) {
+        await document.exitFullscreen();
+      } else if (root.requestFullscreen) {
+        await root.requestFullscreen();
+      }
+    } catch (_error) {
+      // Some browsers (e.g. iOS Safari) refuse the Fullscreen API; nothing more to do.
+    }
+  }
+
+  document.addEventListener("fullscreenchange", () => {
+    const isFullscreen = document.fullscreenElement === root;
+    const icon = fullscreenButton?.querySelector("i");
+    if (icon) {
+      icon.className = isFullscreen
+        ? "fa-solid fa-down-left-and-up-right-to-center"
+        : "fa-solid fa-up-right-and-down-left-from-center";
+    }
+    fullscreenButton?.setAttribute("aria-label", isFullscreen ? "Vollbild beenden" : "Vollbild anzeigen");
+  });
 
   function setGrid(on) {
     gridOn = on;

@@ -524,7 +524,23 @@ a.tool-card:hover {
 
 .whiteboard-canvas-wrap {
   position: relative;
-  height: max(520px, calc(100vh - 290px));
+  height: max(520px, calc(100dvh - 290px));
+}
+
+[data-whiteboard-editor]:fullscreen {
+  display: flex;
+  width: 100vw;
+  height: 100dvh;
+  flex-direction: column;
+  margin: 0;
+  padding: 16px;
+  background: var(--color-bg);
+}
+
+[data-whiteboard-editor]:fullscreen .whiteboard-canvas-wrap {
+  flex: 1;
+  height: auto;
+  min-height: 0;
 }
 
 .whiteboard-canvas[data-tool="pen"] {
@@ -944,8 +960,9 @@ a.tool-card:hover {
     height: auto;
   }
 
-  .uml-canvas-wrap {
-    height: 62vh;
+  .uml-canvas-wrap,
+  .whiteboard-canvas-wrap {
+    height: 62dvh;
     min-height: 420px;
   }
 
