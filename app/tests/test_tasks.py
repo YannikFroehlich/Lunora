@@ -1382,9 +1382,11 @@ class TaskTimeTrackingTests(TestCase):
         from app.models import TaskLabel, TaskList
         from app.services.time_tracking import time_report
 
-        today = timezone.localtime(timezone.now(), ZoneInfo("Europe/Berlin")).date()
+        berlin = ZoneInfo("Europe/Berlin")
+        today = timezone.localtime(timezone.now(), berlin).date()
         week_start = today - timedelta(days=today.weekday())
-        start = timezone.now() - timedelta(hours=3)
+        # Monday 10:00 of this week, so the entries never slip into the previous week.
+        start = datetime(week_start.year, week_start.month, week_start.day, 10, 0, tzinfo=berlin)
         self.track(self.task, start, 60)
         self.track(self.second, start + timedelta(hours=1), 30)
 
