@@ -1,13 +1,13 @@
 import { readFileSync } from "node:fs";
-import { runInNewContext } from "node:vm";
 
 import { describe, expect, it } from "vitest";
 
-// whiteboard_format.js is a plain <script> (not bundled), so load it into a sandbox and read its global.
+// whiteboard_format.js is a plain <script> (not bundled): run it with its own `globalThis` and read
+// the global it sets. Not through node:vm, whose sandbox makes every `Math` lookup so slow that the
+// timing test below measured the sandbox (seconds) instead of the code (milliseconds).
 const source = readFileSync(new URL("../app/static/js/whiteboard_format.js", import.meta.url), "utf8");
 const sandbox = {};
-sandbox.globalThis = sandbox;
-runInNewContext(source, sandbox);
+new Function("globalThis", source)(sandbox);
 const format = sandbox.LunoraWhiteboardFormat;
 
 describe("whiteboard stroke simplification", () => {
