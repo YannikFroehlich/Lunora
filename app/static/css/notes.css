@@ -797,10 +797,15 @@
   word-break: normal;
 }
 
-.note-remote-caret-label {
+.note-remote-caret-labels {
   position: absolute;
   bottom: 100%;
   left: -1px;
+  display: flex;
+  gap: 2px;
+}
+
+.note-remote-caret-label {
   padding: 1px 5px;
   border-radius: var(--radius-xs) var(--radius-xs) var(--radius-xs) 0;
   background: var(--tone);

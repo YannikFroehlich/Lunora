@@ -524,7 +524,41 @@ a.tool-card:hover {
 
 .whiteboard-canvas-wrap {
   position: relative;
-  height: max(520px, calc(100vh - 290px));
+  height: max(520px, calc(100dvh - 290px));
+}
+
+[data-whiteboard-editor]:fullscreen,
+[data-whiteboard-editor].is-fullscreen {
+  display: flex;
+  width: 100vw;
+  height: 100dvh;
+  flex-direction: column;
+  margin: 0;
+  padding: 16px;
+  background: var(--color-bg);
+}
+
+/* Fallback where the Fullscreen API is missing (iPhone Safari): cover the page instead. The main
+   element is its own stacking context, so it is what has to rise above the navigation (flash
+   messages stay on top). */
+[data-whiteboard-editor].is-fullscreen {
+  position: fixed;
+  inset: 0;
+}
+
+.site-main:has([data-whiteboard-editor].is-fullscreen) {
+  z-index: 50;
+}
+
+html:has([data-whiteboard-editor].is-fullscreen) {
+  overflow: hidden;
+}
+
+[data-whiteboard-editor]:fullscreen .whiteboard-canvas-wrap,
+[data-whiteboard-editor].is-fullscreen .whiteboard-canvas-wrap {
+  flex: 1;
+  height: auto;
+  min-height: 0;
 }
 
 .whiteboard-canvas[data-tool="pen"] {
@@ -944,8 +978,9 @@ a.tool-card:hover {
     height: auto;
   }
 
-  .uml-canvas-wrap {
-    height: 62vh;
+  .uml-canvas-wrap,
+  .whiteboard-canvas-wrap {
+    height: 62dvh;
     min-height: 420px;
   }
 
@@ -965,6 +1000,10 @@ a.tool-card:hover {
 
   .uml-save-status {
     flex: 1;
+  }
+
+  .uml-tool-group {
+    flex-wrap: wrap;
   }
 
   .uml-tool-group + .uml-tool-group {

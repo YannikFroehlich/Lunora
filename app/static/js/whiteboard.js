@@ -68,6 +68,7 @@
   const widthOptions = root.querySelector("[data-whiteboard-widths]");
   const eraserModeSelect = root.querySelector("[data-whiteboard-eraser-mode]");
   const gridButton = root.querySelector("[data-whiteboard-action='grid']");
+  const fullscreenButton = root.querySelector("[data-whiteboard-action='fullscreen']");
   const sizeSelect = root.querySelector("[data-whiteboard-text-size]");
   const textInput = root.querySelector("[data-whiteboard-text]");
   const exportMenu = root.querySelector(".uml-export-menu");
@@ -1770,7 +1771,44 @@
     front: () => reorderSelection(true),
     back: () => reorderSelection(false),
     grid: () => setGrid(!gridOn),
+    fullscreen: toggleFullscreen,
   };
+
+  // iPhone Safari has no Fullscreen API for elements, so there the editor just covers the page.
+  function setPageFullscreen(on) {
+    root.classList.toggle("is-fullscreen", on);
+    showFullscreenState(on);
+  }
+
+  async function toggleFullscreen() {
+    if (root.classList.contains("is-fullscreen")) {
+      setPageFullscreen(false);
+    } else if (document.fullscreenElement === root) {
+      await document.exitFullscreen().catch(() => {});
+    } else if (document.fullscreenEnabled && root.requestFullscreen) {
+      await root.requestFullscreen().catch(() => setPageFullscreen(true));
+    } else {
+      setPageFullscreen(true);
+    }
+  }
+
+  document.addEventListener("fullscreenchange", () => showFullscreenState(document.fullscreenElement === root));
+  document.addEventListener("keydown", (event) => {
+    // Text and comment editing use Escape themselves and mark it handled.
+    if (event.key === "Escape" && !event.defaultPrevented && root.classList.contains("is-fullscreen")) {
+      setPageFullscreen(false);
+    }
+  });
+
+  function showFullscreenState(isFullscreen) {
+    const icon = fullscreenButton?.querySelector("i");
+    if (icon) {
+      icon.className = isFullscreen
+        ? "fa-solid fa-down-left-and-up-right-to-center"
+        : "fa-solid fa-up-right-and-down-left-from-center";
+    }
+    fullscreenButton?.setAttribute("aria-label", isFullscreen ? "Vollbild beenden" : "Vollbild anzeigen");
+  }
 
   function setGrid(on) {
     gridOn = on;

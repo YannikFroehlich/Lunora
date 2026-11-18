@@ -620,7 +620,8 @@ class TaskTests(TestCase):
 
     def test_task_counts_include_today_and_upcoming_buckets(self):
         now = timezone.now()
-        Task.objects.create(user=self.user, title="Heute fällig", due_at=now + timedelta(hours=2))
+        # Due right now, so it stays on today's date whatever time the suite runs.
+        Task.objects.create(user=self.user, title="Heute fällig", due_at=now)
         Task.objects.create(user=self.user, title="Nächste Woche", due_at=now + timedelta(days=3))
         Task.objects.create(user=self.user, title="Weit weg", due_at=now + timedelta(days=30))
         self._login()
@@ -1381,9 +1382,11 @@ class TaskTimeTrackingTests(TestCase):
         from app.models import TaskLabel, TaskList
         from app.services.time_tracking import time_report
 
-        today = timezone.localtime(timezone.now(), ZoneInfo("Europe/Berlin")).date()
+        berlin = ZoneInfo("Europe/Berlin")
+        today = timezone.localtime(timezone.now(), berlin).date()
         week_start = today - timedelta(days=today.weekday())
-        start = timezone.now() - timedelta(hours=3)
+        # Monday 10:00 of this week, so the entries never slip into the previous week.
+        start = datetime(week_start.year, week_start.month, week_start.day, 10, 0, tzinfo=berlin)
         self.track(self.task, start, 60)
         self.track(self.second, start + timedelta(hours=1), 30)
 
