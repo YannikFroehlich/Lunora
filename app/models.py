@@ -1056,6 +1056,31 @@ class WhiteboardOp(models.Model):
         indexes = [models.Index(fields=["board", "client_id", "seq"], name="whiteboardop_client_seq_idx")]
 
 
+class WhiteboardComment(models.Model):
+    """A comment pinned to a spot on a whiteboard (x, y in board coordinates). Replies point at
+    the thread's first comment through ``parent``; only that first one carries the position and
+    whether the thread is done."""
+
+    board = models.ForeignKey(Whiteboard, on_delete=models.CASCADE, related_name="comments")
+    parent = models.ForeignKey(
+        "self", on_delete=models.CASCADE, null=True, blank=True, related_name="replies"
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="whiteboard_comments"
+    )
+    body = models.TextField(max_length=2000)
+    x = models.FloatField(default=0)
+    y = models.FloatField(default=0)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return f"{self.board}: {self.body[:40]}"
+
+
 class WhiteboardShare(models.Model):
     """Someone the owner shares a whiteboard with; members draw and rename like the owner."""
 
@@ -1205,6 +1230,21 @@ class Bookmark(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class Countdown(models.Model):
+    """A date the dashboard counts down to ("Noch 12 Tage bis …")."""
+
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="countdowns")
+    title = models.CharField(max_length=80)
+    date = models.DateField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["date", "id"]
+
+    def __str__(self):
+        return f"{self.title} ({self.date})"
 
 
 class Recipe(models.Model):
@@ -1555,6 +1595,7 @@ class UserNotification(models.Model):
     KIND_SHOPPING_SHARE = "shopping_share"
     KIND_EXPENSE_GROUP = "expense_group"
     KIND_WHITEBOARD_SHARE = "whiteboard_share"
+    KIND_WHITEBOARD_COMMENT = "whiteboard_comment"
     KIND_SECURITY_ALERT = "security_alert"
     KIND_CHOICES = [
         (KIND_CALENDAR_REMINDER, "Kalendererinnerung"),
@@ -1575,6 +1616,7 @@ class UserNotification(models.Model):
         (KIND_SHOPPING_SHARE, "Geteilter Einkaufszettel"),
         (KIND_EXPENSE_GROUP, "Geteilte Ausgaben"),
         (KIND_WHITEBOARD_SHARE, "Geteiltes Whiteboard"),
+        (KIND_WHITEBOARD_COMMENT, "Whiteboard-Kommentar"),
         (KIND_SECURITY_ALERT, "Sicherheitswarnung"),
     ]
 

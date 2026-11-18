@@ -7,6 +7,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from app.models import (
+    CalendarEvent,
     NotificationPreference,
     Profile,
     SystemSettings,
@@ -1452,3 +1453,38 @@ class TaskTimeTrackingTests(TestCase):
 
         today = timezone.localtime(timezone.now(), ZoneInfo("Europe/Berlin")).date().isoformat()
         self.assertContains(response, f'value="{today}"')
+
+
+class CommandPaletteQuickCaptureTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="quick@example.com", password="pw-12345!")
+        self.client.force_login(self.user)
+
+    def test_palette_offers_quick_capture_forms(self):
+        response = self.client.get("/home/")
+        self.assertContains(response, 'data-command-quick="task"')
+        self.assertContains(response, 'data-command-quick="event"')
+        self.assertContains(response, 'data-command-quick-form="task"')
+
+    def test_quick_task_and_event_return_to_the_page_they_came_from(self):
+        response = self.client.post(
+            "/tasks/",
+            {"form_name": "task_add", "title": "Steuer machen morgen !hoch", "return_to": "/notes/?x=1"},
+        )
+        self.assertRedirects(response, "/notes/?x=1", fetch_redirect_response=False)
+        task = Task.objects.get(user=self.user)
+        self.assertEqual(task.title, "Steuer machen")
+        self.assertEqual(task.priority, Task.PRIORITY_HIGH)
+
+        response = self.client.post(
+            "/calendar/",
+            {"form_name": "calendar_quick_add", "text": "Zahnarzt morgen 15 Uhr", "return_to": "/home/"},
+        )
+        self.assertRedirects(response, "/home/", fetch_redirect_response=False)
+        self.assertTrue(CalendarEvent.objects.filter(user=self.user, title="Zahnarzt").exists())
+
+        # Foreign targets fall back to the page itself.
+        response = self.client.post(
+            "/tasks/", {"form_name": "task_add", "title": "Noch was", "return_to": "https://evil.example/"}
+        )
+        self.assertRedirects(response, "/tasks/", fetch_redirect_response=False)

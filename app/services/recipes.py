@@ -101,6 +101,23 @@ def add_quantities(first, second):
     return f"{_number_label(total)} {unit}".strip()
 
 
+_STEP_NUMBER_RE = re.compile(r"^(?:schritt\s*)?\d{1,2}\s*[.):]\s*", re.IGNORECASE)
+
+
+def instruction_steps(text):
+    """The preparation as steps for the cooking mode: paragraphs when there are blank lines
+    between them, otherwise one step per line; a leading "1." or "Schritt 2:" is dropped."""
+    text = text.replace("\r\n", "\n").strip()
+    paragraphs = [part for part in re.split(r"\n\s*\n", text) if part.strip()]
+    pieces = paragraphs if len(paragraphs) > 1 else text.splitlines()
+    steps = []
+    for piece in pieces:
+        step = _STEP_NUMBER_RE.sub("", " ".join(line.strip() for line in piece.splitlines()).strip())
+        if step:
+            steps.append(step)
+    return steps
+
+
 def ingredient_rows(text):
     """The recipe's ingredient lines in order, each a heading or an ingredient with its list name.
 

@@ -6,7 +6,7 @@ from django.db.models import F, Q
 from django.urls import reverse
 from django.utils import timezone
 
-from app.forms import BookmarkForm, event_last_date
+from app.forms import BookmarkForm, CountdownForm, event_last_date
 from app.models import (
     TASK_COLOR_CHOICES,
     Bookmark,
@@ -15,6 +15,7 @@ from app.models import (
     CalendarReminder,
     CalendarSubscription,
     Conversation,
+    Countdown,
     ExpenseGroupMember,
     Habit,
     MealPlanEntry,
@@ -25,6 +26,7 @@ from app.models import (
     ShoppingItem,
     Task,
     UmlDiagram,
+    VacationPeriod,
     VacationYear,
     VocabularyCard,
     VocabularyList,
@@ -126,6 +128,10 @@ def get_dashboard_context(user=None):
         else []
     )
 
+    dashboard_countdowns = (
+        _dashboard_countdowns(user, now.date(), flags) if user and "countdown" in visible_widget_ids else []
+    )
+
     return {
         "active_page": "home",
         "dashboard_greeting": _dashboard_greeting(now),
@@ -158,6 +164,8 @@ def get_dashboard_context(user=None):
         "dashboard_meal_plan": dashboard_meal_plan,
         "dashboard_expenses": dashboard_expenses,
         "bookmark_form": BookmarkForm(),
+        "dashboard_countdowns": dashboard_countdowns,
+        "countdown_form": CountdownForm(),
         "clock": {
             "time": format_user_time(now, user),
             "weekday": get_user_weekday_name(now, user),
@@ -523,6 +531,52 @@ def get_tools_context(user):
     }
     tools = [{**tool, "meta": meta.get(tool["id"])} for tool in TOOLS]
     return {"active_page": "tools", "tools": tools}
+
+
+MAX_DASHBOARD_COUNTDOWNS = 6
+
+
+def _countdown_label(days):
+    if days == 0:
+        return "heute"
+    if days == 1:
+        return "morgen"
+    return f"in {days} Tagen"
+
+
+def _dashboard_countdowns(user, today, flags):
+    """The next own countdowns plus the next vacation from the planner, soonest first."""
+    items = [
+        {
+            "id": item.pk,
+            "title": item.title,
+            "date": item.date,
+            "days": (item.date - today).days,
+            "running": False,
+        }
+        for item in Countdown.objects.filter(owner=user, date__gte=today)[:MAX_DASHBOARD_COUNTDOWNS]
+    ]
+    if flags.get("vacation_planner"):
+        period = VacationPeriod.objects.filter(user=user, end_date__gte=today).order_by("start_date").first()
+        if period:
+            running = period.start_date <= today
+            target = period.end_date if running else period.start_date
+            items.append(
+                {
+                    "id": None,
+                    "title": period.get_name_display(),
+                    "date": target,
+                    "days": (target - today).days,
+                    "running": running,
+                }
+            )
+    items.sort(key=lambda item: item["date"])
+    for item in items[:MAX_DASHBOARD_COUNTDOWNS]:
+        item["date_label"] = format_user_date(item["date"], user)
+        item["label"] = (
+            f"noch bis {item['date_label']}" if item["running"] else _countdown_label(item["days"])
+        )
+    return items[:MAX_DASHBOARD_COUNTDOWNS]
 
 
 def _dashboard_meal_plan(user, today):

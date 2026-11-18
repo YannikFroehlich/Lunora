@@ -2227,3 +2227,29 @@ class RecipeImportViewTests(TestCase):
 
         self.assertContains(response, "Zu viele Importe")
         self.assertEqual(len(FakeHttpConnection.requests), 10)
+
+
+class RecipeCookModeTests(TestCase):
+    def test_steps_come_from_paragraphs_or_lines_without_their_numbers(self):
+        from app.services.recipes import instruction_steps
+
+        self.assertEqual(
+            instruction_steps("1. Zwiebeln schneiden\n2) Anbraten\nSchritt 3: Würzen\n\n"),
+            ["Zwiebeln schneiden", "Anbraten", "Würzen"],
+        )
+        self.assertEqual(
+            instruction_steps("Teig rühren,\nruhen lassen.\r\n\r\nBacken bei 180 °C."),
+            ["Teig rühren, ruhen lassen.", "Backen bei 180 °C."],
+        )
+        self.assertEqual(instruction_steps("   "), [])
+
+    def test_recipe_page_offers_the_cooking_mode_only_with_instructions(self):
+        user = User.objects.create_user(username="koch@example.com", password="pw-12345!")
+        self.client.force_login(user)
+        recipe = Recipe.objects.create(owner=user, title="Suppe", instructions="Wasser kochen\nNudeln rein")
+        response = self.client.get(f"/tools/recipes/{recipe.pk}/")
+        self.assertContains(response, "data-cook-open")
+        self.assertContains(response, 'id="recipe-cook-steps"')
+        self.assertEqual(response.context["steps"], ["Wasser kochen", "Nudeln rein"])
+        empty = Recipe.objects.create(owner=user, title="Leer")
+        self.assertNotContains(self.client.get(f"/tools/recipes/{empty.pk}/"), "data-cook-open")

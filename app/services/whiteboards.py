@@ -22,6 +22,7 @@ from app.services.notes import _profile_image_url, display_name
 from app.services.notifications import materialize_whiteboard_share_notification
 from app.services.uml_content import MAX_COORDINATE
 from app.services.vocabulary import resolve_share_recipient
+from app.services.whiteboard_comments import comments_signature
 from app.services.whiteboard_content import (
     MAX_OPS_PER_PUSH,
     WHITEBOARD_DOCUMENT_VERSION,
@@ -162,6 +163,8 @@ def sync_whiteboard(board_id, user, *, version, tab, ops=None, pointer=None, dra
         "title": board.title,
         "resync": resync,
         "peers": _exchange_peers(board, user, client_id, pointer, drawing is True),
+        # The editor reloads the comments when this changes.
+        "comments": comments_signature(board),
     }
 
 

@@ -20,6 +20,7 @@ from app.models import (
     CalendarSubscription,
     ChatMessage,
     ChatMessageAttachment,
+    Countdown,
     ExpenseGroup,
     Habit,
     MealPlanEntry,
@@ -42,6 +43,7 @@ from app.models import (
     VacationYear,
     VocabularyList,
     Whiteboard,
+    WhiteboardComment,
     WishList,
 )
 from app.services.note_markdown import note_markdown_filename, render_note_markdown
@@ -61,9 +63,11 @@ Dieses Archiv enthält alle Daten, die du in Lunora angelegt hast:
 - vokabeln.json: Vokabellisten mit Lernfortschritt
 - uml/*.json: UML-Diagramme (lassen sich im Editor wieder importieren)
 - whiteboards/*.json: Whiteboards (lassen sich im Editor wieder importieren)
+- whiteboard-kommentare.json: deine Kommentare auf Whiteboards
 - urlaub.json: Urlaubsjahre, Urlaube und eigene Feiertage
 - gewohnheiten.json: Gewohnheiten mit allen abgehakten Tagen
 - lesezeichen.json: Lesezeichen vom Dashboard
+- countdowns.json: Countdowns vom Dashboard
 - einkaufszettel.json: Artikel auf deinem Einkaufszettel
 - rezepte.json, wochenplan.json: Rezepte und geplante Gerichte
 - ausgaben.json: Gruppen mit geteilten Ausgaben, Personen mit Anzeigenamen
@@ -123,6 +127,9 @@ def write_user_export(user, fileobj):
         _add_json(archive, "gewohnheiten.json", _habits(user))
         _add_json(
             archive, "lesezeichen.json", list(Bookmark.objects.filter(owner=user).values("title", "url"))
+        )
+        _add_json(
+            archive, "countdowns.json", list(Countdown.objects.filter(owner=user).values("title", "date"))
         )
         _add_json(
             archive,
@@ -199,6 +206,14 @@ def write_user_export(user, fileobj):
                 name,
                 {"format": "lunora-whiteboard", "title": board.title, "document": board.document},
             )
+        _add_json(
+            archive,
+            "whiteboard-kommentare.json",
+            [
+                {"whiteboard": comment.board.title, "text": comment.body, "erstellt": comment.created_at}
+                for comment in WhiteboardComment.objects.filter(author=user).select_related("board")
+            ],
+        )
 
 
 def _expense_groups(user):

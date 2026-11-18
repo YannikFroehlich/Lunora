@@ -5,7 +5,7 @@ from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.test import Client, TestCase
 
-from app.models import Whiteboard, WhiteboardOp, WhiteboardShare
+from app.models import UserNotification, Whiteboard, WhiteboardComment, WhiteboardOp, WhiteboardShare
 from app.services import whiteboards
 from app.services.whiteboard_content import (
     apply_whiteboard_ops,
@@ -256,3 +256,89 @@ class WhiteboardLiveTests(TestCase):
                     f"/tools/whiteboard/api/{self.board.pk}/sync/", data=body, content_type="application/json"
                 )
                 self.assertEqual(response.status_code, 400)
+
+
+class WhiteboardCommentTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.owner = User.objects.create_user(
+            username="c-owner@example.com", password="pw-12345!", first_name="Lea"
+        )
+        self.member = User.objects.create_user(username="c-member@example.com", password="pw-12345!")
+        self.stranger = User.objects.create_user(username="c-stranger@example.com", password="pw-12345!")
+        self.board = Whiteboard.objects.create(owner=self.owner, title="Tafel")
+        WhiteboardShare.objects.create(board=self.board, user=self.member)
+        self.url = f"/tools/whiteboard/api/{self.board.pk}/comments/"
+        self.clients = {}
+        for user in (self.owner, self.member, self.stranger):
+            client = Client()
+            client.force_login(user)
+            self.clients[user] = client
+
+    def post(self, user, **payload):
+        return self.clients[user].post(self.url, data=json.dumps(payload), content_type="application/json")
+
+    def test_threads_replies_and_inbox_rows(self):
+        data = self.post(self.owner, action="add", x=10.04, y=-5, body="  Hier fehlt was  ").json()
+        thread_id = data["thread_id"]
+        self.assertEqual(data["threads"][0]["x"], 10.0)
+        self.assertEqual(data["threads"][0]["comments"][0]["body"], "Hier fehlt was")
+        inbox = UserNotification.objects.get(recipient=self.member, kind="whiteboard_comment")
+        self.assertEqual(inbox.url, f"/tools/whiteboard/{self.board.pk}/?comment={thread_id}")
+        self.assertFalse(UserNotification.objects.filter(recipient=self.owner).exists())
+
+        data = self.post(self.member, action="add", thread_id=thread_id, body="Stimmt").json()
+        self.assertEqual(data["thread_id"], thread_id)
+        self.assertEqual([c["body"] for c in data["threads"][0]["comments"]], ["Hier fehlt was", "Stimmt"])
+        self.assertTrue(
+            UserNotification.objects.filter(recipient=self.owner, kind="whiteboard_comment").exists()
+        )
+
+        self.assertEqual(self.clients[self.stranger].get(self.url).status_code, 404)
+        self.assertEqual(self.post(self.stranger, action="add", x=0, y=0, body="x").status_code, 404)
+
+    def test_resolve_reopen_and_reply_opens_again(self):
+        thread_id = self.post(self.owner, action="add", x=0, y=0, body="Prüfen").json()["thread_id"]
+        self.assertTrue(
+            self.post(self.member, action="resolve", thread_id=thread_id).json()["threads"][0]["resolved"]
+        )
+        self.assertFalse(
+            self.post(self.member, action="reopen", thread_id=thread_id).json()["threads"][0]["resolved"]
+        )
+        self.post(self.member, action="resolve", thread_id=thread_id)
+        data = self.post(self.owner, action="add", thread_id=thread_id, body="Doch nicht").json()
+        self.assertFalse(data["threads"][0]["resolved"])
+
+    def test_only_authors_delete_and_a_thread_goes_with_its_inbox_rows(self):
+        thread_id = self.post(self.owner, action="add", x=0, y=0, body="Eins").json()["thread_id"]
+        self.post(self.member, action="add", thread_id=thread_id, body="Zwei")
+        self.assertEqual(self.post(self.member, action="delete", comment_id=thread_id).status_code, 403)
+        self.assertEqual(self.post(self.owner, action="delete", comment_id=thread_id).json()["threads"], [])
+        self.assertFalse(WhiteboardComment.objects.exists())
+        self.assertFalse(UserNotification.objects.filter(kind="whiteboard_comment").exists())
+
+    def test_invalid_comments_are_refused(self):
+        for payload in (
+            {"action": "add", "x": 0, "y": 0, "body": "   "},
+            {"action": "add", "x": 0, "y": 0, "body": "x" * 2001},
+            {"action": "add", "x": "1", "y": 0, "body": "x"},
+            {"action": "add", "thread_id": 999, "body": "x"},
+            {"action": "shout"},
+        ):
+            with self.subTest(payload=payload):
+                self.assertEqual(self.post(self.owner, **payload).status_code, 400)
+        self.assertFalse(WhiteboardComment.objects.exists())
+
+    def test_live_poll_signals_comment_changes(self):
+        def signature():
+            body = json.dumps({"version": 1, "tab": "tab-aaaaaaaa"})
+            response = self.clients[self.member].post(
+                f"/tools/whiteboard/api/{self.board.pk}/sync/", data=body, content_type="application/json"
+            )
+            return response.json()["comments"]
+
+        before = signature()
+        thread_id = self.post(self.owner, action="add", x=0, y=0, body="Neu").json()["thread_id"]
+        added = signature()
+        self.post(self.owner, action="resolve", thread_id=thread_id)
+        self.assertEqual(len({before, added, signature()}), 3)

@@ -474,7 +474,8 @@ function initCommandPalette() {
   const form = dialog.querySelector("[data-command-form]");
   const input = dialog.querySelector("[data-command-input]");
   const searchOption = dialog.querySelector("[data-command-search]");
-  const queryLabel = dialog.querySelector("[data-command-query]");
+  const quickOptions = Array.from(dialog.querySelectorAll("[data-command-quick]"));
+  const queryLabels = dialog.querySelectorAll("[data-command-query]");
   const items = Array.from(dialog.querySelectorAll("[data-command-item]")).map((element) => ({
     element,
     text: normalizeCommandText(`${element.textContent} ${element.dataset.keywords || ""}`),
@@ -486,7 +487,7 @@ function initCommandPalette() {
     activeIndex = index;
     const active = visible[index];
     // Clear every entry, not just visible ones, so a filtered-out item never keeps the highlight.
-    [...items.map((item) => item.element), searchOption].forEach((element) =>
+    [...items.map((item) => item.element), ...quickOptions, searchOption].forEach((element) =>
       element.classList.toggle("is-active", element === active),
     );
     if (active) {
@@ -507,12 +508,34 @@ function initCommandPalette() {
       if (match) matches.push(item.element);
     });
     searchOption.hidden = !query;
-    queryLabel.textContent = query;
+    quickOptions.forEach((option) => {
+      option.hidden = !query;
+    });
+    queryLabels.forEach((label) => {
+      label.textContent = query;
+    });
     searchOption.href = `${form.action}?${new URLSearchParams({ q: query })}`;
-    // Commands come first; the search entry stays reachable at the end of the list.
-    visible = query ? [...matches, searchOption] : matches;
+    // Commands come first; creating from the text and the search entry stay reachable after them.
+    visible = query ? [...matches, ...quickOptions, searchOption] : matches;
     setActive(0);
   }
+
+  // Sends the typed line to the tasks or calendar quick-add; both redirect back to this page.
+  function quickCapture(option) {
+    const quickForm = dialog.querySelector(`[data-command-quick-form="${option.dataset.commandQuick}"]`);
+    if (!quickForm) return;
+    quickForm.querySelector("[data-command-quick-text]").value = input.value.trim();
+    quickForm.querySelector("[data-command-quick-return]").value =
+      `${window.location.pathname}${window.location.search}`;
+    quickForm.requestSubmit();
+  }
+
+  quickOptions.forEach((option) =>
+    option.addEventListener("click", (event) => {
+      event.preventDefault();
+      quickCapture(option);
+    }),
+  );
 
   function open() {
     input.value = "";
@@ -530,7 +553,8 @@ function initCommandPalette() {
       setActive((activeIndex + step + visible.length) % visible.length);
     } else if (event.key === "Enter" && visible[activeIndex]) {
       event.preventDefault();
-      window.location.href = visible[activeIndex].href;
+      if (visible[activeIndex].dataset.commandQuick) quickCapture(visible[activeIndex]);
+      else window.location.href = visible[activeIndex].href;
     }
   });
   // A click on the backdrop lands on the dialog element itself, outside the panel.

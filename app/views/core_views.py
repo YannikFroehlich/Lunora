@@ -10,6 +10,7 @@ from django.db import transaction
 from django.http import FileResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.safestring import mark_safe
 from django.views.decorators.cache import never_cache
@@ -19,6 +20,7 @@ from app.forms import (
     AppearanceForm,
     BookmarkForm,
     CalendarSubscriptionForm,
+    CountdownForm,
     LoginAlertsForm,
     NotificationCategoryPreferencesForm,
     NotificationPreferencesForm,
@@ -26,7 +28,7 @@ from app.forms import (
     RegionPreferencesForm,
     WeatherPreferencesForm,
 )
-from app.models import AuditLogEntry, Bookmark, Profile
+from app.models import AuditLogEntry, Bookmark, Countdown, Profile
 from app.services import audit_log, passkeys, two_factor
 from app.services.accounts import account_deletion_blocked_reason, delete_account
 from app.services.calendar_service import disable_calendar_feed, reset_calendar_feed_token
@@ -36,7 +38,7 @@ from app.services.data_import import import_files
 from app.services.health import health_report
 from app.services.storage_quota import storage_summary
 from app.services.system_settings import disabled_feature_response, feature_enabled
-from app.services.user_preferences import format_user_datetime
+from app.services.user_preferences import format_user_datetime, localtime_for_user
 from app.services.user_sessions import (
     active_sessions,
     device_label,
@@ -171,6 +173,31 @@ def dashboard_bookmarks(request):
             )
     elif form_name == "bookmark_delete":
         Bookmark.objects.filter(owner=request.user, pk=request.POST.get("bookmark_id") or 0).delete()
+    return redirect("home")
+
+
+MAX_COUNTDOWNS = 12
+
+
+@login_required
+@require_POST
+def dashboard_countdowns(request):
+    form_name = request.POST.get("form_name")
+    if form_name == "countdown_add":
+        form = CountdownForm(request.POST, today=localtime_for_user(timezone.now(), request.user).date())
+        if Countdown.objects.filter(owner=request.user).count() >= MAX_COUNTDOWNS:
+            django_messages.error(request, f"Du kannst höchstens {MAX_COUNTDOWNS} Countdowns anlegen.")
+        elif form.is_valid():
+            countdown = form.save(commit=False)
+            countdown.owner = request.user
+            countdown.save()
+            django_messages.success(request, "Countdown hinzugefügt.")
+        else:
+            django_messages.error(
+                request, " ".join(error for errors in form.errors.values() for error in errors)
+            )
+    elif form_name == "countdown_delete":
+        Countdown.objects.filter(owner=request.user, pk=request.POST.get("countdown_id") or 0).delete()
     return redirect("home")
 
 

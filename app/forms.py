@@ -20,6 +20,7 @@ from app.models import (
     ChatMessage,
     ChatPoll,
     ChatPollOption,
+    Countdown,
     CustomHoliday,
     Expense,
     Habit,
@@ -1065,6 +1066,29 @@ class CalendarSubscriptionStyleForm(forms.ModelForm):
     class Meta:
         model = CalendarSubscription
         fields = ["name", "color", "icon"]
+
+
+class CountdownForm(forms.ModelForm):
+    class Meta:
+        model = Countdown
+        fields = ["title", "date"]
+        labels = {"title": "Wofür", "date": "Datum"}
+        widgets = {
+            "title": forms.TextInput(attrs={"placeholder": "z. B. Konzert", "autocomplete": "off"}),
+            "date": forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        }
+
+    def __init__(self, *args, today=None, **kwargs):
+        # The bookmark form on the same page has a "title" field too.
+        kwargs.setdefault("auto_id", "countdown_%s")
+        super().__init__(*args, **kwargs)
+        self.today = today
+
+    def clean_date(self):
+        date = self.cleaned_data["date"]
+        if self.today and date < self.today:
+            raise forms.ValidationError("Das Datum liegt in der Vergangenheit.")
+        return date
 
 
 class BookmarkForm(forms.ModelForm):

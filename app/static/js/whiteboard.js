@@ -48,11 +48,15 @@
     o: "ellipse",
     t: "text",
     g: "fill",
+    c: "comment",
   };
 
   const payload = JSON.parse(document.getElementById("whiteboard-data").textContent);
   const saveUrl = root.dataset.saveUrl;
   const syncUrl = root.dataset.syncUrl;
+  const commentsUrl = root.dataset.commentsUrl;
+  const commentLayer = root.querySelector("[data-whiteboard-comment-layer]");
+  const commentPopover = root.querySelector("[data-whiteboard-comment-popover]");
   const csrfToken = document.querySelector("meta[name='csrf-token']")?.content || "";
   const svg = root.querySelector("[data-whiteboard-canvas]");
   const canvasWrap = svg.parentElement;
@@ -78,6 +82,8 @@
   // The others on a shared board (from the live poll) and their pointer nodes.
   const peerNodes = new Map();
   let peers = [];
+  // Comment threads on the board and the one open in the popover ({threadId} or {draft: {x, y}}).
+  const commentState = { threads: [], signature: null, open: null };
   const history = { undo: [], redo: [] };
   let selection = new Set();
   let tool = "pen";
@@ -266,6 +272,7 @@
     zoomLabel.textContent = `${Math.round(view.k * 100)} %`;
     if (selection.size) drawSelection();
     drawPeers();
+    positionComments();
     positionTextInput();
   }
 
@@ -938,6 +945,7 @@
       }
       if (pointers.size > 2) return;
     }
+    if (commentState.open && tool !== "comment") closeComment();
     if (editing) {
       // The first click outside an open text finishes it instead of starting something new.
       closeText();
@@ -957,6 +965,8 @@
       // The text field opens on release: focus moves to the canvas on press and would close it again.
       else if (tool === "text") interaction = { type: "text", world };
       else if (tool === "fill") fillAt(world);
+      // Like text, the comment opens on release so the canvas focus doesn't take it away again.
+      else if (tool === "comment") interaction = { type: "comment", world };
       else if (SHAPE_TOOLS.has(tool) && canAdd())
         interaction = { type: "shape", kind: tool, start: snapPoint(world), draft: null };
     }
@@ -1018,6 +1028,7 @@
     else if (current.type === "move") finishMove(current);
     else if (current.type === "resize") finishResize(current);
     else if (current.type === "marquee") finishMarquee(current);
+    else if (current.type === "comment") showComment({ draft: current.world });
     else if (current.type === "text") {
       const element = topElementAt(current.world);
       if (element?.type === "text") openText(null, element);
@@ -1286,6 +1297,11 @@
       }
       applyTitle(data.title);
       showPeers(data.peers);
+      if (data.comments !== commentState.signature) {
+        // The first answer only records the state the page loaded with.
+        if (commentState.signature !== null) loadComments();
+        commentState.signature = data.comments;
+      }
       // During a drag the board isn't swapped; the others' changes show once it's finished.
       if (!interaction) {
         flush();
@@ -1316,6 +1332,218 @@
   window.addEventListener("beforeunload", (event) => {
     if (live.pending.length || hasUnsent() || live.inflight) event.preventDefault();
   });
+
+  // ---- Comments -------------------------------------------------------------------------------
+  // Threads pinned to spots on the board (whiteboard_comments_api). Pins and the popover are HTML
+  // over the canvas, so they can be focused and read out; the live poll's `comments` signature says
+  // when to load them again.
+
+  async function loadComments() {
+    try {
+      const response = await fetch(commentsUrl, { credentials: "same-origin" });
+      const data = await response.json();
+      if (!response.ok || !data.ok) return;
+      commentState.threads = data.threads;
+      renderComments();
+    } catch (_error) {
+      // Offline: the next signature change loads them again.
+    }
+  }
+
+  async function postComment(payload) {
+    try {
+      const response = await fetch(commentsUrl, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) throw new Error(data.error || `Fehler ${response.status}`);
+      commentState.threads = data.threads;
+      return data;
+    } catch (error) {
+      showHint(`Kommentar nicht gespeichert: ${error.message}`);
+      return null;
+    }
+  }
+
+  function commentPoint(x, y) {
+    const svgRect = svg.getBoundingClientRect();
+    const wrapRect = canvasWrap.getBoundingClientRect();
+    return {
+      left: svgRect.left - wrapRect.left - canvasWrap.clientLeft + view.x + x * view.k,
+      top: svgRect.top - wrapRect.top - canvasWrap.clientTop + view.y + y * view.k,
+    };
+  }
+
+  function openThread() {
+    const open = commentState.open;
+    return open?.threadId ? commentState.threads.find((thread) => thread.id === open.threadId) : null;
+  }
+
+  function renderComments() {
+    if (!commentLayer) return;
+    const pins = commentState.threads.map((thread) => {
+      const first = thread.comments[0];
+      const pin = document.createElement("button");
+      pin.type = "button";
+      pin.className = "whiteboard-comment-pin";
+      pin.classList.toggle("is-resolved", thread.resolved);
+      pin.classList.toggle("is-open", commentState.open?.threadId === thread.id);
+      pin.dataset.commentThread = thread.id;
+      const state = thread.resolved ? " (erledigt)" : "";
+      pin.setAttribute("aria-label", `Kommentar von ${first?.author || "?"}${state}: ${first?.body || ""}`);
+      pin.title = `${first?.author || ""}: ${first?.body || ""}`;
+      const glyph = document.createElement("i");
+      glyph.className = thread.resolved ? "fa-solid fa-check" : "fa-solid fa-comment";
+      glyph.setAttribute("aria-hidden", "true");
+      pin.append(glyph);
+      if (thread.comments.length > 1) {
+        const count = document.createElement("span");
+        count.textContent = thread.comments.length;
+        pin.append(count);
+      }
+      return pin;
+    });
+    commentLayer.replaceChildren(...pins);
+    if (commentState.open) renderPopover();
+    positionComments();
+  }
+
+  function positionComments() {
+    if (!commentLayer) return;
+    commentLayer.querySelectorAll("[data-comment-thread]").forEach((pin) => {
+      const thread = commentState.threads.find((item) => item.id === Number(pin.dataset.commentThread));
+      if (!thread) return;
+      const point = commentPoint(thread.x, thread.y);
+      pin.style.left = `${point.left}px`;
+      pin.style.top = `${point.top}px`;
+    });
+    if (!commentState.open || commentPopover.hidden) return;
+    const spot = openThread() || commentState.open.draft;
+    if (!spot) return;
+    const point = commentPoint(spot.x, spot.y);
+    const maxLeft = canvasWrap.clientWidth - commentPopover.offsetWidth - 8;
+    const maxTop = canvasWrap.clientHeight - commentPopover.offsetHeight - 8;
+    commentPopover.style.left = `${Math.max(8, Math.min(point.left + 18, maxLeft))}px`;
+    commentPopover.style.top = `${Math.max(8, Math.min(point.top - 12, maxTop))}px`;
+  }
+
+  function renderPopover() {
+    const thread = openThread();
+    if (commentState.open.threadId && !thread) {
+      closeComment();
+      return;
+    }
+    commentPopover.querySelector("[data-comment-heading]").textContent = thread
+      ? `Kommentar${thread.resolved ? " (erledigt)" : ""}`
+      : "Neuer Kommentar";
+    commentPopover.querySelector("[data-comment-list]").replaceChildren(
+      ...(thread?.comments || []).map((comment) => {
+        const item = document.createElement("li");
+        const head = document.createElement("div");
+        head.className = "whiteboard-comment-meta";
+        const author = document.createElement("strong");
+        author.textContent = comment.author;
+        const when = document.createElement("small");
+        when.textContent = comment.created_label;
+        head.append(author, when);
+        if (comment.can_delete) {
+          const remove = document.createElement("button");
+          remove.type = "button";
+          remove.className = "whiteboard-comment-delete";
+          remove.dataset.commentDelete = comment.id;
+          remove.setAttribute("aria-label", "Kommentar löschen");
+          remove.title = "Löschen";
+          remove.innerHTML = '<i class="fa-regular fa-trash-can" aria-hidden="true"></i>';
+          head.append(remove);
+        }
+        const body = document.createElement("p");
+        body.textContent = comment.body;
+        item.append(head, body);
+        return item;
+      }),
+    );
+    const resolve = commentPopover.querySelector("[data-comment-resolve]");
+    resolve.hidden = !thread;
+    resolve.textContent = thread?.resolved ? "Wieder öffnen" : "Erledigt";
+    commentPopover.querySelector("[data-comment-submit]").textContent = thread ? "Antworten" : "Kommentieren";
+    commentPopover.hidden = false;
+    positionComments();
+  }
+
+  function showComment(open) {
+    commentState.open = open;
+    renderComments();
+    renderPopover();
+    commentPopover.querySelector("[data-comment-body]").focus({ preventScroll: true });
+  }
+
+  function closeComment() {
+    const threadId = commentState.open?.threadId;
+    commentState.open = null;
+    commentPopover.hidden = true;
+    commentPopover.querySelector("[data-comment-body]").value = "";
+    renderComments();
+    // Back to the pin the popover belonged to, or to the canvas for a draft.
+    const pin = threadId && commentLayer.querySelector(`[data-comment-thread="${threadId}"]`);
+    (pin || svg).focus({ preventScroll: true });
+  }
+
+  if (commentPopover) {
+    commentLayer.addEventListener("click", (event) => {
+      const pin = event.target.closest("[data-comment-thread]");
+      if (pin) showComment({ threadId: Number(pin.dataset.commentThread) });
+    });
+    commentPopover.querySelector("[data-comment-form]").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const field = commentPopover.querySelector("[data-comment-body]");
+      const thread = openThread();
+      const draft = commentState.open?.draft;
+      const payload = thread
+        ? { action: "add", thread_id: thread.id, body: field.value }
+        : { action: "add", x: draft.x, y: draft.y, body: field.value };
+      const data = await postComment(payload);
+      if (!data) return;
+      field.value = "";
+      showComment({ threadId: data.thread_id });
+    });
+    commentPopover.addEventListener("click", async (event) => {
+      if (event.target.closest("[data-comment-close]")) {
+        closeComment();
+        return;
+      }
+      const thread = openThread();
+      if (event.target.closest("[data-comment-resolve]") && thread) {
+        if (await postComment({ action: thread.resolved ? "reopen" : "resolve", thread_id: thread.id })) {
+          renderComments();
+        }
+        return;
+      }
+      const remove = event.target.closest("[data-comment-delete]");
+      if (remove && window.confirm("Diesen Kommentar löschen?")) {
+        if (await postComment({ action: "delete", comment_id: Number(remove.dataset.commentDelete) })) {
+          renderComments();
+        }
+      }
+    });
+    commentPopover.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        closeComment();
+      } else if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        commentPopover.querySelector("[data-comment-form]").requestSubmit();
+      }
+    });
+    loadComments().then(() => {
+      // A link from the inbox opens its thread.
+      const wanted = Number(new URLSearchParams(window.location.search).get("comment"));
+      if (wanted && commentState.threads.some((thread) => thread.id === wanted)) showComment({ threadId: wanted });
+    });
+  }
 
   // ---- Export & import ------------------------------------------------------------------------
 
@@ -1520,6 +1748,8 @@
       if (element?.type === "text") openText(null, element);
     } else if (tool === "text") {
       openText(center);
+    } else if (tool === "comment") {
+      showComment({ draft: center });
     } else if (SHAPE_TOOLS.has(tool) && canAdd()) {
       const w = 160 / view.k;
       const h = (tool === "line" || tool === "arrow" ? 0 : 100) / view.k;

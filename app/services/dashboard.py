@@ -154,6 +154,14 @@ DASHBOARD_WIDGETS = (
         options={"limit": 5},
         feature_flag="tools",
     ),
+    # A whole-width strip of countdown cards at the end of the default layout.
+    DashboardWidget(
+        id="countdown",
+        label="Countdown",
+        template="app/partials/dashboard_countdown.html",
+        class_name="countdown-panel",
+        default_size="full",
+    ),
 )
 
 
@@ -336,6 +344,7 @@ def dashboard_presets():
                     "shopping",
                     "meal_plan",
                     "expenses",
+                    "countdown",
                 ],
                 {
                     "tasks": {"size": "large", "limit": 8},
@@ -362,6 +371,7 @@ def dashboard_presets():
                     "shopping",
                     "meal_plan",
                     "expenses",
+                    "countdown",
                 ],
                 {
                     "clock": {"size": "small"},

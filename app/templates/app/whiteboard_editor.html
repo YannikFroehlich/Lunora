@@ -8,7 +8,7 @@
 {% endblock %}
 
 {% block content %}
-<section class="page-shell uml-shell" data-whiteboard-editor data-shared="{{ is_shared|yesno:'true,false' }}" data-save-url="{% url 'whiteboard_api' board.id %}" data-sync-url="{% url 'whiteboard_sync_api' board.id %}" data-font-url="{% versioned_static 'vendor/inter/inter-latin-variable.woff2' %}">
+<section class="page-shell uml-shell" data-whiteboard-editor data-shared="{{ is_shared|yesno:'true,false' }}" data-save-url="{% url 'whiteboard_api' board.id %}" data-sync-url="{% url 'whiteboard_sync_api' board.id %}" data-comments-url="{% url 'whiteboard_comments_api' board.id %}" data-font-url="{% versioned_static 'vendor/inter/inter-latin-variable.woff2' %}">
     <header class="glass-panel uml-header">
         <h1 class="visually-hidden">Whiteboard „{{ board.title }}“ bearbeiten</h1>
         <a class="icon-button" href="{% url 'whiteboards' %}" aria-label="Zur Whiteboard-Übersicht" title="Zur Übersicht">
@@ -34,6 +34,7 @@
             <button type="button" class="uml-tool is-icon" data-whiteboard-tool="ellipse" aria-pressed="false" aria-label="Ellipse" title="Ellipse (O, Umschalt für Kreis)"><i class="fa-regular fa-circle" aria-hidden="true"></i></button>
             <button type="button" class="uml-tool is-icon" data-whiteboard-tool="text" aria-pressed="false" aria-label="Text" title="Text (T)"><i class="fa-solid fa-font" aria-hidden="true"></i></button>
             <button type="button" class="uml-tool is-icon" data-whiteboard-tool="fill" aria-pressed="false" aria-label="Füllen" title="Füllen (G): in ein Rechteck oder eine Ellipse klicken, nochmal klicken leert sie wieder"><i class="fa-solid fa-fill-drip" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool is-icon" data-whiteboard-tool="comment" aria-pressed="false" aria-label="Kommentar" title="Kommentar (C): auf die Fläche klicken, um einen Kommentar anzuheften"><i class="fa-regular fa-comment" aria-hidden="true"></i></button>
             <button type="button" class="uml-tool is-icon" data-whiteboard-tool="hand" aria-pressed="false" aria-label="Fläche verschieben" title="Fläche verschieben (H oder Leertaste halten)"><i class="fa-regular fa-hand" aria-hidden="true"></i></button>
         </div>
         <div class="uml-tool-group whiteboard-colors" role="group" aria-label="Farbe" data-whiteboard-colors></div>
@@ -85,6 +86,24 @@
     <div class="glass-panel uml-canvas-wrap whiteboard-canvas-wrap">
         <svg class="uml-canvas whiteboard-canvas" data-whiteboard-canvas tabindex="0" role="application" aria-label="Zeichenfläche" aria-describedby="whiteboard-canvas-help" xmlns="http://www.w3.org/2000/svg"></svg>
         <textarea class="whiteboard-text-input" data-whiteboard-text hidden maxlength="500" rows="1" spellcheck="true" aria-label="Text auf dem Whiteboard"></textarea>
+        <div class="whiteboard-comment-layer" data-whiteboard-comment-layer></div>
+        <section class="glass-panel whiteboard-comment-popover" aria-labelledby="whiteboard-comment-heading" data-whiteboard-comment-popover hidden>
+            <header class="whiteboard-comment-head">
+                <strong id="whiteboard-comment-heading" data-comment-heading>Kommentar</strong>
+                <button class="icon-button" type="button" data-comment-close aria-label="Kommentar schließen"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+            </header>
+            <ol class="whiteboard-comment-list" data-comment-list></ol>
+            <form class="whiteboard-comment-form" data-comment-form>
+                <label>
+                    <span class="visually-hidden">Kommentar schreiben</span>
+                    <textarea rows="3" maxlength="2000" required placeholder="Kommentar schreiben …" data-comment-body></textarea>
+                </label>
+                <div class="whiteboard-comment-actions">
+                    <button class="ghost-button" type="button" data-comment-resolve hidden>Erledigt</button>
+                    <button class="primary-button" type="submit" data-comment-submit>Kommentieren</button>
+                </div>
+            </form>
+        </section>
         <p class="uml-canvas-hint" id="whiteboard-canvas-help" data-whiteboard-hint>Werkzeug wählen und ziehen; Enter setzt eine Form in die Mitte. Ecken ändern die Größe, Strg+C/V kopiert. Leertaste oder zwei Finger verschieben, Strg+Mausrad zoomt.</p>
     </div>
 </section>
