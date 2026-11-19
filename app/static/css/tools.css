@@ -3022,6 +3022,10 @@ form:has([name="split_mode"][value="amounts"]:checked) [data-split-hint="amounts
   color: var(--color-muted);
 }
 
+.wish-refresh-all-form {
+  margin-top: 10px;
+}
+
 .wish-items {
   display: grid;
   gap: 12px;
@@ -3123,6 +3127,36 @@ form:has([name="split_mode"][value="amounts"]:checked) [data-split-hint="amounts
 .wish-item-side small {
   color: var(--color-muted);
   font-size: var(--text-sm);
+}
+
+.wish-price-change {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.wish-price-change.is-up {
+  color: var(--color-danger);
+}
+
+.wish-price-change.is-down {
+  color: var(--color-success);
+}
+
+.wish-qty-stepper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wish-qty-stepper form {
+  display: contents;
+}
+
+.wish-qty-count {
+  min-width: 1.4em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .wish-list-settings {

@@ -1425,6 +1425,17 @@ class WishListItem(models.Model):
         return self.title
 
 
+class WishListItemPricePoint(models.Model):
+    """One recorded price of an item, oldest first; the first point is the price when it was added."""
+
+    item = models.ForeignKey(WishListItem, on_delete=models.CASCADE, related_name="price_points")
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    recorded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["recorded_at", "id"]
+
+
 class ShoppingItem(models.Model):
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="shopping_items"

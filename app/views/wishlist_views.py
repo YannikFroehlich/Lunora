@@ -16,6 +16,8 @@ from app.services.wishlist import (
     image_version,
     list_totals,
     money,
+    price_change,
+    record_price_point,
     refresh_item,
     thumbnail,
 )
@@ -90,7 +92,12 @@ def _handle_item_post(request, wish_list, form_name):
             django_messages.error(request, problem)
         else:
             item.save()
+            record_price_point(item)
             django_messages.success(request, "Preis und Angaben aktualisiert.")
+    elif form_name == "wish_item_quantity":
+        delta = 1 if request.POST.get("delta") == "up" else -1
+        item.quantity = max(1, min(99, item.quantity + delta))
+        item.save(update_fields=["quantity"])
     elif form_name == "wish_item_delete":
         item.delete()
         django_messages.success(request, "Artikel entfernt.")
@@ -119,8 +126,22 @@ def wish_list_detail(request, list_id):
             else:
                 django_messages.success(request, f"„{item.title}“ hinzugefügt.")
             return redirect("wish_list_detail", list_id=wish_list.pk)
-    elif form_name in {"wish_item_update", "wish_item_refresh", "wish_item_delete"}:
+    elif form_name in {"wish_item_update", "wish_item_refresh", "wish_item_quantity", "wish_item_delete"}:
         _handle_item_post(request, wish_list, form_name)
+        return redirect("wish_list_detail", list_id=wish_list.pk)
+    elif form_name == "wish_list_refresh_all":
+        updated = failed = 0
+        for item in wish_list.items.all():
+            if refresh_item(request.user, item):
+                failed += 1
+            else:
+                item.save()
+                record_price_point(item)
+                updated += 1
+        if failed:
+            django_messages.warning(request, f"{updated} von {updated + failed} Preisen aktualisiert.")
+        elif updated:
+            django_messages.success(request, f"{updated} Preis(e) aktualisiert.")
         return redirect("wish_list_detail", list_id=wish_list.pk)
     elif form_name == "wish_list_rename":
         form = WishListForm(request.POST, instance=wish_list)
@@ -134,7 +155,7 @@ def wish_list_detail(request, list_id):
         django_messages.success(request, "Wunschliste gelöscht.")
         return redirect("wish_lists")
 
-    items = list(wish_list.items.all())
+    items = list(wish_list.items.prefetch_related("price_points").all())
     for item in items:
         item.price_label = money(item.price, item.currency) if item.price is not None else ""
         item.line_label = (
@@ -145,6 +166,7 @@ def wish_list_detail(request, list_id):
         item.fetched_label = format_user_datetime(item.fetched_at, request.user)
         item.image_version = image_version(item) if item.image_url else ""
         item.reviews_label = f"{item.review_count:,}".replace(",", ".") if item.review_count else ""
+        item.price_change_label, item.price_change_up = price_change(item, list(item.price_points.all()))
     return render(
         request,
         "app/wish_list_detail.html",

@@ -18,6 +18,13 @@
                 {% if totals %}Gesamt: <strong>{{ totals|join:" + " }}</strong>{% else %}Noch kein Preis bekannt{% endif %}
                 {% if unpriced and totals %}<small>({{ unpriced }} Artikel ohne Preis)</small>{% endif %}
             </p>
+            {% if items %}
+            <form method="post" class="wish-refresh-all-form">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="wish_list_refresh_all">
+                <button class="ghost-button" type="submit"><i class="fa-solid fa-rotate" aria-hidden="true"></i> Alle Preise aktualisieren</button>
+            </form>
+            {% endif %}
         </div>
         <i class="fa-solid fa-gift hero-branch" aria-hidden="true"></i>
     </header>
@@ -73,7 +80,30 @@
             </div>
             <div class="wish-item-side">
                 <strong class="wish-item-price">{{ item.price_label|default:"Preis fehlt" }}</strong>
-                {% if item.quantity > 1 %}<small>{{ item.quantity }} ×{% if item.line_label %} = {{ item.line_label }}{% endif %}</small>{% endif %}
+                {% if item.price_change_label %}
+                <small class="wish-price-change {% if item.price_change_up %}is-up{% else %}is-down{% endif %}">
+                    <i class="fa-solid {% if item.price_change_up %}fa-arrow-up{% else %}fa-arrow-down{% endif %}" aria-hidden="true"></i>
+                    {{ item.price_change_label }} seit Hinzufügen
+                </small>
+                {% endif %}
+                {% if item.line_label %}<small>= {{ item.line_label }}</small>{% endif %}
+                <div class="wish-qty-stepper">
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="form_name" value="wish_item_quantity">
+                        <input type="hidden" name="item_id" value="{{ item.id }}">
+                        <input type="hidden" name="delta" value="down">
+                        <button class="icon-button" type="submit" {% if item.quantity <= 1 %}disabled{% endif %} aria-label="Weniger von „{{ item.title }}“"><i class="fa-solid fa-minus" aria-hidden="true"></i></button>
+                    </form>
+                    <span class="wish-qty-count">{{ item.quantity }}</span>
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="form_name" value="wish_item_quantity">
+                        <input type="hidden" name="item_id" value="{{ item.id }}">
+                        <input type="hidden" name="delta" value="up">
+                        <button class="icon-button" type="submit" {% if item.quantity >= 99 %}disabled{% endif %} aria-label="Mehr von „{{ item.title }}“"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
+                    </form>
+                </div>
                 <div class="uml-diagram-actions">
                     <form method="post">
                         {% csrf_token %}

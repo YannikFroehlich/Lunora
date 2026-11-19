@@ -6,6 +6,9 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Wish lists: a button refreshes every item's price at once, each item keeps a price history since
+  it was added and shows how much more or less expensive it got, and quantity can be changed with
+  plus/minus buttons without opening "Bearbeiten".
 - Sticky notes on whiteboards: the new tool (N) puts a colored note on the board that you type into
   directly; the text wraps inside, and the note can be moved, resized and recolored like a shape.
 - Notes can carry tags ("Tags hinzufügen" below the title). Tags are your own, also on notes shared

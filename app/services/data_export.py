@@ -191,11 +191,19 @@ def write_user_export(user, fileobj):
             [
                 {
                     "title": wish_list.title,
-                    "items": list(
-                        wish_list.items.values(
-                            "title", "url", "price", "currency", "quantity", "fetched_at", "created_at"
-                        )
-                    ),
+                    "items": [
+                        {
+                            "title": item.title,
+                            "url": item.url,
+                            "price": item.price,
+                            "currency": item.currency,
+                            "quantity": item.quantity,
+                            "fetched_at": item.fetched_at,
+                            "created_at": item.created_at,
+                            "price_history": list(item.price_points.values("price", "recorded_at")),
+                        }
+                        for item in wish_list.items.prefetch_related("price_points").all()
+                    ],
                 }
                 for wish_list in WishList.objects.filter(owner=user)
             ],

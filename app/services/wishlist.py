@@ -22,7 +22,7 @@ from django.core.cache import cache
 from django.utils import timezone
 from PIL import Image
 
-from app.models import WishListItem
+from app.models import WishListItem, WishListItemPricePoint
 from app.services import safe_fetch
 from app.services.expenses import euro
 from app.services.recipe_import import JsonLdScripts, json_ld_objects
@@ -370,6 +370,24 @@ def refresh_item(user, item):
     return None
 
 
+def record_price_point(item):
+    """Stores `item`'s current price as a history point, unless it matches the last one recorded."""
+    if item.price is None:
+        return
+    latest = item.price_points.order_by("-recorded_at").first()
+    if latest is None or latest.price != item.price:
+        WishListItemPricePoint.objects.create(item=item, price=item.price)
+
+
+def price_change(item, points):
+    """("+12,00 €"/"-5,00 €", is_increase) of `item.price` against `points` (its price history,
+    oldest first) since it was added, or ("", False) when there's nothing to compare."""
+    if not points or item.price is None or points[0].price == item.price:
+        return "", False
+    diff = item.price - points[0].price
+    return f"{'+' if diff > 0 else '-'}{money(abs(diff), item.currency)}", diff > 0
+
+
 def _is_duplicate(wish_list, item):
     items = wish_list.items.exclude(pk=item.pk) if item.pk else wish_list.items.all()
     return items.filter(asin=item.asin).exists() if item.asin else items.filter(url=item.url).exists()
@@ -388,6 +406,7 @@ def add_item(user, wish_list, raw_url):
     if item.asin != asin and _is_duplicate(wish_list, item):
         raise safe_fetch.FetchError("Dieser Artikel steht schon auf der Liste.")
     item.save()
+    record_price_point(item)
     return item, problem
 
 

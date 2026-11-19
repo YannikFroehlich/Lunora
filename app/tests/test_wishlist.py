@@ -7,9 +7,16 @@ from django.core.cache import cache
 from django.test import SimpleTestCase, TestCase
 from PIL import Image
 
-from app.models import WishList, WishListItem
+from app.models import WishList, WishListItem, WishListItemPricePoint
 from app.services.safe_fetch import FetchError
-from app.services.wishlist import _amount, list_totals, parse_product_page, product_url, title_from_url
+from app.services.wishlist import (
+    _amount,
+    list_totals,
+    parse_product_page,
+    price_change,
+    product_url,
+    title_from_url,
+)
 from app.tests.helpers import FakeHttpConnection
 
 PRODUCT_PAGE = """<html><head>
@@ -145,6 +152,20 @@ class WishlistParsingTests(SimpleTestCase):
             with self.subTest(url=url), self.assertRaises(FetchError):
                 product_url(url)
 
+    def test_price_change_compares_against_the_oldest_recorded_price(self):
+        item = WishListItem(price=Decimal("100"), currency="€")
+        no_history = []
+        self.assertEqual(price_change(item, no_history), ("", False))
+
+        same_price = [WishListItemPricePoint(price=Decimal("100"))]
+        self.assertEqual(price_change(item, same_price), ("", False))
+
+        got_cheaper = [WishListItemPricePoint(price=Decimal("130"))]
+        self.assertEqual(price_change(item, got_cheaper), ("-30,00 €", False))
+
+        got_pricier = [WishListItemPricePoint(price=Decimal("80"))]
+        self.assertEqual(price_change(item, got_pricier), ("+20,00 €", True))
+
     def test_totals_count_quantities_per_currency(self):
         items = [
             WishListItem(price=Decimal("10.50"), quantity=2, currency="€"),
@@ -240,16 +261,55 @@ class WishlistViewTests(TestCase):
         self.assertEqual((item.title, item.price, item.quantity), ("Tasse", Decimal("4.50"), 3))
         self.assertContains(response, "Gesamt: <strong>13,50 €</strong>", html=False)
 
-    def test_refresh_updates_the_price(self):
+    def test_refresh_updates_the_price_and_records_price_history(self):
         item = WishListItem.objects.create(
             wish_list=self.wish_list, url="https://www.amazon.de/dp/B0TEST1234", title="X", price=Decimal("1")
         )
+        WishListItemPricePoint.objects.create(item=item, price=Decimal("1"))
         FakeHttpConnection.responses = [(200, {}, PRODUCT_PAGE.encode())]
 
-        self.client.post(self.url, {"form_name": "wish_item_refresh", "item_id": item.pk})
+        response = self.client.post(
+            self.url, {"form_name": "wish_item_refresh", "item_id": item.pk}, follow=True
+        )
 
         item.refresh_from_db()
         self.assertEqual(item.price, Decimal("1299.99"))
+        self.assertEqual(
+            list(item.price_points.values_list("price", flat=True)), [Decimal("1"), Decimal("1299.99")]
+        )
+        self.assertContains(response, "+1.298,99 €")
+        self.assertContains(response, "seit Hinzufügen")
+
+    def test_refresh_all_updates_every_item_and_reports_the_count(self):
+        first = WishListItem.objects.create(
+            wish_list=self.wish_list, url="https://www.amazon.de/dp/B0TEST1234", title="X", price=Decimal("1")
+        )
+        second = WishListItem.objects.create(
+            wish_list=self.wish_list, url="https://shop.example.com/p/sessel", title="Y", price=Decimal("1")
+        )
+        FakeHttpConnection.responses = [(200, {}, PRODUCT_PAGE.encode()), (200, {}, SHOP_PAGE.encode())]
+
+        response = self.client.post(self.url, {"form_name": "wish_list_refresh_all"}, follow=True)
+
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual(first.price, Decimal("1299.99"))
+        self.assertEqual(second.price, Decimal("349.00"))
+        self.assertContains(response, "2 Preis(e) aktualisiert.")
+
+    def test_quantity_stepper_changes_quantity_without_the_edit_form(self):
+        item = WishListItem.objects.create(
+            wish_list=self.wish_list, url="https://www.amazon.de/dp/B0TEST1234", title="X", quantity=1
+        )
+
+        self.client.post(self.url, {"form_name": "wish_item_quantity", "item_id": item.pk, "delta": "up"})
+        item.refresh_from_db()
+        self.assertEqual(item.quantity, 2)
+
+        self.client.post(self.url, {"form_name": "wish_item_quantity", "item_id": item.pk, "delta": "down"})
+        self.client.post(self.url, {"form_name": "wish_item_quantity", "item_id": item.pk, "delta": "down"})
+        item.refresh_from_db()
+        self.assertEqual(item.quantity, 1)
 
     def test_same_product_twice_is_refused_without_a_request(self):
         WishListItem.objects.create(
