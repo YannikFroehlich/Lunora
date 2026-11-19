@@ -21,6 +21,7 @@ from app.models import (
     ConversationMember,
     ExpenseGroupMember,
     Habit,
+    KanbanBoardShare,
     MealPlanEntry,
     Note,
     Profile,
@@ -37,6 +38,9 @@ from app.models import (
 )
 from app.services.chat import create_poll
 from app.services.expenses import add_expense, create_group
+from app.services.kanban import add_card, add_lane, create_board
+from app.services.note_folder_shares import share_folder
+from app.services.notes import create_note_folder
 from app.services.uml_content import empty_uml_document
 
 UNNAMED_INPUT_TYPES = {"hidden", "submit", "button", "reset", "image"}
@@ -118,6 +122,8 @@ class PageAccessibilityMarkupTests(TestCase):
         settings.save()
 
         self.note = Note.objects.create(owner=self.mira, title="Packliste")
+        self.note_folder = create_note_folder(self.mira, name="Reisen")
+        share_folder(self.mira, self.note_folder.pk, "lukas@example.com", "editor")
         self.conversation = Conversation.objects.create(created_by=self.mira)
         ConversationMember.objects.create(conversation=self.conversation, user=self.mira)
         ConversationMember.objects.create(conversation=self.conversation, user=self.lukas)
@@ -163,6 +169,11 @@ class PageAccessibilityMarkupTests(TestCase):
             owner=self.mira, title="Klassen", document=empty_uml_document()
         )
         self.whiteboard = Whiteboard.objects.create(owner=self.mira, title="Skizze")
+        # Two lanes and a shared board, so lane menus and the assignee field render too.
+        self.kanban = create_board(self.mira, "Projekt")
+        add_lane(self.kanban, "Team B")
+        KanbanBoardShare.objects.create(board=self.kanban, user=self.lukas)
+        add_card(self.kanban, self.mira, self.kanban.columns.first(), self.kanban.lanes.first(), "Karte")
         self.vocabulary = VocabularyList.objects.create(owner=self.mira, title="Englisch")
         VocabularyCard.objects.create(vocabulary_list=self.vocabulary, term="Haus", translation="house")
         MealPlanEntry.objects.create(owner=self.mira, recipe=self.recipe, date=date(2099, 3, 10))
@@ -192,6 +203,7 @@ class PageAccessibilityMarkupTests(TestCase):
             "/trash/",
             "/notes/",
             f"/notes/{self.note.pk}/",
+            f"/notes/folders/{self.note_folder.pk}/share/",
             "/messages/",
             f"/messages/{self.conversation.pk}/",
             f"/messages/{self.group.pk}/",
@@ -212,6 +224,8 @@ class PageAccessibilityMarkupTests(TestCase):
             f"/tools/uml/{self.diagram.pk}/",
             "/tools/whiteboard/",
             f"/tools/whiteboard/{self.whiteboard.pk}/",
+            "/tools/kanban/",
+            f"/tools/kanban/{self.kanban.pk}/",
             "/tools/wishlist/",
             f"/tools/wishlist/{self.wish_list.pk}/",
             "/tools/vocabulary/",

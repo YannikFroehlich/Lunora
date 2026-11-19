@@ -29,6 +29,13 @@ from app.services.note_content import NOTE_TEMPLATE_LABELS, NOTE_TEMPLATES
 from app.services.note_docx import CONTENT_TYPE as DOCX_CONTENT_TYPE
 from app.services.note_docx import note_docx_filename, render_note_docx
 from app.services.note_files import NOTE_FILE_ACCEPT, NOTE_IMAGE_ACCEPT
+from app.services.note_folder_shares import (
+    end_folder_share,
+    folder_share_labels,
+    folder_share_page,
+    set_folder_share_role,
+    share_folder,
+)
 from app.services.note_html import render_note_html
 from app.services.note_markdown import note_markdown_filename, render_note_markdown
 from app.services.note_pdf import note_pdf_filename, render_note_pdf
@@ -51,6 +58,7 @@ from app.services.notes import (
     diff_note_version,
     display_name,
     duplicate_note,
+    filter_by_tags,
     get_accessible_note,
     get_public_note,
     list_comment_threads,
@@ -59,6 +67,7 @@ from app.services.notes import (
     move_note_tree_item,
     note_accessible_user_ids,
     note_public_path,
+    note_tags_by_note,
     ping_note_presence,
     remove_note_share,
     rename_note_folder,
@@ -72,12 +81,16 @@ from app.services.notes import (
     set_note_folder,
     set_note_public_link,
     set_note_style,
+    set_note_tags,
     set_personal_state,
     set_trash_state,
     share_note,
+    split_tag_filters,
+    user_tag_names,
 )
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.user_preferences import format_user_datetime
+from app.views.navigation import posted_id
 
 # Every action of COMMAND_DEFAULTS in frontend/notes.js: the shortcut dialog always sends all of them,
 # so one missing here refuses every save (NotesTests.test_shortcut_actions_mirror_the_editor).
@@ -101,6 +114,7 @@ SHORTCUT_ACTIONS = {
     "bulletList",
     "orderedList",
     "taskList",
+    "taskDueDate",
     "indent",
     "outdent",
     "fontFamily",
@@ -190,6 +204,7 @@ def _optional_positive_int(value, label):
 
 def _build_note_navigation(user, note_items, selected_folder_id=None, *, custom_order=True):
     folders = list(NoteFolder.objects.filter(owner=user).values("id", "name", "parent_id", "position"))
+    share_labels = folder_share_labels(user)
     nodes = {
         item["id"]: {
             "kind": "folder",
@@ -200,6 +215,7 @@ def _build_note_navigation(user, note_items, selected_folder_id=None, *, custom_
             "items": [],
             "child_folders": [],
             "contains_selected": False,
+            "share_label": share_labels.get(item["id"], ""),
         }
         for item in folders
     }
@@ -269,6 +285,41 @@ def _build_note_navigation(user, note_items, selected_folder_id=None, *, custom_
 
 
 @login_required
+def note_folder_share(request, folder_id):
+    disabled = _feature_guard(request)
+    if disabled:
+        return disabled
+    try:
+        context = folder_share_page(request.user, folder_id)
+    except NoteFolder.DoesNotExist as error:
+        raise Http404 from error
+    folder = context["folder"]
+
+    form_name = request.POST.get("form_name") if request.method == "POST" else None
+    if form_name == "folder_leave" and context["incoming"]:
+        end_folder_share(context["incoming"])
+        django_messages.success(request, f"Du hast den Ordner „{folder.name}“ verlassen.")
+        return redirect("notes")
+    if form_name == "folder_share":
+        error = share_folder(
+            request.user, folder.pk, request.POST.get("identifier", "")[:254], request.POST.get("role", "")
+        )
+        if error:
+            django_messages.error(request, error)
+        else:
+            django_messages.success(request, "Der Ordner ist jetzt geteilt.")
+    elif form_name == "folder_share_role":
+        set_folder_share_role(request.user, posted_id(request, "share_id"), request.POST.get("role", ""))
+    elif form_name == "folder_unshare":
+        share = folder.shares.filter(pk=posted_id(request, "share_id")).first()
+        if share:
+            end_folder_share(share)
+    if form_name:
+        return redirect("note_folder_share", folder_id=folder.pk)
+    return render(request, "app/note_folder_share.html", {**context, "active_page": "notes"})
+
+
+@login_required
 def notes(request, note_id=None):
     disabled = _feature_guard(request)
     if disabled:
@@ -300,8 +351,10 @@ def notes(request, note_id=None):
         queryset = queryset.exclude(owner=request.user)
     elif scope == "owned":
         queryset = queryset.filter(owner=request.user)
+    tag_filters, text_query = split_tag_filters(query)
+    queryset = filter_by_tags(queryset, request.user, tag_filters)
     if query:
-        queryset = search_notes(queryset, query)
+        queryset = search_notes(queryset, text_query)
     order_map = {
         "custom": ("state_position", "id"),
         "created": ("-created_at", "-id"),
@@ -328,6 +381,9 @@ def notes(request, note_id=None):
     if selected_note:
         mark_shared_note_opened(request.user, selected_note)
 
+    tags = note_tags_by_note(request.user, [note.pk for note in note_list])
+    for note in note_list:
+        note.viewer_tags = tags.get(note.pk, [])
     note_items = [serialize_note(note, request.user, include_document=False) for note in note_list]
     selected_note_data = serialize_note(selected_note, request.user) if selected_note else None
     tree_items, folder_options = _build_note_navigation(
@@ -353,6 +409,8 @@ def notes(request, note_id=None):
         "shortcut_overrides": getattr(getattr(request.user, "profile", None), "note_shortcuts", {}),
         "note_color_choices": NoteUserState.COLOR_CHOICES,
         "note_icon_choices": NoteUserState.ICON_CHOICES,
+        "tag_options": user_tag_names(request.user),
+        "active_tags": tag_filters,
     }
     return render(request, "app/notes.html", context)
 
@@ -627,6 +685,9 @@ def note_action_api(request, note_id):
             return JsonResponse({"ok": True, "note": serialize_note(note, request.user)})
         if action == "style":
             note = set_note_style(request.user, note_id, color=payload.get("color"), icon=payload.get("icon"))
+            return JsonResponse({"ok": True, "note": serialize_note(note, request.user)})
+        if action == "tags":
+            note = set_note_tags(request.user, note_id, payload.get("tags"))
             return JsonResponse({"ok": True, "note": serialize_note(note, request.user)})
         if action in {"trash", "restore", "purge"}:
             note = set_trash_state(request.user, note_id, action=action)

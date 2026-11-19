@@ -25,6 +25,7 @@ from app.models import (
     Expense,
     Habit,
     HolidayOverride,
+    KanbanCard,
     NotificationPreference,
     Profile,
     Recipe,
@@ -58,6 +59,7 @@ from app.services.chat_files import CHAT_VOICE_MAX_SECONDS, validate_chat_upload
 from app.services.expenses import euro
 from app.services.habits import WEEKDAY_SHORT
 from app.services.image_uploads import PROFILE_IMAGE_ACCEPT, validate_profile_image_file
+from app.services.kanban import board_members
 from app.services.notes import display_name
 from app.services.notification_preferences import CATEGORY_DEFINITIONS
 from app.services.quick_add import parse_quick_add
@@ -891,6 +893,13 @@ class TaskForm(forms.ModelForm):
         required=False,
         widget=forms.CheckboxSelectMultiple,
     )
+    recurrence_until = forms.DateField(
+        label="Endet am",
+        required=False,
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        input_formats=["%Y-%m-%d"],
+    )
+    recurrence_count = forms.IntegerField(label="Noch … Mal", required=False, min_value=1, max_value=999)
 
     class Meta:
         model = Task
@@ -904,6 +913,8 @@ class TaskForm(forms.ModelForm):
             "recurrence_rule",
             "recurrence_interval",
             "recurrence_weekdays",
+            "recurrence_until",
+            "recurrence_count",
             "assignee",
         ]
         labels = {"title": "Neue Aufgabe"}
@@ -948,6 +959,9 @@ class TaskForm(forms.ModelForm):
         if cleaned_data.get("recurrence_rule") != "WEEKLY":
             weekdays = []
         cleaned_data["recurrence_weekdays"] = ",".join(sorted(weekdays))
+        if cleaned_data.get("recurrence_rule") in {None, "", Task.RECURRENCE_NONE}:
+            cleaned_data["recurrence_until"] = None
+            cleaned_data["recurrence_count"] = None
         if cleaned_data.get("parent") and cleaned_data.get("assignee"):
             # Subtasks follow their parent's assignee instead of having their own.
             self.add_error("assignee", "Nur Hauptaufgaben können zugewiesen werden.")
@@ -1380,6 +1394,42 @@ class WishListItemForm(forms.ModelForm):
     class Meta:
         model = WishListItem
         fields = ["title", "price", "quantity"]
+
+
+class KanbanCardForm(forms.ModelForm):
+    """A card's details from the board's edit dialog; column, lane and assignee are limited to the
+    card's own board and its members."""
+
+    class Meta:
+        model = KanbanCard
+        fields = ["title", "description", "color", "due_date", "assignee", "column", "lane"]
+        labels = {
+            "title": "Titel",
+            "description": "Beschreibung",
+            "color": "Farbe",
+            "due_date": "Fällig am",
+            "assignee": "Zuständig",
+            "column": "Spalte",
+            "lane": "Swimlane",
+        }
+        widgets = {
+            "title": forms.TextInput(attrs={"autocomplete": "off"}),
+            "description": forms.Textarea(attrs={"rows": 5}),
+            "due_date": forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        }
+
+    def __init__(self, *args, board, **kwargs):
+        kwargs.setdefault("auto_id", "kanban_card_%s")
+        super().__init__(*args, **kwargs)
+        self.fields["column"].queryset = board.columns.all()
+        self.fields["column"].empty_label = None
+        self.fields["lane"].queryset = board.lanes.all()
+        self.fields["lane"].empty_label = None
+        self.fields["assignee"].queryset = User.objects.filter(
+            pk__in=[user.pk for user in board_members(board)]
+        )
+        self.fields["assignee"].label_from_instance = display_name
+        self.fields["assignee"].empty_label = "Niemand"
 
 
 class TaskLabelForm(forms.ModelForm):

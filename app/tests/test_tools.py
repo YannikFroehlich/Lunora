@@ -435,6 +435,34 @@ class WhiteboardTests(TestCase):
                 self._document(_stroke("h1", type="highlight", points=[0, 0] * 2001))
             )
 
+    def test_sticky_notes_are_validated_searchable_and_previewed(self):
+        sticky = {
+            "id": "s1",
+            "type": "sticky",
+            "color": "green",
+            "x": 0,
+            "y": 0,
+            "w": 200,
+            "h": 200,
+            "text": "",
+        }
+        board = Whiteboard.objects.create(owner=self.user, title="Retro")
+
+        response = self._put(board, {"title": "Retro", "document": self._document(sticky)})
+        self.assertEqual(response.status_code, 200, response.content)
+        response = self._put(
+            board, {"title": "Retro", "document": self._document({**sticky, "text": "Mehr <Pausen>"})}
+        )
+        self.assertEqual(response.status_code, 200)
+        board.refresh_from_db()
+        self.assertEqual(board.plain_text, "Mehr <Pausen>")
+        for broken in ({**sticky, "width": 2}, {**sticky, "h": -5}, {**sticky, "text": "x" * 501}):
+            with self.subTest(broken=broken):
+                self.assertEqual(
+                    self._put(board, {"title": "Retro", "document": self._document(broken)}).status_code, 400
+                )
+        self.assertContains(self.client.get("/tools/whiteboard/"), 'fill="#d7ecd2"')
+
     def test_overview_shows_a_thumbnail_that_escapes_text(self):
         text = {
             "id": "t1",
@@ -744,6 +772,10 @@ class VocabularyTrainerTests(TestCase):
         card = created.cards.get()
         self.assertEqual((card.term, card.translation, card.box), ("la maison", "das Haus", 1))
         self.assertContains(self.client.get("/tools/vocabulary/"), "1 Vokabel(n)")
+        # The foreign side gets the pronunciation button.
+        self.assertContains(
+            self.client.get(f"/tools/vocabulary/{created.pk}/"), 'data-text="la maison" data-lang="fr"'
+        )
 
     def test_bulk_import_accepts_tab_semicolon_equals_and_reports_bad_lines(self):
         cards, errors = parse_bulk_cards(
@@ -1877,6 +1909,21 @@ class RecipeTests(TestCase):
         self.assertContains(
             self.client.get(f"/tools/recipes/{recipe.pk}/"), '<details class="vocab-details" open>'
         )
+
+    def test_shopping_list_suggests_recipes_its_items_already_cook(self):
+        Recipe.objects.create(owner=self.lea, title="Rührei", ingredients="3 Eier\n50 ml Milch\nSchnittlauch")
+        Recipe.objects.create(owner=self.lea, title="Brot", ingredients="500 g Mehl\nHefe\nWasser")
+        Recipe.objects.create(owner=self.tom, title="Toms Omelett", ingredients="Eier\nMilch")
+        for name in ("Eier", "Weizenmehl", "Frische Vollmilch"):
+            ShoppingItem.objects.create(owner=self.lea, name=name)
+
+        suggestions = self.client.get("/tools/shopping/").context["recipe_suggestions"]
+
+        self.assertEqual(
+            [(item["recipe"].title, item["matched"], item["total"]) for item in suggestions],
+            [("Pfannkuchen", 2, 3), ("Rührei", 2, 3)],
+        )
+        self.assertEqual(suggestions[1]["missing"], ["Schnittlauch"])
 
     def test_list_shows_only_own_recipes_with_ingredient_count(self):
         Recipe.objects.create(owner=self.tom, title="Toms Chili")

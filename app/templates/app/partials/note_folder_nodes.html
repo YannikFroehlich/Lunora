@@ -14,7 +14,7 @@
          {% if item.contains_selected %}open{% endif %}>
     <summary>
         <span class="note-folder-chevron" aria-hidden="true"><i class="fa-solid fa-chevron-right"></i></span>
-        <span class="note-folder-label"><i class="fa-regular fa-folder"></i><strong>{{ item.name }}</strong></span>
+        <span class="note-folder-label"{% if item.share_label %} title="{{ item.share_label }}"{% endif %}><i class="{% if item.share_label %}fa-solid fa-folder-open{% else %}fa-regular fa-folder{% endif %}"></i><strong>{{ item.name }}</strong>{% if item.share_label %}<i class="fa-solid fa-user-group note-folder-shared" aria-hidden="true"></i><span class="visually-hidden">{{ item.share_label }}</span>{% endif %}</span>
         <span class="note-folder-actions">
             <button type="button" draggable="false" data-folder-action="new-note" data-folder-id="{{ item.id }}" aria-label="Notiz in {{ item.name }} erstellen" title="Neue Notiz">
                 <i class="fa-regular fa-note-sticky"></i><i class="fa-solid fa-plus"></i>
@@ -22,6 +22,9 @@
             <button type="button" draggable="false" data-folder-action="create" data-parent-id="{{ item.id }}" aria-label="Unterordner in {{ item.name }} erstellen" title="Neuer Unterordner">
                 <i class="fa-regular fa-folder"></i><i class="fa-solid fa-plus"></i>
             </button>
+            <a href="{% url 'note_folder_share' item.id %}" draggable="false" aria-label="{{ item.name }} teilen" title="Teilen">
+                <i class="fa-solid fa-user-plus"></i>
+            </a>
             <button type="button" draggable="false" data-folder-action="rename" data-folder-id="{{ item.id }}" aria-label="{{ item.name }} umbenennen" title="Umbenennen">
                 <i class="fa-solid fa-pen"></i>
             </button>

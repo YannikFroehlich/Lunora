@@ -93,12 +93,9 @@
   };
 
   if (typeof document === "undefined") return;
-  const root = document.querySelector("[data-vocab-practice]");
-  if (!root) return;
 
-  // ---- Practice session -------------------------------------------------------------------------
+  // ---- Pronunciation (browser speech synthesis, nothing leaves the device) -----------------------
 
-  const SETTINGS_KEY = "lunora-vocab-practice";
   const SPEECH_LANGUAGES = {
     de: "de-DE",
     en: "en-GB",
@@ -110,6 +107,44 @@
     ru: "ru-RU",
     tr: "tr-TR",
   };
+
+  function canSpeak(language) {
+    return Boolean(SPEECH_LANGUAGES[language]) && "speechSynthesis" in window;
+  }
+
+  function speak(text, language) {
+    if (!canSpeak(language)) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = SPEECH_LANGUAGES[language];
+    window.speechSynthesis.speak(utterance);
+  }
+
+  // Buttons carrying data-vocab-say (the list page) read their data-text in their data-lang. They
+  // start hidden and only show where the browser can speak; the list is swapped in place, so again
+  // after every update.
+  function showSayButtons() {
+    document.querySelectorAll("[data-vocab-say]").forEach((button) => {
+      button.hidden = !canSpeak(button.dataset.lang);
+    });
+  }
+
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-vocab-say]");
+    if (!button) return;
+    // Inside a <summary> the click would also open the card's edit form.
+    event.preventDefault();
+    speak(button.dataset.text, button.dataset.lang);
+  });
+  document.addEventListener("lunora:soft-update", showSayButtons);
+  showSayButtons();
+
+  const root = document.querySelector("[data-vocab-practice]");
+  if (!root) return;
+
+  // ---- Practice session -------------------------------------------------------------------------
+
+  const SETTINGS_KEY = "lunora-vocab-practice";
   const REQUEUE_GAP = 3;
 
   const payload = JSON.parse(document.getElementById("vocab-practice-data").textContent);
@@ -128,6 +163,7 @@
   const feedbackLabel = root.querySelector("[data-vocab-feedback]");
   const cardBox = root.querySelector("[data-vocab-card]");
   const speakButton = root.querySelector("[data-vocab-speak]");
+  const speakAnswerButton = root.querySelector("[data-vocab-speak-answer]");
   const progressBar = root.querySelector("[data-vocab-progress-bar]");
   const progressLabel = root.querySelector("[data-vocab-progress-label]");
   const controls = Object.fromEntries(
@@ -255,6 +291,7 @@
     feedbackLabel.textContent = "";
     cardBox.dataset.state = "";
     speakButton.hidden = !canSpeak(side.promptLang);
+    speakAnswerButton.hidden = !canSpeak(side.answerLang);
     Object.entries(controls).forEach(([mode, node]) => (node.hidden = mode !== settings.mode));
     nextRow.hidden = true;
     overrideButton.hidden = true;
@@ -385,18 +422,6 @@
     root.querySelector("[data-vocab-action='retry-wrong']").hidden = !mistakes.length;
   }
 
-  function canSpeak(language) {
-    return Boolean(SPEECH_LANGUAGES[language]) && "speechSynthesis" in window;
-  }
-
-  function speak(text, language) {
-    if (!canSpeak(language)) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = SPEECH_LANGUAGES[language];
-    window.speechSynthesis.speak(utterance);
-  }
-
   // ---- Events -----------------------------------------------------------------------------------
 
   setupForm.addEventListener("submit", (event) => {
@@ -483,6 +508,11 @@
   speakButton.addEventListener("click", () => {
     const side = sides(session.current);
     speak(side.prompt, side.promptLang);
+  });
+
+  speakAnswerButton.addEventListener("click", () => {
+    const side = sides(session.current);
+    speak(side.answer, side.answerLang);
   });
 
   document.addEventListener("keydown", (event) => {

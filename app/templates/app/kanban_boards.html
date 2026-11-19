@@ -1,0 +1,56 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}Kanban-Boards | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell tools-shell">
+    <header class="page-hero">
+        <div>
+            <a class="tools-back-link" href="{% url 'tools' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Werkzeuge</a>
+            <h1>Kanban-Boards</h1>
+            <p>Eigene Spalten und Swimlanes, Karten per Drag &amp; Drop verschieben – allein oder gemeinsam.</p>
+        </div>
+        <i class="fa-solid fa-table-columns hero-branch" aria-hidden="true"></i>
+    </header>
+
+    <section class="glass-panel uml-create-panel">
+        <form class="uml-create-form" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="kanban_board_create">
+            <label class="uml-create-field">
+                <span class="visually-hidden">Titel des neuen Boards</span>
+                <i class="fa-solid fa-pen" aria-hidden="true"></i>
+                <input type="text" name="title" maxlength="{{ title_max_length }}" placeholder="Titel, z. B. „Umzug“ oder „Sprint 12“" required>
+            </label>
+            <button class="primary-button" type="submit"><i class="fa-solid fa-plus" aria-hidden="true"></i> Neues Board</button>
+        </form>
+    </section>
+
+    {% if boards %}
+    <ul class="uml-diagram-list">
+        {% for board in boards %}
+        <li class="glass-panel uml-diagram-card">
+            <a class="uml-diagram-link" href="{% url 'kanban_board' board.id %}">
+                <span class="tool-card-icon" aria-hidden="true"><i class="fa-solid fa-table-columns"></i></span>
+                <span>
+                    <strong>{{ board.title }}</strong>
+                    <small>{{ board.card_count }} Karte(n) · geändert {{ board.updated_label }}{% if not board.is_own %} · geteilt von {{ board.owner_name }}{% elif board.member_count %} · geteilt mit {{ board.member_count }}{% endif %}</small>
+                </span>
+            </a>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state-card uml-empty">
+        <i class="fa-solid fa-table-columns" aria-hidden="true"></i>
+        <strong>Noch keine Boards</strong>
+        <p>Lege oben ein Board an. Es startet mit den Spalten „Offen“, „In Arbeit“ und „Erledigt“, die du umbenennen, ergänzen und um Swimlanes erweitern kannst.</p>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

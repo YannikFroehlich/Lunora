@@ -23,9 +23,12 @@ from app.models import (
     Countdown,
     ExpenseGroup,
     Habit,
+    KanbanBoard,
     MealPlanEntry,
     Note,
     NoteFolder,
+    NoteFolderShare,
+    NoteTag,
     NoteTemplate,
     Recipe,
     ScheduledChatMessage,
@@ -64,6 +67,7 @@ Dieses Archiv enthält alle Daten, die du in Lunora angelegt hast:
 - uml/*.json: UML-Diagramme (lassen sich im Editor wieder importieren)
 - whiteboards/*.json: Whiteboards (lassen sich im Editor wieder importieren)
 - whiteboard-kommentare.json: deine Kommentare auf Whiteboards
+- kanban.json: deine Kanban-Boards mit Spalten, Swimlanes und Karten
 - urlaub.json: Urlaubsjahre, Urlaube und eigene Feiertage
 - gewohnheiten.json: Gewohnheiten mit allen abgehakten Tagen
 - lesezeichen.json: Lesezeichen vom Dashboard
@@ -206,6 +210,7 @@ def write_user_export(user, fileobj):
                 name,
                 {"format": "lunora-whiteboard", "title": board.title, "document": board.document},
             )
+        _add_json(archive, "kanban.json", _kanban_boards(user))
         _add_json(
             archive,
             "whiteboard-kommentare.json",
@@ -214,6 +219,37 @@ def write_user_export(user, fileobj):
                 for comment in WhiteboardComment.objects.filter(author=user).select_related("board")
             ],
         )
+
+
+def _kanban_boards(user):
+    """Own boards; assignees by display name, so other people's e-mails stay out."""
+    boards = []
+    for board in KanbanBoard.objects.filter(owner=user).prefetch_related(
+        "columns", "lanes", "cards__assignee__profile"
+    ):
+        columns = {column.pk: column.title for column in board.columns.all()}
+        lanes = {lane.pk: lane.title for lane in board.lanes.all()}
+        boards.append(
+            {
+                "title": board.title,
+                "columns": list(columns.values()),
+                "lanes": list(lanes.values()),
+                "cards": [
+                    {
+                        "title": card.title,
+                        "description": card.description,
+                        "column": columns[card.column_id],
+                        "lane": lanes[card.lane_id],
+                        "color": card.color,
+                        "due_date": card.due_date,
+                        "assignee": display_name(card.assignee) if card.assignee else "",
+                        "created_at": card.created_at,
+                    }
+                    for card in board.cards.all()
+                ],
+            }
+        )
+    return boards
 
 
 def _expense_groups(user):
@@ -302,6 +338,9 @@ def _account(user, archive):
 
 def _notes(user, archive):
     notes = []
+    tags = {}
+    for note_id, name in NoteTag.objects.filter(user=user).values_list("note_id", "name"):
+        tags.setdefault(note_id, []).append(name)
     for note in Note.objects.filter(owner=user).prefetch_related("attachments").order_by("id"):
         markdown_name = f"notizen/{note.pk}-{note_markdown_filename(note)}"
         archive.writestr(markdown_name, render_note_markdown(note))
@@ -325,6 +364,7 @@ def _notes(user, archive):
                 "document": note.document,
                 "plain_text": note.plain_text,
                 "markdown": markdown_name,
+                "tags": tags.get(note.pk, []),
                 "in_trash": note.deleted_at is not None,
                 "created_at": note.created_at,
                 "updated_at": note.updated_at,
@@ -334,6 +374,11 @@ def _notes(user, archive):
     return {
         "notes": notes,
         "folders": list(NoteFolder.objects.filter(owner=user).values("id", "name", "parent_id")),
+        # People by display name, so their e-mail addresses stay out.
+        "shared_folders": [
+            {"folder_id": share.folder_id, "with": display_name(share.user), "role": share.role}
+            for share in NoteFolderShare.objects.filter(folder__owner=user).select_related("user__profile")
+        ],
         "templates": list(NoteTemplate.objects.filter(owner=user).values("name", "document", "created_at")),
     }
 
@@ -356,6 +401,8 @@ def _tasks(user):
                 "recurrence_rule": task.recurrence_rule,
                 "recurrence_interval": task.recurrence_interval,
                 "recurrence_weekdays": task.recurrence_weekdays,
+                "recurrence_until": task.recurrence_until,
+                "recurrence_count": task.recurrence_count,
                 "is_done": task.is_done,
                 "is_in_progress": task.is_in_progress,
                 "shared_with": [share.user.get_username() for share in task.shares.all()],

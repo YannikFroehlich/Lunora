@@ -43,3 +43,27 @@ describe("cleanSettings", () => {
     expect({ ...timer.cleanSettings(undefined) }).toEqual({ ...timer.DEFAULT_SETTINGS });
   });
 });
+
+describe("focus history", () => {
+  const today = new Date(2026, 10, 19, 10);
+
+  it("uses the local calendar day", () => {
+    expect(timer.dayKey(new Date(2026, 0, 5, 23, 30))).toBe("2026-01-05");
+  });
+
+  it("counts days in a row and keeps the streak while today is still empty", () => {
+    const history = { "2026-11-18": 2, "2026-11-17": 1, "2026-11-15": 4 };
+    expect(timer.focusStreak(history, today)).toBe(2);
+    expect(timer.focusStreak({ ...history, "2026-11-19": 1 }, today)).toBe(3);
+    expect(timer.focusStreak({ "2026-11-17": 1 }, today)).toBe(0);
+  });
+
+  it("sums the last seven days and drops old or invalid entries", () => {
+    expect(timer.weekTotal({ "2026-11-19": 1, "2026-11-13": 2, "2026-11-12": 5 }, today)).toBe(3);
+    expect({
+      ...timer.cleanHistory({ "2026-11-19": "3", "2025-01-01": 2, nonsense: 1, "2026-11-18": -1 }, today),
+    }).toEqual({
+      "2026-11-19": 3,
+    });
+  });
+});

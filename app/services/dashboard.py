@@ -162,6 +162,15 @@ DASHBOARD_WIDGETS = (
         class_name="countdown-panel",
         default_size="full",
     ),
+    # Full width like the countdown, so the default layout keeps whole rows.
+    DashboardWidget(
+        id="activity",
+        label="Letzte Aktivität",
+        template="app/partials/dashboard_activity.html",
+        class_name="list-panel",
+        default_size="full",
+        options={"limit": 5},
+    ),
 )
 
 
@@ -345,6 +354,7 @@ def dashboard_presets():
                     "meal_plan",
                     "expenses",
                     "countdown",
+                    "activity",
                 ],
                 {
                     "tasks": {"size": "large", "limit": 8},
@@ -372,6 +382,7 @@ def dashboard_presets():
                     "meal_plan",
                     "expenses",
                     "countdown",
+                    "activity",
                 ],
                 {
                     "clock": {"size": "small"},

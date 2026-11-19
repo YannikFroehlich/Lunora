@@ -1,0 +1,184 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}{{ board.title }} | Kanban | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell tools-shell kanban-shell">
+    <div class="soft-contents" id="kanban-board" data-soft-region data-kanban-board data-version="{{ version }}"{% if is_shared %} data-poll-url="{% url 'kanban_board' board.id %}?version=1"{% endif %}>
+    <header class="page-hero">
+        <div>
+            <a class="tools-back-link" href="{% url 'kanban_boards' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Alle Boards</a>
+            <h1>{{ board.title }}</h1>
+            <p>{{ grid.card_count }} Karte(n){% if not is_owner %} · geteilt von {{ owner_name }}{% elif members %} · geteilt mit {{ members|length }}{% endif %}</p>
+        </div>
+        <i class="fa-solid fa-table-columns hero-branch" aria-hidden="true"></i>
+    </header>
+
+    <div class="glass-panel kanban-toolbar">
+        <form class="kanban-inline-form" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="kanban_column_add">
+            <input type="text" name="title" maxlength="{{ column_title_max_length }}" placeholder="Neue Spalte …" aria-label="Name der neuen Spalte" autocomplete="off" required>
+            <button class="ghost-button" type="submit"><i class="fa-solid fa-plus" aria-hidden="true"></i> Spalte</button>
+        </form>
+        <form class="kanban-inline-form" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="kanban_lane_add">
+            <input type="text" name="title" maxlength="{{ column_title_max_length }}" placeholder="Neue Swimlane …" aria-label="Name der neuen Swimlane" autocomplete="off" required>
+            <button class="ghost-button" type="submit"><i class="fa-solid fa-plus" aria-hidden="true"></i> Swimlane</button>
+        </form>
+        <details class="kanban-settings" id="kanban-settings">
+            <summary><i class="fa-solid fa-gear" aria-hidden="true"></i> Board{% if is_owner %} &amp; Teilen{% if members %} ({{ members|length }}){% endif %}{% endif %}</summary>
+            <div class="kanban-menu-panel kanban-settings-panel">
+                <form class="kanban-menu-form" method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="kanban_rename">
+                    <label class="vocab-field">
+                        <span>Name des Boards</span>
+                        <input type="text" name="title" value="{{ board.title }}" maxlength="{{ title_max_length }}" autocomplete="off" required>
+                    </label>
+                    <button class="ghost-button" type="submit">Umbenennen</button>
+                </form>
+                {% if is_owner %}
+                <p class="kanban-hint">Alle, mit denen du teilst, bearbeiten Spalten, Swimlanes und Karten mit. Was jemand ändert, sehen die anderen nach ein paar Sekunden.</p>
+                {% if members %}
+                <ul class="shopping-members">
+                    {% for member in members %}
+                    <li>
+                        <span>{{ member.name }}</span>
+                        <form method="post" data-confirm="{{ member.name }} wirklich vom Board entfernen?">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_name" value="kanban_unshare">
+                            <input type="hidden" name="user_id" value="{{ member.id }}">
+                            <button class="icon-button" type="submit" aria-label="{{ member.name }} entfernen" title="Entfernen"><i class="fa-solid fa-user-minus" aria-hidden="true"></i></button>
+                        </form>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+                <form class="kanban-menu-form" method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="kanban_share">
+                    <label class="vocab-field">
+                        <span>Teilen mit (E-Mail oder Benutzername)</span>
+                        <input type="text" name="identifier" maxlength="254" autocomplete="off" required>
+                    </label>
+                    <button class="ghost-button" type="submit"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i> Teilen</button>
+                </form>
+                <form method="post" data-no-soft data-confirm="Dieses Board mit allen Karten löschen?">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="kanban_delete">
+                    <button class="ghost-button kanban-danger" type="submit"><i class="fa-regular fa-trash-can" aria-hidden="true"></i> Board löschen</button>
+                </form>
+                {% else %}
+                <form method="post" data-no-soft data-confirm="Das Board von {{ owner_name }} wirklich verlassen?">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="kanban_leave">
+                    <button class="ghost-button kanban-danger" type="submit"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i> Board verlassen</button>
+                </form>
+                {% endif %}
+            </div>
+        </details>
+        <p class="kanban-hint kanban-keys">Karten ziehen oder mit der Tastatur verschieben: Alt+←/→ wechselt die Spalte, Alt+↑/↓ die Reihenfolge.</p>
+    </div>
+
+
+    <div class="glass-panel kanban-scroll" id="kanban-scroll">
+        <div class="kanban-grid" style="--kanban-columns: {{ grid.columns|length }}">
+            {% for column in grid.columns %}
+            <div class="kanban-column-head{% if column.over_limit %} is-over-limit{% endif %}">
+                <h2>{{ column.title }}</h2>
+                <span class="kanban-count" title="{% if column.wip_limit %}{{ column.card_count }} von höchstens {{ column.wip_limit }} Karten{% else %}{{ column.card_count }} Karte(n){% endif %}">{{ column.card_count }}{% if column.wip_limit %}/{{ column.wip_limit }}{% endif %}</span>
+                {% include "app/partials/kanban_item_menu.html" with kind="column" item=column is_first=forloop.first is_last=forloop.last card_count=column.card_count %}
+            </div>
+            {% endfor %}
+
+            {% for row in grid.lanes %}
+            {% if grid.lanes|length > 1 %}
+            <div class="kanban-lane-head">
+                <h2>{{ row.lane.title }}</h2>
+                <span class="kanban-count">{{ row.card_count }}</span>
+                {% include "app/partials/kanban_item_menu.html" with kind="lane" item=row.lane is_first=forloop.first is_last=forloop.last card_count=row.card_count %}
+            </div>
+            {% endif %}
+            {% for cell in row.cells %}
+            <ul class="kanban-cell" data-kanban-cell data-column-id="{{ cell.column.id }}" data-lane-id="{{ row.lane.id }}" aria-label="{{ cell.column.title }}{% if grid.lanes|length > 1 %} · {{ row.lane.title }}{% endif %}">
+                {% for card in cell.cards %}
+                <li class="kanban-card{% if card.color %} has-tone tone-{{ card.color }}{% endif %}{% if card.is_overdue %} is-overdue{% endif %}" id="card-{{ card.id }}" draggable="true" data-kanban-card
+                    data-card-id="{{ card.id }}" data-title="{{ card.title }}" data-description="{{ card.description }}" data-color="{{ card.color }}"
+                    data-due="{{ card.due_date|date:'Y-m-d' }}" data-assignee="{{ card.assignee_id|default_if_none:'' }}" data-column="{{ card.column_id }}" data-lane="{{ card.lane_id }}">
+                    <button class="kanban-card-open" type="button" data-kanban-card-open>
+                        <strong>{{ card.title }}</strong>
+                        {% if card.due_label or card.description or card.assignee_name %}
+                        <span class="kanban-card-meta">
+                            {% if card.due_label %}<span class="kanban-due"><i class="fa-regular fa-calendar" aria-hidden="true"></i> {% if card.is_overdue %}<span class="visually-hidden">Überfällig:</span>{% endif %}{{ card.due_label }}</span>{% endif %}
+                            {% if card.description %}<span title="Hat eine Beschreibung"><i class="fa-solid fa-align-left" aria-hidden="true"></i><span class="visually-hidden">Mit Beschreibung</span></span>{% endif %}
+                            {% if card.assignee_name %}<span class="kanban-avatar" title="Zuständig: {{ card.assignee_name }}"><span aria-hidden="true">{{ card.assignee_initials }}</span><span class="visually-hidden">Zuständig: {{ card.assignee_name }}</span></span>{% endif %}
+                        </span>
+                        {% endif %}
+                    </button>
+                </li>
+                {% endfor %}
+                <li class="kanban-add">
+                    <form class="kanban-add-form" method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="form_name" value="kanban_card_add">
+                        <input type="hidden" name="column_id" value="{{ cell.column.id }}">
+                        <input type="hidden" name="lane_id" value="{{ row.lane.id }}">
+                        <input type="text" name="title" maxlength="{{ card_title_max_length }}" placeholder="Karte hinzufügen …" aria-label="Neue Karte in „{{ cell.column.title }}“{% if grid.lanes|length > 1 %}, {{ row.lane.title }}{% endif %}" autocomplete="off" required>
+                        <button class="icon-button" type="submit" aria-label="Karte hinzufügen" title="Hinzufügen"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
+                    </form>
+                </li>
+            </ul>
+            {% endfor %}
+            {% endfor %}
+        </div>
+    </div>
+
+    <form id="kanban-move-form" method="post" hidden>
+        {% csrf_token %}
+        <input type="hidden" name="form_name" value="kanban_card_move">
+        <input type="hidden" name="card_id" value="">
+        <input type="hidden" name="column_id" value="">
+        <input type="hidden" name="lane_id" value="">
+        <input type="hidden" name="before_id" value="">
+    </form>
+
+    <dialog class="kanban-dialog" id="kanban-card-dialog" aria-labelledby="kanban-card-dialog-title">
+        <form class="glass-panel kanban-dialog-card" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="kanban_card_update">
+            <input type="hidden" name="card_id" value="" data-kanban-field="card_id">
+            <header class="kanban-dialog-header">
+                <h2 id="kanban-card-dialog-title">Karte bearbeiten</h2>
+                <button class="icon-button" type="button" data-kanban-dialog-close aria-label="Dialog schließen"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+            </header>
+            <label class="vocab-field"><span>{{ card_form.title.label }}</span>{{ card_form.title }}</label>
+            <label class="vocab-field"><span>{{ card_form.description.label }}</span>{{ card_form.description }}</label>
+            <div class="kanban-dialog-grid">
+                <label class="vocab-field"><span>{{ card_form.column.label }}</span>{{ card_form.column }}</label>
+                <label class="vocab-field"{% if grid.lanes|length < 2 %} hidden{% endif %}><span>{{ card_form.lane.label }}</span>{{ card_form.lane }}</label>
+                <label class="vocab-field"><span>{{ card_form.due_date.label }}</span>{{ card_form.due_date }}</label>
+                <label class="vocab-field"{% if not is_shared %} hidden{% endif %}><span>{{ card_form.assignee.label }}</span>{{ card_form.assignee }}</label>
+                <label class="vocab-field"><span>{{ card_form.color.label }}</span>{{ card_form.color }}</label>
+            </div>
+            <div class="kanban-dialog-actions">
+                <button class="ghost-button kanban-danger" type="submit" name="form_name" value="kanban_card_delete" formnovalidate data-confirm="Diese Karte löschen?"><i class="fa-regular fa-trash-can" aria-hidden="true"></i> Löschen</button>
+                <span></span>
+                <button class="ghost-button" type="button" data-kanban-dialog-close>Abbrechen</button>
+                <button class="primary-button" type="submit"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Speichern</button>
+            </div>
+        </form>
+    </dialog>
+    </div>
+</section>
+{% endblock %}
+
+{% block page_js %}
+<script src="{% versioned_static 'js/kanban.js' %}"></script>
+{% endblock %}

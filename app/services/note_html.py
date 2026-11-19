@@ -21,6 +21,7 @@ from app.services.note_content import (
     ALLOWED_LINE_HEIGHTS,
     FORM_FIELD_BLANK,
     HEX_COLOR_RE,
+    task_due_label,
 )
 from app.services.note_markdown import NoteMarkdownRenderer
 
@@ -75,10 +76,12 @@ class NoteHtmlRenderer:
         if node_type == "taskItem":
             checked = attrs.get("checked") is True
             label = "erledigt" if checked else "offen"
+            due = task_due_label(attrs.get("dueDate"))
+            due_html = f'<small class="task-due">{escape(due)}</small>' if due else ""
             return (
                 f'<li class="task-item{" is-checked" if checked else ""}">'
                 f'<input type="checkbox" disabled{" checked" if checked else ""} aria-label="{label}">'
-                f"<div>{self.blocks(content)}</div></li>"
+                f"<div>{self.blocks(content)}</div>{due_html}</li>"
             )
         if node_type == "blockquote":
             return f"<blockquote>{self.blocks(content)}</blockquote>"

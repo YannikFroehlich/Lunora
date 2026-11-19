@@ -1,5 +1,6 @@
 import json
 import re
+from datetime import date
 from urllib.parse import urlparse
 
 from django.core.exceptions import ValidationError
@@ -227,7 +228,7 @@ NODE_ATTRIBUTES = {
     "heading": {"level", "textAlign", *BLOCK_BOX_ATTRIBUTES},
     "orderedList": {"start", "type"},
     "codeBlock": {"language"},
-    "taskItem": {"checked"},
+    "taskItem": {"checked", "dueDate"},
     "tableCell": {
         "colspan",
         "rowspan",
@@ -256,6 +257,18 @@ NODE_ATTRIBUTES = {
 }
 
 
+def _is_iso_date(value):
+    try:
+        return isinstance(value, str) and len(value) == 10 and bool(date.fromisoformat(value))
+    except ValueError:
+        return False
+
+
+def task_due_label(value):
+    """A checklist item's due date for exports: "2026-11-20" → "fällig 20.11.2026"."""
+    return f"fällig {date.fromisoformat(value):%d.%m.%Y}" if _is_iso_date(value) else ""
+
+
 def _validate_node_attrs(node_type, attrs, state):
     allowed = NODE_ATTRIBUTES.get(node_type, set())
     if set(attrs) - allowed:
@@ -275,6 +288,8 @@ def _validate_node_attrs(node_type, attrs, state):
         raise ValidationError("Diese Programmiersprache ist nicht erlaubt.")
     if node_type == "taskItem" and not isinstance(attrs.get("checked", False), bool):
         raise ValidationError("Der Checklistenstatus ist ungültig.")
+    if node_type == "taskItem" and attrs.get("dueDate") is not None and not _is_iso_date(attrs["dueDate"]):
+        raise ValidationError("Das Fälligkeitsdatum ist ungültig.")
     if node_type in {"tableCell", "tableHeader"}:
         for key in ("colspan", "rowspan"):
             if key in attrs and (not isinstance(attrs[key], int) or not 1 <= attrs[key] <= 20):

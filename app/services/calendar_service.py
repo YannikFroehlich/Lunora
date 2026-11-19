@@ -259,6 +259,21 @@ def build_calendar_feed(user, *, calendar_name, now=None):
     return "".join(f"{_ics_fold(line)}\r\n" for line in lines)
 
 
+def build_event_ics(event):
+    """One event as a standalone .ics file to import elsewhere or pass on (METHOD:PUBLISH, so mail
+    programs don't treat it as an invitation to answer)."""
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//Lunora//Kalender//DE",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        *_ics_event_lines(event),
+        "END:VCALENDAR",
+    ]
+    return "".join(f"{_ics_fold(line)}\r\n" for line in lines)
+
+
 def _ics_event_lines(event):
     category_label = event.get_category_display()
     summary = event.title

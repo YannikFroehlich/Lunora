@@ -36,6 +36,7 @@ from app.models import (
     NoteFolder,
     NoteLink,
     NoteShare,
+    NoteTag,
     NoteTemplate,
     NoteUserState,
     NoteVersion,
@@ -197,6 +198,12 @@ def get_note_state(note, user):
     return state
 
 
+def _sync_folder_shares(note):
+    from app.services.note_folder_shares import sync_note_shares
+
+    sync_note_shares(note)
+
+
 def _next_tree_position(user, folder_id):
     folder_max = (
         NoteFolder.objects.filter(owner=user, parent_id=folder_id).aggregate(value=Max("position"))["value"]
@@ -277,7 +284,10 @@ def rename_note_folder(user, folder_id, *, name):
 
 @transaction.atomic
 def delete_note_folder(user, folder_id):
+    from app.services.note_folder_shares import end_shares_of_deleted_folder
+
     folder = get_note_folder(user, folder_id, for_update=True)
+    end_shares_of_deleted_folder(folder)
     parent_id = folder.parent_id
     siblings = _tree_container_items(user, parent_id)
     contents = _tree_container_items(user, folder.id)
@@ -308,6 +318,8 @@ def set_note_folder(user, note_id, folder_id):
         state.folder = folder
         state.position = _next_tree_position(user, folder.id if folder else None)
         state.save(update_fields=["folder", "position"])
+        if note.owner_id == user.id:
+            _sync_folder_shares(note)
     return note
 
 
@@ -435,6 +447,12 @@ def move_note_tree_item(user, *, item_type, item_id, placement, target_type=None
         {"type": item_type, "id": item_id, "position": 0, "object": moved_object},
     )
     _reindex_tree_container(items, destination_id)
+    from app.services.note_folder_shares import sync_folder_tree
+
+    if moved_folder:
+        sync_folder_tree(user.id, moved_folder.id)
+    elif moved_note.owner_id == user.id:
+        _sync_folder_shares(moved_note)
     return moved_note or moved_folder
 
 
@@ -459,7 +477,71 @@ def create_note(user, *, title="Unbenannte Notiz", template="blank", custom_temp
         folder=folder,
         position=_next_tree_position(user, folder.id if folder else None),
     )
+    if folder:
+        _sync_folder_shares(note)
     return note
+
+
+MAX_TAGS_PER_NOTE = 10
+TAG_RE = re.compile(r"^[\w-]{1,30}$")
+# "#tag" in a search: notes the searching user tagged that way.
+TAG_FILTER_RE = re.compile(r"(?:^|\s)#([\w-]{1,30})(?=\s|$)")
+
+
+def clean_note_tags(values):
+    """Lowercase tags without "#", each a word of letters, digits, "-" or "_"; duplicates dropped."""
+    if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
+        raise ValidationError("Die Tags sind ungültig.")
+    tags = list(
+        dict.fromkeys(value.strip().lstrip("#").lower() for value in values if value.strip().lstrip("#"))
+    )
+    if any(not TAG_RE.fullmatch(tag) for tag in tags):
+        raise ValidationError(
+            "Tags bestehen aus Buchstaben, Ziffern, „-“ oder „_“ und sind höchstens 30 Zeichen lang."
+        )
+    if len(tags) > MAX_TAGS_PER_NOTE:
+        raise ValidationError(f"Eine Notiz kann höchstens {MAX_TAGS_PER_NOTE} Tags haben.")
+    return tags
+
+
+@transaction.atomic
+def set_note_tags(user, note_id, values):
+    note = get_accessible_note(user, note_id)
+    tags = clean_note_tags(values)
+    NoteTag.objects.filter(note=note, user=user).exclude(name__in=tags).delete()
+    existing = set(NoteTag.objects.filter(note=note, user=user).values_list("name", flat=True))
+    NoteTag.objects.bulk_create(
+        NoteTag(note=note, user=user, name=tag) for tag in tags if tag not in existing
+    )
+    return note
+
+
+def note_tags_by_note(user, note_ids):
+    tags = {}
+    for note_id, name in NoteTag.objects.filter(user=user, note_id__in=note_ids).values_list(
+        "note_id", "name"
+    ):
+        tags.setdefault(note_id, []).append(name)
+    return tags
+
+
+def user_tag_names(user):
+    return list(NoteTag.objects.filter(user=user).values_list("name", flat=True).distinct().order_by("name"))
+
+
+def split_tag_filters(raw_query):
+    """("#arbeit plan" →) (["arbeit"], "plan"): the tags to filter by and the rest of the search."""
+    query = str(raw_query or "")
+    tags = list(dict.fromkeys(tag.lower() for tag in TAG_FILTER_RE.findall(query)))
+    return tags, TAG_FILTER_RE.sub(" ", query).strip()
+
+
+def filter_by_tags(queryset, user, tags):
+    for tag in tags:
+        queryset = queryset.filter(
+            Exists(NoteTag.objects.filter(note_id=OuterRef("pk"), user=user, name=tag))
+        )
+    return queryset
 
 
 def serialize_note(note, user, *, include_document=True):
@@ -505,6 +587,12 @@ def serialize_note(note, user, *, include_document=True):
         "updated_at": note.updated_at.isoformat(),
         "updated_by": display_name(note.last_edited_by) if note.last_edited_by else display_name(note.owner),
         "owner": {"id": note.owner_id, "name": display_name(note.owner)},
+        # The notes list sets viewer_tags for all notes at once; anything else asks here.
+        "tags": (
+            note.viewer_tags
+            if hasattr(note, "viewer_tags")
+            else list(NoteTag.objects.filter(note=note, user=user).values_list("name", flat=True))
+        ),
     }
     if include_document:
         payload["document"] = note.document
@@ -1059,9 +1147,11 @@ def share_note(owner, note_id, target_user_id, role):
     if not target or target.id == owner.id:
         raise ValidationError("Der ausgewählte Benutzer ist ungültig.")
     share, created = NoteShare.objects.get_or_create(note=note, user=target, defaults={"role": role})
-    if not created and share.role != role:
+    # Shared by hand now, so moving the note out of a shared folder no longer takes it away.
+    if not created and (share.role != role or share.via_folder_id):
         share.role = role
-        share.save(update_fields=["role"])
+        share.via_folder = None
+        share.save(update_fields=["role", "via_folder"])
     NoteUserState.objects.get_or_create(note=note, user=target)
     if created:
         from app.services.notifications import materialize_note_share_notifications

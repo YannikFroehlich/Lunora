@@ -1,0 +1,45 @@
+{% comment %}
+Menu of a kanban column or swimlane: rename (plus WIP limit for columns), move, delete.
+Takes kind ("column"/"lane"), item, is_first, is_last, card_count.
+{% endcomment %}
+<details class="kanban-menu" id="kanban-{{ kind }}-menu-{{ item.id }}">
+    <summary aria-label="{% if kind == 'column' %}Spalte{% else %}Swimlane{% endif %} „{{ item.title }}“ bearbeiten" title="Bearbeiten"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></summary>
+    <div class="kanban-menu-panel">
+        <form class="kanban-menu-form" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="kanban_{{ kind }}_rename">
+            <input type="hidden" name="item_id" value="{{ item.id }}">
+            <label class="vocab-field">
+                <span>Name</span>
+                <input type="text" name="title" value="{{ item.title }}" maxlength="60" autocomplete="off" required>
+            </label>
+            {% if kind == "column" %}
+            <label class="vocab-field">
+                <span>Höchstens so viele Karten</span>
+                <input type="number" name="wip_limit" min="1" max="999" value="{{ item.wip_limit|default_if_none:'' }}" placeholder="kein Limit">
+            </label>
+            {% endif %}
+            <button class="primary-button" type="submit">Speichern</button>
+        </form>
+        <form class="kanban-menu-row" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="kanban_{{ kind }}_move">
+            <input type="hidden" name="item_id" value="{{ item.id }}">
+            {% if kind == "column" %}
+            <button class="ghost-button" type="submit" name="direction" value="back"{% if is_first %} disabled{% endif %}><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Nach links</button>
+            <button class="ghost-button" type="submit" name="direction" value="forward"{% if is_last %} disabled{% endif %}>Nach rechts <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>
+            {% else %}
+            <button class="ghost-button" type="submit" name="direction" value="back"{% if is_first %} disabled{% endif %}><i class="fa-solid fa-arrow-up" aria-hidden="true"></i> Nach oben</button>
+            <button class="ghost-button" type="submit" name="direction" value="forward"{% if is_last %} disabled{% endif %}>Nach unten <i class="fa-solid fa-arrow-down" aria-hidden="true"></i></button>
+            {% endif %}
+        </form>
+        {% if not is_first or not is_last %}
+        <form method="post" data-confirm="„{{ item.title }}“ löschen?{% if card_count %} Die {{ card_count }} Karte(n) darin werden mitgelöscht.{% endif %}">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="kanban_{{ kind }}_delete">
+            <input type="hidden" name="item_id" value="{{ item.id }}">
+            <button class="ghost-button kanban-danger" type="submit"><i class="fa-regular fa-trash-can" aria-hidden="true"></i> {% if kind == "column" %}Spalte{% else %}Swimlane{% endif %} löschen</button>
+        </form>
+        {% endif %}
+    </div>
+</details>

@@ -153,7 +153,12 @@
             <section class="glass-panel vocab-panel" aria-labelledby="expense-list-title">
                 <div class="expense-list-head">
                     <h2 id="expense-list-title">Ausgaben</h2>
-                    {% if expenses %}<a class="ghost-button" href="?format=csv" download><i class="fa-solid fa-file-csv" aria-hidden="true"></i> CSV</a>{% endif %}
+                    {% if expenses %}
+                    <span class="expense-exports">
+                        <a class="ghost-button" href="?format=pdf" download><i class="fa-solid fa-file-pdf" aria-hidden="true"></i> Abrechnung (PDF)</a>
+                        <a class="ghost-button" href="?format=csv" download><i class="fa-solid fa-file-csv" aria-hidden="true"></i> CSV</a>
+                    </span>
+                    {% endif %}
                 </div>
                 {% if expenses %}
                 <ul class="expense-list">

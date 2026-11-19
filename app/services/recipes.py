@@ -5,8 +5,8 @@ from collections import defaultdict
 from datetime import timedelta
 from fractions import Fraction
 
-from app.models import MealPlanEntry
-from app.services.shopping_products import add_shopping_item
+from app.models import MealPlanEntry, Recipe
+from app.services.shopping_products import _names_for, _stem, add_shopping_item
 
 MAX_RECIPES = 500
 MAX_MEALS_PER_DAY = 6
@@ -145,6 +145,55 @@ def ingredient_rows(text):
             }
         )
     return rows
+
+
+MAX_RECIPE_SUGGESTIONS = 3
+# A recipe has to share this many ingredients with the list before it is worth suggesting.
+MIN_SUGGESTION_MATCHES = 2
+
+
+def _head_stem(name):
+    """The stem of the last word, which decides what a German compound is ("Weizenmehl" → mehl)."""
+    words = re.findall(r"\w{3,}", name.casefold())
+    return _stem(words[-1]) if words else ""
+
+
+def recipe_suggestions(owner, items):
+    """The owner's recipes that most of the shopping list's items already cook, best first.
+
+    An ingredient counts as on the list when an item's name contains its head word (or a synonym)
+    or the other way round, so "Mehl" matches "Weizenmehl" and "Vollmilch" matches "Milch".
+    """
+    names = [item.name.casefold() for item in items]
+    item_stems = [stem for stem in map(_head_stem, names) if stem]
+    if not names:
+        return []
+
+    def on_list(ingredient):
+        stem = _head_stem(ingredient)
+        text = ingredient.casefold()
+        return bool(stem) and (
+            any(synonym in name for name in names for synonym in _names_for(stem))
+            or any(item_stem in text for item_stem in item_stems)
+        )
+
+    suggestions = []
+    for recipe in Recipe.objects.filter(owner=owner).only("id", "title", "ingredients"):
+        ingredients = [row["name"] for row in ingredient_rows(recipe.ingredients) if "name" in row]
+        matched = [name for name in ingredients if on_list(name)]
+        if len(matched) >= MIN_SUGGESTION_MATCHES:
+            suggestions.append(
+                {
+                    "recipe": recipe,
+                    "matched": len(matched),
+                    "total": len(ingredients),
+                    "missing": [name for name in ingredients if name not in matched],
+                }
+            )
+    suggestions.sort(
+        key=lambda item: (-item["matched"] / item["total"], -item["matched"], item["recipe"].title)
+    )
+    return suggestions[:MAX_RECIPE_SUGGESTIONS]
 
 
 def add_ingredients_to_list(recipe, line_indexes, list_owner, factor=1):

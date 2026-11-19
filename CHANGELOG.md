@@ -6,6 +6,34 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Sticky notes on whiteboards: the new tool (N) puts a colored note on the board that you type into
+  directly; the text wraps inside, and the note can be moved, resized and recolored like a shape.
+- Notes can carry tags ("Tags hinzufügen" below the title). Tags are your own, also on notes shared
+  with you; "#tag" in the notes search or the global search filters by them, and the tags appear as
+  quick filters above the folder tree.
+- Checklist items in notes can get a due date ("Fällig am …" next to the checklist button, or
+  Alt+Shift+D); overdue items are marked red, and the date appears in PDF, Word, Markdown and on
+  public links.
+- Recurring tasks can end: "Endet am" stops the series after a date, "Noch … Mal" after a number of
+  occurrences.
+- Shared expenses can be downloaded as a PDF statement with everyone's balance, who pays whom to
+  settle up and the list of all expenses.
+- New dashboard widget "Letzte Aktivität": the latest changes in your notes, tasks and chats in one
+  list.
+- The shopping list suggests your recipes whose ingredients are mostly on the list already, with
+  what is still missing.
+- Single calendar events can be downloaded as an .ics file from their detail page.
+- Vocabulary: the answer side and every word in a list can be read aloud by the browser.
+- The focus timer counts your units over the last seven days and shows how many days in a row you
+  have focused.
+- Kanban boards (Werkzeuge → Kanban-Board): your own columns and swimlanes, cards with
+  description, color, due date and someone responsible, moved by drag and drop or Alt+arrow keys.
+  Columns can have a card limit (WIP) that turns red when exceeded. Boards can be shared; members
+  edit everything, see the others' changes within a few seconds and get an inbox note when a card
+  is assigned to them.
+- Shared note folders: "Teilen" on a folder shares every note in it and its subfolders, including
+  notes put there later, as reader or editor. The folder shows up in the other person's note list,
+  editors can add their own notes for everyone, and moving a note out of the folder unshares it.
 - Whiteboards can go fullscreen from the toolbar, and on phones the drawing area now fits the
   visible screen instead of hiding behind the browser's address bar.
 - Comments on whiteboards: the new comment tool (C) pins a note to a spot on the board; everyone on

@@ -29,6 +29,7 @@ from app.models import (
 )
 from app.services.note_content import NOTE_TEMPLATES, empty_note_document, validate_note_document
 from app.services.note_html import render_note_html
+from app.services.note_markdown import render_note_markdown
 from app.services.notes import prune_note_versions, purge_expired_notes
 from app.tests.helpers import (
     PNG_1X1_BYTES,
@@ -153,7 +154,8 @@ class NotesTests(TestCase):
         self.assertContains(response, 'class="note-list-card-link"')
         self.assertNotContains(response, "data-note-card-preview")
         self.assertNotContains(response, "data-note-card-updated")
-        self.assertNotContains(response, "data-note-card-tags")
+        # An untagged note keeps its (hidden) tag slot, so tagging it can fill it in place.
+        self.assertContains(response, "data-note-card-tags hidden")
         self.assertContains(response, "data-note-context-menu")
         self.assertContains(response, "data-folder-context-menu")
         self.assertContains(response, 'data-note-context-action="rename"')
@@ -2385,3 +2387,78 @@ class NoteHtmlRendererTests(TestCase):
         self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", html)
         self.assertIn("<pre><code>z</code></pre>", html)
         self.assertIn("Bild nicht verfügbar: &lt;b&gt;", html)
+
+
+class ChecklistDueDateTests(TestCase):
+    def document(self, due):
+        item = {"type": "taskItem", "attrs": {"checked": False, "dueDate": due}, "content": []}
+        item["content"].append({"type": "paragraph", "content": [{"type": "text", "text": "Steuer"}]})
+        return {"type": "doc", "content": [{"type": "taskList", "content": [item]}]}
+
+    def test_due_dates_are_validated_and_shown_in_exports(self):
+        validate_note_document(self.document("2026-11-20"))
+        validate_note_document(self.document(None))
+        for bad in ("2026-13-01", "morgen", 20261120, "2026-11-20T09:00"):
+            with self.subTest(bad=bad), self.assertRaises(ValidationError):
+                validate_note_document(self.document(bad))
+
+        owner = User.objects.create_user(username="lea@example.com")
+        note = Note.objects.create(owner=owner, title="T", document=self.document("2026-11-20"))
+        self.assertIn("- [ ] Steuer (fällig 20.11.2026)", render_note_markdown(note))
+        html = str(render_note_html(note, attachment_url=lambda attachment, disposition: "/file/"))
+        self.assertIn('<small class="task-due">fällig 20.11.2026</small>', html)
+
+
+class NoteTagTests(TestCase):
+    def setUp(self):
+        self.lea = User.objects.create_user(
+            username="lea@example.com", email="lea@example.com", password="pw"
+        )
+        self.tom = User.objects.create_user(
+            username="tom@example.com", email="tom@example.com", password="pw"
+        )
+        self.plan = Note.objects.create(owner=self.lea, title="Projektplan", plain_text="Meilensteine")
+        self.idea = Note.objects.create(owner=self.lea, title="Idee", plain_text="Meilensteine später")
+        NoteShare.objects.create(note=self.plan, user=self.tom, role=NoteShare.ROLE_READER)
+        self.client.force_login(self.lea)
+
+    def tag(self, note, tags):
+        return self.client.post(
+            f"/notes/api/{note.pk}/actions/",
+            data=json.dumps({"action": "tags", "tags": tags}),
+            content_type="application/json",
+        )
+
+    def titles(self, query, client=None):
+        response = (client or self.client).get("/notes/", {"q": query})
+        return {item["title"] for item in response.context["note_items"]}
+
+    def test_tags_are_cleaned_saved_per_viewer_and_filter_the_list(self):
+        response = self.tag(self.plan, ["#Arbeit", "arbeit", " Q4 "])
+        self.assertEqual(response.json()["note"]["tags"], ["arbeit", "q4"])
+        self.tag(self.idea, ["privat"])
+
+        self.assertEqual(self.titles("#arbeit"), {"Projektplan"})
+        self.assertEqual(self.titles("#arbeit #q4 meilensteine"), {"Projektplan"})
+        self.assertEqual(self.titles("meilensteine"), {"Projektplan", "Idee"})
+        page = self.client.get("/notes/")
+        self.assertContains(page, "#arbeit #q4")
+        self.assertContains(page, 'href="/notes/?status=all&amp;q=%23privat"')
+
+        # Readers tag shared notes their own way; the owner's tags stay hers.
+        tom = Client()
+        tom.force_login(self.tom)
+        self.assertEqual(self.titles("#arbeit", tom), set())
+        tom.post(
+            f"/notes/api/{self.plan.pk}/actions/",
+            data=json.dumps({"action": "tags", "tags": ["lesen"]}),
+            content_type="application/json",
+        )
+        self.assertEqual(self.titles("#lesen", tom), {"Projektplan"})
+        self.assertEqual(self.titles("#lesen"), set())
+        self.assertEqual(tom.get("/search/", {"q": "#lesen"}).context["notes_results"][0]["id"], self.plan.pk)
+
+    def test_invalid_tags_are_refused(self):
+        self.assertEqual(self.tag(self.plan, ["zwei worte"]).status_code, 400)
+        self.assertEqual(self.tag(self.plan, [f"t{index}" for index in range(11)]).status_code, 400)
+        self.assertEqual(self.tag(self.plan, "arbeit").status_code, 400)

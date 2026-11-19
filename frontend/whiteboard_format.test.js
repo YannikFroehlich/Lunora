@@ -228,3 +228,21 @@ describe("whiteboard resize, highlighter and grid", () => {
     expect([format.snap(14, 10), format.snap(15, 10), format.snap(26, 20)]).toEqual([10, 20, 20]);
   });
 });
+
+describe("sticky notes", () => {
+  const measure = (text) => text.length * 10;
+
+  it("wraps at spaces, breaks words that are too long and keeps line breaks", () => {
+    expect(format.wrapText("eins zwei drei", 90, 20, measure)).toEqual(["eins zwei", "drei"]);
+    expect(format.wrapText("Donaudampfschiff", 60, 20, measure)).toEqual(["Donaud", "ampfsc", "hiff"]);
+    expect(format.wrapText("a\n\nb", 90, 20, measure)).toEqual(["a", "", "b"]);
+  });
+
+  it("is hit anywhere on its paper and moves and resizes like a box", () => {
+    const note = { id: "s", type: "sticky", color: "yellow", x: 0, y: 0, w: 200, h: 200, text: "" };
+    expect(format.hitsElement(note, 100, 100, 100, 100, 2)).toBe(true);
+    expect(format.hitsElement(note, 260, 260, 260, 260, 2)).toBe(false);
+    expect(format.moveElement(note, 10.04, 5)).toMatchObject({ x: 10, y: 5, w: 200, h: 200 });
+    expect(format.resizeElement(note, "se", 300, 250, false)).toMatchObject({ x: 0, y: 0, w: 300, h: 250 });
+  });
+});

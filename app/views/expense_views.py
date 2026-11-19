@@ -9,6 +9,7 @@ from django.utils.text import slugify
 
 from app.forms import ExpenseForm
 from app.models import Expense
+from app.services.expense_pdf import render_expenses_pdf
 from app.services.expenses import (
     CENT,
     add_expense,
@@ -99,6 +100,12 @@ def expense_group_detail(request, group_id):
         response = HttpResponse(expenses_csv(group), content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = content_disposition_header(
             True, f"lunora-ausgaben-{slugify(group.name) or group.pk}.csv"
+        )
+        return response
+    if request.method == "GET" and request.GET.get("format") == "pdf":
+        response = HttpResponse(render_expenses_pdf(group, request.user), content_type="application/pdf")
+        response["Content-Disposition"] = content_disposition_header(
+            True, f"lunora-abrechnung-{slugify(group.name) or group.pk}.pdf"
         )
         return response
     members = group_members(group)

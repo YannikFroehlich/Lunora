@@ -22,6 +22,7 @@ from app.services.note_content import (
     ALLOWED_LINE_HEIGHTS,
     HEX_COLOR_RE,
     safe_link_href,
+    task_due_label,
 )
 from app.services.notes import display_name
 
@@ -271,7 +272,10 @@ class NoteDocxRenderer:
         parts = []
         for item in items:
             first, rest = self._split_item(item)
-            prefix = "☑ " if (item.get("attrs") or {}).get("checked") is True else "☐ "
+            attrs = item.get("attrs") or {}
+            prefix = "☑ " if attrs.get("checked") is True else "☐ "
+            if due := task_due_label(attrs.get("dueDate")):
+                prefix = f"{prefix}({due}) "
             parts.append(
                 self.paragraph(
                     first, depth=depth, quote_block=quote_block, force_bold=force_bold, prefix=prefix
