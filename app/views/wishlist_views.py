@@ -96,7 +96,7 @@ def _handle_item_post(request, wish_list, form_name):
             django_messages.success(request, "Preis und Angaben aktualisiert.")
     elif form_name == "wish_item_quantity":
         delta = 1 if request.POST.get("delta") == "up" else -1
-        item.quantity = max(1, min(99, item.quantity + delta))
+        item.quantity = max(0, min(99, item.quantity + delta))
         item.save(update_fields=["quantity"])
     elif form_name == "wish_item_delete":
         item.delete()
@@ -160,7 +160,7 @@ def wish_list_detail(request, list_id):
         item.price_label = money(item.price, item.currency) if item.price is not None else ""
         item.line_label = (
             money(item.price * item.quantity, item.currency)
-            if item.price is not None and item.quantity > 1
+            if item.price is not None and item.quantity != 1
             else ""
         )
         item.fetched_label = format_user_datetime(item.fetched_at, request.user)

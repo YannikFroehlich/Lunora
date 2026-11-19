@@ -1389,7 +1389,7 @@ class WishListItemForm(forms.ModelForm):
     price = forms.DecimalField(
         label="Preis", required=False, min_value=0, max_value=99_999_999, decimal_places=2, localize=True
     )
-    quantity = forms.IntegerField(label="Anzahl", min_value=1, max_value=99)
+    quantity = forms.IntegerField(label="Anzahl", min_value=0, max_value=99)
 
     class Meta:
         model = WishListItem

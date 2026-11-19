@@ -309,7 +309,25 @@ class WishlistViewTests(TestCase):
         self.client.post(self.url, {"form_name": "wish_item_quantity", "item_id": item.pk, "delta": "down"})
         self.client.post(self.url, {"form_name": "wish_item_quantity", "item_id": item.pk, "delta": "down"})
         item.refresh_from_db()
-        self.assertEqual(item.quantity, 1)
+        self.assertEqual(item.quantity, 0)
+
+        self.client.post(self.url, {"form_name": "wish_item_quantity", "item_id": item.pk, "delta": "down"})
+        item.refresh_from_db()
+        self.assertEqual(item.quantity, 0)
+
+    def test_quantity_zero_keeps_the_item_and_counts_as_nothing_in_the_total(self):
+        item = WishListItem.objects.create(
+            wish_list=self.wish_list,
+            url="https://www.amazon.de/dp/B0TEST1234",
+            title="X",
+            price=Decimal("49.99"),
+            quantity=0,
+        )
+
+        response = self.client.get(self.url)
+
+        self.assertTrue(WishListItem.objects.filter(pk=item.pk).exists())
+        self.assertContains(response, "Gesamt: <strong>0,00 €</strong>", html=False)
 
     def test_same_product_twice_is_refused_without_a_request(self):
         WishListItem.objects.create(

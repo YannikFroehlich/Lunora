@@ -72,7 +72,7 @@
                         </label>
                         <label class="vocab-field">
                             <span>Anzahl</span>
-                            <input type="number" name="quantity" value="{{ item.quantity }}" min="1" max="99" required>
+                            <input type="number" name="quantity" value="{{ item.quantity }}" min="0" max="99" required>
                         </label>
                         <button class="primary-button" type="submit"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Speichern</button>
                     </form>
@@ -93,7 +93,7 @@
                         <input type="hidden" name="form_name" value="wish_item_quantity">
                         <input type="hidden" name="item_id" value="{{ item.id }}">
                         <input type="hidden" name="delta" value="down">
-                        <button class="icon-button" type="submit" {% if item.quantity <= 1 %}disabled{% endif %} aria-label="Weniger von „{{ item.title }}“"><i class="fa-solid fa-minus" aria-hidden="true"></i></button>
+                        <button class="icon-button" type="submit" {% if item.quantity <= 0 %}disabled{% endif %} aria-label="Weniger von „{{ item.title }}“"><i class="fa-solid fa-minus" aria-hidden="true"></i></button>
                     </form>
                     <span class="wish-qty-count">{{ item.quantity }}</span>
                     <form method="post">
