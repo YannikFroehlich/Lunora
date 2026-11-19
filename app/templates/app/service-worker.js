@@ -6,6 +6,7 @@ const PAGES_CACHE = `${CACHE_PREFIX}-pages-${CACHE_VERSION}`;
 const MAX_CACHED_PAGES = 60;
 const OFFLINE_URL = "{% url 'offline' %}";
 const LOGOUT_URL = "{% url 'logout' %}";
+const SHARE_URL = "{% url 'share_target' %}";
 const APP_SHELL_URLS = [
   OFFLINE_URL,
   "{% versioned_static 'css/base.css' %}",
@@ -88,6 +89,23 @@ self.addEventListener("fetch", (event) => {
       fetch(request).then((response) => {
         event.waitUntil(caches.delete(PAGES_CACHE));
         return response;
+      })
+    );
+    return;
+  }
+
+  // The installed app's share sheet POSTs here (manifest share_target). That POST carries no
+  // CSRF token, so hand what was shared to the share page in its URL fragment instead, which
+  // also keeps it out of server logs until the user decides what to make of it.
+  if (request.method === "POST" && requestUrl.pathname === SHARE_URL) {
+    event.respondWith(
+      request.formData().then((data) => {
+        const shared = new URLSearchParams();
+        for (const name of ["title", "text", "url"]) {
+          const value = data.get(name);
+          if (typeof value === "string" && value) shared.set(name, value);
+        }
+        return Response.redirect(`${SHARE_URL}#${shared}`, 303);
       })
     );
     return;

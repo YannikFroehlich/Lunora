@@ -338,7 +338,21 @@ def markdown_to_note(text, fallback_title):
 
 
 def import_markdown_note(user, filename, text):
-    title, document = markdown_to_note(text, PurePath(filename).stem.strip() or "Importierte Notiz")
+    return create_markdown_note(user, text, PurePath(filename).stem.strip() or "Importierte Notiz")
+
+
+def import_shared_note(user, title, text, url=""):
+    """A note from what another app shared with Lunora: the text, then the link unless the text
+    already has it."""
+    text, url = text.strip(), url.strip()
+    if url and url not in text:
+        # <…> is the Markdown autolink, which parse_inline turns into a link for http(s) only.
+        text = f"{text}\n\n<{url}>".strip()
+    return create_markdown_note(user, text, title.strip() or "Geteilte Notiz")
+
+
+def create_markdown_note(user, text, fallback_title):
+    title, document = markdown_to_note(text, fallback_title)
     validate_note_document(document)
     with transaction.atomic():
         note = create_note(user, title=title)

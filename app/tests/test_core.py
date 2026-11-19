@@ -14,7 +14,7 @@ from django.core.exceptions import ImproperlyConfigured
 from django.core.files.storage import default_storage
 from django.test import SimpleTestCase, TestCase, override_settings
 
-from app.models import Profile, SystemSettings
+from app.models import Note, Profile, SystemSettings, WishList
 from app.services.note_files import private_note_storage
 from app.templatetags.static_versioning import versioned_static
 from app.view_models import (
@@ -345,6 +345,60 @@ class PwaTests(TestCase):
             [shortcut["short_name"] for shortcut in manifest["shortcuts"]],
             ["Dashboard", "Notizen", "Kalender"],
         )
+
+    def test_manifest_share_target_posts_to_the_share_page(self):
+        manifest = json.loads((BASE_DIR / "app" / "static" / "site.webmanifest").read_text(encoding="utf-8"))
+
+        share_target = manifest["share_target"]
+        self.assertEqual(share_target["action"], "/share/")
+        self.assertEqual(share_target["method"], "POST")
+        self.assertEqual(share_target["params"], {"title": "title", "text": "text", "url": "url"})
+
+    def test_service_worker_hands_shared_content_over_in_the_fragment(self):
+        content = self.client.get("/service-worker.js").content.decode("utf-8")
+
+        self.assertIn('const SHARE_URL = "/share/";', content)
+        self.assertIn('request.method === "POST" && requestUrl.pathname === SHARE_URL', content)
+        self.assertIn("Response.redirect(`${SHARE_URL}#${shared}`, 303)", content)
+
+    def test_share_page_offers_every_destination(self):
+        WishList.objects.create(owner=self.user, title="Geschenke")
+        self.assertRedirects(
+            self.client.get("/share/"), "/login/?next=/share/", fetch_redirect_response=False
+        )
+
+        self.client.login(username="pwa@example.com", password="secret-12345")
+        response = self.client.get("/share/")
+
+        self.assertContains(response, 'action="/share/note/"')
+        self.assertContains(response, 'formaction="/tasks/" name="form_name" value="task_add"')
+        self.assertContains(response, 'formaction="/home/bookmarks/" name="form_name" value="bookmark_add"')
+        self.assertContains(response, 'formaction="/tools/recipes/" name="form_name" value="recipe_import"')
+        self.assertContains(response, "Auf „Geschenke“")
+        self.assertContains(response, "js/share.js")
+
+    def test_shared_text_and_link_become_a_note(self):
+        self.client.login(username="pwa@example.com", password="secret-12345")
+        response = self.client.post(
+            "/share/note/",
+            {"title": "Guter Artikel", "text": "Unbedingt lesen", "url": "https://example.com/artikel"},
+        )
+
+        note = Note.objects.get(owner=self.user)
+        self.assertRedirects(response, f"/notes/{note.pk}/", fetch_redirect_response=False)
+        self.assertEqual(note.title, "Guter Artikel")
+        self.assertIn("Unbedingt lesen", note.plain_text)
+        self.assertIn("https://example.com/artikel", json.dumps(note.document))
+        self.assertIn('"type": "link"', json.dumps(note.document))
+
+    def test_shared_note_respects_the_notes_switch(self):
+        SystemSettings.objects.update_or_create(pk=1, defaults={"notes_enabled": False})
+        self.client.login(username="pwa@example.com", password="secret-12345")
+
+        response = self.client.post("/share/note/", {"title": "x", "text": "y"})
+
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(Note.objects.exists())
 
     def test_base_and_settings_expose_pwa_controls(self):
         login_response = self.client.get("/login/")

@@ -6,6 +6,11 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Share to Lunora: once Lunora is installed as an app (Android, or Chrome/Edge on the desktop),
+  it appears in the system's share menu. Whatever you share – a link, a text, a page – opens
+  "In Lunora ablegen", where one tap turns it into a note, a task, a bookmark, a recipe import or
+  a wish list item. The page also opens from the command palette for pasting a link by hand, and
+  takes `#title=…&text=…&url=…` in its address for iOS shortcuts or a bookmarklet.
 - Wish lists: a button refreshes every item's price at once, each item keeps a price history since
   it was added and shows how much more or less expensive it got, and quantity can be changed with
   plus/minus buttons without opening "Bearbeiten".

@@ -76,7 +76,7 @@ from .notification_views import (
     web_push_subscription,
     web_push_test,
 )
-from .pwa_views import offline, service_worker
+from .pwa_views import offline, service_worker, share_note, share_target
 from .search_views import global_search
 from .tasks_views import task_time_report, tasks
 from .tools_views import (
@@ -143,6 +143,8 @@ __all__ = [
     "web_push_subscription",
     "offline",
     "service_worker",
+    "share_note",
+    "share_target",
     "notes",
     "note_create_api",
     "note_import",

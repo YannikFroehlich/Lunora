@@ -233,6 +233,7 @@ class PageAccessibilityMarkupTests(TestCase):
             f"/tools/vocabulary/{self.vocabulary.pk}/practice/",
             "/vacation-planner/",
             "/administration/",
+            "/share/",
         ]
 
     def collect(self, url, client=None):

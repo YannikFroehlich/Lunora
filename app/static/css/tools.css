@@ -2833,6 +2833,21 @@ html:has([data-whiteboard-editor].is-fullscreen) {
   border-top: 1px solid var(--color-line);
 }
 
+.share-form {
+  display: grid;
+  gap: 14px;
+}
+
+.share-form textarea {
+  font-family: inherit;
+}
+
+.share-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .expense-column {
   display: grid;
   gap: 20px;

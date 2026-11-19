@@ -51,6 +51,9 @@
                 <i class="fa-solid fa-umbrella-beach" aria-hidden="true"></i><span>Urlaubsplaner</span><small>Seite</small>
             </a>
             {% endif %}
+            <a class="command-palette-item" id="command-share" role="option" href="{% url 'share_target' %}" data-command-item data-keywords="teilen link speichern ablegen einfügen">
+                <i class="fa-solid fa-share-from-square" aria-hidden="true"></i><span>In Lunora ablegen</span><small>Link oder Text</small>
+            </a>
             {% if feature_flags.tools %}
             <a class="command-palette-item" id="command-tools" role="option" href="{% url 'tools' %}" data-command-item data-keywords="helfer tools">
                 <i class="fa-solid fa-toolbox" aria-hidden="true"></i><span>Werkzeuge</span><small>Seite</small>

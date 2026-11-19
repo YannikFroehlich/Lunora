@@ -1,0 +1,60 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}Teilen | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell tools-shell">
+    <header class="page-hero">
+        <div>
+            <h1>In Lunora ablegen</h1>
+            <p>Was du aus einer anderen App mit Lunora teilst, landet hier. Prüf es kurz und wähle, was daraus werden soll.</p>
+        </div>
+        <i class="fa-solid fa-share-from-square hero-branch" aria-hidden="true"></i>
+    </header>
+
+    {% comment %}
+    One form, one button per destination: each button's formaction posts the same fields to the
+    page that already handles them (tasks read "title", bookmarks "title" and "url", recipes and
+    wish lists "url"), and the submitter's form_name picks the branch there.
+    {% endcomment %}
+    <form class="glass-panel uml-create-panel share-form" method="post" action="{% url 'share_note' %}" data-share-form>
+        {% csrf_token %}
+        <label class="vocab-field">
+            <span>Titel</span>
+            <input type="text" name="title" maxlength="200" autocomplete="off" data-share-field="title">
+        </label>
+        <label class="vocab-field">
+            <span>Text</span>
+            <textarea name="text" rows="5" data-share-field="text"></textarea>
+        </label>
+        <label class="vocab-field">
+            <span>Link</span>
+            <input type="url" name="url" maxlength="500" inputmode="url" autocomplete="off" placeholder="https://…" data-share-field="url">
+        </label>
+        <div class="share-actions">
+            {% if feature_flags.notes %}
+            <button class="primary-button" type="submit"><i class="fa-solid fa-note-sticky" aria-hidden="true"></i> Als Notiz</button>
+            {% endif %}
+            {% if feature_flags.tasks %}
+            <button class="ghost-button" type="submit" formaction="{% url 'tasks' %}" name="form_name" value="task_add"><i class="fa-solid fa-list-check" aria-hidden="true"></i> Als Aufgabe</button>
+            {% endif %}
+            <button class="ghost-button" type="submit" formaction="{% url 'dashboard_bookmarks' %}" name="form_name" value="bookmark_add" data-share-needs-link><i class="fa-solid fa-bookmark" aria-hidden="true"></i> Als Lesezeichen</button>
+            {% if feature_flags.tools %}
+            <button class="ghost-button" type="submit" formaction="{% url 'recipes' %}" name="form_name" value="recipe_import" data-share-needs-link><i class="fa-solid fa-utensils" aria-hidden="true"></i> Als Rezept</button>
+            {% for wish_list in wish_lists %}
+            <button class="ghost-button" type="submit" formaction="{% url 'wish_list_detail' wish_list.pk %}" name="form_name" value="wish_item_add" data-share-needs-link><i class="fa-solid fa-gift" aria-hidden="true"></i> Auf „{{ wish_list.title }}“</button>
+            {% endfor %}
+            {% endif %}
+        </div>
+    </form>
+</section>
+{% endblock %}
+
+{% block page_js %}
+<script src="{% versioned_static 'js/share.js' %}"></script>
+{% endblock %}
