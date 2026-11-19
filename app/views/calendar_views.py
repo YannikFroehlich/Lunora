@@ -3,6 +3,8 @@ from django.contrib.auth.decorators import login_required
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.utils.http import content_disposition_header
+from django.utils.text import slugify
 from django.views.decorators.http import require_GET
 
 from app.forms import (
@@ -21,6 +23,7 @@ from app.services.calendar_service import (
     add_event_comment,
     attendee_availability,
     build_calendar_feed,
+    build_event_ics,
     can_view_event,
     delete_event_comment,
     free_slots,
@@ -228,9 +231,7 @@ def _respond_to_invitation(request):
         sync_event_reminders([attendee.event])
 
 
-@login_required
-def calendar_event_detail(request, event_id):
-    """One event with its invitees and comments; for the organizer and everyone invited."""
+def _viewable_event(request, event_id):
     event = get_object_or_404(
         CalendarEvent.objects.select_related("user__profile", "subscription"), pk=event_id
     )
@@ -238,6 +239,25 @@ def calendar_event_detail(request, event_id):
         raise Http404
     if event.subscription_id and not feature_enabled("calendar_subscriptions"):
         raise Http404
+    return event
+
+
+@login_required
+@require_GET
+def calendar_event_ics(request, event_id):
+    """The event as a single .ics file, e.g. for a calendar outside Lunora."""
+    event = _viewable_event(request, event_id)
+    response = HttpResponse(build_event_ics(event), content_type="text/calendar; charset=utf-8")
+    filename = f"{slugify(event.title) or 'termin'}.ics"
+    response["Content-Disposition"] = content_disposition_header(as_attachment=True, filename=filename)
+    response["Cache-Control"] = "private, no-store"
+    return response
+
+
+@login_required
+def calendar_event_detail(request, event_id):
+    """One event with its invitees and comments; for the organizer and everyone invited."""
+    event = _viewable_event(request, event_id)
     comments_enabled = feature_enabled("calendar_event_creation")
     comment_error = ""
     if request.method == "POST":

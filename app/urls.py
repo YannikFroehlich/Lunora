@@ -48,6 +48,7 @@ urlpatterns = [
     path("calendar/availability/", view.calendar_availability, name="calendar_availability"),
     path("calendar/availability/slots/", view.calendar_free_slots, name="calendar_free_slots"),
     path("calendar/events/<int:event_id>/", view.calendar_event_detail, name="calendar_event_detail"),
+    path("calendar/events/<int:event_id>/ics/", view.calendar_event_ics, name="calendar_event_ics"),
     path("calendar/feed/<str:token>.ics", view.calendar_feed, name="calendar_feed"),
     path("tasks/", view.tasks, name="tasks"),
     path("tasks/time/", view.task_time_report, name="task_time_report"),

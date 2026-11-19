@@ -221,6 +221,48 @@
     return text.length * size * 0.55;
   }
 
+  // Sticky notes: a tinted square of paper (STICKY_PAPER mirrors whiteboard_preview.py) with the text
+  // wrapped inside, in a fixed size and inset.
+  const STICKY_SIZE = 200;
+  const STICKY_FONT = 20;
+  const STICKY_PADDING = 14;
+  const STICKY_PAPER = {
+    default: "#fff1a8",
+    yellow: "#fff1a8",
+    blue: "#d3e5f7",
+    green: "#d7ecd2",
+    red: "#f8d6d3",
+    violet: "#e5dbf3",
+    gray: "#e7e7e7",
+  };
+
+  // The text broken into lines no wider than `width`: at spaces where possible, inside a word that
+  // alone is too long; line breaks in the text are kept.
+  function wrapText(text, width, size, measure = estimateTextWidth) {
+    const lines = [];
+    text.split("\n").forEach((paragraph) => {
+      let line = "";
+      paragraph.split(" ").forEach((word) => {
+        const candidate = line ? `${line} ${word}` : word;
+        if (measure(candidate, size) <= width) {
+          line = candidate;
+          return;
+        }
+        if (line) lines.push(line);
+        line = "";
+        for (const char of word) {
+          if (line && measure(line + char, size) > width) {
+            lines.push(line);
+            line = "";
+          }
+          line += char;
+        }
+      });
+      lines.push(line);
+    });
+    return lines;
+  }
+
   function pointsBounds(points) {
     const bounds = { x1: Infinity, y1: Infinity, x2: -Infinity, y2: -Infinity };
     for (let i = 0; i < points.length; i += 2) {
@@ -292,9 +334,12 @@
   // Whether a pointer moving from (ax, ay) to (bx, by) touches the element: its drawn line for outlines,
   // anywhere inside for text and filled shapes. A click passes the same point twice.
   function hitsElement(item, ax, ay, bx, by, tolerance, measure) {
-    const solid = item.type === "text" || ((item.type === "rect" || item.type === "ellipse") && item.fill);
+    const solid =
+      item.type === "text" ||
+      item.type === "sticky" ||
+      ((item.type === "rect" || item.type === "ellipse") && item.fill);
     if (solid && contains(item, bx, by, tolerance, measure)) return true;
-    const reach = item.type === "text" ? tolerance : tolerance + lineWidth(item) / 2;
+    const reach = "width" in item ? tolerance + lineWidth(item) / 2 : tolerance;
     return hitsStroke(outline(item, measure), ax, ay, bx, by, reach);
   }
 
@@ -509,6 +554,11 @@
     TEXT_SIZES,
     TEXT_LINE_HEIGHT,
     TEXT_ASCENT,
+    STICKY_SIZE,
+    STICKY_FONT,
+    STICKY_PADDING,
+    STICKY_PAPER,
+    wrapText,
     coordinate,
     emptyDocument,
     normalizeDocument,

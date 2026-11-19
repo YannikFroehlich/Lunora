@@ -23,7 +23,7 @@ from reportlab.platypus import (
 )
 from reportlab.platypus.xpreformatted import XPreformatted
 
-from app.services.note_content import FORM_FIELD_BLANK
+from app.services.note_content import FORM_FIELD_BLANK, task_due_label
 
 PAGE_WIDTH, PAGE_HEIGHT = A4
 PAGE_MARGIN = 19 * mm
@@ -239,7 +239,12 @@ class NotePdfRenderer:
         flowables = []
         for item in node.get("content") or []:
             children = item.get("content") or []
-            marker = "[x] " if (item.get("attrs") or {}).get("checked") else "[ ] "
+            attrs = item.get("attrs") or {}
+            marker = "[x] " if attrs.get("checked") else "[ ] "
+            due = task_due_label(attrs.get("dueDate"))
+            if due:
+                # Shown in front of the text, since a paragraph's suffix would need its own markup pass.
+                marker = f"{marker}({due}) "
             if children and children[0].get("type") == "paragraph":
                 flowables.append(self.paragraph(children[0], compact=compact, prefix=f"<b>{marker}</b>"))
                 flowables.extend(self.nodes(children[1:], compact=compact))

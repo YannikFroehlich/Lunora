@@ -47,6 +47,7 @@
     r: "rect",
     o: "ellipse",
     t: "text",
+    n: "sticky",
     g: "fill",
     c: "comment",
   };
@@ -197,7 +198,49 @@
     return node;
   }
 
+  // Text on a sticky note is always this dark, whatever the paper's tint.
+  const STICKY_INK = "#2b2620";
+
+  function stickyNode(item) {
+    const group = svgEl("g");
+    group.append(
+      svgEl("rect", {
+        x: item.x,
+        y: item.y,
+        width: item.w,
+        height: item.h,
+        rx: 4,
+        fill: format.STICKY_PAPER[item.color] || format.STICKY_PAPER.yellow,
+        stroke: "rgba(0, 0, 0, 0.12)",
+        "stroke-width": 1,
+      }),
+    );
+    const size = format.STICKY_FONT;
+    const inner = format.STICKY_PADDING;
+    const lines = format.wrapText(item.text, Math.max(0, item.w - 2 * inner), size, measure);
+    // Lines that don't fit any more stay in the data; growing the note brings them back.
+    const room = Math.max(0, Math.floor((item.h - 2 * inner) / (size * format.TEXT_LINE_HEIGHT)));
+    const text = svgEl("text", {
+      x: item.x + inner,
+      y: item.y + inner,
+      fill: STICKY_INK,
+      "font-size": size,
+      "font-family": FONT_FAMILY,
+    });
+    lines.slice(0, room).forEach((line, index) => {
+      const span = svgEl("tspan", {
+        x: item.x + inner,
+        dy: index ? size * format.TEXT_LINE_HEIGHT : size * format.TEXT_ASCENT,
+      });
+      span.textContent = line || " ";
+      text.append(span);
+    });
+    group.append(text);
+    return group;
+  }
+
   function elementNode(item) {
+    if (item.type === "sticky") return stickyNode(item);
     const attrs = lineAttrs(item.color, format.lineWidth(item));
     if (item.type === "highlight") attrs["stroke-opacity"] = HIGHLIGHT_OPACITY;
     if (format.isStroke(item)) return svgEl("path", { ...attrs, d: format.strokePath(item.points) });
@@ -829,10 +872,26 @@
 
   // ---- Text -----------------------------------------------------------------------------------
 
+  function isTextual(element) {
+    return element?.type === "text" || element?.type === "sticky";
+  }
+
+  // A new sticky note centered on the point, typed into at once; "default" ink makes yellow paper.
+  function placeSticky(center) {
+    if (!canAdd()) return;
+    const size = format.STICKY_SIZE;
+    const start = snapPoint({ x: center.x - size / 2, y: center.y - size / 2 });
+    const color = style.color === "default" ? "yellow" : style.color;
+    addElement({ id: "draft", type: "sticky", color, x: start.x, y: start.y, w: size, h: size, text: "" });
+    openText(null, findElement([...selection][0]));
+  }
+
   function openText(world, element = null) {
     if (!element && !canAdd()) return;
+    const sticky = element?.type === "sticky";
     editing = {
       element,
+      sticky,
       x: element ? element.x : world.x,
       y: element ? element.y : world.y,
       size: element ? element.size : style.size,
@@ -840,6 +899,7 @@
     };
     if (element) nodes.get(element.id)?.setAttribute("visibility", "hidden");
     textInput.value = element ? element.text : "";
+    textInput.classList.toggle("is-sticky", sticky);
     textInput.hidden = false;
     positionTextInput();
     textInput.focus();
@@ -849,17 +909,37 @@
     if (!editing) return;
     const svgRect = svg.getBoundingClientRect();
     const wrapRect = canvasWrap.getBoundingClientRect();
+    const left = svgRect.left - wrapRect.left - canvasWrap.clientLeft + view.x + editing.x * view.k;
+    const top = svgRect.top - wrapRect.top - canvasWrap.clientTop + view.y + editing.y * view.k;
+    if (editing.sticky) {
+      // The field covers the note's paper and wraps like the drawn text.
+      const { w, h, color } = editing.element;
+      const inner = format.STICKY_PADDING * view.k;
+      Object.assign(textInput.style, {
+        left: `${left}px`,
+        top: `${top}px`,
+        fontSize: `${format.STICKY_FONT * view.k}px`,
+        width: `${w * view.k}px`,
+        height: `${h * view.k}px`,
+        padding: `${inner}px`,
+        color: STICKY_INK,
+        background: format.STICKY_PAPER[color] || format.STICKY_PAPER.yellow,
+      });
+      return;
+    }
     const size = format.TEXT_SIZES[editing.size];
     const fontSize = size * view.k;
     const lines = textInput.value.split("\n");
     const width = Math.max(...lines.map((line) => measure(line, size))) * view.k;
     Object.assign(textInput.style, {
-      left: `${svgRect.left - wrapRect.left - canvasWrap.clientLeft + view.x + editing.x * view.k}px`,
-      top: `${svgRect.top - wrapRect.top - canvasWrap.clientTop + view.y + editing.y * view.k}px`,
+      left: `${left}px`,
+      top: `${top}px`,
       fontSize: `${fontSize}px`,
       width: `${width + fontSize}px`,
       height: `${lines.length * fontSize * format.TEXT_LINE_HEIGHT}px`,
+      padding: "",
       color: inkColor(editing.color),
+      background: "",
     });
   }
 
@@ -876,7 +956,8 @@
       const index = doc.elements.findIndex((item) => item.id === original.id);
       if (index === -1) return;
       const element = doc.elements[index];
-      if (!text.trim()) commit([{ index, element }], []);
+      // An empty sticky note stays on the board; empty text goes away.
+      if (!text.trim() && element.type !== "sticky") commit([{ index, element }], []);
       else if (text !== element.text) commit([{ index, element }], [{ index, element: { ...element, text } }]);
       return;
     }
@@ -965,6 +1046,7 @@
       else if (tool === "select") interaction = startSelect(event, world);
       // The text field opens on release: focus moves to the canvas on press and would close it again.
       else if (tool === "text") interaction = { type: "text", world };
+      else if (tool === "sticky") interaction = { type: "sticky", world };
       else if (tool === "fill") fillAt(world);
       // Like text, the comment opens on release so the canvas focus doesn't take it away again.
       else if (tool === "comment") interaction = { type: "comment", world };
@@ -1030,9 +1112,10 @@
     else if (current.type === "resize") finishResize(current);
     else if (current.type === "marquee") finishMarquee(current);
     else if (current.type === "comment") showComment({ draft: current.world });
+    else if (current.type === "sticky") placeSticky(current.world);
     else if (current.type === "text") {
       const element = topElementAt(current.world);
-      if (element?.type === "text") openText(null, element);
+      if (isTextual(element)) openText(null, element);
       // Start the text so the caret sits where the user clicked rather than below it.
       else openText({ x: current.world.x, y: current.world.y - format.TEXT_SIZES[style.size] * 0.6 });
     }
@@ -1045,7 +1128,7 @@
   svg.addEventListener("dblclick", (event) => {
     if (tool !== "select") return;
     const element = topElementAt(toWorld(event.clientX, event.clientY));
-    if (element?.type === "text") openText(null, element);
+    if (isTextual(element)) openText(null, element);
   });
   svg.addEventListener(
     "wheel",
@@ -1718,7 +1801,7 @@
   function restyle(element, changes) {
     const next = { ...element };
     if ("color" in changes) next.color = changes.color;
-    if ("width" in changes && element.type !== "text") next.width = changes.width;
+    if ("width" in changes && "width" in element) next.width = changes.width;
     if ("size" in changes && element.type === "text") next.size = changes.size;
     return next;
   }
@@ -1746,9 +1829,11 @@
     const center = visibleCenter();
     if (tool === "select") {
       const element = selection.size === 1 ? findElement([...selection][0]) : null;
-      if (element?.type === "text") openText(null, element);
+      if (isTextual(element)) openText(null, element);
     } else if (tool === "text") {
       openText(center);
+    } else if (tool === "sticky") {
+      placeSticky(center);
     } else if (tool === "comment") {
       showComment({ draft: center });
     } else if (SHAPE_TOOLS.has(tool) && canAdd()) {

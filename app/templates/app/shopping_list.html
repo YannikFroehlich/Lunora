@@ -79,6 +79,19 @@
         </section>
         {% endif %}
     </div>
+    {% if recipe_suggestions %}
+    <section class="glass-panel shopping-recipes" aria-labelledby="shopping-recipes-title">
+        <h2 id="shopping-recipes-title"><i class="fa-solid fa-utensils" aria-hidden="true"></i> Damit kannst du kochen</h2>
+        <ul>
+            {% for suggestion in recipe_suggestions %}
+            <li>
+                <a href="{% url 'recipe_detail' suggestion.recipe.pk %}">{{ suggestion.recipe.title }}</a>
+                <small>{{ suggestion.matched }} von {{ suggestion.total }} Zutaten auf dem Zettel{% if suggestion.missing %} · fehlt noch: {{ suggestion.missing|join:", " }}{% endif %}</small>
+            </li>
+            {% endfor %}
+        </ul>
+    </section>
+    {% endif %}
     {% else %}
     <div class="empty-state-card uml-empty">
         <i class="fa-solid fa-basket-shopping" aria-hidden="true"></i>

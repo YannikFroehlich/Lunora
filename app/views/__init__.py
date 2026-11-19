@@ -15,6 +15,7 @@ from .calendar_views import (
     calendar,
     calendar_availability,
     calendar_event_detail,
+    calendar_event_ics,
     calendar_feed,
     calendar_free_slots,
 )
@@ -122,6 +123,7 @@ __all__ = [
     "calendar_availability",
     "calendar_free_slots",
     "calendar_event_detail",
+    "calendar_event_ics",
     "calendar_feed",
     "administration",
     "healthz",

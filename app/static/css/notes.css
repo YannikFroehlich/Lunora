@@ -522,6 +522,72 @@
   border-radius: var(--radius-pill);
 }
 
+.note-card-tags {
+  min-width: 0;
+  flex: 0 1 auto;
+  margin-right: 6px;
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: var(--text-2xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-tags-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 2px 8px;
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+}
+
+.note-tags-line:focus-within {
+  border-color: var(--focus-border);
+  box-shadow: var(--focus-ring);
+}
+
+.note-tags-line input {
+  min-width: 0;
+  flex: 1;
+  padding: 3px 0;
+  color: var(--color-text);
+  font-size: var(--text-xs);
+  background: transparent;
+  border: 0;
+}
+
+.note-tags-line input:focus-visible {
+  box-shadow: none;
+  outline: none;
+}
+
+.notes-tag-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.notes-tag-filter a {
+  padding: 2px 9px;
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  text-decoration: none;
+  background: var(--surface-control);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-pill);
+}
+
+.notes-tag-filter a:hover,
+.notes-tag-filter a.is-active {
+  color: var(--color-heading);
+  border-color: var(--color-accent-strong);
+}
+
 .note-card-checklist.is-complete {
   color: var(--color-success);
 }
@@ -1386,6 +1452,24 @@
 .note-editor-page .tiptap ol { padding-left: 1.65em; }
 .note-editor-page .tiptap ul[data-type="taskList"] { padding: 0; list-style: none; }
 .note-editor-page .tiptap ul[data-type="taskList"] li { display: flex; gap: 9px; }
+/* Due date chip of a checklist item (DatedTaskItem in frontend/notes.js). Fixed paper colors like
+   the rest of the page, which dark mode inverts as a whole. */
+.note-editor-page .tiptap li[data-due-label]::after {
+  flex-shrink: 0;
+  align-self: flex-start;
+  margin-top: 0.35em;
+  padding: 1px 8px;
+  color: #6b6259;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  content: "fällig " attr(data-due-label);
+  background: #f2ede6;
+  border-radius: var(--radius-pill);
+}
+.note-editor-page .tiptap li[data-due-state="today"]::after { color: #8a5a00; background: #fbefd5; }
+.note-editor-page .tiptap li[data-due-state="overdue"]::after { color: #b3261e; background: #fbe4e1; }
+.note-editor-page .tiptap li[data-due-state="done"]::after { opacity: 0.6; }
+.note-editor-page .tiptap li[data-due-label] > div { flex: 1; min-width: 0; }
 .note-editor-page .tiptap blockquote { margin-left: 0; padding-left: 16px; border-left: 3px solid var(--color-accent); }
 .note-editor-page .tiptap table { width: 100%; margin: 18px 0; border-collapse: collapse; table-layout: fixed; }
 .note-editor-page .tiptap th,

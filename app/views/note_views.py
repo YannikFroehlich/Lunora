@@ -58,6 +58,7 @@ from app.services.notes import (
     diff_note_version,
     display_name,
     duplicate_note,
+    filter_by_tags,
     get_accessible_note,
     get_public_note,
     list_comment_threads,
@@ -66,6 +67,7 @@ from app.services.notes import (
     move_note_tree_item,
     note_accessible_user_ids,
     note_public_path,
+    note_tags_by_note,
     ping_note_presence,
     remove_note_share,
     rename_note_folder,
@@ -79,9 +81,12 @@ from app.services.notes import (
     set_note_folder,
     set_note_public_link,
     set_note_style,
+    set_note_tags,
     set_personal_state,
     set_trash_state,
     share_note,
+    split_tag_filters,
+    user_tag_names,
 )
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.user_preferences import format_user_datetime
@@ -109,6 +114,7 @@ SHORTCUT_ACTIONS = {
     "bulletList",
     "orderedList",
     "taskList",
+    "taskDueDate",
     "indent",
     "outdent",
     "fontFamily",
@@ -345,8 +351,10 @@ def notes(request, note_id=None):
         queryset = queryset.exclude(owner=request.user)
     elif scope == "owned":
         queryset = queryset.filter(owner=request.user)
+    tag_filters, text_query = split_tag_filters(query)
+    queryset = filter_by_tags(queryset, request.user, tag_filters)
     if query:
-        queryset = search_notes(queryset, query)
+        queryset = search_notes(queryset, text_query)
     order_map = {
         "custom": ("state_position", "id"),
         "created": ("-created_at", "-id"),
@@ -373,6 +381,9 @@ def notes(request, note_id=None):
     if selected_note:
         mark_shared_note_opened(request.user, selected_note)
 
+    tags = note_tags_by_note(request.user, [note.pk for note in note_list])
+    for note in note_list:
+        note.viewer_tags = tags.get(note.pk, [])
     note_items = [serialize_note(note, request.user, include_document=False) for note in note_list]
     selected_note_data = serialize_note(selected_note, request.user) if selected_note else None
     tree_items, folder_options = _build_note_navigation(
@@ -398,6 +409,8 @@ def notes(request, note_id=None):
         "shortcut_overrides": getattr(getattr(request.user, "profile", None), "note_shortcuts", {}),
         "note_color_choices": NoteUserState.COLOR_CHOICES,
         "note_icon_choices": NoteUserState.ICON_CHOICES,
+        "tag_options": user_tag_names(request.user),
+        "active_tags": tag_filters,
     }
     return render(request, "app/notes.html", context)
 
@@ -672,6 +685,9 @@ def note_action_api(request, note_id):
             return JsonResponse({"ok": True, "note": serialize_note(note, request.user)})
         if action == "style":
             note = set_note_style(request.user, note_id, color=payload.get("color"), icon=payload.get("icon"))
+            return JsonResponse({"ok": True, "note": serialize_note(note, request.user)})
+        if action == "tags":
+            note = set_note_tags(request.user, note_id, payload.get("tags"))
             return JsonResponse({"ok": True, "note": serialize_note(note, request.user)})
         if action in {"trash", "restore", "purge"}:
             note = set_trash_state(request.user, note_id, action=action)

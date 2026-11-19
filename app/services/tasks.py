@@ -119,22 +119,29 @@ def _apply_task_status(task, status, *, now=None):
         # Finishing a task stops every timer still running on it.
         TaskTimeEntry.objects.filter(task=task, ended_at__isnull=True).update(ended_at=now or timezone.now())
 
-    if is_done and task.recurrence_rule != Task.RECURRENCE_NONE:
+    # recurrence_count 1 means this was the last occurrence.
+    if is_done and task.recurrence_rule != Task.RECURRENCE_NONE and task.recurrence_count != 1:
         current_time = now or timezone.now()
-        base_due = (task.due_at or current_time).astimezone(get_user_zoneinfo(task.user))
+        zone = get_user_zoneinfo(task.user)
+        base_due = (task.due_at or current_time).astimezone(zone)
+        next_due = _step_recurrence(
+            base_due, task.recurrence_rule, task.recurrence_interval, task.recurrence_weekdays
+        )
+        if task.recurrence_until and next_due.astimezone(zone).date() > task.recurrence_until:
+            return task
         next_task = Task.objects.create(
             user=task.user,
             assignee=task.assignee,
             task_list=task.task_list,
             parent=task.parent,
             title=task.title,
-            due_at=_step_recurrence(
-                base_due, task.recurrence_rule, task.recurrence_interval, task.recurrence_weekdays
-            ),
+            due_at=next_due,
             priority=task.priority,
             recurrence_rule=task.recurrence_rule,
             recurrence_interval=task.recurrence_interval,
             recurrence_weekdays=task.recurrence_weekdays,
+            recurrence_until=task.recurrence_until,
+            recurrence_count=task.recurrence_count - 1 if task.recurrence_count else None,
         )
         next_task.labels.set(task.labels.all())
         TaskShare.objects.bulk_create(

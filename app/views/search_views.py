@@ -5,7 +5,7 @@ from django.urls import reverse
 
 from app.models import Conversation, UmlDiagram, VacationPeriod, VocabularyList
 from app.services.note_search import build_snippet, highlight_text, parse_search_query, search_notes
-from app.services.notes import accessible_notes
+from app.services.notes import accessible_notes, filter_by_tags, split_tag_filters
 from app.services.system_settings import feature_flags
 from app.services.tasks import visible_tasks
 from app.services.user_preferences import (
@@ -81,10 +81,12 @@ def global_search(request):
 
     notes_results = []
     if query and flags["notes"]:
-        parsed = parse_search_query(query)
-        matches = search_notes(accessible_notes(request.user), query).order_by(
-            "-search_rank", "-updated_at", "-id"
-        )[:SEARCH_RESULT_LIMIT]
+        tags, text_query = split_tag_filters(query)
+        parsed = parse_search_query(text_query)
+        candidates = filter_by_tags(accessible_notes(request.user), request.user, tags)
+        matches = search_notes(candidates, text_query).order_by("-search_rank", "-updated_at", "-id")[
+            :SEARCH_RESULT_LIMIT
+        ]
         notes_results = [
             {
                 "id": note.id,

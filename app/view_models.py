@@ -15,6 +15,7 @@ from app.models import (
     CalendarReminder,
     CalendarSubscription,
     Conversation,
+    ConversationMember,
     Countdown,
     ExpenseGroupMember,
     Habit,
@@ -48,7 +49,8 @@ from app.services.dashboard import (
 from app.services.expenses import balances, euro, user_groups
 from app.services.habits import habit_items
 from app.services.kanban import accessible_boards
-from app.services.message_queries import unread_total_for_user
+from app.services.message_queries import last_messages_by_conversation, unread_total_for_user
+from app.services.notes import accessible_notes
 from app.services.notifications import dashboard_latest_notifications
 from app.services.shopping import group_items
 from app.services.system_settings import feature_enabled, feature_flags
@@ -132,6 +134,7 @@ def get_dashboard_context(user=None):
     dashboard_countdowns = (
         _dashboard_countdowns(user, now.date(), flags) if user and "countdown" in visible_widget_ids else []
     )
+    dashboard_activity = _dashboard_activity(user, flags) if user and "activity" in visible_widget_ids else []
 
     return {
         "active_page": "home",
@@ -166,6 +169,7 @@ def get_dashboard_context(user=None):
         "dashboard_expenses": dashboard_expenses,
         "bookmark_form": BookmarkForm(),
         "dashboard_countdowns": dashboard_countdowns,
+        "dashboard_activity": dashboard_activity,
         "countdown_form": CountdownForm(),
         "clock": {
             "time": format_user_time(now, user),
@@ -544,6 +548,55 @@ def get_tools_context(user):
 
 
 MAX_DASHBOARD_COUNTDOWNS = 6
+
+
+def _dashboard_activity(user, flags):
+    """What changed lately in the user's notes, tasks and chats, newest first."""
+    items = []
+
+    def add(kind, title, detail, at, url):
+        items.append({"kind": kind, "title": title, "detail": detail, "at": at, "url": url})
+
+    def by(person):
+        if person is None:
+            return ""
+        return "von dir" if person.pk == user.pk else f"von {_display_name(person)}"
+
+    if flags["notes"]:
+        for note in accessible_notes(user).order_by("-updated_at")[:MAX_WIDGET_ITEMS]:
+            add(
+                "note",
+                note.title,
+                by(note.last_edited_by),
+                note.updated_at,
+                reverse("note_detail", args=[note.pk]),
+            )
+    if flags["tasks"]:
+        tasks = visible_tasks(user).filter(parent__isnull=True).select_related("user__profile")
+        for task in tasks.order_by("-updated_at")[:MAX_WIDGET_ITEMS]:
+            add(
+                "task",
+                task.title,
+                "erledigt" if task.is_done else by(task.user),
+                task.updated_at,
+                reverse("tasks"),
+            )
+    if flags["messages"]:
+        memberships = ConversationMember.objects.filter(user=user, is_archived=False, is_blocked=False)
+        conversations = [membership.conversation for membership in memberships.select_related("conversation")]
+        for conversation_id, message in last_messages_by_conversation(conversations).items():
+            text = message.display_body or "Anhang"
+            add(
+                "message",
+                f"{_display_name(message.sender)}: {text}" if message.sender_id != user.pk else f"Du: {text}",
+                "",
+                message.created_at,
+                reverse("messages_detail", args=[conversation_id]),
+            )
+    items.sort(key=lambda item: item["at"], reverse=True)
+    for item in items[:MAX_WIDGET_ITEMS]:
+        item["time_label"] = format_user_datetime(item["at"], user)
+    return items[:MAX_WIDGET_ITEMS]
 
 
 def _countdown_label(days):

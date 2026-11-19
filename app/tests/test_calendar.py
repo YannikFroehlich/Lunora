@@ -1312,6 +1312,22 @@ class CalendarEventCommentTests(TestCase):
         self.client.force_login(self.ben)
         self.assertEqual(self.client.get(self.url).status_code, 404)
 
+    def test_single_event_downloads_as_ics_for_participants_only(self):
+        self.client.force_login(self.lukas)
+        response = self.client.get(f"{self.url}ics/")
+        self.assertEqual(response["Content-Type"], "text/calendar; charset=utf-8")
+        self.assertIn('filename="teamessen.ics"', response["Content-Disposition"])
+        body = response.content.decode()
+        self.assertTrue(body.startswith("BEGIN:VCALENDAR\r\n"))
+        self.assertIn(f"UID:lunora-event-{self.event.id}\r\n", body)
+        self.assertIn("DTSTART:20990310T180000Z\r\n", body)
+        self.assertIn("LOCATION:Pizzeria\r\n", body)
+        self.assertEqual(body.count("BEGIN:VEVENT"), 1)
+        self.assertContains(self.client.get(self.url), f"{self.url}ics/")
+
+        self.client.force_login(self.ben)
+        self.assertEqual(self.client.get(f"{self.url}ics/").status_code, 404)
+
     def test_comment_notifies_organizer_and_open_invitees_but_not_decliners(self):
         response = self.comment(self.lukas, "Ich bringe Nachtisch mit.")
 

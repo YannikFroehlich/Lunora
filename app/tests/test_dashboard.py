@@ -11,6 +11,9 @@ from app.models import (
     Bookmark,
     CalendarEvent,
     CalendarReminder,
+    ChatMessage,
+    Conversation,
+    ConversationMember,
     Countdown,
     ExpenseGroup,
     ExpenseGroupMember,
@@ -100,6 +103,7 @@ class DashboardCustomizationTests(TestCase):
             "meal_plan",
             "expenses",
             "countdown",
+            "activity",
         ]
         self.profile.dashboard_layout = self._layout(order=order)
         self.profile.save(update_fields=["dashboard_layout"])
@@ -315,6 +319,7 @@ class DashboardCustomizationTests(TestCase):
                 "meal_plan",
                 "expenses",
                 "countdown",
+                "activity",
             ],
             hidden=["clock", "weather"],
             widgets={
@@ -739,6 +744,46 @@ class DashboardMealAndExpenseWidgetTests(TestCase):
         self.assertContains(response, "Linseneintopf")
         self.assertEqual(response.context["dashboard_expenses"][0]["label"], "-45,00 €")
         self.assertContains(response, "du schuldest noch etwas")
+
+
+class DashboardActivityWidgetTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="lea", email="lea@example.com", password="pw-12345!")
+        Profile.objects.create(user=self.user, display_name="Lea")
+        self.tom = User.objects.create_user(username="tom", email="tom@example.com", password="pw-12345!")
+        Profile.objects.create(user=self.tom, display_name="Tom")
+        self.client.force_login(self.user)
+
+    def test_lists_latest_notes_tasks_and_chats_newest_first(self):
+        Note.objects.create(owner=self.user, title="Protokoll", last_edited_by=self.user)
+        Task.objects.create(user=self.user, title="Steuer", is_done=True)
+        conversation = Conversation.objects.create()
+        ConversationMember.objects.create(conversation=conversation, user=self.user)
+        ConversationMember.objects.create(conversation=conversation, user=self.tom)
+        ChatMessage.objects.create(conversation=conversation, sender=self.tom, body="Kommst du mit?")
+        Note.objects.create(owner=self.tom, title="Fremde Notiz")
+
+        response = self.client.get("/home/")
+
+        items = response.context["dashboard_activity"]
+        self.assertEqual(
+            [(item["kind"], item["title"], item["detail"]) for item in items],
+            [
+                ("message", "Tom: Kommst du mit?", ""),
+                ("task", "Steuer", "erledigt"),
+                ("note", "Protokoll", "von dir"),
+            ],
+        )
+        self.assertEqual(items[0]["url"], f"/messages/{conversation.pk}/")
+        self.assertContains(response, "Letzte Aktivität")
+
+    def test_hidden_widget_skips_its_queries(self):
+        layout = default_dashboard_layout()
+        layout["hidden"] = ["activity"]
+        self.user.profile.dashboard_layout = layout
+        self.user.profile.save()
+        Note.objects.create(owner=self.user, title="Protokoll")
+        self.assertEqual(self.client.get("/home/").context["dashboard_activity"], [])
 
 
 class DashboardCountdownWidgetTests(TestCase):

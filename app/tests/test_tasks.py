@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from django.contrib.auth.models import User
@@ -524,6 +524,47 @@ class TaskTests(TestCase):
     def _complete_and_get_next(self, task):
         toggle_task(self.user, task.id, True)
         return Task.objects.get(user=self.user, title=task.title, is_done=False)
+
+    def test_recurrence_stops_after_its_count_or_end_date(self):
+        zone = get_user_zoneinfo(self.user)
+        counted = Task.objects.create(
+            user=self.user,
+            title="Physio",
+            due_at=datetime(2099, 1, 5, 9, 0, tzinfo=zone),
+            recurrence_rule="WEEKLY",
+            recurrence_count=3,
+        )
+        second = self._complete_and_get_next(counted)
+        third = self._complete_and_get_next(second)
+        self.assertEqual((second.recurrence_count, third.recurrence_count), (2, 1))
+        toggle_task(self.user, third.id, True)
+        self.assertFalse(Task.objects.filter(title="Physio", is_done=False).exists())
+
+        until = Task.objects.create(
+            user=self.user,
+            title="Gießen",
+            due_at=datetime(2099, 1, 5, 9, 0, tzinfo=zone),
+            recurrence_rule="DAILY",
+            recurrence_until=date(2099, 1, 6),
+        )
+        last = self._complete_and_get_next(until)
+        self.assertEqual(last.recurrence_until, date(2099, 1, 6))
+        toggle_task(self.user, last.id, True)
+        self.assertFalse(Task.objects.filter(title="Gießen", is_done=False).exists())
+
+    def test_form_drops_the_series_end_without_a_rule(self):
+        self.client.force_login(self.user)
+        self.client.post(
+            "/tasks/",
+            {
+                "form_name": "task_add",
+                "title": "Einmalig",
+                "recurrence_count": "4",
+                "recurrence_until": "2099-01-01",
+            },
+        )
+        task = Task.objects.get(title="Einmalig")
+        self.assertEqual((task.recurrence_count, task.recurrence_until), (None, None))
 
     def test_weekly_recurrence_on_weekdays_steps_to_next_chosen_day(self):
         self.profile.timezone_name = "Europe/Berlin"

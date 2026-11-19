@@ -28,6 +28,7 @@ from app.models import (
     Note,
     NoteFolder,
     NoteFolderShare,
+    NoteTag,
     NoteTemplate,
     Recipe,
     ScheduledChatMessage,
@@ -337,6 +338,9 @@ def _account(user, archive):
 
 def _notes(user, archive):
     notes = []
+    tags = {}
+    for note_id, name in NoteTag.objects.filter(user=user).values_list("note_id", "name"):
+        tags.setdefault(note_id, []).append(name)
     for note in Note.objects.filter(owner=user).prefetch_related("attachments").order_by("id"):
         markdown_name = f"notizen/{note.pk}-{note_markdown_filename(note)}"
         archive.writestr(markdown_name, render_note_markdown(note))
@@ -360,6 +364,7 @@ def _notes(user, archive):
                 "document": note.document,
                 "plain_text": note.plain_text,
                 "markdown": markdown_name,
+                "tags": tags.get(note.pk, []),
                 "in_trash": note.deleted_at is not None,
                 "created_at": note.created_at,
                 "updated_at": note.updated_at,
@@ -396,6 +401,8 @@ def _tasks(user):
                 "recurrence_rule": task.recurrence_rule,
                 "recurrence_interval": task.recurrence_interval,
                 "recurrence_weekdays": task.recurrence_weekdays,
+                "recurrence_until": task.recurrence_until,
+                "recurrence_count": task.recurrence_count,
                 "is_done": task.is_done,
                 "is_in_progress": task.is_in_progress,
                 "shared_with": [share.user.get_username() for share in task.shares.all()],

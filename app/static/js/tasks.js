@@ -371,6 +371,9 @@
     const weekdaysField = form.querySelector("[data-recurrence-weekdays]");
     const unit = form.querySelector("[data-recurrence-unit]");
     if (intervalField) intervalField.hidden = !RECURRENCE_UNITS[rule];
+    form.querySelectorAll("[data-recurrence-end]").forEach((field) => {
+      field.hidden = !RECURRENCE_UNITS[rule];
+    });
     if (weekdaysField) weekdaysField.hidden = rule !== "WEEKLY";
     if (unit) unit.textContent = RECURRENCE_UNITS[rule] || "";
   };
@@ -399,6 +402,8 @@
     const recurrenceSelect = editForm?.querySelector("select[name='recurrence_rule']");
     const intervalInput = editForm?.querySelector("input[name='recurrence_interval']");
     const weekdayInputs = editForm?.querySelectorAll("input[name='recurrence_weekdays']") || [];
+    const untilInput = editForm?.querySelector("input[name='recurrence_until']");
+    const countInput = editForm?.querySelector("input[name='recurrence_count']");
     const parentInput = editForm?.querySelector("input[name='parent']");
     const assigneeSelect = editForm?.querySelector("select[name='assignee']");
     const labelInputs = editForm?.querySelectorAll("input[name='labels']") || [];
@@ -413,6 +418,8 @@
       if (prioritySelect) prioritySelect.value = data.priority || "none";
       if (recurrenceSelect) recurrenceSelect.value = data.recurrence || "none";
       if (intervalInput) intervalInput.value = data.interval || "1";
+      if (untilInput) untilInput.value = data.until || "";
+      if (countInput) countInput.value = data.count || "";
       const weekdays = (data.weekdays || "").split(",").filter(Boolean);
       weekdayInputs.forEach((input) => {
         input.checked = weekdays.includes(input.value);
@@ -452,6 +459,8 @@
         recurrence: button.dataset.editRecurrence,
         interval: button.dataset.editInterval,
         weekdays: button.dataset.editWeekdays,
+        until: button.dataset.editUntil,
+        count: button.dataset.editCount,
         labels: button.dataset.editLabels,
         parent: button.dataset.editParent,
         assignee: button.dataset.editAssignee,

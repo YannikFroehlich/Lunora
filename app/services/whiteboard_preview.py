@@ -18,6 +18,16 @@ INK = {
     "gray": "#8c8c8c",
 }
 TEXT_SIZES = {"s": 16, "m": 24, "l": 40}
+# Mirrors STICKY_PAPER in whiteboard_format.js; "default" sticky notes are yellow.
+STICKY_PAPER = {
+    "default": "#fff1a8",
+    "yellow": "#fff1a8",
+    "blue": "#d3e5f7",
+    "green": "#d7ecd2",
+    "red": "#f8d6d3",
+    "violet": "#e5dbf3",
+    "gray": "#e7e7e7",
+}
 TEXT_LINE_HEIGHT = 1.25
 # A board may hold 150,000 points; the thumbnail keeps about this many so the list page stays small.
 MAX_PREVIEW_POINTS = 1200
@@ -113,6 +123,17 @@ def _shape(item, step):
         width = max(len(line) for line in lines) * size * 0.55
         return markup, (x, y, x + width, y + len(lines) * size * TEXT_LINE_HEIGHT)
     width, height = float(item["w"]), float(item["h"])
+    if kind == "sticky":
+        # Too small to read in a thumbnail; the tinted paper says enough.
+        markup = format_html(
+            '<rect x="{}" y="{}" width="{}" height="{}" rx="4" fill="{}"/>',
+            _number(x),
+            _number(y),
+            _number(width),
+            _number(height),
+            STICKY_PAPER.get(item["color"], STICKY_PAPER["yellow"]),
+        )
+        return markup, (x, y, x + width, y + height)
     fill = format_html(' style="fill:{};fill-opacity:0.3"', color) if item["fill"] else ""
     if kind == "rect":
         markup = format_html(

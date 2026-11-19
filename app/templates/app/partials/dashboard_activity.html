@@ -1,0 +1,14 @@
+{% include "app/partials/dashboard_widget_head.html" with icon="fa-solid fa-clock-rotate-left" title="Letzte Aktivität" %}
+<ul class="widget-list">
+    {% for item in dashboard_activity %}
+    <li data-dashboard-item{% if forloop.counter > widget.options.limit %} hidden{% endif %}>
+        <span class="event-dot {% if item.kind == 'note' %}tone-violet{% elif item.kind == 'task' %}tone-green{% else %}tone-blue{% endif %}" aria-hidden="true"></span>
+        <span class="widget-list-content">
+            <strong><a href="{{ item.url }}">{{ item.title|truncatechars:90 }}</a></strong>
+            <small>{% if item.kind == "note" %}Notiz{% elif item.kind == "task" %}Aufgabe{% else %}Nachricht{% endif %}{% if item.detail %} {{ item.detail }}{% endif %} · {{ item.time_label }}</small>
+        </span>
+    </li>
+    {% empty %}
+    <li class="widget-empty"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Noch nichts passiert.</li>
+    {% endfor %}
+</ul>

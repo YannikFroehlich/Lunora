@@ -735,6 +735,14 @@ html:has([data-whiteboard-editor].is-fullscreen) {
   box-shadow: none;
 }
 
+/* Editing a sticky note: the field lies on the note's paper and wraps like the drawn text. */
+.whiteboard-text-input.is-sticky {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  border-radius: var(--radius-xs);
+  outline-offset: 0;
+}
+
 .whiteboard-canvas.is-space-pan {
   cursor: grab;
 }
@@ -1329,6 +1337,23 @@ html:has([data-whiteboard-editor].is-fullscreen) {
   align-items: center;
   gap: 10px;
   color: var(--color-muted);
+}
+
+.vocab-say-button {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  color: var(--color-muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+
+.vocab-say-button:hover {
+  color: var(--color-accent-strong);
+  background: var(--surface-control-hover);
 }
 
 .vocab-box-pill {
@@ -2127,6 +2152,42 @@ html:has([data-whiteboard-editor].is-fullscreen) {
   background: var(--surface-selected);
 }
 
+.shopping-recipes {
+  margin-top: 20px;
+  padding: 18px 20px;
+}
+
+.shopping-recipes h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  font-size: var(--text-lg);
+}
+
+.shopping-recipes ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shopping-recipes li {
+  display: grid;
+  gap: 2px;
+}
+
+.shopping-recipes a {
+  color: var(--color-heading);
+  font-weight: 600;
+}
+
+.shopping-recipes small {
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+}
+
 .shopping-share {
   margin-top: 20px;
   padding: 18px 20px;
@@ -2875,9 +2936,16 @@ form:has([name="split_mode"][value="amounts"]:checked) [data-split-hint="amounts
 
 .expense-list-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+
+.expense-exports {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .expense-balance.is-positive {

@@ -24,6 +24,7 @@ from app.services.recipes import (
     instruction_steps,
     meal_plan_week,
     plan_recipe,
+    recipe_suggestions,
     scale_quantity,
 )
 from app.services.safe_fetch import FetchError
@@ -226,6 +227,7 @@ def shopping_list(request):
         request,
         "app/shopping_list.html",
         {
+            "recipe_suggestions": recipe_suggestions(request.user, items),
             "active_page": "tools",
             "shopping_form": form,
             "item_count": len(items),

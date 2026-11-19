@@ -21,7 +21,10 @@
         <section class="glass-panel event-detail-panel tone-{{ tone }}" aria-labelledby="event-detail-title">
             <div class="event-detail-head">
                 <h2 id="event-detail-title"><span class="event-detail-dot" aria-hidden="true"></span> {{ category }}</h2>
-                <a class="ghost-button" href="{{ day_url }}"><i class="fa-solid fa-calendar-day" aria-hidden="true"></i> Im Kalender{% if is_owner and not is_subscribed %} bearbeiten{% endif %}</a>
+                <span class="event-detail-actions">
+                    <a class="ghost-button" href="{% url 'calendar_event_ics' event.id %}" download><i class="fa-solid fa-file-arrow-down" aria-hidden="true"></i> .ics herunterladen</a>
+                    <a class="ghost-button" href="{{ day_url }}"><i class="fa-solid fa-calendar-day" aria-hidden="true"></i> Im Kalender{% if is_owner and not is_subscribed %} bearbeiten{% endif %}</a>
+                </span>
             </div>
             <dl class="event-detail-facts">
                 <div><dt>Wann</dt><dd>{{ when }}</dd></div>

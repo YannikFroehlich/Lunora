@@ -28,7 +28,10 @@ ELEMENT_KEYS = {
     "rect": COMMON_KEYS | {"width", "x", "y", "w", "h", "fill"},
     "ellipse": COMMON_KEYS | {"width", "x", "y", "w", "h", "fill"},
     "text": COMMON_KEYS | {"x", "y", "size", "text"},
+    # A sticky note: a tinted box with wrapped text inside; the text may still be empty.
+    "sticky": COMMON_KEYS | {"x", "y", "w", "h", "text"},
 }
+TEXT_TYPES = ("text", "sticky")
 
 
 def empty_whiteboard_document():
@@ -43,7 +46,7 @@ def whiteboard_plain_text(document):
     return "\n".join(
         item["text"]
         for item in elements
-        if isinstance(item, dict) and item.get("type") == "text" and isinstance(item.get("text"), str)
+        if isinstance(item, dict) and item.get("type") in TEXT_TYPES and isinstance(item.get("text"), str)
     )
 
 
@@ -92,6 +95,15 @@ def _clean_element(item, seen_ids, budget):
         if not text.strip():
             raise ValidationError("Ein Textelement darf nicht leer sein.")
         cleaned.update(x=_coordinate(item["x"]), y=_coordinate(item["y"]), size=item["size"], text=text)
+        return cleaned
+    if kind == "sticky":
+        cleaned.update(
+            x=_coordinate(item["x"]),
+            y=_coordinate(item["y"]),
+            w=_size(item["w"]),
+            h=_size(item["h"]),
+            text=_text(item["text"], "Der Text", MAX_TEXT_LENGTH),
+        )
         return cleaned
 
     width = item["width"]

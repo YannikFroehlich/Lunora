@@ -150,6 +150,11 @@
                                 {% if item.card.note %}<small>{{ item.card.note }}</small>{% endif %}
                             </span>
                             <span class="vocab-card-meta">
+                                {% if vocabulary_list.source_language != "de" %}
+                                <button class="vocab-say-button" type="button" data-vocab-say data-text="{{ item.card.term }}" data-lang="{{ vocabulary_list.source_language }}" aria-label="„{{ item.card.term }}“ vorlesen" title="Vorlesen" hidden><i class="fa-solid fa-volume-high" aria-hidden="true"></i></button>
+                                {% else %}
+                                <button class="vocab-say-button" type="button" data-vocab-say data-text="{{ item.card.translation }}" data-lang="{{ vocabulary_list.target_language }}" aria-label="„{{ item.card.translation }}“ vorlesen" title="Vorlesen" hidden><i class="fa-solid fa-volume-high" aria-hidden="true"></i></button>
+                                {% endif %}
                                 <span class="vocab-box-pill is-box-{{ item.card.box }}" title="Fach {{ item.card.box }}">{{ item.card.box }}</span>
                                 {% if item.is_due %}<span class="vocab-due-dot" title="Fällig"></span>{% endif %}
                                 <i class="fa-solid fa-pen" aria-hidden="true"></i>
@@ -190,6 +195,7 @@
 {% endblock %}
 
 {% block page_js %}
+<script src="{% versioned_static 'js/vocabulary.js' %}"></script>
 <script nonce="{{ csp_nonce }}">
     (function () {
         // Delegated and re-applied after in-place updates (base.js swaps the list), so the filter

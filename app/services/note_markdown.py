@@ -6,7 +6,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.text import slugify
 
-from app.services.note_content import FORM_FIELD_BLANK
+from app.services.note_content import FORM_FIELD_BLANK, task_due_label
 
 ESCAPE_RE = re.compile(r"([\\`*_\[\]<>|])")
 
@@ -91,11 +91,12 @@ class NoteMarkdownRenderer:
     def task_list_block(self, node, *, list_depth):
         lines = []
         for item in node.get("content") or []:
-            checked = bool((item.get("attrs") or {}).get("checked"))
-            marker = "- [x]" if checked else "- [ ]"
+            attrs = item.get("attrs") or {}
+            marker = "- [x]" if attrs.get("checked") else "- [ ]"
             item_lines = self._wrapped_item_lines(item, list_depth=list_depth)
             first, *rest = item_lines or [""]
-            lines.append(f"{marker} {first}".rstrip())
+            due = task_due_label(attrs.get("dueDate"))
+            lines.append(f"{marker} {first}{f' ({due})' if due else ''}".rstrip())
             for line in rest:
                 lines.append(f"      {line}" if line else "")
         return "\n".join(lines)

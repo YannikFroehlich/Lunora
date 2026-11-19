@@ -268,6 +268,15 @@ class ExpenseSplitTests(TestCase):
             "31.01.2026;'=HYPERLINK(1);Ausgabe;Miete & Nebenkosten;30,00;lea@example.com;15,00;15,00",
         )
 
+    def test_pdf_statement_downloads_for_members_only(self):
+        self._add(title="Einkauf")
+
+        response = self.client.get(self.url, {"format": "pdf"})
+
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertIn("lunora-abrechnung-", response["Content-Disposition"])
+        self.assertTrue(response.content.startswith(b"%PDF"))
+
     def test_month_overview_sums_categories_without_settlements(self):
         self._add(title="Einkauf", amount="30,00", category="groceries", spent_on="2026-11-03")
         self._add(title="Kino", amount="10,00", category="leisure", spent_on="2026-11-20")

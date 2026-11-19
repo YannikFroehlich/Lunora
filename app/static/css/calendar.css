@@ -2022,6 +2022,12 @@ a.event-chip:hover {
   gap: 10px;
 }
 
+.event-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .event-detail-dot {
   width: 12px;
   height: 12px;

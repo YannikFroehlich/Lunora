@@ -28,7 +28,56 @@
     return settings;
   }
 
-  globalThis.LunoraFocusTimer = { formatClock, nextPhase, cleanSettings, DEFAULT_SETTINGS };
+  const HISTORY_DAYS = 60;
+
+  // Local calendar day, so a unit finished at 23:30 counts for that evening, not UTC's next day.
+  function dayKey(date) {
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    return `${date.getFullYear()}-${month}-${String(date.getDate()).padStart(2, "0")}`;
+  }
+
+  function daysBefore(date, count) {
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate() - count);
+  }
+
+  // Days in a row with at least one finished unit. Like the habits, a still-empty today doesn't
+  // break the streak; it just doesn't count yet.
+  function focusStreak(history, today) {
+    let streak = 0;
+    for (let offset = history[dayKey(today)] ? 0 : 1; history[dayKey(daysBefore(today, offset))] > 0; offset += 1) {
+      streak += 1;
+    }
+    return streak;
+  }
+
+  // Units of the last seven days, today included.
+  function weekTotal(history, today) {
+    let total = 0;
+    for (let offset = 0; offset < 7; offset += 1) total += Number(history[dayKey(daysBefore(today, offset))]) || 0;
+    return total;
+  }
+
+  // Keeps only plausible counts of the last HISTORY_DAYS days.
+  function cleanHistory(raw, today) {
+    const oldest = dayKey(daysBefore(today, HISTORY_DAYS - 1));
+    const history = {};
+    Object.entries(raw && typeof raw === "object" ? raw : {}).forEach(([day, count]) => {
+      const value = Math.round(Number(count));
+      if (/^\d{4}-\d{2}-\d{2}$/.test(day) && day >= oldest && value > 0 && value < 1000) history[day] = value;
+    });
+    return history;
+  }
+
+  globalThis.LunoraFocusTimer = {
+    formatClock,
+    nextPhase,
+    cleanSettings,
+    dayKey,
+    focusStreak,
+    weekTotal,
+    cleanHistory,
+    DEFAULT_SETTINGS,
+  };
 
   if (typeof document === "undefined") return;
   const root = document.querySelector("[data-focus-timer]");
@@ -58,7 +107,11 @@
 
   const stored = loadStored();
   let settings = cleanSettings(stored.settings);
-  let completedToday = stored.day === new Date().toDateString() ? Number(stored.completedToday) || 0 : 0;
+  const history = cleanHistory(stored.history, new Date());
+  // Counts from before the history existed.
+  if (!stored.history && stored.day === new Date().toDateString() && Number(stored.completedToday) > 0) {
+    history[dayKey(new Date())] = Number(stored.completedToday);
+  }
   let phase = "focus";
   let completedFocus = 0;
   let remaining = settings.focus * 60;
@@ -69,7 +122,7 @@
     try {
       localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ settings, day: new Date().toDateString(), completedToday, taskId: taskSelect?.value || "" }),
+        JSON.stringify({ settings, history: cleanHistory(history, new Date()), taskId: taskSelect?.value || "" }),
       );
     } catch (_error) {
       // Private windows may block storage; the timer still works for this visit.
@@ -97,7 +150,13 @@
     toggleButton.querySelector("i").className = `fa-solid ${running ? "fa-pause" : "fa-play"}`;
     toggleButton.querySelector("span").textContent = running ? "Pausieren" : "Starten";
     document.title = running ? `${formatClock(remaining)} · ${PHASE_LABELS[phase]}` : pageTitle;
-    countLabel.textContent = `Heute ${completedToday} Fokus-Einheit${completedToday === 1 ? "" : "en"}`;
+    const today = new Date();
+    const completedToday = history[dayKey(today)] || 0;
+    const streak = focusStreak(history, today);
+    const parts = [`Heute ${completedToday} Fokus-Einheit${completedToday === 1 ? "" : "en"}`];
+    parts.push(`${weekTotal(history, today)} in 7 Tagen`);
+    if (streak > 1) parts.push(`${streak} Tage in Folge`);
+    countLabel.textContent = parts.join(" · ");
   }
 
   function beep() {
@@ -169,7 +228,8 @@
   function advance({ finished }) {
     stop();
     if (finished && phase === "focus") {
-      completedToday += 1;
+      const today = dayKey(new Date());
+      history[today] = (history[today] || 0) + 1;
       store();
     }
     ({ phase, completedFocus } = nextPhase(phase, completedFocus, settings.longEvery));

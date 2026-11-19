@@ -1,6 +1,26 @@
 import { describe, expect, it } from "vitest";
 
-import { checklistProgress } from "./checklist-utils.js";
+import { checklistProgress, dueDateAttributes } from "./checklist-utils.js";
+
+describe("dueDateAttributes", () => {
+  const today = new Date(2026, 10, 19, 15);
+
+  it("labels the date without this year and tells overdue, today, upcoming and done apart", () => {
+    expect(dueDateAttributes("2026-11-18", false, today)).toEqual({
+      "data-due-date": "2026-11-18",
+      "data-due-label": "18.11.",
+      "data-due-state": "overdue",
+    });
+    expect(dueDateAttributes("2026-11-19", false, today)["data-due-state"]).toBe("today");
+    expect(dueDateAttributes("2027-01-02", false, today)["data-due-label"]).toBe("02.01.2027");
+    expect(dueDateAttributes("2026-11-01", true, today)["data-due-state"]).toBe("done");
+  });
+
+  it("renders nothing without a valid date", () => {
+    expect(dueDateAttributes(null, false, today)).toEqual({});
+    expect(dueDateAttributes("morgen", false, today)).toEqual({});
+  });
+});
 
 describe("checklistProgress", () => {
   it("formats done of total", () => {

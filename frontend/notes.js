@@ -32,7 +32,7 @@ import typescript from "highlight.js/lib/languages/typescript";
 import xml from "highlight.js/lib/languages/xml";
 import yaml from "highlight.js/lib/languages/yaml";
 
-import { checklistProgress } from "./checklist-utils.js";
+import { checklistProgress, dueDateAttributes } from "./checklist-utils.js";
 import { Authorship, Collaboration, KEEP_AUTHORS, cursorTone, isRemoteTransaction, startCollabSync } from "./collab.js";
 import { normalizeLinkHref } from "./link-utils.js";
 import { editingLabel } from "./presence-utils.js";
@@ -326,6 +326,21 @@ const ShadedTableCell = TableCell.extend({
 const ShadedTableHeader = TableHeader.extend({
   addAttributes() {
     return { ...this.parent?.(), ...cellBoxAttributes };
+  },
+});
+
+// Checklist items with an optional due date ("YYYY-MM-DD", allowlisted in note_content.py), shown
+// as a chip after the item; Tiptap's node view copies these attributes onto the <li>.
+const DatedTaskItem = TaskItem.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      dueDate: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("data-due-date") || null,
+        renderHTML: (attributes) => dueDateAttributes(attributes.dueDate, attributes.checked),
+      },
+    };
   },
 });
 
@@ -952,6 +967,7 @@ const COMMAND_DEFAULTS = {
   bulletList: { label: "Aufzählung", shortcut: "Mod+Shift+8" },
   orderedList: { label: "Nummerierung", shortcut: "Mod+Shift+7" },
   taskList: { label: "Checkliste", shortcut: "Mod+Shift+9" },
+  taskDueDate: { label: "Fälligkeitsdatum (Checkliste)", shortcut: "Alt+Shift+D" },
   indent: { label: "Einzug vergrößern", shortcut: "Mod+]" },
   outdent: { label: "Einzug verkleinern", shortcut: "Mod+[" },
   fontFamily: { label: "Schriftart wählen", shortcut: "Alt+Shift+F" },
@@ -1052,6 +1068,8 @@ function initNotesApp() {
   const mathBlockToggle = document.querySelector("[data-math-block-toggle]");
   const mathConfirmButton = document.querySelector("[data-math-confirm]");
   const mathDeleteButton = document.querySelector("[data-math-delete]");
+  const dueDateDialog = document.querySelector("[data-due-date-dialog]");
+  const dueDateInput = document.querySelector("[data-due-date-input]");
   const commentsDialog = document.querySelector("[data-comments-dialog]");
   const templateDialog = document.querySelector("[data-template-dialog]");
   const noteMoveDialog = document.querySelector("[data-note-move-dialog]");
@@ -1089,7 +1107,7 @@ function initNotesApp() {
         ShadedTableCell,
         ShadedTableHeader,
         TaskList,
-        TaskItem.configure({
+        DatedTaskItem.configure({
           nested: true,
           // Tiptap's default label is English ("Task item checkbox for …").
           a11y: {
@@ -1392,6 +1410,7 @@ function initNotesApp() {
       bulletList: () => editor?.chain().focus().toggleBulletList().run(),
       orderedList: () => editor?.chain().focus().toggleOrderedList().run(),
       taskList: () => editor?.chain().focus().toggleTaskList().run(),
+      taskDueDate: openDueDateDialog,
       indent: () => sinkCurrentListItem(),
       outdent: () => liftCurrentListItem(),
       horizontalRule: () => editor?.chain().focus().setHorizontalRule().run(),
@@ -1472,6 +1491,52 @@ function initNotesApp() {
       },
     });
   }
+
+  function openDueDateDialog() {
+    if (!dueDateDialog || !dueDateInput || !editor?.isActive("taskItem")) return;
+    dueDateInput.value = editor.getAttributes("taskItem").dueDate || "";
+    dueDateDialog.showModal();
+    dueDateInput.focus();
+  }
+
+  function setTaskDueDate(value) {
+    editor
+      ?.chain()
+      .focus()
+      .updateAttributes("taskItem", { dueDate: value || null })
+      .run();
+    dueDateDialog?.close();
+  }
+
+  dueDateDialog?.querySelector("[data-due-date-confirm]")?.addEventListener("click", () => {
+    setTaskDueDate(dueDateInput.value);
+  });
+  dueDateDialog?.querySelector("[data-due-date-remove]")?.addEventListener("click", () => setTaskDueDate(null));
+
+  // Tags are the viewer's own, so readers may tag a shared note too; saved when the field is left.
+  const tagsInput = document.querySelector("[data-note-tags]");
+  tagsInput?.addEventListener("change", async () => {
+    if (!note) return;
+    const tags = tagsInput.value.split(/[,\s]+/).filter(Boolean);
+    const { response, data } = await requestJson(`/notes/api/${note.id}/actions/`, {
+      method: "POST",
+      body: JSON.stringify({ action: "tags", tags }),
+    });
+    if (!response.ok || !data.note) {
+      window.alert(data.error || "Die Tags konnten nicht gespeichert werden.");
+      return;
+    }
+    tagsInput.value = data.note.tags.join(", ");
+    const cardTags = document.querySelector(`[data-note-card="${note.id}"] [data-note-card-tags]`);
+    if (cardTags) {
+      cardTags.textContent = data.note.tags.map((tag) => `#${tag}`).join(" ");
+      cardTags.hidden = !data.note.tags.length;
+    }
+  });
+  tagsInput?.addEventListener("keydown", (event) => {
+    // Enter saves like leaving the field, instead of doing nothing in a form-less input.
+    if (event.key === "Enter") tagsInput.blur();
+  });
 
   function openMathDialog({ latex = "", isBlock = false, lockType = false, onConfirm, onDelete } = {}) {
     if (!mathDialog || !mathInput) return;
@@ -1739,6 +1804,10 @@ function initNotesApp() {
         .forEach((button) => button.classList.toggle("is-active", value));
     });
 
+    const inTaskItem = editor.isActive("taskItem");
+    document.querySelectorAll('[data-command="taskDueDate"]').forEach((button) => {
+      button.disabled = !inTaskItem;
+    });
     const languageGroup = document.querySelector("[data-code-language-group]");
     if (languageGroup) languageGroup.hidden = !inCodeBlock;
     const languageSelect = document.querySelector('[data-format="codeLanguage"]');

@@ -872,6 +872,10 @@ class Task(models.Model):
     # WEEKLY only: comma-separated date.weekday() numbers ("0,3" = Monday and Thursday); empty
     # means the weekday of the due date.
     recurrence_weekdays = models.CharField(max_length=13, blank=True, default="")
+    # Optional end of the series: no occurrence after this date (owner's local time), or after
+    # this many, the current one included; each new occurrence carries one less.
+    recurrence_until = models.DateField(blank=True, null=True)
+    recurrence_count = models.PositiveSmallIntegerField(blank=True, null=True)
     labels = models.ManyToManyField(TaskLabel, blank=True, related_name="tasks")
     position = models.PositiveIntegerField(default=0)
     is_done = models.BooleanField(default=False)
@@ -2142,6 +2146,23 @@ class NoteShare(models.Model):
 
     def __str__(self):
         return f"{self.user} – {self.note} ({self.role})"
+
+
+class NoteTag(models.Model):
+    """A tag one person put on a note. Like folders and colors it is per viewer: everyone a note is
+    shared with tags it their own way. Stored lowercase without "#"."""
+
+    note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name="tags")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="note_tags")
+    name = models.CharField(max_length=30)
+
+    class Meta:
+        ordering = ["name", "id"]
+        constraints = [models.UniqueConstraint(fields=["note", "user", "name"], name="unique_note_tag")]
+        indexes = [models.Index(fields=["user", "name"], name="app_notetag_user_name_idx")]
+
+    def __str__(self):
+        return f"#{self.name}"
 
 
 class NoteFolderShare(models.Model):

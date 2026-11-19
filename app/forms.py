@@ -893,6 +893,13 @@ class TaskForm(forms.ModelForm):
         required=False,
         widget=forms.CheckboxSelectMultiple,
     )
+    recurrence_until = forms.DateField(
+        label="Endet am",
+        required=False,
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        input_formats=["%Y-%m-%d"],
+    )
+    recurrence_count = forms.IntegerField(label="Noch … Mal", required=False, min_value=1, max_value=999)
 
     class Meta:
         model = Task
@@ -906,6 +913,8 @@ class TaskForm(forms.ModelForm):
             "recurrence_rule",
             "recurrence_interval",
             "recurrence_weekdays",
+            "recurrence_until",
+            "recurrence_count",
             "assignee",
         ]
         labels = {"title": "Neue Aufgabe"}
@@ -950,6 +959,9 @@ class TaskForm(forms.ModelForm):
         if cleaned_data.get("recurrence_rule") != "WEEKLY":
             weekdays = []
         cleaned_data["recurrence_weekdays"] = ",".join(sorted(weekdays))
+        if cleaned_data.get("recurrence_rule") in {None, "", Task.RECURRENCE_NONE}:
+            cleaned_data["recurrence_until"] = None
+            cleaned_data["recurrence_count"] = None
         if cleaned_data.get("parent") and cleaned_data.get("assignee"):
             # Subtasks follow their parent's assignee instead of having their own.
             self.add_error("assignee", "Nur Hauptaufgaben können zugewiesen werden.")
