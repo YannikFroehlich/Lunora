@@ -76,7 +76,7 @@
         <span class="visually-hidden">Benachrichtigungen</span>
         {% comment %}A soft region of its own, so in-place actions anywhere update the count; it sits
         inside the link because a region drops its own focus ring.{% endcomment %}
-        <span class="soft-contents" id="nav-notification-count" data-soft-region>
+        <span class="soft-contents" id="nav-notification-count" data-soft-region data-unread-count="{{ unread_notification_count }}">
             {% if unread_notification_count %}
             <span class="visually-hidden">{{ unread_notification_count }} ungelesen</span>
             <span class="nav-notification-badge" aria-hidden="true">{% if unread_notification_count > 99 %}99+{% else %}{{ unread_notification_count }}{% endif %}</span>

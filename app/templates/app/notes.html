@@ -69,9 +69,12 @@
 
         <div class="notes-tree-toolbar">
             <span><i class="fa-solid fa-folder-tree" aria-hidden="true"></i> Ordner</span>
-            <button type="button" data-folder-action="create" data-parent-id="" aria-label="Neuen Ordner anlegen" title="Neuer Ordner">
-                <i class="fa-solid fa-folder-plus"></i>
-            </button>
+            <div class="notes-tree-actions">
+                <a href="{% url 'note_graph' %}" aria-label="Notizgraph" title="Notizgraph"><i class="fa-solid fa-diagram-project" aria-hidden="true"></i></a>
+                <button type="button" data-folder-action="create" data-parent-id="" aria-label="Neuen Ordner anlegen" title="Neuer Ordner">
+                    <i class="fa-solid fa-folder-plus"></i>
+                </button>
+            </div>
         </div>
         <div class="notes-list soft-scrollbar" data-notes-list>
             <div class="notes-root-drop-target" data-root-drop-target>

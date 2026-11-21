@@ -66,6 +66,7 @@ from app.services.notes import (
     mark_shared_note_opened,
     move_note_tree_item,
     note_accessible_user_ids,
+    note_link_graph,
     note_public_path,
     note_tags_by_note,
     ping_note_presence,
@@ -317,6 +318,16 @@ def note_folder_share(request, folder_id):
     if form_name:
         return redirect("note_folder_share", folder_id=folder.pk)
     return render(request, "app/note_folder_share.html", {**context, "active_page": "notes"})
+
+
+@login_required
+def note_graph(request):
+    disabled = _feature_guard(request)
+    if disabled:
+        return disabled
+    return render(
+        request, "app/note_graph.html", {"active_page": "notes", "graph": note_link_graph(request.user)}
+    )
 
 
 @login_required

@@ -143,7 +143,9 @@ self.addEventListener("push", (event) => {
         : "/notifications/",
     },
   };
-  event.waitUntil(self.registration.showNotification(title, options));
+  // A plain badge (no number) until the app opens and sets the real unread count (base.js).
+  const badge = "setAppBadge" in self.navigator ? self.navigator.setAppBadge().catch(() => {}) : null;
+  event.waitUntil(Promise.all([self.registration.showNotification(title, options), badge]));
 });
 
 self.addEventListener("notificationclick", (event) => {

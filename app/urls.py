@@ -151,6 +151,7 @@ urlpatterns = [
     path("notes/<int:note_id>/", view.notes, name="note_detail"),
     path("notes/api/create/", view.note_create_api, name="note_create_api"),
     path("notes/import/", view.note_import, name="note_import"),
+    path("notes/graph/", view.note_graph, name="note_graph"),
     path("notes/api/templates/", view.note_template_create_api, name="note_template_create_api"),
     path(
         "notes/api/templates/<int:template_id>/",

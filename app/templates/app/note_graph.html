@@ -1,0 +1,49 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}Notizgraph | Notizen | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell tools-shell">
+    <header class="page-hero">
+        <div>
+            <a class="tools-back-link" href="{% url 'notes' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Notizen</a>
+            <h1>Notizgraph</h1>
+            <p>{{ graph.edges|length }} Verknüpfung{{ graph.edges|length|pluralize:"en" }} zwischen deinen Notizen. Im Editor verlinkst du eine Notiz mit „[[“.</p>
+        </div>
+        <i class="fa-solid fa-diagram-project hero-branch" aria-hidden="true"></i>
+    </header>
+
+    <section class="glass-panel note-graph-panel" aria-label="Notizgraph">
+        <div class="note-graph-toolbar">
+            <label class="note-graph-toggle">
+                <input type="checkbox" data-graph-isolated>
+                <span>Notizen ohne Verknüpfung zeigen</span>
+            </label>
+            <div class="note-graph-zoom">
+                <button class="icon-button" type="button" data-graph-zoom="out" aria-label="Verkleinern" title="Verkleinern"><i class="fa-solid fa-minus" aria-hidden="true"></i></button>
+                <button class="icon-button" type="button" data-graph-zoom="in" aria-label="Vergrößern" title="Vergrößern"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
+                <button class="ghost-button" type="button" data-graph-fit><i class="fa-solid fa-expand" aria-hidden="true"></i> Einpassen</button>
+            </div>
+        </div>
+        {% if graph.truncated %}
+        <p class="note-graph-hint">Gezeigt werden die {{ graph.nodes|length }} am stärksten verknüpften Notizen.</p>
+        {% endif %}
+        <div class="note-graph-canvas" data-note-graph>
+            <p class="note-graph-empty" data-graph-empty hidden>
+                {% if graph.nodes %}Noch keine Verknüpfungen. Tippe in einer Notiz „[[“, um eine andere zu verlinken.{% else %}Noch keine Notizen.{% endif %}
+            </p>
+            <noscript><p class="note-graph-empty">Der Notizgraph braucht JavaScript.</p></noscript>
+        </div>
+    </section>
+</section>
+{{ graph|json_script:"note-graph-data" }}
+{% endblock %}
+
+{% block page_js %}
+<script src="{% versioned_static 'js/note_graph.js' %}"></script>
+{% endblock %}

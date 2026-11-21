@@ -764,6 +764,55 @@ def get_note_backlinks(note, user):
     return [{"id": item.id, "title": item.title} for item in notes]
 
 
+# ponytail: the graph page lays nodes out with an O(n²) force simulation in the browser, so it gets
+# the best-connected notes only; cluster or page it server-side if accounts outgrow this.
+MAX_GRAPH_NOTES = 400
+
+
+def note_link_graph(user):
+    """Nodes and edges of the note-link graph the user may see: every non-trashed accessible note
+    (best-connected first, capped at MAX_GRAPH_NOTES) and the NoteLink rows between two of them,
+    so a link to a note the user can't open never shows up."""
+    notes = list(
+        accessible_notes(user)
+        .prefetch_related(None)
+        .values("id", "title", "state_color", "state_is_archived")
+    )
+    note_ids = {note["id"] for note in notes}
+    # Undirected: two notes linking each other are one connection.
+    edges = sorted(
+        {
+            (min(source, target), max(source, target))
+            for source, target in NoteLink.objects.filter(source_note_id__in=note_ids).values_list(
+                "source_note_id", "target_note_id"
+            )
+            if target in note_ids and target != source
+        }
+    )
+    degree = dict.fromkeys(note_ids, 0)
+    for source, target in edges:
+        degree[source] += 1
+        degree[target] += 1
+    notes.sort(key=lambda note: (-degree[note["id"]], (note["title"] or "").lower(), note["id"]))
+    kept = notes[:MAX_GRAPH_NOTES]
+    kept_ids = {note["id"] for note in kept}
+    return {
+        "nodes": [
+            {
+                "id": note["id"],
+                "title": note["title"] or "Unbenannte Notiz",
+                "url": reverse("note_detail", args=[note["id"]]),
+                "color": note["state_color"] or "",
+                "archived": note["state_is_archived"],
+                "degree": degree[note["id"]],
+            }
+            for note in kept
+        ],
+        "edges": [[source, target] for source, target in edges if source in kept_ids and target in kept_ids],
+        "truncated": len(notes) > len(kept),
+    }
+
+
 def _create_note_activity_notifications(note, actor, recipient_ids, kind):
     excerpt = note.plain_text[:200]
     notification_rows = NoteActivityNotification.objects.bulk_create(
