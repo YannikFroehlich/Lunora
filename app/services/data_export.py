@@ -187,6 +187,14 @@ def write_user_export(user, fileobj):
         _add_json(archive, "ausgaben.json", _expense_groups(user))
         _add_json(
             archive,
+            "notiz-erinnerungen.json",
+            [
+                {"note": reminder.note.title, "remind_at": reminder.remind_at}
+                for reminder in user.note_reminders.select_related("note")
+            ],
+        )
+        _add_json(
+            archive,
             "wunschlisten.json",
             [
                 {

@@ -1012,6 +1012,9 @@ const COMMAND_DEFAULTS = {
   exportWord: { label: "Als Word-Dokument exportieren", shortcut: "Mod+Alt+W" },
   print: { label: "Drucken", shortcut: "Mod+P" },
   saveAsTemplate: { label: "Als Vorlage speichern", shortcut: "Mod+Alt+T" },
+  present: { label: "Präsentieren", shortcut: "Mod+Alt+S" },
+  reminder: { label: "Erinnerung", shortcut: "Mod+Alt+R" },
+  checklistTasks: { label: "Checkliste als Aufgaben übernehmen", shortcut: "Mod+Alt+Shift+T" },
   shortcutSettings: { label: "Hotkey-Einstellungen", shortcut: "Mod+Alt+K" },
 };
 
@@ -1470,6 +1473,9 @@ function initNotesApp() {
       print: () => window.print(),
       saveAsTemplate: saveNoteAsTemplate,
       shortcutSettings: openShortcutDialog,
+      present: presentNote,
+      reminder: () => document.querySelector("[data-note-reminder-dialog]")?.showModal(),
+      checklistTasks: createTasksFromChecklist,
     };
     pageActions[action]?.();
   }
@@ -2084,6 +2090,32 @@ function initNotesApp() {
       return;
     }
     window.location.assign(`/notes/${note.id}/export/${format}/`);
+  }
+
+  // Both read the stored document, so pending edits are saved first (like the exports).
+  async function presentNote() {
+    if (!note) return;
+    while (saving) await new Promise((resolve) => window.setTimeout(resolve, 50));
+    if (dirty && !(await saveNow())) {
+      setSaveStatus("Präsentieren erst nach erfolgreichem Speichern möglich");
+      return;
+    }
+    window.location.assign(`/notes/${note.id}/present/`);
+  }
+
+  async function createTasksFromChecklist() {
+    if (!note) return;
+    if (dirty && !(await saveNow())) return;
+    const { response, data } = await requestJson(`/notes/api/${note.id}/actions/`, {
+      method: "POST",
+      body: JSON.stringify({ action: "checklist_tasks" }),
+    });
+    if (!response.ok || !data.ok) {
+      window.alert(data.error || "Die Aufgaben konnten nicht angelegt werden.");
+      return;
+    }
+    const created = data.created === 1 ? "1 Aufgabe angelegt" : `${data.created} Aufgaben angelegt`;
+    setSaveStatus(data.skipped ? `${created}, ${data.skipped} schon vorhanden oder leer` : created);
   }
 
   async function saveNoteAsTemplate() {

@@ -1749,6 +1749,7 @@ class UserNotification(models.Model):
     KIND_KANBAN_ASSIGNMENT = "kanban_assignment"
     KIND_NOTE_FOLDER_SHARE = "note_folder_share"
     KIND_WISH_LIST_SHARE = "wish_list_share"
+    KIND_NOTE_REMINDER = "note_reminder"
     KIND_WISH_PRICE_ALERT = "wish_price_alert"
     KIND_SECURITY_ALERT = "security_alert"
     KIND_CHOICES = [
@@ -1775,6 +1776,7 @@ class UserNotification(models.Model):
         (KIND_KANBAN_ASSIGNMENT, "Kanban-Karte zugewiesen"),
         (KIND_NOTE_FOLDER_SHARE, "Geteilter Notizordner"),
         (KIND_WISH_LIST_SHARE, "Geteilte Wunschliste"),
+        (KIND_NOTE_REMINDER, "Notizerinnerung"),
         (KIND_WISH_PRICE_ALERT, "Preisalarm"),
         (KIND_SECURITY_ALERT, "Sicherheitswarnung"),
     ]
@@ -2094,6 +2096,8 @@ class Note(models.Model):
     # Secret of the read-only public link (/s/notes/<token>/); null while the note isn't public.
     # The token is the only credential, so it stays out of logs, exports and copies.
     public_token = models.CharField(max_length=64, blank=True, null=True, unique=True)
+    # The day of a daily note (app/services/daily_notes.py); null for every other note.
+    daily_date = models.DateField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -2103,6 +2107,13 @@ class Note(models.Model):
             models.Index(fields=["owner", "deleted_at", "updated_at"], name="app_note_owner_state_idx"),
             # Created on PostgreSQL only (see migration 0071); SQLite has no GIN.
             GinIndex(fields=["search_vector"], name="app_note_search_vector_gin"),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["owner", "daily_date"],
+                condition=models.Q(daily_date__isnull=False),
+                name="unique_daily_note_per_owner",
+            )
         ]
 
     def __str__(self):
@@ -2161,6 +2172,21 @@ class NoteFolder(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class NoteReminder(models.Model):
+    """ "Erinnere mich an diese Notiz": one per note and person (owner or someone it is shared with),
+    turned into an inbox row once due and then deleted (materialize_due_note_reminders)."""
+
+    note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name="reminders")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="note_reminders"
+    )
+    remind_at = models.DateTimeField(db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["note", "user"], name="unique_note_reminder")]
 
 
 class NoteLink(models.Model):

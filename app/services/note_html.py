@@ -41,6 +41,29 @@ def render_note_html(note, *, attachment_url):
     return NoteHtmlRenderer(note, attachment_url=attachment_url).render()
 
 
+def render_note_slides(note, *, attachment_url):
+    """The note split into presentation slides as safe HTML: every top-level heading of level 1 or 2
+    and every horizontal rule starts a new slide (the rule itself isn't shown). Whatever comes before
+    the first such break goes on the title slide."""
+    renderer = NoteHtmlRenderer(note, attachment_url=attachment_url)
+    slides = [[]]
+    for node in renderer.document.get("content") or []:
+        if not isinstance(node, dict):
+            continue
+        node_type = node.get("type")
+        is_break = node_type == "horizontalRule" or (
+            node_type == "heading" and (node.get("attrs") or {}).get("level") in {1, 2}
+        )
+        if is_break:
+            slides.append([])
+        if node_type != "horizontalRule":
+            slides[-1].append(node)
+    title_slide, *rest = slides
+    return mark_safe(renderer.blocks(title_slide)), [
+        mark_safe(renderer.blocks(nodes)) for nodes in rest if nodes
+    ]
+
+
 class NoteHtmlRenderer:
     def __init__(self, note, *, attachment_url):
         self.attachment_url = attachment_url

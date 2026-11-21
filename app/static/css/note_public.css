@@ -223,3 +223,82 @@
 .note-public-footer a {
   color: var(--color-accent-strong);
 }
+
+/* ---- Presentation mode (note_present.html, js/note_present.js); slide bodies reuse the styles above. */
+
+.note-deck-shell {
+  width: min(100%, 1100px);
+  padding-block: 16px 32px;
+}
+
+.note-deck {
+  display: grid;
+  gap: 14px;
+}
+
+.note-deck:fullscreen {
+  align-content: center;
+  padding: 24px;
+  overflow-y: auto;
+  background: var(--color-bg);
+}
+
+.note-slide {
+  display: grid;
+  align-content: center;
+  min-height: min(70vh, 640px);
+  padding: clamp(28px, 5vw, 64px);
+}
+
+.note-deck.is-ready .note-slide:not(.is-current) {
+  display: none;
+}
+
+.note-deck:fullscreen .note-slide {
+  min-height: calc(100vh - 120px);
+}
+
+.note-slide.is-title {
+  text-align: center;
+}
+
+.note-slide h1 {
+  margin: 0 0 16px;
+  color: var(--color-heading);
+  font-size: clamp(2rem, 5vw, 3.4rem);
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.note-slide .note-public-body {
+  font-size: var(--text-lg);
+}
+
+.note-slide .note-public-body > h2:first-child {
+  margin-top: 0;
+  font-size: clamp(1.6rem, 3.5vw, 2.4rem);
+}
+
+.note-deck-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.note-deck-controls > a {
+  margin-right: auto;
+}
+
+.note-deck-counter {
+  min-width: 4.5em;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.note-deck-controls [hidden] {
+  display: none;
+}

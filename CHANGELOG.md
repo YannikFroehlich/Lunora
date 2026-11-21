@@ -6,6 +6,14 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Tagesnotiz: one click (calendar icon in the notes list, or the command palette) opens today's note,
+  prepared with today's appointments, the tasks due today and a link to the previous daily note.
+- Note reminders: the bell in a note's header reminds you of the note at a chosen time, in the inbox
+  and by e-mail or push if switched on. Reminders are personal, also on shared notes.
+- "Checkliste als Aufgaben": a button in the note header turns the note's open checklist items into
+  tasks, keeping their due dates; items that already exist as open tasks are skipped.
+- Presentation mode for notes: every heading (level 1 or 2) and horizontal line starts a new slide,
+  shown full screen and moved through with the arrow keys or a swipe.
 - Wish lists can be shared with other Lunora users. They see the list and can reserve an item with
   "Ich schenke das", so nothing is bought twice; the other people on the list see what is taken,
   but the list's owner never does, so the gift stays a surprise.

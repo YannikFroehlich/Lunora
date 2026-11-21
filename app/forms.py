@@ -1375,6 +1375,12 @@ class RecipeForm(forms.ModelForm):
         }
 
 
+class NoteReminderForm(forms.Form):
+    """The bell dialog's date and time, read in the user's own zone (UserTimezoneMiddleware)."""
+
+    remind_at = forms.DateTimeField(input_formats=["%Y-%m-%dT%H:%M"])
+
+
 class WishListForm(forms.ModelForm):
     class Meta:
         model = WishList

@@ -1,5 +1,6 @@
 import calendar
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
+from itertools import islice
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -16,6 +17,7 @@ from app.models import (
     TaskTimeEntry,
     UserNotification,
 )
+from app.services.note_content import document_plain_text
 from app.services.notes import display_name
 from app.services.user_preferences import (
     format_user_datetime,
@@ -716,3 +718,44 @@ def get_tasks_context(user, *, now=None, sort=None):
             for template in TaskTemplate.objects.filter(owner=user)
         ],
     }
+
+
+MAX_CHECKLIST_TASKS = 50
+
+
+def _open_checklist_items(node):
+    """(text, dueDate) of every unchecked checklist item in a note document, in document order; an
+    item's text is its own paragraphs only, without nested items."""
+    if not isinstance(node, dict):
+        return
+    if node.get("type") == "taskItem":
+        attrs = node.get("attrs") or {}
+        if attrs.get("checked") is not True:
+            paragraphs = [child for child in node.get("content") or [] if isinstance(child, dict)]
+            paragraphs = [child for child in paragraphs if child.get("type") == "paragraph"]
+            text = " ".join(document_plain_text({"type": "doc", "content": paragraphs}).split())
+            yield text, attrs.get("dueDate")
+    for child in node.get("content") or []:
+        yield from _open_checklist_items(child)
+
+
+def create_tasks_from_checklist(user, document):
+    """The open checklist items of a note become the user's own Inbox tasks, a due date at
+    DEFAULT_DUE_TIME in the user's zone. Items matching an open task's title are skipped, so running
+    it twice adds nothing. Returns (created, skipped)."""
+    open_titles = set(Task.objects.filter(user=user, is_done=False).values_list("title", flat=True))
+    zone = localtime_for_user(profile_or_user=user).tzinfo
+    created = skipped = 0
+    for text, due in islice(_open_checklist_items(document), MAX_CHECKLIST_TASKS):
+        title = text[:180]
+        if not title or title in open_titles:
+            skipped += 1
+            continue
+        try:
+            due_at = datetime.combine(date.fromisoformat(due), DEFAULT_DUE_TIME, tzinfo=zone) if due else None
+        except (TypeError, ValueError):
+            due_at = None
+        Task.objects.create(user=user, title=title, due_at=due_at)
+        open_titles.add(title)
+        created += 1
+    return created, skipped

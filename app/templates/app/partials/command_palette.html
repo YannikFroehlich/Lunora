@@ -19,6 +19,9 @@
             <a class="command-palette-item" id="command-notes" role="option" href="{% url 'notes' %}" data-command-item data-keywords="notiz dokumente schreiben">
                 <i class="fa-regular fa-note-sticky" aria-hidden="true"></i><span>Notizen</span><small>Seite</small>
             </a>
+            <a class="command-palette-item" id="command-note-today" role="option" href="{% url 'note_today' %}" data-command-item data-keywords="tagesnotiz heute journal tagebuch daily">
+                <i class="fa-solid fa-calendar-day" aria-hidden="true"></i><span>Tagesnotiz</span><small>Notizen</small>
+            </a>
             <a class="command-palette-item" id="command-note-graph" role="option" href="{% url 'note_graph' %}" data-command-item data-keywords="graph verknüpfungen links backlinks netz">
                 <i class="fa-solid fa-diagram-project" aria-hidden="true"></i><span>Notizgraph</span><small>Notizen</small>
             </a>

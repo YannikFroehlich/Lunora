@@ -9,6 +9,7 @@ from app.services.chat import send_due_scheduled_messages
 from app.services.expenses import post_due_recurring_expenses
 from app.services.notifications import (
     materialize_due_habit_reminders,
+    materialize_due_note_reminders,
     send_due_reminder_emails,
     send_due_task_reminder_emails,
     send_new_invitation_emails,
@@ -55,8 +56,12 @@ def run_scheduled_tasks(*, now=None):
         invitation_result = {"sent": 0, "failed": 0, "disabled": True}
     if feature_enabled("notes"):
         note_activity_result = _guarded("note_activity_emails", send_note_activity_emails, now=current_time)
+        note_reminder_result = _guarded(
+            "note_reminders", lambda: {"created": materialize_due_note_reminders(now=current_time)}
+        )
     else:
         note_activity_result = {"sent": 0, "failed": 0, "disabled": True}
+        note_reminder_result = {"created": 0, "disabled": True}
     if feature_enabled("tasks"):
         task_reminder_result = _guarded(
             "task_reminder_emails", send_due_task_reminder_emails, now=current_time
@@ -114,6 +119,7 @@ def run_scheduled_tasks(*, now=None):
         "reminder_emails": reminder_result,
         "event_invitation_emails": invitation_result,
         "note_activity_emails": note_activity_result,
+        "note_reminders": note_reminder_result,
         "task_reminder_emails": task_reminder_result,
         "weekly_summaries": weekly_result,
         "calendar_subscriptions": subscription_result,

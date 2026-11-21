@@ -14,6 +14,7 @@ from app.models import (
     Habit,
     HabitCheck,
     NoteActivityNotification,
+    NoteReminder,
     NoteShare,
     Profile,
     Task,
@@ -69,6 +70,7 @@ NOTIFICATION_PRESENTATION = {
     UserNotification.KIND_KANBAN_ASSIGNMENT: ("fa-user-check", "Kanban", "tools"),
     UserNotification.KIND_NOTE_FOLDER_SHARE: ("fa-folder-open", "Freigabe", "note"),
     UserNotification.KIND_WISH_LIST_SHARE: ("fa-gift", "Wunschliste", "tools"),
+    UserNotification.KIND_NOTE_REMINDER: ("fa-bell", "Erinnerung", "note"),
     UserNotification.KIND_WISH_PRICE_ALERT: ("fa-tag", "Preisalarm", "tools"),
     UserNotification.KIND_SECURITY_ALERT: ("fa-shield-halved", "Sicherheit", "security"),
 }
@@ -697,6 +699,39 @@ def materialize_due_habit_reminders(*, user=None, now=None):
     return _create_missing_user_notifications(rows)
 
 
+def materialize_due_note_reminders(*, user=None, now=None):
+    """Turns due note reminders into inbox rows and deletes them. A reminder whose note went to the
+    trash or is no longer shared with its person is dropped silently."""
+    current_time = now or timezone.now()
+    reminders = NoteReminder.objects.filter(remind_at__lte=current_time, user__is_active=True).select_related(
+        "note"
+    )
+    if user is not None:
+        reminders = reminders.filter(user=user)
+    reminders = list(reminders)
+    if not reminders:
+        return 0
+    shared = set(
+        NoteShare.objects.filter(note_id__in={r.note_id for r in reminders}).values_list("note_id", "user_id")
+    )
+    rows = [
+        {
+            "recipient_id": reminder.user_id,
+            "kind": UserNotification.KIND_NOTE_REMINDER,
+            "title": f"Erinnerung: {reminder.note.title}"[:300],
+            "body": reminder.note.plain_text[:200],
+            "url": f"/notes/{reminder.note_id}/",
+            "source_key": f"note-reminder:{reminder.pk}",
+        }
+        for reminder in reminders
+        if reminder.note.deleted_at is None
+        and (reminder.note.owner_id == reminder.user_id or (reminder.note_id, reminder.user_id) in shared)
+    ]
+    created = _create_missing_user_notifications(rows)
+    NoteReminder.objects.filter(pk__in=[reminder.pk for reminder in reminders]).delete()
+    return created
+
+
 def materialize_user_notification_sources(
     user, *, now=None, include_reminders=True, include_tasks=True, include_habits=True
 ):
@@ -740,6 +775,7 @@ def materialize_user_notification_sources(
         )
     if include_habits:
         created += materialize_due_habit_reminders(user=user, now=now)
+    created += materialize_due_note_reminders(user=user, now=now)
     return created
 
 
@@ -1232,7 +1268,11 @@ def send_pending_user_notification_emails(
     current_time = now or timezone.now()
     kinds = []
     if include_note_shares:
-        kinds += [UserNotification.KIND_NOTE_SHARE, UserNotification.KIND_NOTE_FOLDER_SHARE]
+        kinds += [
+            UserNotification.KIND_NOTE_SHARE,
+            UserNotification.KIND_NOTE_FOLDER_SHARE,
+            UserNotification.KIND_NOTE_REMINDER,
+        ]
     if include_vocabulary_shares:
         kinds.append(UserNotification.KIND_VOCABULARY_SHARE)
     if include_shopping_shares:
