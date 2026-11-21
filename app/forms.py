@@ -1390,10 +1390,22 @@ class WishListItemForm(forms.ModelForm):
         label="Preis", required=False, min_value=0, max_value=99_999_999, decimal_places=2, localize=True
     )
     quantity = forms.IntegerField(label="Anzahl", min_value=0, max_value=99)
+    target_price = forms.DecimalField(
+        label="Preisalarm bei",
+        required=False,
+        min_value=0,
+        max_value=99_999_999,
+        decimal_places=2,
+        localize=True,
+    )
+    priority = forms.ChoiceField(label="Wichtigkeit", choices=WishListItem.PRIORITY_CHOICES, required=False)
+
+    def clean_priority(self):
+        return self.cleaned_data["priority"] or WishListItem.PRIORITY_NORMAL
 
     class Meta:
         model = WishListItem
-        fields = ["title", "price", "quantity"]
+        fields = ["title", "price", "quantity", "priority", "target_price"]
 
 
 class KanbanCardForm(forms.ModelForm):

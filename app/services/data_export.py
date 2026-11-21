@@ -198,14 +198,32 @@ def write_user_export(user, fileobj):
                             "price": item.price,
                             "currency": item.currency,
                             "quantity": item.quantity,
+                            "priority": item.priority,
+                            "target_price": item.target_price,
                             "fetched_at": item.fetched_at,
                             "created_at": item.created_at,
                             "price_history": list(item.price_points.values("price", "recorded_at")),
                         }
                         for item in wish_list.items.prefetch_related("price_points").all()
                     ],
+                    # Who sees the list; what they reserved stays hidden from the owner here too.
+                    "shared_with": [share.user.username for share in wish_list.shares.select_related("user")],
                 }
                 for wish_list in WishList.objects.filter(owner=user)
+            ],
+        )
+        _add_json(
+            archive,
+            "wunschlisten-geschenke.json",
+            [
+                {
+                    "list": reservation.item.wish_list.title,
+                    "owner": reservation.item.wish_list.owner.username,
+                    "item": reservation.item.title,
+                    "url": reservation.item.url,
+                    "reserved_at": reservation.created_at,
+                }
+                for reservation in user.wish_reservations.select_related("item__wish_list__owner")
             ],
         )
         for diagram in UmlDiagram.objects.filter(owner=user):

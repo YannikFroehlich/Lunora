@@ -70,6 +70,8 @@ KIND_TO_CATEGORY = {
     UserNotification.KIND_WHITEBOARD_COMMENT: NotificationPreference.CATEGORY_TOOLS,
     UserNotification.KIND_KANBAN_SHARE: NotificationPreference.CATEGORY_TOOLS,
     UserNotification.KIND_KANBAN_ASSIGNMENT: NotificationPreference.CATEGORY_TOOLS,
+    UserNotification.KIND_WISH_LIST_SHARE: NotificationPreference.CATEGORY_TOOLS,
+    UserNotification.KIND_WISH_PRICE_ALERT: NotificationPreference.CATEGORY_TOOLS,
     UserNotification.KIND_NOTE_FOLDER_SHARE: NotificationPreference.CATEGORY_NOTES,
     UserNotification.KIND_EXPENSE_GROUP: NotificationPreference.CATEGORY_TOOLS,
     UserNotification.KIND_HABIT_REMINDER: NotificationPreference.CATEGORY_TOOLS,

@@ -14,9 +14,11 @@
         <div>
             <a class="tools-back-link" href="{% url 'wish_lists' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Alle Wunschlisten</a>
             <h1>{{ wish_list.title }}</h1>
+            {% if is_owner %}
             <p class="wish-total">
                 {% if totals %}Gesamt: <strong>{{ totals|join:" + " }}</strong>{% else %}Noch kein Preis bekannt{% endif %}
                 {% if unpriced and totals %}<small>({{ unpriced }} Artikel ohne Preis)</small>{% endif %}
+                {% if must_have_totals %}<small>davon „Muss haben“: {{ must_have_totals|join:" + " }}</small>{% endif %}
             </p>
             {% if items %}
             <form method="post" class="wish-refresh-all-form">
@@ -25,10 +27,18 @@
                 <button class="ghost-button" type="submit"><i class="fa-solid fa-rotate" aria-hidden="true"></i> Alle Preise aktualisieren</button>
             </form>
             {% endif %}
+            {% else %}
+            <p class="wish-total">
+                Wunschliste von {{ owner_name }}
+                {% if open_totals %}· noch offen: <strong>{{ open_totals|join:" + " }}</strong>{% endif %}
+                {% if mine_count %}<small>Du schenkst {{ mine_count }} Artikel.</small>{% endif %}
+            </p>
+            {% endif %}
         </div>
         <i class="fa-solid fa-gift hero-branch" aria-hidden="true"></i>
     </header>
 
+    {% if is_owner %}
     <section class="glass-panel uml-create-panel">
         <form class="vocab-create-form wish-create-form" method="post">
             {% csrf_token %}
@@ -41,21 +51,29 @@
             {% if add_error %}<ul class="errorlist"><li>{{ add_error }}</li></ul>{% endif %}
         </form>
     </section>
+    {% else %}
+    <p class="glass-panel wish-giver-hint"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> Reservier, was du schenken möchtest. {{ owner_name }} sieht nicht, was reserviert ist; die anderen, mit denen die Liste geteilt ist, schon.</p>
+    {% endif %}
 
     {% if items %}
     <ul class="wish-items">
         {% for item in items %}
-        <li class="glass-panel wish-item">
+        <li class="glass-panel wish-item{% if item.reserved_by %} is-taken{% endif %}" id="wish-{{ item.id }}">
             <a class="wish-item-image" href="{{ item.url }}" target="_blank" rel="noopener noreferrer nofollow" tabindex="-1" aria-hidden="true">
                 {% if item.image_url %}<img src="{% url 'wish_item_image' item.id %}?v={{ item.image_version }}" alt="" loading="lazy">{% else %}<i class="fa-solid fa-box-open"></i>{% endif %}
             </a>
             <div class="wish-item-body">
                 <a class="wish-item-title" href="{{ item.url }}" target="_blank" rel="noopener noreferrer nofollow">{{ item.title }}</a>
                 <p class="wish-item-meta">
+                    {% if item.priority == "high" %}<span class="wish-priority is-high"><i class="fa-solid fa-heart" aria-hidden="true"></i> Muss haben</span>{% elif item.priority == "low" %}<span class="wish-priority">Wäre schön</span>{% endif %}
                     {% if item.rating is not None %}<span><i class="fa-solid fa-star" aria-hidden="true"></i> {{ item.rating }} von 5{% if item.reviews_label %} ({{ item.reviews_label }} Bewertungen){% endif %}</span>{% endif %}
                     {% if item.availability %}<span>{{ item.availability }}</span>{% endif %}
+                    {% if is_owner %}
                     {% if item.fetched_label %}<span>Stand: {{ item.fetched_label }}</span>{% else %}<span>Angaben von Hand</span>{% endif %}
+                    {% if item.target_label %}<span class="wish-target{% if item.target_reached %} is-reached{% endif %}"><i class="fa-solid fa-bell" aria-hidden="true"></i> {% if item.target_reached %}Zielpreis erreicht ({{ item.target_label }}){% else %}Alarm ab {{ item.target_label }}{% endif %}</span>{% endif %}
+                    {% elif item.quantity > 1 %}<span>{{ item.quantity }} Stück gewünscht</span>{% endif %}
                 </p>
+                {% if is_owner %}
                 <details class="wish-item-edit">
                     <summary><i class="fa-solid fa-pen" aria-hidden="true"></i> Bearbeiten</summary>
                     <form class="wish-edit-form" method="post">
@@ -74,12 +92,27 @@
                             <span>Anzahl</span>
                             <input type="number" name="quantity" value="{{ item.quantity }}" min="0" max="99" required>
                         </label>
+                        <label class="vocab-field">
+                            <span>Wichtigkeit</span>
+                            <select name="priority">
+                                {% for value, label in priority_choices %}<option value="{{ value }}"{% if value == item.priority %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                            </select>
+                        </label>
+                        <label class="vocab-field">
+                            <span>Preisalarm bei ({{ item.currency }})</span>
+                            <input type="text" name="target_price" value="{% if item.target_price is not None %}{{ item.target_price|floatformat:2 }}{% endif %}" inputmode="decimal" autocomplete="off" placeholder="leer = aus">
+                        </label>
                         <button class="primary-button" type="submit"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Speichern</button>
                     </form>
                 </details>
+                {% endif %}
             </div>
             <div class="wish-item-side">
                 <strong class="wish-item-price">{{ item.price_label|default:"Preis fehlt" }}</strong>
+                {% if item.sparkline %}
+                <svg class="wish-sparkline" viewBox="0 0 80 24" preserveAspectRatio="none" role="img" aria-label="{{ item.sparkline_label }}"><title>{{ item.sparkline_label }}</title><polyline points="{{ item.sparkline }}"/></svg>
+                {% endif %}
+                {% if is_owner %}
                 {% if item.price_change_label %}
                 <small class="wish-price-change {% if item.price_change_up %}is-up{% else %}is-down{% endif %}">
                     <i class="fa-solid {% if item.price_change_up %}fa-arrow-up{% else %}fa-arrow-down{% endif %}" aria-hidden="true"></i>
@@ -118,17 +151,71 @@
                         <button class="icon-button" type="submit" aria-label="„{{ item.title }}“ entfernen" title="Entfernen"><i class="fa-regular fa-trash-can" aria-hidden="true"></i></button>
                     </form>
                 </div>
+                {% elif item.reserved_by_me %}
+                <span class="wish-reserved is-mine"><i class="fa-solid fa-gift" aria-hidden="true"></i> Du schenkst das</span>
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="wish_item_release">
+                    <input type="hidden" name="item_id" value="{{ item.id }}">
+                    <button class="ghost-button" type="submit">Freigeben</button>
+                </form>
+                {% elif item.reserved_by %}
+                <span class="wish-reserved"><i class="fa-solid fa-lock" aria-hidden="true"></i> {{ item.reserved_by }} schenkt das</span>
+                {% else %}
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="wish_item_reserve">
+                    <input type="hidden" name="item_id" value="{{ item.id }}">
+                    <button class="primary-button" type="submit"><i class="fa-solid fa-gift" aria-hidden="true"></i> Ich schenke das</button>
+                </form>
+                {% endif %}
             </div>
         </li>
         {% endfor %}
     </ul>
-    {% else %}
+    {% elif is_owner %}
     <div class="empty-state-card uml-empty">
         <i class="fa-solid fa-gift" aria-hidden="true"></i>
         <strong>Noch nichts auf der Liste</strong>
         <p>Kopier den Link eines Produkts aus einem Onlineshop und füg ihn oben ein. Titel, Preis, Bild und Bewertung werden übernommen, soweit der Shop sie angibt.</p>
     </div>
+    {% else %}
+    <div class="empty-state-card uml-empty">
+        <i class="fa-solid fa-gift" aria-hidden="true"></i>
+        <strong>Noch nichts auf der Liste</strong>
+        <p>{{ owner_name }} hat noch keine Wünsche eingetragen.</p>
+    </div>
     {% endif %}
+
+    {% if is_owner %}
+    <details class="glass-panel wish-list-settings"{% if members %} open{% endif %}>
+        <summary><i class="fa-solid fa-share-nodes" aria-hidden="true"></i> Teilen{% if members %} ({{ members|length }}){% endif %}</summary>
+        <p class="wish-share-hint">Wer die Liste sieht, kann Artikel als Geschenk reservieren, damit nichts doppelt gekauft wird. Was reserviert ist, siehst du nicht – die Überraschung bleibt.</p>
+        {% if members %}
+        <ul class="folder-share-members">
+            {% for member in members %}
+            <li>
+                <span>{{ member.name }}</span>
+                <form method="post" data-confirm="Die Liste nicht mehr mit {{ member.name }} teilen?">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="wish_list_unshare">
+                    <input type="hidden" name="user_id" value="{{ member.id }}">
+                    <button class="icon-button" type="submit" aria-label="{{ member.name }} entfernen" title="Entfernen"><i class="fa-solid fa-user-minus" aria-hidden="true"></i></button>
+                </form>
+            </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+        <form class="vocab-create-form wish-create-form" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="wish_list_share">
+            <label class="vocab-field">
+                <span>E-Mail oder Benutzername</span>
+                <input type="text" name="identifier" maxlength="254" autocomplete="off" required>
+            </label>
+            <button class="ghost-button" type="submit"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i> Teilen</button>
+        </form>
+    </details>
 
     <details class="glass-panel wish-list-settings">
         <summary><i class="fa-solid fa-gear" aria-hidden="true"></i> Liste umbenennen oder löschen</summary>
@@ -147,6 +234,13 @@
             <button class="ghost-button" type="submit"><i class="fa-regular fa-trash-can" aria-hidden="true"></i> Liste löschen</button>
         </form>
     </details>
+    {% else %}
+    <form class="wish-leave-form" method="post" data-no-soft data-confirm="Die Wunschliste von {{ owner_name }} verlassen? Deine Reservierungen werden dabei freigegeben.">
+        {% csrf_token %}
+        <input type="hidden" name="form_name" value="wish_list_leave">
+        <button class="ghost-button" type="submit"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i> Liste verlassen</button>
+    </form>
+    {% endif %}
     </div>
 </section>
 {% endblock %}

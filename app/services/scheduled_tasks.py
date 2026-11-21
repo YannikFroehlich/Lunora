@@ -22,6 +22,7 @@ from app.services.web_push import (
     materialize_web_push_weather_alerts,
     send_pending_web_push_notifications,
 )
+from app.services.wishlist import refresh_due_prices
 
 logger = logging.getLogger(__name__)
 
@@ -81,9 +82,11 @@ def run_scheduled_tasks(*, now=None):
             "recurring_expenses",
             lambda: {"created": post_due_recurring_expenses(today=timezone.localdate(current_time))},
         )
+        wish_price_result = _guarded("wish_prices", refresh_due_prices, now=current_time)
     else:
         habit_reminder_result = {"created": 0, "disabled": True}
         recurring_expense_result = {"created": 0, "disabled": True}
+        wish_price_result = {"checked": 0, "failed": 0, "disabled": True}
     if feature_enabled("messages"):
         scheduled_message_result = _guarded(
             "scheduled_messages", send_due_scheduled_messages, now=current_time
@@ -117,6 +120,7 @@ def run_scheduled_tasks(*, now=None):
         "weather_push_alerts": weather_push_result,
         "habit_reminders": habit_reminder_result,
         "recurring_expenses": recurring_expense_result,
+        "wish_prices": wish_price_result,
         "scheduled_messages": scheduled_message_result,
         "notification_emails": notification_email_result,
         "web_push": web_push_result,

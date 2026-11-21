@@ -1401,6 +1401,15 @@ class WishListItem(models.Model):
     """A shop product on a wish list; the details are read from its page (app/services/wishlist.py)
     and can be corrected by hand when the shop doesn't answer."""
 
+    PRIORITY_HIGH = "high"
+    PRIORITY_NORMAL = "normal"
+    PRIORITY_LOW = "low"
+    PRIORITY_CHOICES = [
+        (PRIORITY_HIGH, "Muss haben"),
+        (PRIORITY_NORMAL, "Normal"),
+        (PRIORITY_LOW, "Wäre schön"),
+    ]
+
     wish_list = models.ForeignKey(WishList, on_delete=models.CASCADE, related_name="items")
     # The product page without tracking parameters; Amazon links are cut down to /dp/<ASIN>.
     url = models.URLField(max_length=500)
@@ -1415,7 +1424,12 @@ class WishListItem(models.Model):
     rating = models.DecimalField(max_digits=2, decimal_places=1, blank=True, null=True)
     review_count = models.PositiveIntegerField(blank=True, null=True)
     availability = models.CharField(max_length=120, blank=True)
+    priority = models.CharField(max_length=6, choices=PRIORITY_CHOICES, default=PRIORITY_NORMAL)
+    # Price alert: the owner is told when a price check finds the price at or below this.
+    target_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     fetched_at = models.DateTimeField(blank=True, null=True)
+    # Last automatic price check, failed or not, so a shop that keeps refusing isn't asked every pass.
+    price_checked_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -1434,6 +1448,31 @@ class WishListItemPricePoint(models.Model):
 
     class Meta:
         ordering = ["recorded_at", "id"]
+
+
+class WishListShare(models.Model):
+    """Read access to a wish list for another user, who may reserve its items as gifts."""
+
+    wish_list = models.ForeignKey(WishList, on_delete=models.CASCADE, related_name="shares")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="shared_wish_lists"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        constraints = [models.UniqueConstraint(fields=["wish_list", "user"], name="unique_wish_list_share")]
+
+
+class WishListReservation(models.Model):
+    """A list member's promise to give an item. Never shown to the list's owner, so the gift stays a
+    surprise; the other members see that the item is taken."""
+
+    item = models.OneToOneField(WishListItem, on_delete=models.CASCADE, related_name="reservation")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="wish_reservations"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
 
 
 class ShoppingItem(models.Model):
@@ -1709,6 +1748,8 @@ class UserNotification(models.Model):
     KIND_KANBAN_SHARE = "kanban_share"
     KIND_KANBAN_ASSIGNMENT = "kanban_assignment"
     KIND_NOTE_FOLDER_SHARE = "note_folder_share"
+    KIND_WISH_LIST_SHARE = "wish_list_share"
+    KIND_WISH_PRICE_ALERT = "wish_price_alert"
     KIND_SECURITY_ALERT = "security_alert"
     KIND_CHOICES = [
         (KIND_CALENDAR_REMINDER, "Kalendererinnerung"),
@@ -1733,6 +1774,8 @@ class UserNotification(models.Model):
         (KIND_KANBAN_SHARE, "Geteiltes Kanban-Board"),
         (KIND_KANBAN_ASSIGNMENT, "Kanban-Karte zugewiesen"),
         (KIND_NOTE_FOLDER_SHARE, "Geteilter Notizordner"),
+        (KIND_WISH_LIST_SHARE, "Geteilte Wunschliste"),
+        (KIND_WISH_PRICE_ALERT, "Preisalarm"),
         (KIND_SECURITY_ALERT, "Sicherheitswarnung"),
     ]
 

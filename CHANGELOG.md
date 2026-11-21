@@ -6,6 +6,13 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Wish lists can be shared with other Lunora users. They see the list and can reserve an item with
+  "Ich schenke das", so nothing is bought twice; the other people on the list see what is taken,
+  but the list's owner never does, so the gift stays a surprise.
+- Price alert for wish list items: set a target price and Lunora checks the shop about twice a day,
+  sending a notification (inbox, e-mail, push) as soon as the price drops to the target.
+- Wish list items have a priority ("Muss haben", "Normal", "Wäre schön"), sort by it and show a
+  "Muss haben" subtotal; every item with more than one recorded price shows a small price chart.
 - Notizgraph: a new page (graph icon in the notes list's folder row, or the command palette)
   draws your notes as a network of the `[[`-links between them. Hovering or focusing a note
   highlights its neighbours, a click opens it, nodes can be dragged and the view zoomed and panned.

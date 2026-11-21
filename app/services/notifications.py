@@ -68,6 +68,8 @@ NOTIFICATION_PRESENTATION = {
     UserNotification.KIND_KANBAN_SHARE: ("fa-table-columns", "Kanban", "tools"),
     UserNotification.KIND_KANBAN_ASSIGNMENT: ("fa-user-check", "Kanban", "tools"),
     UserNotification.KIND_NOTE_FOLDER_SHARE: ("fa-folder-open", "Freigabe", "note"),
+    UserNotification.KIND_WISH_LIST_SHARE: ("fa-gift", "Wunschliste", "tools"),
+    UserNotification.KIND_WISH_PRICE_ALERT: ("fa-tag", "Preisalarm", "tools"),
     UserNotification.KIND_SECURITY_ALERT: ("fa-shield-halved", "Sicherheit", "security"),
 }
 
@@ -359,6 +361,42 @@ def materialize_kanban_assignment_notification(card, actor):
                 "body": f"{card.title} · {card.board.title}"[:500],
                 "url": f"/tools/kanban/{card.board_id}/#card-{card.pk}",
                 "source_key": f"kanban-card:{card.pk}:{card.assignee_id}",
+            }
+        ]
+    )
+
+
+def materialize_wish_list_share_notification(share):
+    wish_list = share.wish_list
+    return _create_missing_user_notifications(
+        [
+            {
+                "recipient_id": share.user_id,
+                "actor_id": wish_list.owner_id,
+                "kind": UserNotification.KIND_WISH_LIST_SHARE,
+                "title": f"{_display_name(wish_list.owner)} teilt eine Wunschliste mit dir",
+                "body": wish_list.title,
+                "url": f"/tools/wishlist/{wish_list.pk}/",
+                "source_key": f"wish-list-share:{share.pk}",
+            }
+        ]
+    )
+
+
+def materialize_wish_price_alert(item, point, *, price_label, target_label):
+    """One alert per recorded price point that reached the item's target price."""
+    return _create_missing_user_notifications(
+        [
+            {
+                "recipient_id": item.wish_list.owner_id,
+                "actor_id": None,
+                "kind": UserNotification.KIND_WISH_PRICE_ALERT,
+                "title": f"Preisalarm: {item.title}"[:300],
+                "body": f"Jetzt {price_label} (dein Zielpreis: {target_label}) · {item.wish_list.title}"[
+                    :500
+                ],
+                "url": f"/tools/wishlist/{item.wish_list_id}/#wish-{item.pk}",
+                "source_key": f"wish-price:{point.pk}",
             }
         ]
     )
@@ -1204,6 +1242,8 @@ def send_pending_user_notification_emails(
             UserNotification.KIND_WHITEBOARD_COMMENT,
             UserNotification.KIND_KANBAN_SHARE,
             UserNotification.KIND_KANBAN_ASSIGNMENT,
+            UserNotification.KIND_WISH_LIST_SHARE,
+            UserNotification.KIND_WISH_PRICE_ALERT,
         ]
     if include_expense_groups:
         kinds.append(UserNotification.KIND_EXPENSE_GROUP)
