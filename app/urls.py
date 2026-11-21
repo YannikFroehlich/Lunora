@@ -88,6 +88,8 @@ urlpatterns = [
     ),
     path("tools/kanban/", view.kanban_boards, name="kanban_boards"),
     path("tools/kanban/<int:board_id>/", view.kanban_board, name="kanban_board"),
+    path("tools/contracts/", view.contracts, name="contracts"),
+    path("wrapped/", view.wrapped, name="wrapped"),
     path("tools/wishlist/", view.wish_lists, name="wish_lists"),
     path("tools/wishlist/<int:list_id>/", view.wish_list_detail, name="wish_list_detail"),
     path("tools/wishlist/image/<int:item_id>/", view.wish_item_image, name="wish_item_image"),

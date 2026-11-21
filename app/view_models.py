@@ -14,6 +14,7 @@ from app.models import (
     CalendarEventAttendee,
     CalendarReminder,
     CalendarSubscription,
+    Contract,
     Conversation,
     ConversationMember,
     Countdown,
@@ -472,6 +473,13 @@ TOOLS = (
         "url_name": "wish_lists",
     },
     {
+        "id": "contracts",
+        "title": "Verträge & Abos",
+        "description": "Laufende Kosten zusammenrechnen und rechtzeitig vor jeder Kündigungsfrist erinnert werden.",
+        "icon": "fa-file-signature",
+        "url_name": "contracts",
+    },
+    {
         "id": "expenses",
         "title": "Geteilte Ausgaben",
         "description": "Gemeinsame Ausgaben eintragen, sehen, wer wem was schuldet, und ausgleichen.",
@@ -528,7 +536,9 @@ def get_tools_context(user):
     open_shopping_items = ShoppingItem.objects.filter(owner=user, is_done=False).count()
     recipe_count = Recipe.objects.filter(owner=user).count()
     expense_group_count = ExpenseGroupMember.objects.filter(user=user).count()
+    contract_count = Contract.objects.filter(owner=user).count()
     meta = {
+        "contracts": f"{contract_count} Vertrag/Verträge" if contract_count else "Noch keine Verträge",
         "habits": f"{habit_count} Gewohnheit(en)" if habit_count else "Noch keine Gewohnheiten",
         "shopping": f"{open_shopping_items} offen" if open_shopping_items else "Nichts offen",
         "recipes": f"{recipe_count} Rezept(e)" if recipe_count else "Noch keine Rezepte",

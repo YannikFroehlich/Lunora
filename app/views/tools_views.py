@@ -13,8 +13,18 @@ from django.urls import reverse
 from django.utils.cache import patch_cache_control
 from django.views.decorators.http import require_http_methods, require_POST
 
-from app.forms import HabitForm, HabitReminderForm, RecipeForm, ShoppingItemForm
-from app.models import Habit, MealPlanEntry, Recipe, ShoppingItem, UmlDiagram, Whiteboard, WhiteboardImage
+from app.forms import ContractForm, HabitForm, HabitReminderForm, RecipeForm, ShoppingItemForm
+from app.models import (
+    Contract,
+    Habit,
+    MealPlanEntry,
+    Recipe,
+    ShoppingItem,
+    UmlDiagram,
+    Whiteboard,
+    WhiteboardImage,
+)
+from app.services.contracts import MAX_CONTRACTS, contracts_overview, end_date
 from app.services.habits import habit_items, toggle_habit_check
 from app.services.notes import display_name
 from app.services.recipe_import import fetch_recipe_for
@@ -871,4 +881,65 @@ def whiteboard_api(request, board_id):
             "revision": board.revision,
             "updated_label": format_user_datetime(board.updated_at, request.user),
         }
+    )
+
+
+@login_required
+def contracts(request):
+    if not feature_enabled("tools"):
+        return disabled_feature_response(request, "tools")
+    today = localtime_for_user(profile_or_user=request.user).date()
+    new_values = {
+        "start_date": today,
+        "category": "other",
+        "interval": Contract.INTERVAL_MONTHLY,
+        "amount": "",
+    }
+    form_errors = []
+    if request.method == "POST":
+        form_name = request.POST.get("form_name")
+        contract = Contract.objects.filter(owner=request.user, pk=posted_id(request, "contract_id")).first()
+        if form_name == "contract_save":
+            form = ContractForm(request.POST, instance=contract)
+            if contract is None and Contract.objects.filter(owner=request.user).count() >= MAX_CONTRACTS:
+                form_errors = [f"Du kannst höchstens {MAX_CONTRACTS} Verträge anlegen."]
+            elif form.is_valid():
+                saved = form.save(commit=False)
+                saved.owner = request.user
+                saved.save()
+                django_messages.success(request, "Vertrag gespeichert.")
+                return redirect(f"{reverse('contracts')}#contract-{saved.pk}")
+            else:
+                form_errors = [error for errors in form.errors.values() for error in errors]
+            if contract is not None:
+                django_messages.error(request, " ".join(form_errors))
+                return redirect("contracts")
+            new_values = {key: request.POST.get(key, "") for key in ContractForm.Meta.fields}
+        elif contract is not None and form_name == "contract_cancel":
+            contract.cancelled_on = today
+            contract.save(update_fields=["cancelled_on"])
+            ends = end_date(contract)
+            django_messages.success(request, f"Als gekündigt markiert – läuft bis {ends:%d.%m.%Y}.")
+            return redirect("contracts")
+        elif contract is not None and form_name == "contract_reactivate":
+            contract.cancelled_on = None
+            contract.save(update_fields=["cancelled_on"])
+            return redirect("contracts")
+        elif contract is not None and form_name == "contract_delete":
+            contract.delete()
+            django_messages.success(request, "Vertrag gelöscht.")
+            return redirect("contracts")
+        else:
+            return redirect("contracts")
+    return render(
+        request,
+        "app/contracts.html",
+        {
+            "active_page": "tools",
+            **contracts_overview(request.user, today),
+            "new_values": new_values,
+            "form_errors": form_errors,
+            "category_choices": Contract.CATEGORY_CHOICES,
+            "interval_choices": Contract.INTERVAL_CHOICES,
+        },
     )

@@ -1499,6 +1499,58 @@ class WishListReservation(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
 
+class Contract(models.Model):
+    """A contract or subscription with its cost and notice period (app/services/contracts.py)."""
+
+    INTERVAL_WEEKLY = "weekly"
+    INTERVAL_MONTHLY = "monthly"
+    INTERVAL_QUARTERLY = "quarterly"
+    INTERVAL_HALF_YEARLY = "halfyearly"
+    INTERVAL_YEARLY = "yearly"
+    INTERVAL_CHOICES = [
+        (INTERVAL_WEEKLY, "pro Woche"),
+        (INTERVAL_MONTHLY, "pro Monat"),
+        (INTERVAL_QUARTERLY, "pro Quartal"),
+        (INTERVAL_HALF_YEARLY, "pro Halbjahr"),
+        (INTERVAL_YEARLY, "pro Jahr"),
+    ]
+    CATEGORY_CHOICES = [
+        ("streaming", "Streaming & Medien"),
+        ("phone", "Handy & Internet"),
+        ("insurance", "Versicherung"),
+        ("energy", "Strom & Gas"),
+        ("housing", "Wohnen"),
+        ("mobility", "Mobilität"),
+        ("fitness", "Sport & Freizeit"),
+        ("software", "Software & Apps"),
+        ("other", "Sonstiges"),
+    ]
+
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="contracts")
+    name = models.CharField(max_length=120)
+    provider = models.CharField(max_length=120, blank=True)
+    category = models.CharField(max_length=12, choices=CATEGORY_CHOICES, default="other")
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    interval = models.CharField(max_length=10, choices=INTERVAL_CHOICES, default=INTERVAL_MONTHLY)
+    start_date = models.DateField()
+    # Minimum term in months; null = no minimum term (cancellable any time with the notice period).
+    term_months = models.PositiveSmallIntegerField(blank=True, null=True)
+    # How long the contract extends itself after the (minimum) term, in months.
+    renewal_months = models.PositiveSmallIntegerField(default=1)
+    notice_days = models.PositiveSmallIntegerField(default=30)
+    # Days before the cancellation deadline when the inbox reminder comes.
+    remind_days = models.PositiveSmallIntegerField(default=14)
+    cancelled_on = models.DateField(blank=True, null=True)
+    notes = models.TextField(blank=True, max_length=1000)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name", "id"]
+
+    def __str__(self):
+        return self.name
+
+
 class ShoppingItem(models.Model):
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="shopping_items"
@@ -1774,6 +1826,7 @@ class UserNotification(models.Model):
     KIND_NOTE_FOLDER_SHARE = "note_folder_share"
     KIND_WISH_LIST_SHARE = "wish_list_share"
     KIND_NOTE_REMINDER = "note_reminder"
+    KIND_CONTRACT_DEADLINE = "contract_deadline"
     KIND_WISH_PRICE_ALERT = "wish_price_alert"
     KIND_SECURITY_ALERT = "security_alert"
     KIND_CHOICES = [
@@ -1801,6 +1854,7 @@ class UserNotification(models.Model):
         (KIND_NOTE_FOLDER_SHARE, "Geteilter Notizordner"),
         (KIND_WISH_LIST_SHARE, "Geteilte Wunschliste"),
         (KIND_NOTE_REMINDER, "Notizerinnerung"),
+        (KIND_CONTRACT_DEADLINE, "Kündigungsfrist"),
         (KIND_WISH_PRICE_ALERT, "Preisalarm"),
         (KIND_SECURITY_ALERT, "Sicherheitswarnung"),
     ]

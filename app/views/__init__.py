@@ -27,6 +27,7 @@ from .core_views import (
     healthz,
     home,
     settings,
+    wrapped,
 )
 from .expense_views import expense_group_detail, expense_groups
 from .kanban_views import kanban_board, kanban_boards
@@ -84,6 +85,7 @@ from .pwa_views import offline, service_worker, share_note, share_target
 from .search_views import global_search
 from .tasks_views import task_time_report, tasks
 from .tools_views import (
+    contracts,
     focus_timer,
     habits,
     recipe_detail,
@@ -125,6 +127,8 @@ from .weather_views import dashboard_weather, weather, weather_map_tile, weather
 from .wishlist_views import wish_item_image, wish_list_detail, wish_lists
 
 __all__ = [
+    "wrapped",
+    "contracts",
     "calendar",
     "calendar_availability",
     "calendar_free_slots",

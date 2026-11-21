@@ -6,6 +6,11 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Verträge & Abos (Werkzeuge): contracts and subscriptions with their cost, minimum term and notice
+  period. Lunora adds up the monthly and yearly cost per category, shows until when each contract
+  can still be cancelled and sends a reminder (inbox, e-mail, push) before every deadline.
+- Lunora Wrapped: your year in numbers – tasks done, time tracked, notes, appointments, messages,
+  habits, meals, shared expenses and more – as slides, from the command palette ("Jahresrückblick").
 - Whiteboard templates: a new board can start as a retrospective, kanban, mind map, SWOT analysis
   or week plan instead of empty.
 - Arrows and lines that start or end on a shape stay attached: move or resize the shape and they

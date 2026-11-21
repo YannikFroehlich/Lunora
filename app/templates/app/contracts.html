@@ -1,0 +1,112 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}Verträge & Abos | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell tools-shell">
+    <div class="soft-contents" id="contracts-content" data-soft-region>
+    <header class="page-hero">
+        <div>
+            <a class="tools-back-link" href="{% url 'tools' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Werkzeuge</a>
+            <h1>Verträge & Abos</h1>
+            <p class="wish-total">
+                {% if cards %}Monatlich <strong>{{ monthly_total }}</strong> · jährlich {{ yearly_total }}{% else %}Laufende Kosten und Kündigungsfristen im Blick{% endif %}
+            </p>
+            {% if upcoming %}<p class="contract-next{% if upcoming.tone == 'warning' %} is-warning{% endif %}"><i class="fa-solid fa-bell" aria-hidden="true"></i> Nächste Frist: {{ upcoming.contract.name }} – {{ upcoming.status }}</p>{% endif %}
+        </div>
+        <i class="fa-solid fa-file-signature hero-branch" aria-hidden="true"></i>
+    </header>
+
+    <details class="glass-panel wish-list-settings"{% if form_errors or not cards %} open{% endif %}>
+        <summary><i class="fa-solid fa-plus" aria-hidden="true"></i> Vertrag hinzufügen</summary>
+        <form class="contract-form" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="contract_save">
+            {% include "app/partials/contract_fields.html" with c=new_values %}
+            {% if form_errors %}<ul class="errorlist contract-field-wide">{% for error in form_errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
+            <button class="primary-button" type="submit"><i class="fa-solid fa-plus" aria-hidden="true"></i> Hinzufügen</button>
+        </form>
+    </details>
+
+    {% if categories %}
+    <section class="glass-panel contract-categories" aria-label="Kosten nach Kategorie">
+        {% for category in categories %}
+        <div class="contract-category">
+            <span>{{ category.label }}</span>
+            <span class="contract-bar" aria-hidden="true"><span style="width: {{ category.share }}%"></span></span>
+            <strong>{{ category.monthly }}</strong>
+        </div>
+        {% endfor %}
+    </section>
+    {% endif %}
+
+    {% if cards %}
+    <ul class="wish-items">
+        {% for card in cards %}
+        {% with contract=card.contract %}
+        <li class="glass-panel contract-card{% if not card.running %} is-ended{% endif %}" id="contract-{{ contract.id }}">
+            <div class="wish-item-body">
+                <strong class="contract-name">{{ contract.name }}</strong>
+                <p class="wish-item-meta">
+                    <span>{{ card.category_label }}</span>
+                    {% if contract.provider %}<span>{{ contract.provider }}</span>{% endif %}
+                </p>
+                <p class="contract-status{% if card.tone %} is-{{ card.tone }}{% endif %}">{% if card.tone == "warning" %}<i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> {% endif %}{{ card.status }}</p>
+                {% if contract.notes %}<p class="contract-notes">{{ contract.notes|linebreaksbr }}</p>{% endif %}
+                <details class="wish-item-edit">
+                    <summary><i class="fa-solid fa-pen" aria-hidden="true"></i> Bearbeiten</summary>
+                    <form class="contract-form" method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="form_name" value="contract_save">
+                        <input type="hidden" name="contract_id" value="{{ contract.id }}">
+                        {% include "app/partials/contract_fields.html" with c=contract %}
+                        <button class="primary-button" type="submit"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Speichern</button>
+                    </form>
+                </details>
+            </div>
+            <div class="wish-item-side">
+                <strong class="wish-item-price">{{ card.amount_label }}</strong>
+                {% if card.monthly_label %}<small>= {{ card.monthly_label }} pro Monat</small>{% endif %}
+                <div class="uml-diagram-actions">
+                    {% if contract.cancelled_on %}
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="form_name" value="contract_reactivate">
+                        <input type="hidden" name="contract_id" value="{{ contract.id }}">
+                        <button class="ghost-button" type="submit">Doch nicht gekündigt</button>
+                    </form>
+                    {% else %}
+                    <form method="post" data-confirm="„{{ contract.name }}“ als gekündigt markieren? Lunora rechnet dann aus, wann er endet.">
+                        {% csrf_token %}
+                        <input type="hidden" name="form_name" value="contract_cancel">
+                        <input type="hidden" name="contract_id" value="{{ contract.id }}">
+                        <button class="ghost-button" type="submit"><i class="fa-solid fa-ban" aria-hidden="true"></i> Gekündigt</button>
+                    </form>
+                    {% endif %}
+                    <form method="post" data-confirm="„{{ contract.name }}“ löschen?">
+                        {% csrf_token %}
+                        <input type="hidden" name="form_name" value="contract_delete">
+                        <input type="hidden" name="contract_id" value="{{ contract.id }}">
+                        <button class="icon-button" type="submit" aria-label="„{{ contract.name }}“ löschen" title="Löschen"><i class="fa-regular fa-trash-can" aria-hidden="true"></i></button>
+                    </form>
+                </div>
+            </div>
+        </li>
+        {% endwith %}
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state-card uml-empty">
+        <i class="fa-solid fa-file-signature" aria-hidden="true"></i>
+        <strong>Noch keine Verträge</strong>
+        <p>Trag Abos, Versicherungen oder deinen Handyvertrag ein. Lunora rechnet die monatlichen Kosten zusammen und erinnert dich rechtzeitig vor jeder Kündigungsfrist.</p>
+    </div>
+    {% endif %}
+    </div>
+</section>
+{% endblock %}

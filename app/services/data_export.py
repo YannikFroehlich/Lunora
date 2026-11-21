@@ -189,6 +189,26 @@ def write_user_export(user, fileobj):
         _add_json(archive, "ausgaben.json", _expense_groups(user))
         _add_json(
             archive,
+            "vertraege.json",
+            list(
+                user.contracts.values(
+                    "name",
+                    "provider",
+                    "category",
+                    "amount",
+                    "interval",
+                    "start_date",
+                    "term_months",
+                    "renewal_months",
+                    "notice_days",
+                    "remind_days",
+                    "cancelled_on",
+                    "notes",
+                )
+            ),
+        )
+        _add_json(
+            archive,
             "notiz-erinnerungen.json",
             [
                 {"note": reminder.note.title, "remind_at": reminder.remind_at}

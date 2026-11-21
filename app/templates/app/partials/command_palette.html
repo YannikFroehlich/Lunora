@@ -12,6 +12,9 @@
             <a class="command-palette-item" id="command-home" role="option" href="{% url 'home' %}" data-command-item data-keywords="start übersicht widgets">
                 <i class="fa-solid fa-house" aria-hidden="true"></i><span>Dashboard</span><small>Seite</small>
             </a>
+            <a class="command-palette-item" id="command-wrapped" role="option" href="{% url 'wrapped' %}" data-command-item data-keywords="jahresrückblick wrapped jahr statistik rückblick">
+                <i class="fa-solid fa-champagne-glasses" aria-hidden="true"></i><span>Jahresrückblick</span><small>Seite</small>
+            </a>
             <a class="command-palette-item" id="command-notifications" role="option" href="{% url 'notification_center' %}" data-command-item data-keywords="posteingang inbox hinweise">
                 <i class="fa-solid fa-bell" aria-hidden="true"></i><span>Benachrichtigungen</span><small>Seite</small>
             </a>
@@ -63,6 +66,9 @@
             {% if feature_flags.tools %}
             <a class="command-palette-item" id="command-tools" role="option" href="{% url 'tools' %}" data-command-item data-keywords="helfer tools">
                 <i class="fa-solid fa-toolbox" aria-hidden="true"></i><span>Werkzeuge</span><small>Seite</small>
+            </a>
+            <a class="command-palette-item" id="command-contracts" role="option" href="{% url 'contracts' %}" data-command-item data-keywords="verträge abos abonnement kündigung kündigungsfrist kosten versicherung">
+                <i class="fa-solid fa-file-signature" aria-hidden="true"></i><span>Verträge &amp; Abos</span><small>Werkzeug</small>
             </a>
             <a class="command-palette-item" id="command-habits" role="option" href="{% url 'habits' %}" data-command-item data-keywords="gewohnheiten routine serie streak tracker">
                 <i class="fa-solid fa-seedling" aria-hidden="true"></i><span>Gewohnheiten</span><small>Werkzeug</small>
