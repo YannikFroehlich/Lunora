@@ -796,6 +796,19 @@ function rememberRecentSection() {
 
 rememberRecentSection();
 
+// Mirror the unread inbox count onto the installed app's icon (Badging API, where the browser has
+// it). The nav count is a soft region, so it is re-read after every in-place update; signed-out
+// pages clear the badge so it doesn't outlive the session.
+function syncAppBadge() {
+  if (!("setAppBadge" in navigator)) return;
+  const region = document.getElementById("nav-notification-count");
+  const count = isAuthenticated && region ? Number(region.dataset.unreadCount) || 0 : 0;
+  (count ? navigator.setAppBadge(count) : navigator.clearAppBadge()).catch(() => {});
+}
+
+syncAppBadge();
+document.addEventListener("lunora:soft-update", syncAppBadge);
+
 // base.css locks the page while a modal dialog is open. Only a page that actually scrolls keeps its
 // scrollbar's room then (scrollbar-gutter), so neither scrolling nor short pages shift sideways.
 function trackPageOverflow() {

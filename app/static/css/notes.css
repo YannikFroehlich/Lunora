@@ -214,6 +214,7 @@
 }
 
 .notes-tree-toolbar button,
+.notes-tree-toolbar a,
 .note-folder-actions button,
 .note-folder-actions a {
   color: var(--color-muted);
@@ -223,13 +224,24 @@
   cursor: pointer;
 }
 
-.notes-tree-toolbar button {
+.notes-tree-toolbar button,
+.notes-tree-toolbar a {
+  display: inline-grid;
   width: 32px;
   height: 32px;
+  place-items: center;
+}
+
+.notes-tree-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .notes-tree-toolbar button:hover,
 .notes-tree-toolbar button:focus-visible,
+.notes-tree-toolbar a:hover,
+.notes-tree-toolbar a:focus-visible,
 .note-folder-actions button:hover,
 .note-folder-actions button:focus-visible,
 .note-folder-actions a:hover,

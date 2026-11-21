@@ -2,6 +2,7 @@ import json
 import uuid
 from datetime import timedelta
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
@@ -2462,3 +2463,62 @@ class NoteTagTests(TestCase):
         self.assertEqual(self.tag(self.plan, ["zwei worte"]).status_code, 400)
         self.assertEqual(self.tag(self.plan, [f"t{index}" for index in range(11)]).status_code, 400)
         self.assertEqual(self.tag(self.plan, "arbeit").status_code, 400)
+
+
+class NoteGraphTests(TestCase):
+    def setUp(self):
+        self.lea = User.objects.create_user(
+            username="lea@example.com", email="lea@example.com", password="pw"
+        )
+        self.tom = User.objects.create_user(
+            username="tom@example.com", email="tom@example.com", password="pw"
+        )
+        self.hub = Note.objects.create(owner=self.lea, title="Projekt")
+        self.plan = Note.objects.create(owner=self.lea, title="Plan")
+        self.loose = Note.objects.create(owner=self.lea, title="Einzeln")
+        self.trashed = Note.objects.create(owner=self.lea, title="Weg", deleted_at=timezone.now())
+        self.foreign = Note.objects.create(owner=self.tom, title="Geheim")
+        self.shared = Note.objects.create(owner=self.tom, title="Geteilt")
+        NoteShare.objects.create(note=self.shared, user=self.lea, role=NoteShare.ROLE_READER)
+        for source, target in [
+            (self.hub, self.plan),
+            (self.plan, self.hub),  # both directions are one connection
+            (self.hub, self.trashed),
+            (self.hub, self.foreign),
+            (self.shared, self.hub),
+            (self.foreign, self.plan),
+        ]:
+            NoteLink.objects.create(source_note=source, target_note=target)
+        self.client.force_login(self.lea)
+
+    def test_graph_shows_only_accessible_notes_and_the_links_between_them(self):
+        response = self.client.get("/notes/graph/")
+
+        self.assertEqual(response.status_code, 200)
+        graph = response.context["graph"]
+        nodes = {node["title"]: node for node in graph["nodes"]}
+        self.assertEqual(set(nodes), {"Projekt", "Plan", "Einzeln", "Geteilt"})
+        self.assertEqual(graph["nodes"][0]["title"], "Projekt")  # best-connected first
+        self.assertEqual(nodes["Projekt"]["degree"], 2)
+        self.assertEqual(nodes["Einzeln"]["degree"], 0)
+        self.assertEqual(nodes["Plan"]["url"], f"/notes/{self.plan.pk}/")
+        self.assertEqual(
+            graph["edges"],
+            sorted([sorted([self.hub.pk, self.plan.pk]), sorted([self.hub.pk, self.shared.pk])]),
+        )
+        self.assertFalse(graph["truncated"])
+        self.assertNotContains(response, "Geheim")
+        self.assertContains(response, 'id="note-graph-data"')
+
+    def test_graph_keeps_the_best_connected_notes_when_capped(self):
+        with patch("app.services.notes.MAX_GRAPH_NOTES", 2):
+            graph = self.client.get("/notes/graph/").context["graph"]
+
+        self.assertEqual([node["title"] for node in graph["nodes"]], ["Projekt", "Geteilt"])
+        self.assertEqual(graph["edges"], [sorted([self.hub.pk, self.shared.pk])])
+        self.assertTrue(graph["truncated"])
+
+    def test_graph_is_gated_by_the_notes_feature(self):
+        SystemSettings.objects.update_or_create(pk=1, defaults={"notes_enabled": False})
+
+        self.assertEqual(self.client.get("/notes/graph/").status_code, 503)

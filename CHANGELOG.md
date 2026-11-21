@@ -6,6 +6,17 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Notizgraph: a new page (graph icon in the notes list's folder row, or the command palette)
+  draws your notes as a network of the `[[`-links between them. Hovering or focusing a note
+  highlights its neighbours, a click opens it, nodes can be dragged and the view zoomed and panned.
+  Notes without links stay hidden unless you switch them on.
+- The installed app now shows the number of unread notifications on its icon (where the browser
+  supports app badges), and a dot as soon as a push notification arrives.
+- Share to Lunora: once Lunora is installed as an app (Android, or Chrome/Edge on the desktop),
+  it appears in the system's share menu. Whatever you share – a link, a text, a page – opens
+  "In Lunora ablegen", where one tap turns it into a note, a task, a bookmark, a recipe import or
+  a wish list item. The page also opens from the command palette for pasting a link by hand, and
+  takes `#title=…&text=…&url=…` in its address for iOS shortcuts or a bookmarklet.
 - Wish lists: a button refreshes every item's price at once, each item keeps a price history since
   it was added and shows how much more or less expensive it got, and quantity can be changed with
   plus/minus buttons without opening "Bearbeiten".

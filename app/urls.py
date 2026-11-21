@@ -10,6 +10,8 @@ urlpatterns = [
     path("", RedirectView.as_view(url="/home/", permanent=False)),
     path("service-worker.js", view.service_worker, name="service_worker"),
     path("offline/", view.offline, name="offline"),
+    path("share/", view.share_target, name="share_target"),
+    path("share/note/", view.share_note, name="share_note"),
     path("healthz/", view.healthz, name="healthz"),
     path("login/", login_view, name="login"),
     path("login/zwei-faktor/", view.login_two_factor, name="login_two_factor"),
@@ -149,6 +151,7 @@ urlpatterns = [
     path("notes/<int:note_id>/", view.notes, name="note_detail"),
     path("notes/api/create/", view.note_create_api, name="note_create_api"),
     path("notes/import/", view.note_import, name="note_import"),
+    path("notes/graph/", view.note_graph, name="note_graph"),
     path("notes/api/templates/", view.note_template_create_api, name="note_template_create_api"),
     path(
         "notes/api/templates/<int:template_id>/",

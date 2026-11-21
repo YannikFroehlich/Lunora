@@ -204,6 +204,7 @@ class PageAccessibilityMarkupTests(TestCase):
             "/notes/",
             f"/notes/{self.note.pk}/",
             f"/notes/folders/{self.note_folder.pk}/share/",
+            "/notes/graph/",
             "/messages/",
             f"/messages/{self.conversation.pk}/",
             f"/messages/{self.group.pk}/",
@@ -233,6 +234,7 @@ class PageAccessibilityMarkupTests(TestCase):
             f"/tools/vocabulary/{self.vocabulary.pk}/practice/",
             "/vacation-planner/",
             "/administration/",
+            "/share/",
         ]
 
     def collect(self, url, client=None):

@@ -46,6 +46,7 @@ from .note_views import (
     note_folder_detail_api,
     note_folder_share,
     note_folders_api,
+    note_graph,
     note_import,
     note_link_candidates_api,
     note_markdown_export,
@@ -76,7 +77,7 @@ from .notification_views import (
     web_push_subscription,
     web_push_test,
 )
-from .pwa_views import offline, service_worker
+from .pwa_views import offline, service_worker, share_note, share_target
 from .search_views import global_search
 from .tasks_views import task_time_report, tasks
 from .tools_views import (
@@ -143,6 +144,8 @@ __all__ = [
     "web_push_subscription",
     "offline",
     "service_worker",
+    "share_note",
+    "share_target",
     "notes",
     "note_create_api",
     "note_import",
@@ -157,6 +160,7 @@ __all__ = [
     "note_folders_api",
     "note_folder_detail_api",
     "note_folder_share",
+    "note_graph",
     "note_folder_assignment_api",
     "note_shares_api",
     "note_share_delete_api",
