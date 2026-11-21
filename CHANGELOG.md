@@ -6,6 +6,14 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Whiteboard templates: a new board can start as a retrospective, kanban, mind map, SWOT analysis
+  or week plan instead of empty.
+- Arrows and lines that start or end on a shape stay attached: move or resize the shape and they
+  follow, also for everyone else on a shared board.
+- Pictures on whiteboards: insert a JPG, PNG or WebP with the image button or drag it onto the board;
+  it can be moved and resized like a shape and is part of the PNG/SVG export.
+- Laser pointer for whiteboards (K): a short glowing trail to point at things, visible to the others
+  on a shared board as well.
 - Tagesnotiz: one click (calendar icon in the notes list, or the command palette) opens today's note,
   prepared with today's appointments, the tasks due today and a link to the previous daily note.
 - Note reminders: the bell in a note's header reminds you of the note at a chosen time, in the inbox

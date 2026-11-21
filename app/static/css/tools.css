@@ -86,6 +86,10 @@ a.tool-card:hover {
   gap: 12px;
 }
 
+.whiteboard-template-select select {
+  height: 100%;
+}
+
 .uml-create-field {
   display: flex;
   flex: 1 1 280px;
@@ -701,6 +705,10 @@ html:has([data-whiteboard-editor].is-fullscreen) {
 
 .whiteboard-canvas[data-tool="text"] {
   cursor: text;
+}
+
+.whiteboard-canvas[data-tool="laser"] {
+  cursor: crosshair;
 }
 
 .whiteboard-canvas[data-tool="line"],

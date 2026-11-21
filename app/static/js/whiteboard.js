@@ -24,6 +24,15 @@
   const MIN_SHAPE_PIXELS = 4;
   const DUPLICATE_PIXELS = 20;
   const SELECT_COLOR = "#b3772f";
+  // A connector end dropped this close (in screen pixels) to a shape attaches to it.
+  const BIND_PIXELS = 12;
+  // How long a laser pointer trail stays visible, and how fast a shared board polls while it shows.
+  const LASER_MS = 1200;
+  const LASER_POLL = 250;
+  const LASER_COLOR = "#e0332f";
+  const MAX_LASER_POINTS = 60;
+  // A newly inserted picture is at most this many screen pixels wide or high.
+  const IMAGE_PIXELS = 480;
   // The page is light paper in both themes (like the UML canvas), so the ink colors are fixed.
   const INK = {
     default: { label: "Schwarz", color: "#2b2520" },
@@ -50,6 +59,7 @@
     n: "sticky",
     g: "fill",
     c: "comment",
+    k: "laser",
   };
 
   const payload = JSON.parse(document.getElementById("whiteboard-data").textContent);
@@ -74,6 +84,10 @@
   const textInput = root.querySelector("[data-whiteboard-text]");
   const exportMenu = root.querySelector(".uml-export-menu");
   const importInput = root.querySelector("[data-whiteboard-import-input]");
+  const imageInput = root.querySelector("[data-whiteboard-image-input]");
+  const imageUploadUrl = root.dataset.imageUploadUrl;
+  // The URL of one picture with a placeholder id; imageUrl() puts the real file id in.
+  const imageUrlTemplate = root.dataset.imageUrl;
   const defaultHint = hintLabel.textContent;
 
   const doc = format.normalizeDocument(payload.document);
@@ -110,9 +124,12 @@
   const viewport = svgEl("g");
   const selectionLayer = svgEl("g");
   const guideLayer = svgEl("g");
+  // Bound arrows following a shape that is being dragged (the real ones are hidden meanwhile).
+  const connectorLayer = svgEl("g");
+  const laserLayer = svgEl("g");
   const peerLayer = svgEl("g");
   const overlay = svgEl("g", { "pointer-events": "none" });
-  overlay.append(selectionLayer, guideLayer, peerLayer);
+  overlay.append(connectorLayer, selectionLayer, guideLayer, laserLayer, peerLayer);
   svg.replaceChildren(defs, background, viewport, overlay);
 
   // ---- Helpers --------------------------------------------------------------------------------
@@ -239,8 +256,22 @@
     return group;
   }
 
+  function imageUrl(fileId) {
+    return imageUrlTemplate.replace("00000000-0000-0000-0000-000000000000", encodeURIComponent(fileId));
+  }
+
   function elementNode(item) {
     if (item.type === "sticky") return stickyNode(item);
+    if (item.type === "image") {
+      return svgEl("image", {
+        href: imageUrl(item.file),
+        x: item.x,
+        y: item.y,
+        width: item.w,
+        height: item.h,
+        preserveAspectRatio: "none",
+      });
+    }
     const attrs = lineAttrs(item.color, format.lineWidth(item));
     if (item.type === "highlight") attrs["stroke-opacity"] = HIGHLIGHT_OPACITY;
     if (format.isStroke(item)) return svgEl("path", { ...attrs, d: format.strokePath(item.points) });
@@ -408,12 +439,51 @@
     updateHistoryButtons();
   }
 
+  // The connectors bound to the changed shapes (`changed`: id → new element, or null when removed),
+  // re-routed; connectors in `skip` are left alone because the change itself already covers them.
+  function boundArrowUpdates(changed, skip) {
+    const updates = [];
+    doc.elements.forEach((element, index) => {
+      if (!format.isConnector(element) || skip.has(element.id)) return;
+      if (!changed.has(element.from) && !changed.has(element.to)) return;
+      const lookup = (id) => (changed.has(id) ? changed.get(id) : findElement(id) || null);
+      const next = format.routeConnector(element, lookup, measure);
+      if (next !== element) updates.push({ index, element, next });
+    });
+    return updates;
+  }
+
+  // Adds the bound arrows a change moves along to it, so they travel, sync and undo together with it.
+  // Their new index accounts for elements the change removes below them (swap inserts afterwards).
+  function withBoundArrows(removed, added) {
+    const changed = new Map(removed.map((entry) => [entry.element.id, null]));
+    added.forEach((entry) => changed.set(entry.element.id, entry.element));
+    const updates = boundArrowUpdates(changed, new Set(changed.keys()));
+    if (!updates.length) return [removed, added];
+    const kept = new Set(added.map((entry) => entry.element.id));
+    const gone = removed.filter((entry) => !kept.has(entry.element.id)).map((entry) => entry.index);
+    return [
+      [...removed, ...updates.map(({ index, element }) => ({ index, element }))],
+      [
+        ...added,
+        ...updates.map(({ index, next }) => ({
+          index: index - gone.filter((goneIndex) => goneIndex < index).length,
+          element: next,
+        })),
+      ],
+    ];
+  }
+
   // Changes with the same mergeKey in quick succession (holding an arrow key) become one undo step.
-  function commit(removed, added, mergeKey) {
+  function commit(removedEntries, addedEntries, mergeKey) {
+    const [removed, added] = withBoundArrows(removedEntries, addedEntries);
     swap(removed, added);
     const top = history.undo[history.undo.length - 1];
     const now = Date.now();
     if (mergeKey && top?.mergeKey === mergeKey && now - top.time < MERGE_MS && !history.redo.length) {
+      // An arrow the earlier step left alone still needs its state from before this one for undo.
+      const known = new Set(top.removed.map((entry) => entry.element.id));
+      top.removed = [...top.removed, ...removed.filter((entry) => !known.has(entry.element.id))];
       top.added = added;
       top.time = now;
       return;
@@ -577,9 +647,19 @@
     setSelection(copies.map((entry) => entry.element.id));
   }
 
+  // A moved connector stays attached only to shapes that move with it.
+  function moveWithSelection(element, dx, dy) {
+    const moved = format.moveElement(element, dx, dy);
+    if (format.isConnector(moved)) {
+      if (moved.from && !selection.has(moved.from)) delete moved.from;
+      if (moved.to && !selection.has(moved.to)) delete moved.to;
+    }
+    return moved;
+  }
+
   function nudgeSelection(dx, dy) {
     const key = `nudge:${[...selection].sort().join(",")}`;
-    replaceSelected((element) => format.moveElement(element, dx, dy), key);
+    replaceSelected((element) => moveWithSelection(element, dx, dy), key);
   }
 
   function topElementAt(world) {
@@ -745,13 +825,47 @@
     return { ...base, ...format.normalizeBox(start.x, start.y, end.x, end.y, constrain), fill: false };
   }
 
+  // Attaches a connector's end (`end` is "from" or "to") to the shape under it, or detaches it.
+  function bindEnd(item, end) {
+    const x = end === "from" ? item.x1 : item.x2;
+    const y = end === "from" ? item.y1 : item.y2;
+    const target = format.bindableAt(doc.elements, x, y, BIND_PIXELS / view.k, measure, item.id);
+    const other = end === "from" ? item.to : item.from;
+    const next = { ...item };
+    if (target && target !== other) next[end] = target;
+    else delete next[end];
+    return next;
+  }
+
   function finishShape(shape) {
     guideLayer.replaceChildren();
     if (!shape.draft) return;
     const box = format.elementBounds(shape.draft);
     // A click without a drag would leave an invisible element behind.
     if (Math.hypot(box.x2 - box.x1, box.y2 - box.y1) * view.k < MIN_SHAPE_PIXELS) return;
-    addElement(shape.draft);
+    let draft = shape.draft;
+    if (format.isConnector(draft)) {
+      draft = format.routeConnector(bindEnd(bindEnd(draft, "from"), "to"), (id) => findElement(id) || null, measure);
+    }
+    addElement(draft);
+  }
+
+  // While shapes are dragged, the arrows bound to them follow as stand-ins on their own layer.
+  function previewBoundArrows(state, changed) {
+    clearArrowPreview(state);
+    state.hiddenArrows = [];
+    const stand = boundArrowUpdates(changed, new Set(changed.keys())).map(({ element, next }) => {
+      nodes.get(element.id)?.setAttribute("visibility", "hidden");
+      state.hiddenArrows.push(element.id);
+      return elementNode(next);
+    });
+    connectorLayer.replaceChildren(...stand);
+  }
+
+  function clearArrowPreview(state) {
+    (state.hiddenArrows || []).forEach((id) => nodes.get(id)?.removeAttribute("visibility"));
+    state.hiddenArrows = [];
+    connectorLayer.replaceChildren();
   }
 
   function startSelect(event, world) {
@@ -800,16 +914,21 @@
     const transform = `translate(${move.dx} ${move.dy})`;
     selection.forEach((id) => nodes.get(id)?.setAttribute("transform", transform));
     selectionLayer.setAttribute("transform", transform);
+    const changed = new Map(
+      selectedEntries().map(({ element }) => [element.id, format.moveElement(element, move.dx, move.dy)]),
+    );
+    previewBoundArrows(move, changed);
   }
 
-  function clearMovePreview() {
+  function clearMovePreview(move) {
     selection.forEach((id) => nodes.get(id)?.removeAttribute("transform"));
     selectionLayer.removeAttribute("transform");
+    clearArrowPreview(move);
   }
 
   function finishMove(move) {
-    clearMovePreview();
-    if (move.moved) replaceSelected((element) => format.moveElement(element, move.dx, move.dy));
+    clearMovePreview(move);
+    if (move.moved) replaceSelected((element) => moveWithSelection(element, move.dx, move.dy));
   }
 
   function updateResize(resize, event) {
@@ -819,18 +938,27 @@
     nodes.get(resize.element.id)?.setAttribute("visibility", "hidden");
     selectionLayer.setAttribute("visibility", "hidden");
     guideLayer.replaceChildren(elementNode(resize.draft));
+    previewBoundArrows(resize, new Map([[resize.element.id, resize.draft]]));
   }
 
   function clearResizePreview(resize) {
     nodes.get(resize.element.id)?.removeAttribute("visibility");
     selectionLayer.removeAttribute("visibility");
     guideLayer.replaceChildren();
+    clearArrowPreview(resize);
   }
 
   function finishResize(resize) {
     clearResizePreview(resize);
-    if (!resize.draft || JSON.stringify(resize.draft) === JSON.stringify(resize.element)) return;
-    commit([{ index: resize.index, element: resize.element }], [{ index: resize.index, element: resize.draft }]);
+    if (!resize.draft) return;
+    let draft = resize.draft;
+    // Dragging a connector's end attaches it to the shape it is dropped on (or detaches it).
+    if (format.isConnector(draft)) {
+      draft = bindEnd(draft, resize.handle === "start" ? "from" : "to");
+      draft = format.routeConnector(draft, (id) => findElement(id) || null, measure);
+    }
+    if (JSON.stringify(draft) === JSON.stringify(resize.element)) return;
+    commit([{ index: resize.index, element: resize.element }], [{ index: resize.index, element: draft }]);
   }
 
   function marqueeBox(marquee) {
@@ -1009,7 +1137,7 @@
   function cancelInteraction() {
     if (interaction?.type === "stroke") interaction.node.remove();
     if (interaction?.type === "erase") finishErase(interaction);
-    if (interaction?.type === "move") clearMovePreview();
+    if (interaction?.type === "move") clearMovePreview(interaction);
     if (interaction?.type === "resize") clearResizePreview(interaction);
     guideLayer.replaceChildren();
     svg.classList.remove("is-panning");
@@ -1048,6 +1176,7 @@
       else if (tool === "text") interaction = { type: "text", world };
       else if (tool === "sticky") interaction = { type: "sticky", world };
       else if (tool === "fill") fillAt(world);
+      else if (tool === "laser") addLaserPoint(event);
       // Like text, the comment opens on release so the canvas focus doesn't take it away again.
       else if (tool === "comment") interaction = { type: "comment", world };
       else if (SHAPE_TOOLS.has(tool) && canAdd())
@@ -1059,6 +1188,10 @@
 
   function onPointerMove(event) {
     if (pointers.has(event.pointerId)) pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    // The laser follows the mouse without a press; on touch screens it follows the finger.
+    if (tool === "laser" && !interaction && (event.pointerType !== "touch" || pointers.size === 1)) {
+      addLaserPoint(event);
+    }
     if (!interaction) return;
     if (interaction.type === "pinch") {
       if (pointers.size < 2) return;
@@ -1263,6 +1396,79 @@
     peers = next || [];
     drawPeers();
     renderPresence();
+    // The server repeats a peer's last trail until their next poll; only a new one restarts the fade.
+    peers.forEach((peer) => {
+      if (!peer.laser?.length) return;
+      const key = peer.laser.join(",");
+      if (peerLasers.get(peer.client_id)?.key !== key) {
+        peerLasers.set(peer.client_id, { key, points: peer.laser, t: performance.now() });
+      }
+    });
+    drawLaser();
+  }
+
+  // ---- Laser pointer --------------------------------------------------------------------------
+  // With the laser tool, the pointer leaves a short red trail that fades within LASER_MS. Nothing is
+  // stored on the board; on shared boards the trail travels with the live poll (polled faster while
+  // it shows) and the others see it fade the same way.
+
+  const laserTrail = [];
+  const peerLasers = new Map();
+  let laserFrame = 0;
+
+  function addLaserPoint(event) {
+    const world = toWorld(event.clientX, event.clientY);
+    laserTrail.push({ x: world.x, y: world.y, t: performance.now() });
+    if (laserTrail.length > MAX_LASER_POINTS) laserTrail.shift();
+    if (shared && laserTrail.length === 1) schedule(LASER_POLL);
+    drawLaser();
+  }
+
+  function laserPoints() {
+    const now = performance.now();
+    const fresh = laserTrail.filter((point) => now - point.t < LASER_MS);
+    if (!fresh.length) return undefined;
+    return fresh.flatMap((point) => [Math.round(point.x * 10) / 10, Math.round(point.y * 10) / 10]);
+  }
+
+  function laserNode(points, opacity) {
+    // A single point still shows as a dot: a zero-length line with round caps.
+    const list = (points.length === 2 ? [...points, ...points] : points).join(" ");
+    const attrs = {
+      points: list,
+      fill: "none",
+      stroke: LASER_COLOR,
+      opacity: Math.max(0, opacity),
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round",
+      "vector-effect": "non-scaling-stroke",
+    };
+    const group = svgEl("g");
+    group.append(
+      svgEl("polyline", { ...attrs, "stroke-width": 12, "stroke-opacity": 0.25 }),
+      svgEl("polyline", { ...attrs, "stroke-width": 3.5 }),
+    );
+    return group;
+  }
+
+  function drawLaser() {
+    const now = performance.now();
+    while (laserTrail.length && now - laserTrail[0].t > LASER_MS) laserTrail.shift();
+    peerLasers.forEach((entry, id) => {
+      if (now - entry.t > LASER_MS) peerLasers.delete(id);
+    });
+    const trails = [];
+    if (laserTrail.length)
+      trails.push(
+        laserNode(
+          laserTrail.flatMap((point) => [point.x, point.y]),
+          1,
+        ),
+      );
+    peerLasers.forEach((entry) => trails.push(laserNode(entry.points, 1 - (now - entry.t) / LASER_MS)));
+    laserLayer.replaceChildren(...trails);
+    window.cancelAnimationFrame(laserFrame);
+    laserFrame = trails.length ? window.requestAnimationFrame(drawLaser) : 0;
   }
 
   if (shared) {
@@ -1356,6 +1562,7 @@
           ops: sent ? live.pending : undefined,
           pointer: live.pointer,
           drawing: Boolean(interaction),
+          laser: laserPoints(),
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -1401,7 +1608,7 @@
     } finally {
       live.inflight = false;
       if (live.again || live.pending.length || hasUnsent()) delay ??= PUSH_DELAY;
-      else if (shared && !document.hidden) delay ??= LIVE_POLL;
+      else if (shared && !document.hidden) delay ??= laserTrail.length ? LASER_POLL : LIVE_POLL;
       live.again = false;
       if (delay !== null) schedule(delay);
     }
@@ -1691,8 +1898,97 @@
     }
     exportSvg.append(svgEl("rect", { x, y, width, height, fill: "#ffffff" }));
     doc.elements.forEach((item) => exportSvg.append(elementNode(item)));
+    await inlineImages(exportSvg);
     return { markup: new XMLSerializer().serializeToString(exportSvg), width, height };
   }
+
+  // A standalone SVG (and an SVG drawn into a canvas) can't load the board's private picture URLs, so
+  // the export carries each picture as a data URL; one that fails to load is left out.
+  async function inlineImages(exportSvg) {
+    const images = [...exportSvg.querySelectorAll("image")];
+    await Promise.all(
+      images.map(async (node) => {
+        try {
+          const response = await fetch(node.getAttribute("href"), { credentials: "same-origin" });
+          if (!response.ok) throw new Error("image");
+          const blob = await response.blob();
+          const dataUrl = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+          node.setAttribute("href", dataUrl);
+        } catch (_error) {
+          node.remove();
+        }
+      }),
+    );
+  }
+
+  // ---- Pictures -------------------------------------------------------------------------------
+  // A picture is uploaded first (validated and stored server-side, whiteboard_image_upload_api), then
+  // added as an "image" element pointing at its file id, sized from its own pixels.
+
+  function imageSize(file) {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.src = url;
+    return image
+      .decode()
+      .then(() => ({ width: image.naturalWidth, height: image.naturalHeight }))
+      .finally(() => URL.revokeObjectURL(url));
+  }
+
+  async function insertImageFile(file, center) {
+    if (!canAdd()) return;
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) {
+      showHint("Erlaubt sind JPG-, PNG- und WebP-Bilder.");
+      return;
+    }
+    const size = await imageSize(file).catch(() => null);
+    if (!size?.width || !size?.height) {
+      showHint("Das Bild konnte nicht gelesen werden.");
+      return;
+    }
+    setStatus("Bild wird hochgeladen …", "saving");
+    const form = new FormData();
+    form.append("file", file);
+    let data;
+    try {
+      const response = await fetch(imageUploadUrl, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "X-CSRFToken": csrfToken },
+        body: form,
+      });
+      data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) throw new Error(data.error || `Fehler ${response.status}`);
+    } catch (error) {
+      setStatus(`Bild nicht hochgeladen: ${error.message}`, "error");
+      return;
+    }
+    const scale = Math.min(1, IMAGE_PIXELS / view.k / Math.max(size.width, size.height));
+    const w = size.width * scale;
+    const h = size.height * scale;
+    const start = snapPoint({ x: center.x - w / 2, y: center.y - h / 2 });
+    addElement({ id: "draft", type: "image", color: "default", x: start.x, y: start.y, w, h, file: data.file });
+  }
+
+  imageInput.addEventListener("change", () => {
+    const [file] = imageInput.files;
+    imageInput.value = "";
+    if (file) insertImageFile(file, visibleCenter());
+  });
+  canvasWrap.addEventListener("dragover", (event) => {
+    if ([...(event.dataTransfer?.items || [])].some((item) => item.kind === "file")) event.preventDefault();
+  });
+  canvasWrap.addEventListener("drop", (event) => {
+    const file = [...(event.dataTransfer?.files || [])].find((entry) => entry.type.startsWith("image/"));
+    if (!file) return;
+    event.preventDefault();
+    insertImageFile(file, toWorld(event.clientX, event.clientY));
+  });
 
   async function exportPng() {
     const { markup, width, height } = await buildExportSvg();
@@ -1857,6 +2153,7 @@
     back: () => reorderSelection(false),
     grid: () => setGrid(!gridOn),
     fullscreen: toggleFullscreen,
+    image: () => canAdd() && imageInput.click(),
   };
 
   // iPhone Safari has no Fullscreen API for elements, so there the editor just covers the page.

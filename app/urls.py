@@ -72,6 +72,16 @@ urlpatterns = [
     path("tools/whiteboard/api/<int:board_id>/", view.whiteboard_api, name="whiteboard_api"),
     path("tools/whiteboard/api/<int:board_id>/sync/", view.whiteboard_sync_api, name="whiteboard_sync_api"),
     path(
+        "tools/whiteboard/api/<int:board_id>/images/",
+        view.whiteboard_image_upload_api,
+        name="whiteboard_image_upload_api",
+    ),
+    path(
+        "tools/whiteboard/<int:board_id>/images/<uuid:file_id>/",
+        view.whiteboard_image,
+        name="whiteboard_image",
+    ),
+    path(
         "tools/whiteboard/api/<int:board_id>/comments/",
         view.whiteboard_comments_api,
         name="whiteboard_comments_api",

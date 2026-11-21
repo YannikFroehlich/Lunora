@@ -6,6 +6,7 @@ import posixpath
 import shutil
 import tempfile
 import zipfile
+from pathlib import Path
 
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
@@ -66,6 +67,7 @@ Dieses Archiv enthält alle Daten, die du in Lunora angelegt hast:
 - vokabeln.json: Vokabellisten mit Lernfortschritt
 - uml/*.json: UML-Diagramme (lassen sich im Editor wieder importieren)
 - whiteboards/*.json: Whiteboards (lassen sich im Editor wieder importieren)
+- whiteboards/*-bilder/: die Bilder darauf, benannt nach der file-Angabe im JSON
 - whiteboard-kommentare.json: deine Kommentare auf Whiteboards
 - kanban.json: deine Kanban-Boards mit Spalten, Swimlanes und Karten
 - urlaub.json: Urlaubsjahre, Urlaube und eigene Feiertage
@@ -244,6 +246,9 @@ def write_user_export(user, fileobj):
                 name,
                 {"format": "lunora-whiteboard", "title": board.title, "document": board.document},
             )
+            for image in board.images.all():
+                extension = Path(image.file.name).suffix
+                _add_file(archive, f"whiteboards/{board.pk}-bilder/{image.file_id}{extension}", image.file)
         _add_json(archive, "kanban.json", _kanban_boards(user))
         _add_json(
             archive,

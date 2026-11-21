@@ -2,7 +2,7 @@
 
 from django.db import transaction
 
-from app.models import ChatMessageAttachment, NoteAttachment, Profile
+from app.models import ChatMessageAttachment, NoteAttachment, Profile, WhiteboardImage
 
 
 def account_deletion_blocked_reason(user):
@@ -26,6 +26,7 @@ def delete_account(user):
         for attachment in ChatMessageAttachment.objects.filter(message__sender=user)
         if attachment.file
     ]
+    files += [image.file for image in WhiteboardImage.objects.filter(board__owner=user) if image.file]
     profile = Profile.objects.filter(user=user).first()
     if profile and profile.profile_image:
         files.append(profile.profile_image)

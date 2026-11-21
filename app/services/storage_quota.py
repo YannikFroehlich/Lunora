@@ -12,7 +12,7 @@ from django.db import transaction
 from django.db.models import Sum
 from django.template.defaultfilters import filesizeformat
 
-from app.models import ChatMessageAttachment, NoteAttachment
+from app.models import ChatMessageAttachment, NoteAttachment, WhiteboardImage
 from app.services.system_settings import get_system_settings
 
 BYTES_PER_MB = 1024 * 1024
@@ -22,20 +22,21 @@ def _total_size(queryset):
     return queryset.aggregate(total=Sum("size"))["total"] or 0
 
 
+UPLOAD_MODELS = (NoteAttachment, ChatMessageAttachment, WhiteboardImage)
+
+
 def user_storage_used(user):
-    return _total_size(NoteAttachment.objects.filter(uploaded_by=user)) + _total_size(
-        ChatMessageAttachment.objects.filter(uploaded_by=user)
-    )
+    return sum(_total_size(model.objects.filter(uploaded_by=user)) for model in UPLOAD_MODELS)
 
 
 def total_storage_used():
-    return _total_size(NoteAttachment.objects.all()) + _total_size(ChatMessageAttachment.objects.all())
+    return sum(_total_size(model.objects.all()) for model in UPLOAD_MODELS)
 
 
 def top_storage_users(count=10):
     """The accounts using the most storage: [{"user", "used"}], largest first."""
     totals = Counter()
-    for model in (NoteAttachment, ChatMessageAttachment):
+    for model in UPLOAD_MODELS:
         rows = model.objects.exclude(uploaded_by=None).values_list("uploaded_by").annotate(total=Sum("size"))
         totals.update(dict(rows))
     top = totals.most_common(count)

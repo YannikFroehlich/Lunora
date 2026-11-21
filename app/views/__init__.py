@@ -97,6 +97,8 @@ from .tools_views import (
     whiteboard_api,
     whiteboard_comments_api,
     whiteboard_editor,
+    whiteboard_image,
+    whiteboard_image_upload_api,
     whiteboard_sync_api,
     whiteboards,
 )
@@ -203,6 +205,8 @@ __all__ = [
     "whiteboard_editor",
     "whiteboard_api",
     "whiteboard_comments_api",
+    "whiteboard_image",
+    "whiteboard_image_upload_api",
     "whiteboard_sync_api",
     "kanban_boards",
     "kanban_board",

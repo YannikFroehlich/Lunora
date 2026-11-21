@@ -1,6 +1,7 @@
 import uuid
 import zoneinfo
 from datetime import time
+from pathlib import Path
 
 from django.conf import settings
 from django.contrib.postgres.indexes import GinIndex
@@ -1100,6 +1101,29 @@ class WhiteboardShare(models.Model):
 
     def __str__(self):
         return f"{self.board} -> {self.user}"
+
+
+def whiteboard_upload_to(instance, filename):
+    return f"whiteboards/{instance.board_id}/{instance.file_id}{Path(filename).suffix.lower()}"
+
+
+class WhiteboardImage(models.Model):
+    """A picture on a whiteboard, stored privately and served only to the board's members
+    (whiteboard_image). Elements of type "image" point at it by `file_id`."""
+
+    board = models.ForeignKey(Whiteboard, on_delete=models.CASCADE, related_name="images")
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="whiteboard_images",
+    )
+    file_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    file = models.FileField(storage=private_note_storage, upload_to=whiteboard_upload_to, max_length=500)
+    content_type = models.CharField(max_length=40)
+    size = models.PositiveBigIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
 
 
 class KanbanBoard(models.Model):
