@@ -229,6 +229,8 @@ class PageAccessibilityMarkupTests(TestCase):
             "/tools/kanban/",
             f"/tools/kanban/{self.kanban.pk}/",
             "/tools/wishlist/",
+            "/tools/contracts/",
+            "/wrapped/",
             f"/tools/wishlist/{self.wish_list.pk}/",
             "/tools/vocabulary/",
             f"/tools/vocabulary/{self.vocabulary.pk}/",

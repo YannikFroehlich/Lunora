@@ -8,6 +8,7 @@ from app.services.calendar_subscriptions import sync_due_subscriptions
 from app.services.chat import send_due_scheduled_messages
 from app.services.expenses import post_due_recurring_expenses
 from app.services.notifications import (
+    materialize_due_contract_reminders,
     materialize_due_habit_reminders,
     materialize_due_note_reminders,
     send_due_reminder_emails,
@@ -88,10 +89,14 @@ def run_scheduled_tasks(*, now=None):
             lambda: {"created": post_due_recurring_expenses(today=timezone.localdate(current_time))},
         )
         wish_price_result = _guarded("wish_prices", refresh_due_prices, now=current_time)
+        contract_result = _guarded(
+            "contract_reminders", lambda: {"created": materialize_due_contract_reminders(now=current_time)}
+        )
     else:
         habit_reminder_result = {"created": 0, "disabled": True}
         recurring_expense_result = {"created": 0, "disabled": True}
         wish_price_result = {"checked": 0, "failed": 0, "disabled": True}
+        contract_result = {"created": 0, "disabled": True}
     if feature_enabled("messages"):
         scheduled_message_result = _guarded(
             "scheduled_messages", send_due_scheduled_messages, now=current_time
@@ -127,6 +132,7 @@ def run_scheduled_tasks(*, now=None):
         "habit_reminders": habit_reminder_result,
         "recurring_expenses": recurring_expense_result,
         "wish_prices": wish_price_result,
+        "contract_reminders": contract_result,
         "scheduled_messages": scheduled_message_result,
         "notification_emails": notification_email_result,
         "web_push": web_push_result,

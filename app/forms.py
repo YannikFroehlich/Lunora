@@ -20,6 +20,7 @@ from app.models import (
     ChatMessage,
     ChatPoll,
     ChatPollOption,
+    Contract,
     Countdown,
     CustomHoliday,
     Expense,
@@ -1373,6 +1374,32 @@ class RecipeForm(forms.ModelForm):
         widgets = {
             "title": forms.TextInput(attrs={"placeholder": "z. B. Gemüselasagne", "autocomplete": "off"})
         }
+
+
+class ContractForm(forms.ModelForm):
+    amount = forms.DecimalField(
+        label="Betrag", min_value=0, max_value=99_999_999, decimal_places=2, localize=True
+    )
+    term_months = forms.IntegerField(label="Mindestlaufzeit", required=False, min_value=1, max_value=240)
+    renewal_months = forms.IntegerField(label="Verlängerung", min_value=1, max_value=60)
+    notice_days = forms.IntegerField(label="Kündigungsfrist", min_value=0, max_value=365)
+    remind_days = forms.IntegerField(label="Erinnern", min_value=1, max_value=90)
+
+    class Meta:
+        model = Contract
+        fields = [
+            "name",
+            "provider",
+            "category",
+            "amount",
+            "interval",
+            "start_date",
+            "term_months",
+            "renewal_months",
+            "notice_days",
+            "remind_days",
+            "notes",
+        ]
 
 
 class NoteReminderForm(forms.Form):

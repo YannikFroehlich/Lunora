@@ -1,0 +1,49 @@
+{% comment %}Fields of a contract form, shared by "Vertrag hinzufügen" and every card's edit form; `c` is a contract or a dict of the same keys. No ids, because the page holds one such form per contract.{% endcomment %}
+<label class="vocab-field contract-field-wide">
+    <span>Name</span>
+    <input type="text" name="name" value="{{ c.name|default:'' }}" maxlength="120" required placeholder="z. B. Netflix, Handyvertrag">
+</label>
+<label class="vocab-field">
+    <span>Anbieter</span>
+    <input type="text" name="provider" value="{{ c.provider|default:'' }}" maxlength="120">
+</label>
+<label class="vocab-field">
+    <span>Kategorie</span>
+    <select name="category">
+        {% for value, label in category_choices %}<option value="{{ value }}"{% if value == c.category %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+</label>
+<label class="vocab-field">
+    <span>Betrag (€)</span>
+    <input type="text" name="amount" value="{% if c.amount is not None and c.amount != '' %}{{ c.amount|floatformat:2 }}{% endif %}" inputmode="decimal" autocomplete="off" required>
+</label>
+<label class="vocab-field">
+    <span>Zahlung</span>
+    <select name="interval">
+        {% for value, label in interval_choices %}<option value="{{ value }}"{% if value == c.interval %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+</label>
+<label class="vocab-field">
+    <span>Beginn</span>
+    <input type="date" name="start_date" value="{{ c.start_date|date:'Y-m-d' }}" required>
+</label>
+<label class="vocab-field">
+    <span>Mindestlaufzeit (Monate)</span>
+    <input type="number" name="term_months" value="{{ c.term_months|default_if_none:'' }}" min="1" max="240" placeholder="leer = jederzeit kündbar">
+</label>
+<label class="vocab-field">
+    <span>Verlängerung (Monate)</span>
+    <input type="number" name="renewal_months" value="{{ c.renewal_months|default:1 }}" min="1" max="60" required>
+</label>
+<label class="vocab-field">
+    <span>Kündigungsfrist (Tage)</span>
+    <input type="number" name="notice_days" value="{{ c.notice_days|default_if_none:30 }}" min="0" max="365" required>
+</label>
+<label class="vocab-field">
+    <span>Erinnern (Tage vorher)</span>
+    <input type="number" name="remind_days" value="{{ c.remind_days|default:14 }}" min="1" max="90" required>
+</label>
+<label class="vocab-field contract-field-wide">
+    <span>Notizen</span>
+    <textarea name="notes" rows="2" maxlength="1000">{{ c.notes|default:'' }}</textarea>
+</label>

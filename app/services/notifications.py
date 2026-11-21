@@ -11,6 +11,7 @@ from app.models import (
     CalendarEvent,
     CalendarEventAttendee,
     CalendarReminder,
+    Contract,
     Habit,
     HabitCheck,
     NoteActivityNotification,
@@ -71,6 +72,7 @@ NOTIFICATION_PRESENTATION = {
     UserNotification.KIND_NOTE_FOLDER_SHARE: ("fa-folder-open", "Freigabe", "note"),
     UserNotification.KIND_WISH_LIST_SHARE: ("fa-gift", "Wunschliste", "tools"),
     UserNotification.KIND_NOTE_REMINDER: ("fa-bell", "Erinnerung", "note"),
+    UserNotification.KIND_CONTRACT_DEADLINE: ("fa-file-signature", "Vertrag", "tools"),
     UserNotification.KIND_WISH_PRICE_ALERT: ("fa-tag", "Preisalarm", "tools"),
     UserNotification.KIND_SECURITY_ALERT: ("fa-shield-halved", "Sicherheit", "security"),
 }
@@ -732,6 +734,41 @@ def materialize_due_note_reminders(*, user=None, now=None):
     return created
 
 
+def materialize_due_contract_reminders(*, user=None, now=None):
+    """One inbox row per contract and deadline once the deadline is `remind_days` away or closer.
+    The source key carries the deadline, so the next term's deadline warns again."""
+    # Imported here: contracts → expenses → notifications would be circular at module level.
+    from app.services.contracts import add_months, next_deadline
+
+    current_time = now or timezone.now()
+    contracts = Contract.objects.filter(
+        cancelled_on__isnull=True, term_months__isnull=False, owner__is_active=True
+    ).select_related("owner", "owner__profile")
+    if user is not None:
+        contracts = contracts.filter(owner=user)
+    rows = []
+    for contract in contracts:
+        today = localtime_for_user(current_time, contract.owner).date()
+        deadline = next_deadline(contract, today)
+        if deadline is None or (deadline.cancel_by - today).days > contract.remind_days:
+            continue
+        renewed = add_months(deadline.ends_on, max(1, contract.renewal_months))
+        rows.append(
+            {
+                "recipient_id": contract.owner_id,
+                "kind": UserNotification.KIND_CONTRACT_DEADLINE,
+                "title": f"Kündigungsfrist: {contract.name}"[:300],
+                "body": (
+                    f"Noch bis {format_user_date(deadline.cancel_by, contract.owner)} kündbar, "
+                    f"sonst verlängert sich der Vertrag bis {format_user_date(renewed, contract.owner)}."
+                ),
+                "url": f"/tools/contracts/#contract-{contract.pk}",
+                "source_key": f"contract:{contract.pk}:{deadline.cancel_by.isoformat()}",
+            }
+        )
+    return _create_missing_user_notifications(rows)
+
+
 def materialize_user_notification_sources(
     user, *, now=None, include_reminders=True, include_tasks=True, include_habits=True
 ):
@@ -776,6 +813,8 @@ def materialize_user_notification_sources(
     if include_habits:
         created += materialize_due_habit_reminders(user=user, now=now)
     created += materialize_due_note_reminders(user=user, now=now)
+    if include_habits:
+        created += materialize_due_contract_reminders(user=user, now=now)
     return created
 
 
@@ -1284,6 +1323,7 @@ def send_pending_user_notification_emails(
             UserNotification.KIND_KANBAN_ASSIGNMENT,
             UserNotification.KIND_WISH_LIST_SHARE,
             UserNotification.KIND_WISH_PRICE_ALERT,
+            UserNotification.KIND_CONTRACT_DEADLINE,
         ]
     if include_expense_groups:
         kinds.append(UserNotification.KIND_EXPENSE_GROUP)

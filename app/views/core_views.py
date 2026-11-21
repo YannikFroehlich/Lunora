@@ -36,6 +36,7 @@ from app.services.dashboard import normalize_dashboard_layout, validate_dashboar
 from app.services.data_export import export_filename, export_temp_file, write_user_export
 from app.services.data_import import import_files
 from app.services.health import health_report
+from app.services.notes import display_name
 from app.services.storage_quota import storage_summary
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.user_preferences import format_user_datetime, localtime_for_user
@@ -46,6 +47,7 @@ from app.services.user_sessions import (
     revoke_session,
     track_session,
 )
+from app.services.wrapped import available_years, year_in_review
 from app.view_models import calendar_subscription_items, get_dashboard_context, get_settings_context
 from app.views.calendar_views import handle_subscription_form
 
@@ -548,3 +550,28 @@ def healthz(request):
     )
     response["X-Robots-Tag"] = "noindex"
     return response
+
+
+@login_required
+def wrapped(request):
+    """Lunora Wrapped: the signed-in user's year in numbers (?year=, default the current year)."""
+    current_year = localtime_for_user(profile_or_user=request.user).year
+    years = available_years(request.user, current_year)
+    try:
+        year = int(request.GET.get("year", current_year))
+    except ValueError:
+        year = current_year
+    if year not in years:
+        year = current_year
+    return render(
+        request,
+        "app/wrapped.html",
+        {
+            "active_page": "wrapped",
+            "year": year,
+            "years": years,
+            "is_current_year": year == current_year,
+            "slides": year_in_review(request.user, year),
+            "display_name": display_name(request.user),
+        },
+    )

@@ -1,0 +1,55 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}Dein Jahr {{ year }} | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/note_public.css' %}">
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell note-deck-shell">
+    <div class="note-deck wrapped-deck" data-note-deck>
+        <article class="glass-panel note-slide wrapped-slide is-title" data-slide aria-roledescription="Folie" aria-label="Folie 1">
+            <span class="wrapped-kicker"><i class="fa-solid fa-champagne-glasses" aria-hidden="true"></i> Lunora Wrapped</span>
+            <h1>Dein Jahr {{ year }}</h1>
+            <p class="wrapped-label">{% if slides %}{{ display_name }}, das war dein Jahr in Lunora – in {{ slides|length }} Zahlen.{% else %}Für {{ year }} gibt es noch nicht genug zu erzählen. Komm wieder, wenn du Lunora eine Weile genutzt hast.{% endif %}</p>
+            {% if years|length > 1 %}
+            <nav class="wrapped-years" aria-label="Jahr wählen">
+                {% for other in years %}<a class="{% if other == year %}is-active{% endif %}" href="{% url 'wrapped' %}?year={{ other }}"{% if other == year %} aria-current="page"{% endif %}>{{ other }}</a>{% endfor %}
+            </nav>
+            {% endif %}
+        </article>
+        {% for slide in slides %}
+        <article class="glass-panel note-slide wrapped-slide wrapped-{{ slide.key }}" data-slide aria-roledescription="Folie" aria-label="Folie {{ forloop.counter|add:1 }}">
+            <span class="wrapped-kicker"><i class="fa-solid {{ slide.icon }}" aria-hidden="true"></i> {{ slide.kicker }}</span>
+            <strong class="wrapped-value">{{ slide.value }}</strong>
+            <p class="wrapped-label">{{ slide.label }}</p>
+            {% if slide.lines %}<ul class="wrapped-lines">{% for line in slide.lines %}<li>{{ line }}</li>{% endfor %}</ul>{% endif %}
+        </article>
+        {% endfor %}
+        {% if slides %}
+        <article class="glass-panel note-slide wrapped-slide is-title" data-slide aria-roledescription="Folie" aria-label="Folie {{ slides|length|add:2 }}">
+            <span class="wrapped-kicker"><i class="fa-solid fa-star" aria-hidden="true"></i> Zusammengefasst</span>
+            <h2 class="wrapped-outro">Das war {{ year }}</h2>
+            <ul class="wrapped-summary">
+                {% for slide in slides %}<li><i class="fa-solid {{ slide.icon }}" aria-hidden="true"></i> <strong>{{ slide.value }}</strong> {{ slide.label }}</li>{% endfor %}
+            </ul>
+            {% if is_current_year %}<p class="wrapped-label">Auf ein gutes {{ year|add:1 }}!</p>{% endif %}
+        </article>
+        {% endif %}
+        <nav class="note-deck-controls" aria-label="Folien">
+            <a class="ghost-button" href="{% url 'home' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Zum Dashboard</a>
+            <button class="icon-button" type="button" data-deck-prev aria-label="Vorherige Folie" title="Vorherige Folie (←)"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>
+            <span class="note-deck-counter" data-deck-counter aria-live="polite">1 / {% if slides %}{{ slides|length|add:2 }}{% else %}1{% endif %}</span>
+            <button class="icon-button" type="button" data-deck-next aria-label="Nächste Folie" title="Nächste Folie (→)"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
+            <button class="icon-button" type="button" data-deck-fullscreen aria-label="Vollbild" aria-pressed="false" title="Vollbild (F)"><i class="fa-solid fa-expand" aria-hidden="true"></i></button>
+        </nav>
+    </div>
+</section>
+{% endblock %}
+
+{% block page_js %}
+<script src="{% versioned_static 'js/note_present.js' %}"></script>
+{% endblock %}
