@@ -1,6 +1,7 @@
 import uuid
 import zoneinfo
 from datetime import time
+from pathlib import Path
 
 from django.conf import settings
 from django.contrib.postgres.indexes import GinIndex
@@ -1102,6 +1103,29 @@ class WhiteboardShare(models.Model):
         return f"{self.board} -> {self.user}"
 
 
+def whiteboard_upload_to(instance, filename):
+    return f"whiteboards/{instance.board_id}/{instance.file_id}{Path(filename).suffix.lower()}"
+
+
+class WhiteboardImage(models.Model):
+    """A picture on a whiteboard, stored privately and served only to the board's members
+    (whiteboard_image). Elements of type "image" point at it by `file_id`."""
+
+    board = models.ForeignKey(Whiteboard, on_delete=models.CASCADE, related_name="images")
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="whiteboard_images",
+    )
+    file_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    file = models.FileField(storage=private_note_storage, upload_to=whiteboard_upload_to, max_length=500)
+    content_type = models.CharField(max_length=40)
+    size = models.PositiveBigIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
 class KanbanBoard(models.Model):
     """A free kanban board with its own columns and swimlanes (app/services/kanban.py).
 
@@ -1401,6 +1425,15 @@ class WishListItem(models.Model):
     """A shop product on a wish list; the details are read from its page (app/services/wishlist.py)
     and can be corrected by hand when the shop doesn't answer."""
 
+    PRIORITY_HIGH = "high"
+    PRIORITY_NORMAL = "normal"
+    PRIORITY_LOW = "low"
+    PRIORITY_CHOICES = [
+        (PRIORITY_HIGH, "Muss haben"),
+        (PRIORITY_NORMAL, "Normal"),
+        (PRIORITY_LOW, "Wäre schön"),
+    ]
+
     wish_list = models.ForeignKey(WishList, on_delete=models.CASCADE, related_name="items")
     # The product page without tracking parameters; Amazon links are cut down to /dp/<ASIN>.
     url = models.URLField(max_length=500)
@@ -1415,7 +1448,12 @@ class WishListItem(models.Model):
     rating = models.DecimalField(max_digits=2, decimal_places=1, blank=True, null=True)
     review_count = models.PositiveIntegerField(blank=True, null=True)
     availability = models.CharField(max_length=120, blank=True)
+    priority = models.CharField(max_length=6, choices=PRIORITY_CHOICES, default=PRIORITY_NORMAL)
+    # Price alert: the owner is told when a price check finds the price at or below this.
+    target_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     fetched_at = models.DateTimeField(blank=True, null=True)
+    # Last automatic price check, failed or not, so a shop that keeps refusing isn't asked every pass.
+    price_checked_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -1434,6 +1472,31 @@ class WishListItemPricePoint(models.Model):
 
     class Meta:
         ordering = ["recorded_at", "id"]
+
+
+class WishListShare(models.Model):
+    """Read access to a wish list for another user, who may reserve its items as gifts."""
+
+    wish_list = models.ForeignKey(WishList, on_delete=models.CASCADE, related_name="shares")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="shared_wish_lists"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        constraints = [models.UniqueConstraint(fields=["wish_list", "user"], name="unique_wish_list_share")]
+
+
+class WishListReservation(models.Model):
+    """A list member's promise to give an item. Never shown to the list's owner, so the gift stays a
+    surprise; the other members see that the item is taken."""
+
+    item = models.OneToOneField(WishListItem, on_delete=models.CASCADE, related_name="reservation")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="wish_reservations"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
 
 
 class ShoppingItem(models.Model):
@@ -1709,6 +1772,9 @@ class UserNotification(models.Model):
     KIND_KANBAN_SHARE = "kanban_share"
     KIND_KANBAN_ASSIGNMENT = "kanban_assignment"
     KIND_NOTE_FOLDER_SHARE = "note_folder_share"
+    KIND_WISH_LIST_SHARE = "wish_list_share"
+    KIND_NOTE_REMINDER = "note_reminder"
+    KIND_WISH_PRICE_ALERT = "wish_price_alert"
     KIND_SECURITY_ALERT = "security_alert"
     KIND_CHOICES = [
         (KIND_CALENDAR_REMINDER, "Kalendererinnerung"),
@@ -1733,6 +1799,9 @@ class UserNotification(models.Model):
         (KIND_KANBAN_SHARE, "Geteiltes Kanban-Board"),
         (KIND_KANBAN_ASSIGNMENT, "Kanban-Karte zugewiesen"),
         (KIND_NOTE_FOLDER_SHARE, "Geteilter Notizordner"),
+        (KIND_WISH_LIST_SHARE, "Geteilte Wunschliste"),
+        (KIND_NOTE_REMINDER, "Notizerinnerung"),
+        (KIND_WISH_PRICE_ALERT, "Preisalarm"),
         (KIND_SECURITY_ALERT, "Sicherheitswarnung"),
     ]
 
@@ -2051,6 +2120,8 @@ class Note(models.Model):
     # Secret of the read-only public link (/s/notes/<token>/); null while the note isn't public.
     # The token is the only credential, so it stays out of logs, exports and copies.
     public_token = models.CharField(max_length=64, blank=True, null=True, unique=True)
+    # The day of a daily note (app/services/daily_notes.py); null for every other note.
+    daily_date = models.DateField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -2060,6 +2131,13 @@ class Note(models.Model):
             models.Index(fields=["owner", "deleted_at", "updated_at"], name="app_note_owner_state_idx"),
             # Created on PostgreSQL only (see migration 0071); SQLite has no GIN.
             GinIndex(fields=["search_vector"], name="app_note_search_vector_gin"),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["owner", "daily_date"],
+                condition=models.Q(daily_date__isnull=False),
+                name="unique_daily_note_per_owner",
+            )
         ]
 
     def __str__(self):
@@ -2118,6 +2196,21 @@ class NoteFolder(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class NoteReminder(models.Model):
+    """ "Erinnere mich an diese Notiz": one per note and person (owner or someone it is shared with),
+    turned into an inbox row once due and then deleted (materialize_due_note_reminders)."""
+
+    note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name="reminders")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="note_reminders"
+    )
+    remind_at = models.DateTimeField(db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["note", "user"], name="unique_note_reminder")]
 
 
 class NoteLink(models.Model):

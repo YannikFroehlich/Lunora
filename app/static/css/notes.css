@@ -2587,3 +2587,19 @@
     display: none !important;
   }
 }
+
+/* Reminder dialog (bell in the note header): the card is a soft region, so its forms update it in place. */
+.notes-dialog header form {
+  display: contents;
+}
+
+.note-reminder-state {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+.note-reminder-state .fa-bell {
+  color: var(--color-accent-strong);
+}

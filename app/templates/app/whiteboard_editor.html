@@ -8,7 +8,7 @@
 {% endblock %}
 
 {% block content %}
-<section class="page-shell uml-shell" data-whiteboard-editor data-shared="{{ is_shared|yesno:'true,false' }}" data-save-url="{% url 'whiteboard_api' board.id %}" data-sync-url="{% url 'whiteboard_sync_api' board.id %}" data-comments-url="{% url 'whiteboard_comments_api' board.id %}" data-font-url="{% versioned_static 'vendor/inter/inter-latin-variable.woff2' %}">
+<section class="page-shell uml-shell" data-whiteboard-editor data-shared="{{ is_shared|yesno:'true,false' }}" data-save-url="{% url 'whiteboard_api' board.id %}" data-sync-url="{% url 'whiteboard_sync_api' board.id %}" data-comments-url="{% url 'whiteboard_comments_api' board.id %}" data-image-upload-url="{% url 'whiteboard_image_upload_api' board.id %}" data-image-url="{% url 'whiteboard_image' board.id '00000000-0000-0000-0000-000000000000' %}" data-font-url="{% versioned_static 'vendor/inter/inter-latin-variable.woff2' %}">
     <header class="glass-panel uml-header">
         <h1 class="visually-hidden">Whiteboard „{{ board.title }}“ bearbeiten</h1>
         <a class="icon-button" href="{% url 'whiteboards' %}" aria-label="Zur Whiteboard-Übersicht" title="Zur Übersicht">
@@ -36,6 +36,8 @@
             <button type="button" class="uml-tool is-icon" data-whiteboard-tool="sticky" aria-pressed="false" aria-label="Haftnotiz" title="Haftnotiz (N): auf die Fläche klicken und lostippen"><i class="fa-regular fa-note-sticky" aria-hidden="true"></i></button>
             <button type="button" class="uml-tool is-icon" data-whiteboard-tool="fill" aria-pressed="false" aria-label="Füllen" title="Füllen (G): in ein Rechteck oder eine Ellipse klicken, nochmal klicken leert sie wieder"><i class="fa-solid fa-fill-drip" aria-hidden="true"></i></button>
             <button type="button" class="uml-tool is-icon" data-whiteboard-tool="comment" aria-pressed="false" aria-label="Kommentar" title="Kommentar (C): auf die Fläche klicken, um einen Kommentar anzuheften"><i class="fa-regular fa-comment" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool is-icon" data-whiteboard-tool="laser" aria-pressed="false" aria-label="Laserpointer" title="Laserpointer (K): zeigt eine kurz leuchtende Spur, auf geteilten Boards auch den anderen"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i></button>
+            <button type="button" class="uml-tool is-icon" data-whiteboard-action="image" aria-label="Bild einfügen" title="Bild einfügen (JPG, PNG, WebP) – oder eine Bilddatei auf die Fläche ziehen"><i class="fa-regular fa-image" aria-hidden="true"></i></button>
             <button type="button" class="uml-tool is-icon" data-whiteboard-tool="hand" aria-pressed="false" aria-label="Fläche verschieben" title="Fläche verschieben (H oder Leertaste halten)"><i class="fa-regular fa-hand" aria-hidden="true"></i></button>
         </div>
         <div class="uml-tool-group whiteboard-colors" role="group" aria-label="Farbe" data-whiteboard-colors></div>
@@ -83,6 +85,7 @@
             </div>
         </details>
         <input type="file" accept="application/json,.json" hidden data-whiteboard-import-input aria-label="Whiteboard als JSON importieren">
+        <input type="file" accept="image/jpeg,image/png,image/webp" hidden data-whiteboard-image-input aria-label="Bild auf das Whiteboard laden">
     </div>
 
     <div class="glass-panel uml-canvas-wrap whiteboard-canvas-wrap">
@@ -106,7 +109,7 @@
                 </div>
             </form>
         </section>
-        <p class="uml-canvas-hint" id="whiteboard-canvas-help" data-whiteboard-hint>Werkzeug wählen und ziehen; Enter setzt eine Form in die Mitte. Ecken ändern die Größe, Strg+C/V kopiert. Leertaste oder zwei Finger verschieben, Strg+Mausrad zoomt.</p>
+        <p class="uml-canvas-hint" id="whiteboard-canvas-help" data-whiteboard-hint>Werkzeug wählen und ziehen; Enter setzt eine Form in die Mitte. Pfeile, die auf einer Form beginnen oder enden, wandern mit ihr. Ecken ändern die Größe, Strg+C/V kopiert. Leertaste oder zwei Finger verschieben, Strg+Mausrad zoomt.</p>
     </div>
 </section>
 {{ board_payload|json_script:"whiteboard-data" }}

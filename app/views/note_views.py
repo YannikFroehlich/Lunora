@@ -10,9 +10,11 @@ from django.db.models import Q
 from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.http import content_disposition_header
 from django.views.decorators.http import require_http_methods
 
+from app.forms import NoteReminderForm
 from app.models import (
     Note,
     NoteAttachment,
@@ -23,6 +25,7 @@ from app.models import (
     NoteVersion,
     Profile,
 )
+from app.services.daily_notes import open_daily_note
 from app.services.docx_import import import_docx_upload
 from app.services.note_collab import sync_note
 from app.services.note_content import NOTE_TEMPLATE_LABELS, NOTE_TEMPLATES
@@ -36,7 +39,7 @@ from app.services.note_folder_shares import (
     set_folder_share_role,
     share_folder,
 )
-from app.services.note_html import render_note_html
+from app.services.note_html import render_note_html, render_note_slides
 from app.services.note_markdown import note_markdown_filename, render_note_markdown
 from app.services.note_pdf import note_pdf_filename, render_note_pdf
 from app.services.note_search import search_notes
@@ -47,6 +50,7 @@ from app.services.notes import (
     bulk_move_notes_to_folder,
     bulk_set_notes_state,
     clear_note_presence,
+    clear_note_reminder,
     create_attachment,
     create_comment_thread,
     create_note,
@@ -68,6 +72,7 @@ from app.services.notes import (
     note_accessible_user_ids,
     note_link_graph,
     note_public_path,
+    note_reminder_for,
     note_tags_by_note,
     ping_note_presence,
     remove_note_share,
@@ -81,6 +86,7 @@ from app.services.notes import (
     set_comment_thread_resolved,
     set_note_folder,
     set_note_public_link,
+    set_note_reminder,
     set_note_style,
     set_note_tags,
     set_personal_state,
@@ -90,7 +96,8 @@ from app.services.notes import (
     user_tag_names,
 )
 from app.services.system_settings import disabled_feature_response, feature_enabled
-from app.services.user_preferences import format_user_datetime
+from app.services.tasks import create_tasks_from_checklist
+from app.services.user_preferences import format_user_datetime, localtime_for_user
 from app.views.navigation import posted_id
 
 # Every action of COMMAND_DEFAULTS in frontend/notes.js: the shortcut dialog always sends all of them,
@@ -163,6 +170,9 @@ SHORTCUT_ACTIONS = {
     "insertFormField",
     "toggleHeaderRow",
     "toggleHeaderColumn",
+    "present",
+    "reminder",
+    "checklistTasks",
 }
 RESERVED_SHORTCUTS = {"Mod+W", "Mod+T", "Mod+N", "Mod+L", "Mod+R", "Mod+Shift+N"}
 SHORTCUT_RE = re.compile(r"^(?=.{3,40}$)(?=.*(?:Mod|Ctrl|Alt|Shift)\+)[A-Za-z0-9+\[\]\\\-.,;/=]+$")
@@ -331,6 +341,70 @@ def note_graph(request):
 
 
 @login_required
+@require_http_methods(["GET"])
+def note_today(request):
+    """Opens today's daily note, creating it first."""
+    disabled = _feature_guard(request)
+    if disabled:
+        return disabled
+    note = open_daily_note(request.user, localtime_for_user(timezone.now(), request.user).date())
+    url = reverse("note_detail", args=[note.pk])
+    return redirect(f"{url}?status=trash" if note.deleted_at else url)
+
+
+@login_required
+@require_http_methods(["GET"])
+def note_present(request, note_id):
+    """The note as full-screen slides; headings of level 1 and 2 and horizontal rules start a slide."""
+    disabled = _feature_guard(request)
+    if disabled:
+        return disabled
+    try:
+        note = get_accessible_note(request.user, note_id)
+    except Note.DoesNotExist as error:
+        raise Http404 from error
+
+    def attachment_url(attachment, disposition):
+        return reverse("note_attachment_download", args=[attachment.file_id, disposition])
+
+    title_slide, slides = render_note_slides(note, attachment_url=attachment_url)
+    context = {
+        "active_page": "notes",
+        "note": note,
+        "title_slide": title_slide,
+        "slides": slides,
+        "has_math": "data-latex" in title_slide or any("data-latex" in slide for slide in slides),
+    }
+    return render(request, "app/note_present.html", context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def note_reminder(request, note_id):
+    """Sets or clears the signed-in user's reminder for a note (the note page's bell dialog)."""
+    disabled = _feature_guard(request)
+    if disabled:
+        return disabled
+    try:
+        if request.POST.get("form_name") == "note_reminder_clear":
+            get_accessible_note(request.user, note_id)
+            clear_note_reminder(request.user, note_id)
+            django_messages.success(request, "Erinnerung entfernt.")
+        else:
+            form = NoteReminderForm(request.POST)
+            if not form.is_valid():
+                raise ValidationError("Bitte wähle Datum und Uhrzeit.")
+            reminder = set_note_reminder(request.user, note_id, form.cleaned_data["remind_at"])
+            label = format_user_datetime(reminder.remind_at, request.user)
+            django_messages.success(request, f"Erinnerung am {label} gesetzt.")
+    except Note.DoesNotExist as error:
+        raise Http404 from error
+    except ValidationError as error:
+        django_messages.error(request, " ".join(error.messages))
+    return redirect("note_detail", note_id=note_id)
+
+
+@login_required
 def notes(request, note_id=None):
     disabled = _feature_guard(request)
     if disabled:
@@ -389,8 +463,15 @@ def notes(request, note_id=None):
             )
         except Note.DoesNotExist:
             return redirect("notes")
+    note_reminder = None
     if selected_note:
         mark_shared_note_opened(request.user, selected_note)
+        reminder = note_reminder_for(request.user, selected_note)
+        if reminder:
+            note_reminder = {
+                "label": format_user_datetime(reminder.remind_at, request.user),
+                "value": localtime_for_user(reminder.remind_at, request.user).strftime("%Y-%m-%dT%H:%M"),
+            }
 
     tags = note_tags_by_note(request.user, [note.pk for note in note_list])
     for note in note_list:
@@ -422,6 +503,8 @@ def notes(request, note_id=None):
         "note_icon_choices": NoteUserState.ICON_CHOICES,
         "tag_options": user_tag_names(request.user),
         "active_tags": tag_filters,
+        "note_reminder": note_reminder,
+        "reminder_min": localtime_for_user(timezone.now(), request.user).strftime("%Y-%m-%dT%H:%M"),
     }
     return render(request, "app/notes.html", context)
 
@@ -711,6 +794,12 @@ def note_action_api(request, note_id):
                 document=payload.get("document"),
             )
             return JsonResponse({"ok": True, "note": serialize_note(note, request.user)}, status=201)
+        if action == "checklist_tasks":
+            if not feature_enabled("tasks"):
+                raise ValidationError("Aufgaben sind gerade abgeschaltet.")
+            note = get_accessible_note(request.user, note_id)
+            created, skipped = create_tasks_from_checklist(request.user, note.document)
+            return JsonResponse({"ok": True, "created": created, "skipped": skipped})
         raise ValidationError("Unbekannte Notizaktion.")
     except Note.DoesNotExist:
         return _error_response("Notiz nicht gefunden.", status=404)

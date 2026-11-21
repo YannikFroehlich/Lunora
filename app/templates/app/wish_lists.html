@@ -39,7 +39,7 @@
                 <span class="tool-card-icon" aria-hidden="true"><i class="fa-solid fa-gift"></i></span>
                 <span>
                     <strong>{{ item.title }}</strong>
-                    <small>{{ item.count }} Artikel{% if item.totals %} · {{ item.totals|join:" + " }}{% endif %}</small>
+                    <small>{{ item.count }} Artikel{% if item.totals %} · {{ item.totals|join:" + " }}{% endif %}{% if item.share_count %} · geteilt mit {{ item.share_count }}{% endif %}</small>
                 </span>
             </a>
         </li>
@@ -51,6 +51,23 @@
         <strong>Noch keine Wunschlisten</strong>
         <p>Lege oben eine Liste an und füge danach Links zu Produkten aus Onlineshops hinzu.</p>
     </div>
+    {% endif %}
+
+    {% if shared_lists %}
+    <h2 class="wish-section-title">Mit dir geteilt</h2>
+    <ul class="uml-diagram-list">
+        {% for item in shared_lists %}
+        <li class="glass-panel uml-diagram-card">
+            <a class="uml-diagram-link" href="{% url 'wish_list_detail' item.id %}">
+                <span class="tool-card-icon" aria-hidden="true"><i class="fa-solid fa-gift"></i></span>
+                <span>
+                    <strong>{{ item.title }}</strong>
+                    <small>von {{ item.owner_name }} · {{ item.count }} Artikel</small>
+                </span>
+            </a>
+        </li>
+        {% endfor %}
+    </ul>
     {% endif %}
 </section>
 {% endblock %}

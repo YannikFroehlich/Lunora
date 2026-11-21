@@ -9,6 +9,7 @@ from app.services.chat import send_due_scheduled_messages
 from app.services.expenses import post_due_recurring_expenses
 from app.services.notifications import (
     materialize_due_habit_reminders,
+    materialize_due_note_reminders,
     send_due_reminder_emails,
     send_due_task_reminder_emails,
     send_new_invitation_emails,
@@ -22,6 +23,7 @@ from app.services.web_push import (
     materialize_web_push_weather_alerts,
     send_pending_web_push_notifications,
 )
+from app.services.wishlist import refresh_due_prices
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +56,12 @@ def run_scheduled_tasks(*, now=None):
         invitation_result = {"sent": 0, "failed": 0, "disabled": True}
     if feature_enabled("notes"):
         note_activity_result = _guarded("note_activity_emails", send_note_activity_emails, now=current_time)
+        note_reminder_result = _guarded(
+            "note_reminders", lambda: {"created": materialize_due_note_reminders(now=current_time)}
+        )
     else:
         note_activity_result = {"sent": 0, "failed": 0, "disabled": True}
+        note_reminder_result = {"created": 0, "disabled": True}
     if feature_enabled("tasks"):
         task_reminder_result = _guarded(
             "task_reminder_emails", send_due_task_reminder_emails, now=current_time
@@ -81,9 +87,11 @@ def run_scheduled_tasks(*, now=None):
             "recurring_expenses",
             lambda: {"created": post_due_recurring_expenses(today=timezone.localdate(current_time))},
         )
+        wish_price_result = _guarded("wish_prices", refresh_due_prices, now=current_time)
     else:
         habit_reminder_result = {"created": 0, "disabled": True}
         recurring_expense_result = {"created": 0, "disabled": True}
+        wish_price_result = {"checked": 0, "failed": 0, "disabled": True}
     if feature_enabled("messages"):
         scheduled_message_result = _guarded(
             "scheduled_messages", send_due_scheduled_messages, now=current_time
@@ -111,12 +119,14 @@ def run_scheduled_tasks(*, now=None):
         "reminder_emails": reminder_result,
         "event_invitation_emails": invitation_result,
         "note_activity_emails": note_activity_result,
+        "note_reminders": note_reminder_result,
         "task_reminder_emails": task_reminder_result,
         "weekly_summaries": weekly_result,
         "calendar_subscriptions": subscription_result,
         "weather_push_alerts": weather_push_result,
         "habit_reminders": habit_reminder_result,
         "recurring_expenses": recurring_expense_result,
+        "wish_prices": wish_price_result,
         "scheduled_messages": scheduled_message_result,
         "notification_emails": notification_email_result,
         "web_push": web_push_result,

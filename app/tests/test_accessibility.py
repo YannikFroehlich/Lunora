@@ -205,6 +205,7 @@ class PageAccessibilityMarkupTests(TestCase):
             f"/notes/{self.note.pk}/",
             f"/notes/folders/{self.note_folder.pk}/share/",
             "/notes/graph/",
+            f"/notes/{self.note.pk}/present/",
             "/messages/",
             f"/messages/{self.conversation.pk}/",
             f"/messages/{self.group.pk}/",

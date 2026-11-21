@@ -11,15 +11,26 @@ import math
 import re
 import time
 from itertools import pairwise
+from pathlib import Path
 
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
+from django.core.files.base import ContentFile
 from django.db import transaction
-from django.db.models import Max, Q
+from django.db.models import Max, Q, Sum
 
-from app.models import Conversation, UserNotification, Whiteboard, WhiteboardOp, WhiteboardShare
+from app.models import (
+    Conversation,
+    UserNotification,
+    Whiteboard,
+    WhiteboardImage,
+    WhiteboardOp,
+    WhiteboardShare,
+)
+from app.services.note_files import validate_note_upload
 from app.services.notes import _profile_image_url, display_name
 from app.services.notifications import materialize_whiteboard_share_notification
+from app.services.storage_quota import ensure_storage_available
 from app.services.uml_content import MAX_COORDINATE
 from app.services.vocabulary import resolve_share_recipient
 from app.services.whiteboard_comments import comments_signature
@@ -38,6 +49,15 @@ OP_HISTORY = 500
 TAB_RE = re.compile(r"^[A-Za-z0-9_-]{8,40}$")
 # Who else has the board open, with their pointer; kept in the cache, refreshed by every poll.
 PEER_TTL_SECONDS = 10
+# Laser pointer trail sent with a poll: at most this many points, flat [x1, y1, x2, y2, ...].
+MAX_LASER_POINTS = 60
+MAX_BOARD_IMAGE_BYTES = 100 * 1024 * 1024
+IMAGE_CONTENT_TYPES = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+}
 TITLE_MAX_LENGTH = Whiteboard._meta.get_field("title").max_length
 
 
@@ -124,7 +144,7 @@ def _apply_push(board, client_id, ops):
     board.ops.filter(version__lte=board.revision - OP_HISTORY).delete()
 
 
-def sync_whiteboard(board_id, user, *, version, tab, ops=None, pointer=None, drawing=False):
+def sync_whiteboard(board_id, user, *, version, tab, ops=None, pointer=None, drawing=False, laser=None):
     """Store an editor's operations and return everything after `version`; None without access.
 
     The answer holds the operations in the order the server applied them (the editor's own
@@ -137,6 +157,7 @@ def sync_whiteboard(board_id, user, *, version, tab, ops=None, pointer=None, dra
     if not isinstance(tab, str) or not TAB_RE.fullmatch(tab):
         raise ValidationError("Die Sitzungskennung ist ungültig.")
     pointer = _clean_pointer(pointer)
+    laser = _clean_laser(laser)
     client_id = f"{user.pk}-{tab}"
     with transaction.atomic():
         boards = accessible_whiteboards(user).filter(pk=board_id)
@@ -162,7 +183,7 @@ def sync_whiteboard(board_id, user, *, version, tab, ops=None, pointer=None, dra
         "hash": _board_hash(board),
         "title": board.title,
         "resync": resync,
-        "peers": _exchange_peers(board, user, client_id, pointer, drawing is True),
+        "peers": _exchange_peers(board, user, client_id, pointer, drawing is True, laser),
         # The editor reloads the comments when this changes.
         "comments": comments_signature(board),
     }
@@ -182,7 +203,21 @@ def _clean_pointer(pointer):
     return cleaned
 
 
-def _exchange_peers(board, user, client_id, pointer, drawing):
+def _clean_laser(laser):
+    """The laser trail as rounded, clamped coordinates, or None."""
+    if laser is None:
+        return None
+    if not isinstance(laser, list) or len(laser) % 2 or len(laser) > MAX_LASER_POINTS * 2:
+        raise ValidationError("Der Laserpointer ist ungültig.")
+    cleaned = []
+    for value in laser:
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            raise ValidationError("Der Laserpointer ist ungültig.")
+        cleaned.append(round(max(-MAX_COORDINATE, min(MAX_COORDINATE, float(value))), 1))
+    return cleaned or None
+
+
+def _exchange_peers(board, user, client_id, pointer, drawing, laser=None):
     # ponytail: read-modify-write without a lock; two polls at once can drop one peer until its
     # next poll a second later, which is fine for something shown only for orientation.
     key = f"whiteboard-peers:{board.pk}"
@@ -196,6 +231,7 @@ def _exchange_peers(board, user, client_id, pointer, drawing):
         "avatar_url": previous["avatar_url"] if previous else _profile_image_url(user),
         "pointer": pointer,
         "drawing": drawing,
+        "laser": laser,
         "until": now + PEER_TTL_SECONDS,
     }
     cache.set(key, peers, PEER_TTL_SECONDS)
@@ -226,3 +262,63 @@ def end_whiteboard_share(board_id, user_id):
     for share in WhiteboardShare.objects.filter(board_id=board_id, user_id=user_id):
         UserNotification.objects.filter(source_key=f"whiteboard-share:{share.pk}").delete()
         share.delete()
+
+
+def add_whiteboard_image(board, user, upload):
+    """Stores an uploaded JPG/PNG/WebP for the board (validated like note images, counted against the
+    uploader's storage limit and a per-board cap); returns the WhiteboardImage."""
+    validate_note_upload(upload, kind="image")
+    size = getattr(upload, "size", 0) or 0
+    used = board.images.aggregate(total=Sum("size"))["total"] or 0
+    if used + size > MAX_BOARD_IMAGE_BYTES:
+        raise ValidationError("Ein Whiteboard darf insgesamt höchstens 100 MB Bilder enthalten.")
+    extension = Path(str(upload.name)).suffix.lower()
+    with transaction.atomic():
+        ensure_storage_available(user, size)
+        image = WhiteboardImage(
+            board=board,
+            uploaded_by=user,
+            content_type=IMAGE_CONTENT_TYPES.get(extension, "image/jpeg"),
+            size=size,
+        )
+        image.file.save(f"bild{extension}", upload, save=False)
+        image.save()
+    return image
+
+
+def copy_whiteboard_images(source, target, user):
+    """Copies the source board's pictures to `target` with new file ids and points the copied
+    document's image elements at them; files are real copies, so deleting one board keeps the other's."""
+    images = list(source.images.all())
+    if not images:
+        return
+    ensure_storage_available(user, sum(image.size for image in images))
+    mapping = {}
+    for image in images:
+        copy = WhiteboardImage(
+            board=target, uploaded_by=user, content_type=image.content_type, size=image.size
+        )
+        with image.file.open("rb") as handle:
+            copy.file.save(Path(image.file.name).name, ContentFile(handle.read()), save=False)
+        copy.save()
+        mapping[str(image.file_id)] = str(copy.file_id)
+    document = target.document
+    for element in document.get("elements", []):
+        if element.get("type") == "image" and element.get("file") in mapping:
+            element["file"] = mapping[element["file"]]
+    target.document = document
+    target.save(update_fields=["document", "updated_at"])
+
+
+def delete_whiteboards(queryset):
+    """Deletes the boards and, once the transaction commits, their picture files."""
+    with transaction.atomic():
+        files = [image.file for image in WhiteboardImage.objects.filter(board__in=queryset) if image.file]
+        deleted, _ = queryset.delete()
+
+        def delete_files():
+            for field_file in files:
+                field_file.storage.delete(field_file.name)
+
+        transaction.on_commit(delete_files)
+    return deleted

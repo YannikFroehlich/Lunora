@@ -27,6 +27,12 @@
                 <i class="fa-solid fa-pen" aria-hidden="true"></i>
                 <input type="text" name="title" maxlength="{{ title_max_length }}" placeholder="Titel, z. B. „Wohnzimmer-Umbau“" required>
             </label>
+            <label class="uml-relation-select whiteboard-template-select">
+                <span class="visually-hidden">Vorlage</span>
+                <select name="template" title="Vorlage">
+                    {% for key, label in templates %}<option value="{{ key }}">{% if key == "blank" %}Leeres Whiteboard{% else %}Vorlage: {{ label }}{% endif %}</option>{% endfor %}
+                </select>
+            </label>
             <button class="primary-button" type="submit"><i class="fa-solid fa-plus" aria-hidden="true"></i> Neues Whiteboard</button>
         </form>
     </section>

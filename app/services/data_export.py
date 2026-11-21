@@ -6,6 +6,7 @@ import posixpath
 import shutil
 import tempfile
 import zipfile
+from pathlib import Path
 
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
@@ -66,6 +67,7 @@ Dieses Archiv enthält alle Daten, die du in Lunora angelegt hast:
 - vokabeln.json: Vokabellisten mit Lernfortschritt
 - uml/*.json: UML-Diagramme (lassen sich im Editor wieder importieren)
 - whiteboards/*.json: Whiteboards (lassen sich im Editor wieder importieren)
+- whiteboards/*-bilder/: die Bilder darauf, benannt nach der file-Angabe im JSON
 - whiteboard-kommentare.json: deine Kommentare auf Whiteboards
 - kanban.json: deine Kanban-Boards mit Spalten, Swimlanes und Karten
 - urlaub.json: Urlaubsjahre, Urlaube und eigene Feiertage
@@ -187,6 +189,14 @@ def write_user_export(user, fileobj):
         _add_json(archive, "ausgaben.json", _expense_groups(user))
         _add_json(
             archive,
+            "notiz-erinnerungen.json",
+            [
+                {"note": reminder.note.title, "remind_at": reminder.remind_at}
+                for reminder in user.note_reminders.select_related("note")
+            ],
+        )
+        _add_json(
+            archive,
             "wunschlisten.json",
             [
                 {
@@ -198,14 +208,32 @@ def write_user_export(user, fileobj):
                             "price": item.price,
                             "currency": item.currency,
                             "quantity": item.quantity,
+                            "priority": item.priority,
+                            "target_price": item.target_price,
                             "fetched_at": item.fetched_at,
                             "created_at": item.created_at,
                             "price_history": list(item.price_points.values("price", "recorded_at")),
                         }
                         for item in wish_list.items.prefetch_related("price_points").all()
                     ],
+                    # Who sees the list; what they reserved stays hidden from the owner here too.
+                    "shared_with": [share.user.username for share in wish_list.shares.select_related("user")],
                 }
                 for wish_list in WishList.objects.filter(owner=user)
+            ],
+        )
+        _add_json(
+            archive,
+            "wunschlisten-geschenke.json",
+            [
+                {
+                    "list": reservation.item.wish_list.title,
+                    "owner": reservation.item.wish_list.owner.username,
+                    "item": reservation.item.title,
+                    "url": reservation.item.url,
+                    "reserved_at": reservation.created_at,
+                }
+                for reservation in user.wish_reservations.select_related("item__wish_list__owner")
             ],
         )
         for diagram in UmlDiagram.objects.filter(owner=user):
@@ -218,6 +246,9 @@ def write_user_export(user, fileobj):
                 name,
                 {"format": "lunora-whiteboard", "title": board.title, "document": board.document},
             )
+            for image in board.images.all():
+                extension = Path(image.file.name).suffix
+                _add_file(archive, f"whiteboards/{board.pk}-bilder/{image.file_id}{extension}", image.file)
         _add_json(archive, "kanban.json", _kanban_boards(user))
         _add_json(
             archive,

@@ -72,6 +72,16 @@ urlpatterns = [
     path("tools/whiteboard/api/<int:board_id>/", view.whiteboard_api, name="whiteboard_api"),
     path("tools/whiteboard/api/<int:board_id>/sync/", view.whiteboard_sync_api, name="whiteboard_sync_api"),
     path(
+        "tools/whiteboard/api/<int:board_id>/images/",
+        view.whiteboard_image_upload_api,
+        name="whiteboard_image_upload_api",
+    ),
+    path(
+        "tools/whiteboard/<int:board_id>/images/<uuid:file_id>/",
+        view.whiteboard_image,
+        name="whiteboard_image",
+    ),
+    path(
         "tools/whiteboard/api/<int:board_id>/comments/",
         view.whiteboard_comments_api,
         name="whiteboard_comments_api",
@@ -152,6 +162,9 @@ urlpatterns = [
     path("notes/api/create/", view.note_create_api, name="note_create_api"),
     path("notes/import/", view.note_import, name="note_import"),
     path("notes/graph/", view.note_graph, name="note_graph"),
+    path("notes/today/", view.note_today, name="note_today"),
+    path("notes/<int:note_id>/present/", view.note_present, name="note_present"),
+    path("notes/<int:note_id>/reminder/", view.note_reminder, name="note_reminder"),
     path("notes/api/templates/", view.note_template_create_api, name="note_template_create_api"),
     path(
         "notes/api/templates/<int:template_id>/",

@@ -6,6 +6,29 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Whiteboard templates: a new board can start as a retrospective, kanban, mind map, SWOT analysis
+  or week plan instead of empty.
+- Arrows and lines that start or end on a shape stay attached: move or resize the shape and they
+  follow, also for everyone else on a shared board.
+- Pictures on whiteboards: insert a JPG, PNG or WebP with the image button or drag it onto the board;
+  it can be moved and resized like a shape and is part of the PNG/SVG export.
+- Laser pointer for whiteboards (K): a short glowing trail to point at things, visible to the others
+  on a shared board as well.
+- Tagesnotiz: one click (calendar icon in the notes list, or the command palette) opens today's note,
+  prepared with today's appointments, the tasks due today and a link to the previous daily note.
+- Note reminders: the bell in a note's header reminds you of the note at a chosen time, in the inbox
+  and by e-mail or push if switched on. Reminders are personal, also on shared notes.
+- "Checkliste als Aufgaben": a button in the note header turns the note's open checklist items into
+  tasks, keeping their due dates; items that already exist as open tasks are skipped.
+- Presentation mode for notes: every heading (level 1 or 2) and horizontal line starts a new slide,
+  shown full screen and moved through with the arrow keys or a swipe.
+- Wish lists can be shared with other Lunora users. They see the list and can reserve an item with
+  "Ich schenke das", so nothing is bought twice; the other people on the list see what is taken,
+  but the list's owner never does, so the gift stays a surprise.
+- Price alert for wish list items: set a target price and Lunora checks the shop about twice a day,
+  sending a notification (inbox, e-mail, push) as soon as the price drops to the target.
+- Wish list items have a priority ("Muss haben", "Normal", "Wäre schön"), sort by it and show a
+  "Muss haben" subtotal; every item with more than one recorded price shows a small price chart.
 - Notizgraph: a new page (graph icon in the notes list's folder row, or the command palette)
   draws your notes as a network of the `[[`-links between them. Hovering or focusing a note
   highlights its neighbours, a click opens it, nodes can be dragged and the view zoomed and panned.

@@ -337,6 +337,7 @@
     const solid =
       item.type === "text" ||
       item.type === "sticky" ||
+      item.type === "image" ||
       ((item.type === "rect" || item.type === "ellipse") && item.fill);
     if (solid && contains(item, bx, by, tolerance, measure)) return true;
     const reach = "width" in item ? tolerance + lineWidth(item) / 2 : tolerance;
@@ -447,6 +448,75 @@
       return `${Math.round(x * 10) / 10} ${Math.round(y * 10) / 10}`;
     };
     return `M${barb(-1)}L${x2} ${y2}L${barb(1)}`;
+  }
+
+  // ---- Bound arrows -------------------------------------------------------------------------
+  // A line or arrow may carry "from"/"to": the id of the shape an end is attached to. Whenever such a
+  // shape changes, the editor re-routes the connector: each bound end sits on its shape's outline
+  // (plus CONNECTOR_GAP), aimed at the other end's shape center or free point. CONNECTOR_GAP mirrors
+  // whiteboard_templates.py.
+
+  const CONNECTOR_GAP = 6;
+  const BINDABLE = new Set(["rect", "ellipse", "sticky", "text", "image"]);
+
+  function isConnector(item) {
+    return item.type === "line" || item.type === "arrow";
+  }
+
+  function shapeCenter(item, measure) {
+    const box = elementBounds(item, measure);
+    return { x: (box.x1 + box.x2) / 2, y: (box.y1 + box.y2) / 2 };
+  }
+
+  // Where the ray from the shape's center toward `toward` leaves the shape, pushed out by the gap.
+  function borderPoint(item, toward, measure) {
+    const box = elementBounds(item, measure);
+    const cx = (box.x1 + box.x2) / 2;
+    const cy = (box.y1 + box.y2) / 2;
+    const rx = (box.x2 - box.x1) / 2;
+    const ry = (box.y2 - box.y1) / 2;
+    const dx = toward.x - cx;
+    const dy = toward.y - cy;
+    const length = Math.hypot(dx, dy);
+    if (!length) return { x: cx, y: cy };
+    let scale;
+    if (item.type === "ellipse") scale = rx && ry ? 1 / Math.hypot(dx / rx, dy / ry) : 0;
+    else scale = Math.min(dx ? rx / Math.abs(dx) : Infinity, dy ? ry / Math.abs(dy) : Infinity);
+    if (!Number.isFinite(scale)) scale = 0;
+    return { x: cx + dx * scale + (dx / length) * CONNECTOR_GAP, y: cy + dy * scale + (dy / length) * CONNECTOR_GAP };
+  }
+
+  // The connector re-routed to its bound shapes (`lookup(id)` → element or null when it is gone, which
+  // drops that binding). Returns the same object when nothing changed.
+  function routeConnector(item, lookup, measure) {
+    const source = item.from ? lookup(item.from) : null;
+    const target = item.to ? lookup(item.to) : null;
+    const next = { ...item };
+    if (item.from && !source) delete next.from;
+    if (item.to && !target) delete next.to;
+    if (source) {
+      const aim = target ? shapeCenter(target, measure) : { x: item.x2, y: item.y2 };
+      const point = borderPoint(source, aim, measure);
+      next.x1 = coordinate(point.x);
+      next.y1 = coordinate(point.y);
+    }
+    if (target) {
+      const aim = source ? shapeCenter(source, measure) : { x: next.x1, y: next.y1 };
+      const point = borderPoint(target, aim, measure);
+      next.x2 = coordinate(point.x);
+      next.y2 = coordinate(point.y);
+    }
+    const same = ["x1", "y1", "x2", "y2", "from", "to"].every((key) => next[key] === item[key]);
+    return same ? item : next;
+  }
+
+  // The id of the topmost shape a connector end at (x, y) attaches to, or null.
+  function bindableAt(elements, x, y, tolerance, measure, excludeId) {
+    for (let i = elements.length - 1; i >= 0; i -= 1) {
+      const item = elements[i];
+      if (item.id !== excludeId && BINDABLE.has(item.type) && contains(item, x, y, tolerance, measure)) return item.id;
+    }
+    return null;
   }
 
   // ---- Live editing -------------------------------------------------------------------------
@@ -580,5 +650,10 @@
     moveElement,
     normalizeBox,
     arrowHead,
+    CONNECTOR_GAP,
+    isConnector,
+    borderPoint,
+    routeConnector,
+    bindableAt,
   };
 })();

@@ -6,13 +6,15 @@ from urllib.parse import urlsplit
 from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.http import JsonResponse
+from django.db import transaction
+from django.http import FileResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.cache import patch_cache_control
 from django.views.decorators.http import require_http_methods, require_POST
 
 from app.forms import HabitForm, HabitReminderForm, RecipeForm, ShoppingItemForm
-from app.models import Habit, MealPlanEntry, Recipe, ShoppingItem, UmlDiagram, Whiteboard
+from app.models import Habit, MealPlanEntry, Recipe, ShoppingItem, UmlDiagram, Whiteboard, WhiteboardImage
 from app.services.habits import habit_items, toggle_habit_check
 from app.services.notes import display_name
 from app.services.recipe_import import fetch_recipe_for
@@ -47,9 +49,13 @@ from app.services.user_preferences import format_user_date, format_user_datetime
 from app.services.whiteboard_comments import add_comment, comment_threads, delete_comment, set_resolved
 from app.services.whiteboard_content import validate_whiteboard_document
 from app.services.whiteboard_preview import whiteboard_preview_svg
+from app.services.whiteboard_templates import WHITEBOARD_TEMPLATES, whiteboard_template_document
 from app.services.whiteboards import (
     WhiteboardConflictError,
     accessible_whiteboards,
+    add_whiteboard_image,
+    copy_whiteboard_images,
+    delete_whiteboards,
     end_whiteboard_share,
     save_whiteboard,
     share_whiteboard,
@@ -603,16 +609,27 @@ def whiteboards(request):
         except ValidationError as error:
             django_messages.error(request, " ".join(error.messages))
             return redirect("whiteboards")
-        board = Whiteboard.objects.create(owner=request.user, title=title)
+        document = whiteboard_template_document(request.POST.get("template", "blank"))
+        board = Whiteboard.objects.create(owner=request.user, title=title, document=document)
         return redirect("whiteboard_editor", board_id=board.pk)
     if form_name == "whiteboard_duplicate":
         source = get_object_or_404(accessible_whiteboards(request.user), pk=posted_id(request, "board_id"))
         copy_title = f"{source.title} (Kopie)"[:UML_TITLE_MAX_LENGTH]
-        board = Whiteboard.objects.create(owner=request.user, title=copy_title, document=source.document)
+        try:
+            with transaction.atomic():
+                board = Whiteboard.objects.create(
+                    owner=request.user, title=copy_title, document=source.document
+                )
+                copy_whiteboard_images(source, board, request.user)
+        except ValidationError as error:
+            django_messages.error(request, " ".join(error.messages))
+            return redirect("whiteboards")
         django_messages.success(request, "Whiteboard dupliziert.")
         return redirect("whiteboard_editor", board_id=board.pk)
     if form_name == "whiteboard_delete":
-        deleted, _ = Whiteboard.objects.filter(owner=request.user, pk=posted_id(request, "board_id")).delete()
+        deleted = delete_whiteboards(
+            Whiteboard.objects.filter(owner=request.user, pk=posted_id(request, "board_id"))
+        )
         if deleted:
             django_messages.success(request, "Whiteboard gelöscht.")
         return redirect("whiteboards")
@@ -659,7 +676,12 @@ def whiteboards(request):
     return render(
         request,
         "app/whiteboards.html",
-        {"active_page": "tools", "boards": items, "title_max_length": UML_TITLE_MAX_LENGTH},
+        {
+            "active_page": "tools",
+            "boards": items,
+            "title_max_length": UML_TITLE_MAX_LENGTH,
+            "templates": [(key, label) for key, (label, _build) in WHITEBOARD_TEMPLATES.items()],
+        },
     )
 
 
@@ -707,12 +729,44 @@ def whiteboard_sync_api(request, board_id):
             ops=payload.get("ops"),
             pointer=payload.get("pointer"),
             drawing=payload.get("drawing"),
+            laser=payload.get("laser"),
         )
     except ValidationError as error:
         return JsonResponse({"ok": False, "error": " ".join(error.messages)}, status=400, headers=headers)
     if result is None:
         return JsonResponse({"ok": False, "error": "Whiteboard nicht gefunden."}, status=404, headers=headers)
     return JsonResponse({"ok": True, **result}, headers=headers)
+
+
+@login_required
+@require_http_methods(["POST"])
+def whiteboard_image_upload_api(request, board_id):
+    """Stores a picture for the board; the editor then adds an "image" element pointing at it."""
+    if not feature_enabled("tools"):
+        return disabled_feature_response(request, "tools", json_response=True)
+    board = accessible_whiteboards(request.user).filter(pk=board_id).first()
+    if board is None:
+        return JsonResponse({"ok": False, "error": "Whiteboard nicht gefunden."}, status=404)
+    try:
+        image = add_whiteboard_image(board, request.user, request.FILES.get("file"))
+    except ValidationError as error:
+        return JsonResponse({"ok": False, "error": " ".join(error.messages)}, status=400)
+    return JsonResponse({"ok": True, "file": str(image.file_id)}, status=201)
+
+
+@login_required
+@require_http_methods(["GET"])
+def whiteboard_image(request, board_id, file_id):
+    """A board's picture, only for the board's members."""
+    if not feature_enabled("tools"):
+        return disabled_feature_response(request, "tools")
+    image = get_object_or_404(
+        WhiteboardImage, file_id=file_id, board_id=board_id, board__in=accessible_whiteboards(request.user)
+    )
+    response = FileResponse(image.file.open("rb"), content_type=image.content_type)
+    response["X-Content-Type-Options"] = "nosniff"
+    patch_cache_control(response, private=True, max_age=7 * 24 * 3600)
+    return response
 
 
 @login_required

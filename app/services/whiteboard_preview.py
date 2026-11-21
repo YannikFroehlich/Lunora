@@ -134,6 +134,16 @@ def _shape(item, step):
             STICKY_PAPER.get(item["color"], STICKY_PAPER["yellow"]),
         )
         return markup, (x, y, x + width, y + height)
+    if kind == "image":
+        # A thumbnail can't load the private picture; a framed placeholder shows where it sits.
+        markup = format_html(
+            '<rect x="{}" y="{}" width="{}" height="{}" fill="#e6dfd4" stroke="#b8ab98" stroke-width="2"/>',
+            _number(x),
+            _number(y),
+            _number(width),
+            _number(height),
+        )
+        return markup, (x, y, x + width, y + height)
     fill = format_html(' style="fill:{};fill-opacity:0.3"', color) if item["fill"] else ""
     if kind == "rect":
         markup = format_html(

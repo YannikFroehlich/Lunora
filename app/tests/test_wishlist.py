@@ -1,13 +1,23 @@
 import io
+from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.core.cache import cache
-from django.test import SimpleTestCase, TestCase
+from django.test import Client, SimpleTestCase, TestCase
+from django.utils import timezone
 from PIL import Image
 
-from app.models import WishList, WishListItem, WishListItemPricePoint
+from app.models import (
+    UserNotification,
+    WishList,
+    WishListItem,
+    WishListItemPricePoint,
+    WishListReservation,
+    WishListShare,
+)
+from app.services.notes import display_name
 from app.services.safe_fetch import FetchError
 from app.services.wishlist import (
     _amount,
@@ -15,6 +25,8 @@ from app.services.wishlist import (
     parse_product_page,
     price_change,
     product_url,
+    refresh_due_prices,
+    sparkline_points,
     title_from_url,
 )
 from app.tests.helpers import FakeHttpConnection
@@ -175,6 +187,14 @@ class WishlistParsingTests(SimpleTestCase):
         ]
 
         self.assertEqual(list_totals(items), ["1.021,00 €", "5,00 $"])
+
+    def test_sparkline_puts_the_cheapest_price_at_the_bottom(self):
+        def points(*prices):
+            return [WishListItemPricePoint(price=Decimal(price)) for price in prices]
+
+        self.assertEqual(sparkline_points(points("10", "20", "15")), "0.0,22.0 40.0,2.0 80.0,12.0")
+        self.assertEqual(sparkline_points(points("5", "5")), "0.0,12.0 80.0,12.0")
+        self.assertEqual(sparkline_points(points("5")), "")
 
 
 class WishlistViewTests(TestCase):
@@ -429,3 +449,137 @@ class WishlistViewTests(TestCase):
 
     def test_tools_hub_links_the_wish_lists(self):
         self.assertContains(self.client.get("/tools/"), "/tools/wishlist/")
+
+    def _item(self, **fields):
+        defaults = {
+            "wish_list": self.wish_list,
+            "url": "https://www.amazon.de/dp/B0TEST1234",
+            "title": "Kaffee",
+        }
+        return WishListItem.objects.create(**{**defaults, **fields})
+
+    def test_priority_and_target_price_sort_and_badge_the_items(self):
+        later = self._item(title="Tasse", price=Decimal("8"), url="https://shop.example.com/tasse")
+        self._item(title="Mühle", price=Decimal("50"), url="https://shop.example.com/muehle")
+
+        response = self.client.post(
+            self.url,
+            {
+                "form_name": "wish_item_update",
+                "item_id": later.pk,
+                "title": "Tasse",
+                "price": "8",
+                "quantity": "2",
+                "priority": "high",
+                "target_price": "9,50",
+            },
+            follow=True,
+        )
+
+        later.refresh_from_db()
+        self.assertEqual((later.priority, later.target_price), ("high", Decimal("9.50")))
+        self.assertEqual([item.title for item in response.context["items"]], ["Tasse", "Mühle"])
+        self.assertContains(response, "davon „Muss haben“: 16,00 €")
+        self.assertContains(response, "Zielpreis erreicht (9,50 €)")
+
+    def test_scheduled_price_check_raises_one_alert_when_the_target_is_reached(self):
+        item = self._item(price=Decimal("50"), target_price=Decimal("40"))
+        WishListItemPricePoint.objects.create(item=item, price=Decimal("50"))
+        self._item(price=Decimal("10"), url="https://shop.example.com/ohne-alarm")
+        FakeHttpConnection.responses = [(200, {}, PRODUCT_PAGE.replace("1299.99", "39.99").encode())]
+        now = timezone.now()
+
+        self.assertEqual(refresh_due_prices(now=now), {"checked": 1, "failed": 0})
+        # Within the interval nothing is fetched again, and items without a target are never fetched.
+        self.assertEqual(refresh_due_prices(now=now), {"checked": 0, "failed": 0})
+
+        item.refresh_from_db()
+        self.assertEqual(item.price, Decimal("39.99"))
+        self.assertEqual(len(FakeHttpConnection.requests), 1)
+        alert = UserNotification.objects.get(recipient=self.lea, kind=UserNotification.KIND_WISH_PRICE_ALERT)
+        self.assertIn("39,99 €", alert.body)
+        self.assertIn("40,00 €", alert.body)
+        self.assertEqual(alert.url, f"/tools/wishlist/{self.wish_list.pk}/#wish-{item.pk}")
+
+        # Cheaper still, but already below the target: no second alert.
+        FakeHttpConnection.responses = [(200, {}, PRODUCT_PAGE.replace("1299.99", "35.00").encode())]
+        refresh_due_prices(now=now + timedelta(hours=13))
+        item.refresh_from_db()
+        self.assertEqual(item.price, Decimal("35.00"))
+        self.assertEqual(
+            UserNotification.objects.filter(kind=UserNotification.KIND_WISH_PRICE_ALERT).count(), 1
+        )
+
+    def test_failed_price_check_waits_for_the_next_interval(self):
+        item = self._item(price=Decimal("50"), target_price=Decimal("40"))
+        FakeHttpConnection.responses = [(503, {}, b"")]
+
+        self.assertEqual(refresh_due_prices(now=timezone.now()), {"checked": 0, "failed": 1})
+
+        item.refresh_from_db()
+        self.assertIsNotNone(item.price_checked_at)
+        self.assertEqual(refresh_due_prices(now=timezone.now()), {"checked": 0, "failed": 0})
+
+    def test_shared_list_lets_members_reserve_without_the_owner_seeing_it(self):
+        tom = User.objects.create_user(username="tom", email="tom@example.com", password="pw-12345!")
+        anna = User.objects.create_user(username="anna", email="anna@example.com", password="pw-12345!")
+        gift = self._item(title="Kaffeemühle", price=Decimal("50"))
+        self._item(title="Pausiert", url="https://shop.example.com/pause", quantity=0)
+        for identifier in ("TOM@example.com", "anna"):
+            self.client.post(self.url, {"form_name": "wish_list_share", "identifier": identifier})
+        self.assertEqual(WishListShare.objects.filter(wish_list=self.wish_list).count(), 2)
+        self.assertTrue(
+            UserNotification.objects.filter(
+                recipient=tom, kind=UserNotification.KIND_WISH_LIST_SHARE
+            ).exists()
+        )
+
+        tom_client, anna_client = Client(), Client()
+        tom_client.force_login(tom)
+        anna_client.force_login(anna)
+        self.assertContains(tom_client.get("/tools/wishlist/"), "Mit dir geteilt")
+        page = tom_client.get(self.url)
+        self.assertContains(page, "Ich schenke das")
+        self.assertNotContains(page, "Pausiert")
+        self.assertNotContains(page, "Bearbeiten")
+
+        tom_client.post(self.url, {"form_name": "wish_item_reserve", "item_id": gift.pk})
+        self.assertEqual(WishListReservation.objects.get(item=gift).user, tom)
+        self.assertContains(tom_client.get(self.url), "Du schenkst das")
+        self.assertContains(anna_client.get(self.url), f"{display_name(tom)} schenkt das")
+        anna_client.post(self.url, {"form_name": "wish_item_reserve", "item_id": gift.pk})
+        self.assertEqual(WishListReservation.objects.get(item=gift).user, tom)
+
+        owner_page = self.client.get(self.url)
+        self.assertNotContains(owner_page, "schenkt das")
+        self.assertNotContains(owner_page, "Du schenkst")
+        self.assertFalse(hasattr(owner_page.context["items"][0], "reserved_by"))
+
+        # Members can not change the list.
+        tom_client.post(self.url, {"form_name": "wish_item_delete", "item_id": gift.pk})
+        tom_client.post(self.url, {"form_name": "wish_list_share", "identifier": "lea"})
+        self.assertTrue(WishListItem.objects.filter(pk=gift.pk).exists())
+        self.assertEqual(WishListShare.objects.filter(wish_list=self.wish_list).count(), 2)
+
+        response = tom_client.post(self.url, {"form_name": "wish_list_leave"})
+        self.assertRedirects(response, "/tools/wishlist/")
+        self.assertFalse(WishListReservation.objects.exists())
+        self.assertFalse(
+            UserNotification.objects.filter(
+                recipient=tom, kind=UserNotification.KIND_WISH_LIST_SHARE
+            ).exists()
+        )
+        self.assertEqual(tom_client.get(self.url).status_code, 404)
+
+    def test_members_get_the_pictures_and_strangers_do_not(self):
+        tom = User.objects.create_user(username="tom", email="tom@example.com", password="pw-12345!")
+        stranger = User.objects.create_user(username="eve", email="eve@example.com", password="pw-12345!")
+        item = self._item(image_url="https://m.media-amazon.com/images/I/71abc.jpg")
+        WishListShare.objects.create(wish_list=self.wish_list, user=tom)
+        FakeHttpConnection.responses = [(200, {"Content-Type": "image/png"}, png_bytes())]
+
+        member, outsider = Client(), Client()
+        member.force_login(tom)
+        outsider.force_login(stranger)
+        self.assertEqual(member.get(f"/tools/wishlist/image/{item.pk}/").status_code, 200)
+        self.assertEqual(outsider.get(f"/tools/wishlist/image/{item.pk}/").status_code, 404)

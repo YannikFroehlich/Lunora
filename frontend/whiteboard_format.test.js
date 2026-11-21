@@ -246,3 +246,45 @@ describe("sticky notes", () => {
     expect(format.resizeElement(note, "se", 300, 250, false)).toMatchObject({ x: 0, y: 0, w: 300, h: 250 });
   });
 });
+
+describe("whiteboard bound arrows", () => {
+  const box = { id: "box", type: "rect", color: "default", width: 2, x: 0, y: 0, w: 100, h: 50, fill: false };
+  const ring = { id: "ring", type: "ellipse", color: "default", width: 2, x: 300, y: 0, w: 100, h: 50, fill: false };
+  const arrow = { id: "a", type: "arrow", color: "default", width: 2, x1: 0, y1: 0, x2: 0, y2: 0 };
+  const lookup = (items) => (id) => items.find((item) => item.id === id) || null;
+
+  it("puts an end on the outline, plus the gap, aimed at the other shape", () => {
+    expect(format.borderPoint(box, { x: 350, y: 25 })).toEqual({ x: 100 + format.CONNECTOR_GAP, y: 25 });
+    expect(format.borderPoint(ring, { x: 50, y: 25 })).toEqual({ x: 300 - format.CONNECTOR_GAP, y: 25 });
+  });
+
+  it("routes both ends and follows a moved shape", () => {
+    const bound = { ...arrow, from: "box", to: "ring" };
+    expect(format.routeConnector(bound, lookup([box, ring]))).toMatchObject({ x1: 106, y1: 25, x2: 294, y2: 25 });
+    const moved = { ...ring, y: 200 };
+    const routed = format.routeConnector(bound, lookup([box, moved]));
+    expect(routed.y2).toBeLessThan(225);
+    expect(routed.y1).toBeGreaterThan(25);
+  });
+
+  it("drops a binding to a shape that is gone and keeps an unchanged arrow as is", () => {
+    const bound = { ...arrow, x2: 200, y2: 25, from: "box", to: "ring" };
+    const routed = format.routeConnector(bound, lookup([box]));
+    expect(routed.to).toBeUndefined();
+    expect(routed).toMatchObject({ from: "box", x1: 106, y1: 25, x2: 200 });
+    expect(format.routeConnector(routed, lookup([box]))).toBe(routed);
+  });
+
+  it("binds only to shapes, the topmost first", () => {
+    const stroke = { id: "s", type: "stroke", color: "default", width: 2, points: [0, 0, 100, 50] };
+    expect(format.bindableAt([box, stroke], 50, 25, 4)).toBe("box");
+    expect(format.bindableAt([box, { ...box, id: "top" }], 50, 25, 4)).toBe("top");
+    expect(format.bindableAt([box], 50, 25, 4, undefined, "box")).toBeNull();
+    expect(format.bindableAt([box], 500, 25, 4)).toBeNull();
+  });
+
+  it("treats pictures as solid", () => {
+    const picture = { id: "p", type: "image", color: "default", x: 0, y: 0, w: 80, h: 60, file: "x" };
+    expect(format.hitsElement(picture, 40, 30, 40, 30, 2)).toBe(true);
+  });
+});

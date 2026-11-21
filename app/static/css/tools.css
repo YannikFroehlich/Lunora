@@ -86,6 +86,10 @@ a.tool-card:hover {
   gap: 12px;
 }
 
+.whiteboard-template-select select {
+  height: 100%;
+}
+
 .uml-create-field {
   display: flex;
   flex: 1 1 280px;
@@ -701,6 +705,10 @@ html:has([data-whiteboard-editor].is-fullscreen) {
 
 .whiteboard-canvas[data-tool="text"] {
   cursor: text;
+}
+
+.whiteboard-canvas[data-tool="laser"] {
+  cursor: crosshair;
 }
 
 .whiteboard-canvas[data-tool="line"],
@@ -3120,7 +3128,7 @@ form:has([name="split_mode"][value="amounts"]:checked) [data-split-hint="amounts
 
 .wish-edit-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 7em 5em auto;
+  grid-template-columns: minmax(0, 2fr) minmax(7em, 1fr) minmax(5em, 0.7fr);
   align-items: end;
   gap: 10px;
   margin-top: 10px;
@@ -3156,6 +3164,82 @@ form:has([name="split_mode"][value="amounts"]:checked) [data-split-hint="amounts
 
 .wish-price-change.is-down {
   color: var(--color-success);
+}
+
+.wish-priority {
+  color: var(--color-muted);
+}
+
+.wish-priority.is-high {
+  color: var(--color-danger);
+  font-weight: 600;
+}
+
+.wish-target.is-reached {
+  color: var(--color-success);
+  font-weight: 600;
+}
+
+.wish-sparkline {
+  width: 80px;
+  height: 24px;
+  overflow: visible;
+}
+
+.wish-sparkline polyline {
+  fill: none;
+  stroke: var(--color-accent-strong);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.wish-item.is-taken {
+  opacity: 0.6;
+}
+
+.wish-reserved {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.wish-reserved.is-mine {
+  color: var(--color-success);
+}
+
+.wish-giver-hint,
+.wish-share-hint {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+.wish-giver-hint {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+  padding: 14px 18px;
+}
+
+.wish-giver-hint i {
+  margin-top: 3px;
+  color: var(--color-accent-strong);
+}
+
+.wish-leave-form {
+  margin-top: 20px;
+}
+
+.wish-section-title {
+  margin: 28px 0 0;
+  color: var(--color-heading);
+  font-size: var(--text-lg);
 }
 
 .wish-qty-stepper {

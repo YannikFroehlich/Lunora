@@ -70,6 +70,7 @@
         <div class="notes-tree-toolbar">
             <span><i class="fa-solid fa-folder-tree" aria-hidden="true"></i> Ordner</span>
             <div class="notes-tree-actions">
+                <a href="{% url 'note_today' %}" aria-label="Tagesnotiz von heute" title="Tagesnotiz"><i class="fa-solid fa-calendar-day" aria-hidden="true"></i></a>
                 <a href="{% url 'note_graph' %}" aria-label="Notizgraph" title="Notizgraph"><i class="fa-solid fa-diagram-project" aria-hidden="true"></i></a>
                 <button type="button" data-folder-action="create" data-parent-id="" aria-label="Neuen Ordner anlegen" title="Neuer Ordner">
                     <i class="fa-solid fa-folder-plus"></i>
@@ -169,6 +170,12 @@
                 {% if selected_note_data.can_manage %}<button type="button" data-command="share" aria-label="Teilen"><i class="fa-solid fa-user-plus"></i></button>{% endif %}
                 <button type="button" data-command="duplicate" aria-label="Duplizieren"><i class="fa-regular fa-copy"></i></button>
                 <button type="button" data-command="saveAsTemplate" aria-label="Als Vorlage speichern"><i class="fa-solid fa-layer-group"></i></button>
+                <button type="button" data-command="present" aria-label="Präsentieren"><i class="fa-solid fa-person-chalkboard"></i></button>
+                {% comment %}A soft region of its own, so setting a reminder in the dialog updates the bell.{% endcomment %}
+                <span class="soft-contents" id="note-reminder-button" data-soft-region>
+                    <button type="button" data-command="reminder" aria-label="{% if note_reminder %}Erinnerung am {{ note_reminder.label }}{% else %}Erinnerung{% endif %}" aria-pressed="{{ note_reminder|yesno:'true,false' }}"><i class="fa-{% if note_reminder %}solid{% else %}regular{% endif %} fa-bell"></i></button>
+                </span>
+                {% if feature_flags.tasks %}<button type="button" data-command="checklistTasks" aria-label="Offene Checklistenpunkte als Aufgaben übernehmen"><i class="fa-solid fa-list-check"></i></button>{% endif %}
                 <button type="button" data-command="exportPdf" aria-label="Als PDF exportieren"><i class="fa-solid fa-file-pdf"></i></button>
                 <button type="button" data-command="exportMarkdown" aria-label="Als Markdown exportieren"><i class="fa-brands fa-markdown"></i></button>
                 <button type="button" data-command="exportWord" aria-label="Als Word-Dokument exportieren"><i class="fa-solid fa-file-word"></i></button>
@@ -396,6 +403,33 @@
         </footer>
     </form>
 </dialog>
+
+{% if selected_note_data %}
+<dialog class="notes-dialog" data-note-reminder-dialog>
+    <div class="dialog-card soft-contents" id="note-reminder-panel" data-soft-region>
+        <header>
+            <div><span class="eyebrow">Nur für dich</span><h2>Erinnerung</h2></div>
+            <form method="dialog"><button value="cancel" aria-label="Schließen"><i class="fa-solid fa-xmark"></i></button></form>
+        </header>
+        <p class="note-reminder-state">{% if note_reminder %}<i class="fa-solid fa-bell" aria-hidden="true"></i> Am {{ note_reminder.label }} erinnert dich Lunora an diese Notiz.{% else %}Lunora erinnert dich zur gewählten Zeit an diese Notiz – im Posteingang und, wenn eingeschaltet, per E-Mail und Push.{% endif %}</p>
+        <form method="post" action="{% url 'note_reminder' selected_note_data.id %}" class="note-reminder-form">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="note_reminder_set">
+            <label class="dialog-search"><span>Wann?</span><input type="datetime-local" name="remind_at" min="{{ reminder_min }}" value="{{ note_reminder.value|default:'' }}" required></label>
+            <footer>
+                <button class="primary-button" type="submit">{% if note_reminder %}Ändern{% else %}Erinnern{% endif %}</button>
+            </footer>
+        </form>
+        {% if note_reminder %}
+        <form method="post" action="{% url 'note_reminder' selected_note_data.id %}">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="note_reminder_clear">
+            <button class="ghost-button is-danger" type="submit">Erinnerung entfernen</button>
+        </form>
+        {% endif %}
+    </div>
+</dialog>
+{% endif %}
 
 <dialog class="notes-dialog" data-share-dialog>
     <form method="dialog" class="dialog-card">

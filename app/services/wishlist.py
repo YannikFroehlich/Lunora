@@ -8,6 +8,11 @@ kept anyway, named after its link, and title and price can be filled in by hand.
 
 Product pictures are never loaded from the shop by the browser: `thumbnail` fetches them through the
 same fetcher and re-encodes them as small JPEGs, which wish_item_image serves from Lunora itself.
+
+A list can be shared read-only with other users (`share_wish_list`), who reserve the items they want
+to give. Reservations are never shown to the owner, so every owner-facing path leaves them out. Items
+with a target price are re-checked by `refresh_due_prices` (run_automations), and a price point that
+reaches the target raises a price alert in the owner's inbox.
 """
 
 import hashlib
@@ -15,18 +20,30 @@ import html
 import io
 import json
 import re
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from urllib.parse import parse_qsl, unquote, urlencode, urljoin, urlsplit, urlunsplit
 
 from django.core.cache import cache
+from django.db import IntegrityError, transaction
+from django.db.models import F, Q
 from django.utils import timezone
 from PIL import Image
 
-from app.models import WishListItem, WishListItemPricePoint
+from app.models import (
+    UserNotification,
+    WishList,
+    WishListItem,
+    WishListItemPricePoint,
+    WishListReservation,
+    WishListShare,
+)
 from app.services import safe_fetch
 from app.services.expenses import euro
+from app.services.notifications import materialize_wish_list_share_notification, materialize_wish_price_alert
 from app.services.recipe_import import JsonLdScripts, json_ld_objects
 from app.services.throttle import count_hit
+from app.services.vocabulary import resolve_share_recipient
 
 MAX_LISTS = 50
 MAX_ITEMS = 200
@@ -42,6 +59,18 @@ THUMBNAIL_CACHE_SECONDS = 7 * 24 * 3600
 FAILED_THUMBNAIL_CACHE_SECONDS = 3600
 IMAGE_FETCHES_PER_WINDOW = 120
 IMAGE_FORMATS = {"JPEG", "PNG", "WEBP", "GIF", "AVIF"}
+
+MAX_WISH_SHARES = 20
+# Automatic price checks only for items with a target price, each at most this often.
+PRICE_CHECK_INTERVAL = timedelta(hours=12)
+MAX_PRICE_CHECKS_PER_RUN = 10
+PRIORITY_ORDER = {
+    WishListItem.PRIORITY_HIGH: 0,
+    WishListItem.PRIORITY_NORMAL: 1,
+    WishListItem.PRIORITY_LOW: 2,
+}
+SPARKLINE_WIDTH = 80
+SPARKLINE_HEIGHT = 24
 
 AMAZON_DOMAINS = (
     "amazon.de",
@@ -371,12 +400,65 @@ def refresh_item(user, item):
 
 
 def record_price_point(item):
-    """Stores `item`'s current price as a history point, unless it matches the last one recorded."""
+    """Stores `item`'s current price as a history point, unless it matches the last one recorded.
+    A new point that reaches the target price coming from above it raises a price alert."""
     if item.price is None:
         return
-    latest = item.price_points.order_by("-recorded_at").first()
-    if latest is None or latest.price != item.price:
-        WishListItemPricePoint.objects.create(item=item, price=item.price)
+    latest = item.price_points.order_by("-recorded_at", "-id").first()
+    if latest is not None and latest.price == item.price:
+        return
+    point = WishListItemPricePoint.objects.create(item=item, price=item.price)
+    target = item.target_price
+    if target is not None and item.price <= target and latest is not None and latest.price > target:
+        materialize_wish_price_alert(
+            item,
+            point,
+            price_label=money(item.price, item.currency),
+            target_label=money(target, item.currency),
+        )
+
+
+def sparkline_points(points):
+    """SVG polyline points ("x,y x,y …") of the price history in a SPARKLINE_WIDTH × SPARKLINE_HEIGHT
+    box, the cheapest price at the bottom; "" with fewer than two points."""
+    prices = [point.price for point in points]
+    if len(prices) < 2:
+        return ""
+    low, high = min(prices), max(prices)
+    padding = 2
+    usable = SPARKLINE_HEIGHT - 2 * padding
+    coordinates = []
+    for index, price in enumerate(prices):
+        x = SPARKLINE_WIDTH * index / (len(prices) - 1)
+        y = SPARKLINE_HEIGHT / 2 if high == low else padding + usable * float((high - price) / (high - low))
+        coordinates.append(f"{x:.1f},{y:.1f}")
+    return " ".join(coordinates)
+
+
+def refresh_due_prices(*, now=None):
+    """Re-reads the pages of items with a target price that weren't checked for PRICE_CHECK_INTERVAL,
+    oldest check first, at most MAX_PRICE_CHECKS_PER_RUN per pass (run by run_automations)."""
+    current_time = now or timezone.now()
+    due = list(
+        WishListItem.objects.filter(target_price__isnull=False, wish_list__owner__is_active=True)
+        .filter(
+            Q(price_checked_at__isnull=True) | Q(price_checked_at__lt=current_time - PRICE_CHECK_INTERVAL)
+        )
+        .select_related("wish_list__owner")
+        .order_by(F("price_checked_at").asc(nulls_first=True), "id")[:MAX_PRICE_CHECKS_PER_RUN]
+    )
+    checked = failed = 0
+    for item in due:
+        # Stamped before fetching, so a shop that keeps failing waits a whole interval as well.
+        WishListItem.objects.filter(pk=item.pk).update(price_checked_at=current_time)
+        item.price_checked_at = current_time
+        if refresh_item(item.wish_list.owner, item):
+            failed += 1
+            continue
+        item.save()
+        record_price_point(item)
+        checked += 1
+    return {"checked": checked, "failed": failed}
 
 
 def price_change(item, points):
@@ -466,3 +548,52 @@ def list_totals(items):
         if item.price is not None:
             totals[item.currency] = totals.get(item.currency, 0) + item.price * item.quantity
     return [money(amount, currency) for currency, amount in totals.items()]
+
+
+def sorted_items(items):
+    """Most wanted first, then in the order they were added."""
+    return sorted(items, key=lambda item: (PRIORITY_ORDER.get(item.priority, 1), item.created_at, item.pk))
+
+
+def accessible_wish_lists(user):
+    """Own lists plus those shared with `user`; a subquery, so no duplicates."""
+    shared_ids = WishListShare.objects.filter(user=user).values("wish_list_id")
+    return WishList.objects.filter(Q(owner=user) | Q(pk__in=shared_ids, owner__is_active=True))
+
+
+def share_wish_list(wish_list, identifier):
+    """Shares the owner's list with the user named by e-mail or username; returns an error or None."""
+    user, error = resolve_share_recipient(wish_list.owner, identifier)
+    if error:
+        return error
+    if wish_list.shares.count() >= MAX_WISH_SHARES:
+        return f"Eine Wunschliste lässt sich mit höchstens {MAX_WISH_SHARES} Personen teilen."
+    share, created = WishListShare.objects.get_or_create(wish_list=wish_list, user=user)
+    if not created:
+        return "Die Liste ist mit diesem Konto bereits geteilt."
+    materialize_wish_list_share_notification(share)
+    return None
+
+
+def end_wish_list_share(wish_list_id, user_id):
+    """Ends a share (the owner removes someone, or they leave); their reservations go with it."""
+    for share in WishListShare.objects.filter(wish_list_id=wish_list_id, user_id=user_id):
+        WishListReservation.objects.filter(item__wish_list_id=wish_list_id, user_id=user_id).delete()
+        UserNotification.objects.filter(
+            recipient_id=user_id, source_key=f"wish-list-share:{share.pk}"
+        ).delete()
+        share.delete()
+
+
+def reserve_item(user, item):
+    """Reserves `item` as `user`'s gift; returns an error or None. For list members, never the owner."""
+    try:
+        with transaction.atomic():
+            WishListReservation.objects.create(item=item, user=user)
+    except IntegrityError:
+        return "Diesen Artikel schenkt schon jemand."
+    return None
+
+
+def release_item(user, item):
+    WishListReservation.objects.filter(item=item, user=user).delete()

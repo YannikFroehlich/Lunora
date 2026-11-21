@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 
 from django.core.exceptions import ValidationError
 
@@ -30,8 +31,14 @@ ELEMENT_KEYS = {
     "text": COMMON_KEYS | {"x", "y", "size", "text"},
     # A sticky note: a tinted box with wrapped text inside; the text may still be empty.
     "sticky": COMMON_KEYS | {"x", "y", "w", "h", "text"},
+    # A picture uploaded to this board (WhiteboardImage), addressed by its file_id.
+    "image": COMMON_KEYS | {"x", "y", "w", "h", "file"},
 }
+# Lines and arrows may be bound to the shapes their ends sit on ("from"/"to": element ids); the editor
+# moves bound ends along when a shape moves. A binding to an element that is gone is harmless.
+OPTIONAL_KEYS = {"line": {"from", "to"}, "arrow": {"from", "to"}}
 TEXT_TYPES = ("text", "sticky")
+FILE_ID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 
 def empty_whiteboard_document():
@@ -82,7 +89,10 @@ def _clean_element(item, seen_ids, budget):
     kind = item.get("type")
     if kind not in ELEMENT_KEYS:
         raise ValidationError("Die Elementart ist ungültig.")
-    _check_keys(item, ELEMENT_KEYS[kind], "Ein Element")
+    optional = OPTIONAL_KEYS.get(kind, set()) & set(item)
+    _check_keys(
+        {key: value for key, value in item.items() if key not in optional}, ELEMENT_KEYS[kind], "Ein Element"
+    )
     if item["color"] not in COLORS:
         raise ValidationError("Die Farbe ist ungültig.")
     element_id = _unique_id(item["id"], seen_ids)
@@ -105,6 +115,17 @@ def _clean_element(item, seen_ids, budget):
             text=_text(item["text"], "Der Text", MAX_TEXT_LENGTH),
         )
         return cleaned
+    if kind == "image":
+        if not isinstance(item["file"], str) or not FILE_ID_RE.match(item["file"]):
+            raise ValidationError("Ein Bild verweist auf eine ungültige Datei.")
+        cleaned.update(
+            x=_coordinate(item["x"]),
+            y=_coordinate(item["y"]),
+            w=_size(item["w"]),
+            h=_size(item["h"]),
+            file=item["file"],
+        )
+        return cleaned
 
     width = item["width"]
     if type(width) is not int or width not in STROKE_WIDTHS:
@@ -114,6 +135,11 @@ def _clean_element(item, seen_ids, budget):
         cleaned["points"] = _points(item["points"], budget)
     elif kind in ("line", "arrow"):
         cleaned.update({key: _coordinate(item[key]) for key in ("x1", "y1", "x2", "y2")})
+        for key in sorted(optional):
+            target = item[key]
+            if not isinstance(target, str) or not ID_PATTERN.match(target) or target == element_id:
+                raise ValidationError("Ein Pfeil ist an ein ungültiges Element gebunden.")
+            cleaned[key] = target
     else:
         cleaned.update(
             x=_coordinate(item["x"]),

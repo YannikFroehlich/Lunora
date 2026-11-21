@@ -35,6 +35,7 @@ from app.models import (
     NoteCommentThread,
     NoteFolder,
     NoteLink,
+    NoteReminder,
     NoteShare,
     NoteTag,
     NoteTemplate,
@@ -1360,3 +1361,22 @@ def _delete_note_files(note):
     for attachment in note.attachments.all():
         if attachment.file:
             attachment.file.delete(save=False)
+
+
+def note_reminder_for(user, note):
+    return NoteReminder.objects.filter(note=note, user=user).first()
+
+
+def set_note_reminder(user, note_id, remind_at):
+    """One reminder per note and person, replaced when set again; only for notes the user can open."""
+    note = get_accessible_note(user, note_id)
+    if remind_at <= timezone.now():
+        raise ValidationError("Die Erinnerung muss in der Zukunft liegen.")
+    reminder, _ = NoteReminder.objects.update_or_create(
+        note=note, user=user, defaults={"remind_at": remind_at}
+    )
+    return reminder
+
+
+def clear_note_reminder(user, note_id):
+    NoteReminder.objects.filter(note_id=note_id, user=user).delete()
