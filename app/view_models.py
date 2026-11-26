@@ -54,6 +54,7 @@ from app.services.kanban import accessible_boards
 from app.services.message_queries import last_messages_by_conversation, unread_total_for_user
 from app.services.notes import accessible_notes
 from app.services.notifications import dashboard_latest_notifications
+from app.services.saved_searches import saved_search_items
 from app.services.shopping import group_items
 from app.services.system_settings import feature_enabled, feature_flags
 from app.services.tasks import dashboard_open_tasks, dashboard_today_tasks, visible_tasks
@@ -133,6 +134,9 @@ def get_dashboard_context(user=None):
         else []
     )
 
+    dashboard_saved_searches = (
+        saved_search_items(user) if user and "saved_searches" in visible_widget_ids else []
+    )
     dashboard_countdowns = (
         _dashboard_countdowns(user, now.date(), flags) if user and "countdown" in visible_widget_ids else []
     )
@@ -171,6 +175,7 @@ def get_dashboard_context(user=None):
         "dashboard_expenses": dashboard_expenses,
         "bookmark_form": BookmarkForm(),
         "dashboard_countdowns": dashboard_countdowns,
+        "dashboard_saved_searches": dashboard_saved_searches,
         "dashboard_activity": dashboard_activity,
         "countdown_form": CountdownForm(),
         "clock": {

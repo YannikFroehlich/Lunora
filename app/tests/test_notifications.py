@@ -217,6 +217,23 @@ class ScheduledAutomationTests(TestCase):
 
         self.assertIn("Erfasste Zeit letzte Woche: 50 min\n- Angebot schreiben (50 min)", mail.outbox[0].body)
 
+    def test_weekly_summary_preview_is_sent_on_request_and_throttled(self):
+        from django.core.cache import cache
+
+        cache.clear()
+        self.client.force_login(self.user)
+        response = self.client.post("/settings/", {"form_name": "weekly_summary_preview"}, follow=True)
+        self.assertContains(response, "Die Wochenübersicht wurde an mira@example.com gesendet.")
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["mira@example.com"])
+        self.assertIn("Vorschau", mail.outbox[0].subject)
+        # A preview is no delivery: Monday's summary still goes out.
+        self.assertFalse(WeeklySummaryDelivery.objects.filter(user=self.user).exists())
+        for _attempt in range(3):
+            response = self.client.post("/settings/", {"form_name": "weekly_summary_preview"}, follow=True)
+        self.assertContains(response, "schon mehrmals angefordert")
+        self.assertEqual(len(mail.outbox), 3)
+
     def test_weekly_summary_looks_back_at_last_week(self):
         from datetime import date
 

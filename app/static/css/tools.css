@@ -4161,6 +4161,10 @@ form:has([name="split_mode"][value="amounts"]:checked) [data-split-hint="amounts
   color: inherit;
 }
 
+.bookmark-broken-actions {
+  margin-top: 12px;
+}
+
 .bookmark-tag.is-warning:not(.is-active),
 .bookmark-card-broken {
   color: var(--color-warning);

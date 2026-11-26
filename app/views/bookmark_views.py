@@ -8,6 +8,7 @@ from app.models import Bookmark
 from app.services.bookmarks import (
     MAX_BOOKMARKS,
     add_bookmark,
+    find_duplicate,
     host_of,
     import_bookmark_file,
     normalize_tags,
@@ -97,6 +98,13 @@ def _handle_post(request):
             text += f" {skipped} übersprungen (schon vorhanden, keine Web-Adresse oder Limit von {MAX_BOOKMARKS} erreicht)."
         django_messages.success(request, text)
         return
+    if form_name == "bookmark_delete_broken":
+        # Bookmarks have no trash, so this deletes for good; the button asks first.
+        deleted, _detail = Bookmark.objects.filter(
+            owner=request.user, unreachable_since__isnull=False
+        ).delete()
+        django_messages.success(request, f"{deleted} nicht erreichbare Lesezeichen gelöscht.")
+        return
 
     bookmark = Bookmark.objects.filter(owner=request.user, pk=posted_id(request, "bookmark_id")).first()
     if bookmark is None:
@@ -108,6 +116,10 @@ def _handle_post(request):
             django_messages.error(request, _form_errors(form))
             return
         bookmark = form.save(commit=False)
+        existing = find_duplicate(request.user, bookmark.url, exclude_id=bookmark.pk)
+        if existing is not None:
+            django_messages.error(request, f"Diese Adresse ist schon als „{existing.title}“ gespeichert.")
+            return
         bookmark.title = bookmark.title or host_of(bookmark.url)[:80]
         if bookmark.url != old_url:
             # The old description belongs to the old page.

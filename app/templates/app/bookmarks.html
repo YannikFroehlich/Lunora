@@ -65,6 +65,13 @@
         {% endfor %}
     </nav>
     {% endif %}
+    {% if broken_only and broken_total %}
+    <form method="post" class="bookmark-broken-actions" data-confirm="{{ broken_total }} nicht erreichbare Lesezeichen endgültig löschen? Das lässt sich nicht rückgängig machen.">
+        {% csrf_token %}
+        <input type="hidden" name="form_name" value="bookmark_delete_broken">
+        <button class="ghost-button danger-button" type="submit"><i class="fa-regular fa-trash-can" aria-hidden="true"></i> Alle {{ broken_total }} nicht erreichbaren löschen</button>
+    </form>
+    {% endif %}
 
     {% if bookmark_items %}
     <ul class="bookmark-list">

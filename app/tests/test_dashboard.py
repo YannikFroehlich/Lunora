@@ -103,6 +103,7 @@ class DashboardCustomizationTests(TestCase):
             "meal_plan",
             "expenses",
             "countdown",
+            "saved_searches",
             "activity",
         ]
         self.profile.dashboard_layout = self._layout(order=order)
@@ -319,6 +320,7 @@ class DashboardCustomizationTests(TestCase):
                 "meal_plan",
                 "expenses",
                 "countdown",
+                "saved_searches",
                 "activity",
             ],
             hidden=["clock", "weather"],

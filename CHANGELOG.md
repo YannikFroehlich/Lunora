@@ -6,6 +6,12 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Dashboard: neues Widget „Gespeicherte Suchen" mit deinen gespeicherten Suchen als Chips.
+- Lesezeichen: Eine schon gespeicherte Adresse wird nicht noch einmal angelegt, und unter „Nicht
+  erreichbar" lassen sich alle toten Links auf einmal löschen.
+- Befehlspalette: Seiten, die du zuletzt darüber geöffnet hast, stehen beim nächsten Öffnen oben.
+- Einstellungen: Die Wochenübersicht lässt sich unter Benachrichtigungen jederzeit als Vorschau
+  per E-Mail schicken.
 - Lesezeichen: Import aus dem Browser (HTML-Export von Firefox, Chrome, Edge oder Safari), Ordner
   werden zu Tags. Lunora prüft gespeicherte Links einmal pro Woche und markiert Seiten, die nicht
   mehr antworten; ein Filter „Nicht erreichbar" zeigt sie gesammelt.
