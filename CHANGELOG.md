@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Retro: Wer über die Stimmen einer Karte fährt, sieht, wer dafür gestimmt hat – sobald die
+  Stimmen sichtbar sind und die Retro nicht anonym ist.
 - Aufgaben: Aufgaben und Unteraufgaben können eine Beschreibung haben (beim Anlegen unter
   „Weitere Optionen“ und im Bearbeiten-Dialog). Ein Klick auf den Titel klappt die Aufgabe auf
   und zeigt lange Titel vollständig sowie die Beschreibung; ein Symbol kennzeichnet Aufgaben mit

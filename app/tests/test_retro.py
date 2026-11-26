@@ -146,6 +146,28 @@ class RetroTests(TestCase):
         self.set_phase("discuss")
         self.assertEqual(self.client.get(self.url).context["columns"][0]["cards"][0]["votes"], 1)
 
+    def test_hovering_votes_names_voters_unless_hidden_or_anonymous(self):
+        self.board.anonymous = False
+        self.board.save()
+        self.join_guest()
+        self.post("retro_card_add", column_id=self.start.pk, text="A")
+        card = RetroCard.objects.get()
+        self.set_phase("vote")
+        self.post("retro_vote", card_id=card.pk)
+        self.post("retro_vote", client=self.guest, card_id=card.pk)
+        self.post("retro_vote", client=self.guest, card_id=card.pk)
+        self.assertEqual(self.client.get(self.url).context["columns"][0]["cards"][0]["voters"], "")
+
+        self.set_phase("discuss")
+        voters = self.client.get(self.url).context["columns"][0]["cards"][0]["voters"]
+        self.assertIn("Kim ×2", voters)
+        self.assertEqual(voters.count(","), 1)
+        self.assertContains(self.client.get(self.url), f'title="{voters}"')
+
+        self.board.anonymous = True
+        self.board.save()
+        self.assertEqual(self.client.get(self.url).context["columns"][0]["cards"][0]["voters"], "")
+
     def test_grouping_moves_votes_to_the_top_card_and_ungrouping_splits_again(self):
         self.post("retro_card_add", column_id=self.start.pk, text="A")
         self.post("retro_card_add", column_id=self.start.pk, text="B")

@@ -291,6 +291,15 @@ def board_context(board, participant):
     my_votes = defaultdict(int)
     for card_id in participant.votes.filter(card__board=board).values_list("card_id", flat=True):
         my_votes[card_id] += 1
+    # Who voted how often per card; only named once votes are shown and the board isn't anonymous.
+    voters = defaultdict(lambda: defaultdict(int))
+    vote_counts = defaultdict(int)
+    for card_id, voter_id in RetroVote.objects.filter(card__board=board).values_list(
+        "card_id", "participant_id"
+    ):
+        voters[card_id][voter_id] += 1
+        vote_counts[voter_id] += 1
+    show_voters = votes_shown and not board.anonymous
     children = defaultdict(list)
     for card in cards:
         if card.group_id:
@@ -308,6 +317,12 @@ def board_context(board, participant):
             "author": names.get(card.author_id, "") if visible and not board.anonymous else "",
             "votes": card.vote_count if votes_shown else None,
             "my_votes": my_votes[card.pk],
+            "voters": ", ".join(
+                f"{names.get(voter_id, '?')} ×{count}" if count > 1 else names.get(voter_id, "?")
+                for voter_id, count in voters[card.pk].items()
+            )
+            if show_voters
+            else "",
             "children": [card_item(child) for child in children[card.pk]],
             "column_id": card.column_id,
         }
@@ -339,9 +354,6 @@ def board_context(board, participant):
     card_counts = defaultdict(int)
     for card in cards:
         card_counts[card.author_id] += 1
-    vote_counts = defaultdict(int)
-    for voter_id in RetroVote.objects.filter(card__board=board).values_list("participant_id", flat=True):
-        vote_counts[voter_id] += 1
     actions = [
         {
             "id": action.pk,

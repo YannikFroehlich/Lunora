@@ -156,7 +156,7 @@
             <header>
                 <span class="retro-live">LIVE</span>
                 <span>{{ presented.column }} · Thema {{ presented.number }} von {{ presented.total }}</span>
-                {% if presented.votes is not None %}<span class="retro-vote-total"><i class="fa-solid fa-circle-dot" aria-hidden="true"></i> {{ presented.votes }}</span>{% endif %}
+                {% if presented.votes is not None %}<span class="retro-vote-total"{% if presented.voters %} title="{{ presented.voters }}"{% endif %}><i class="fa-solid fa-circle-dot" aria-hidden="true"></i> {{ presented.votes }}</span>{% endif %}
             </header>
             <p class="retro-present-text" id="retro-present-text">{{ presented.text }}</p>
             {% if presented.children %}
