@@ -185,6 +185,7 @@ class ChecklistTasksTests(NoteExtrasBase):
         due = localtime_for_user(tasks["Kartons kaufen"].due_at, self.lea)
         self.assertEqual((due.date().isoformat(), due.hour), ("2099-03-01", 9))
         self.assertIsNone(tasks["Klebeband"].due_at)
+        self.assertEqual({task.note_id for task in tasks.values()}, {self.note.pk})
 
         self.assertEqual(self.action().json(), {"ok": True, "created": 0, "skipped": 3})
 

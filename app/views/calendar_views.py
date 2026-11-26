@@ -33,11 +33,13 @@ from app.services.calendar_service import (
 )
 from app.services.calendar_subscriptions import can_refresh, sync_subscription
 from app.services.habits import WEEKDAY_SHORT
+from app.services.linked_notes import link_event_note, linkable_notes
+from app.services.notes import readable_note_ids
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.trash import trash_events
 from app.services.user_preferences import format_user_date, format_user_time, localtime_for_user
 from app.view_models import get_calendar_context, get_calendar_event_detail_context
-from app.views.navigation import local_return_to
+from app.views.navigation import local_return_to, posted_id
 from app.views.trash_views import trashed_message
 
 # The calendars panel edits, refreshes and removes subscriptions; adding one stays in settings.
@@ -265,6 +267,14 @@ def calendar_event_detail(request, event_id):
         if form_name == "event_rsvp":
             _respond_to_invitation(request)
             return redirect(request.get_full_path())
+        if form_name == "event_note":
+            if event.user_id != request.user.pk or event.subscription_id or not feature_enabled("notes"):
+                return redirect(request.path)
+            if link_event_note(request.user, event, posted_id(request, "note_id")):
+                django_messages.success(request, "Verknüpfung gespeichert.")
+            else:
+                django_messages.error(request, "Diese Notiz kannst du nicht verknüpfen.")
+            return redirect(request.path)
         if form_name in {"event_comment", "event_comment_delete"} and not comments_enabled:
             return disabled_feature_response(request, "calendar_event_creation")
         if form_name == "event_comment":
@@ -280,6 +290,12 @@ def calendar_event_detail(request, event_id):
             return redirect(request.path)
 
     context = get_calendar_event_detail_context(event, request.user)
+    if feature_enabled("notes"):
+        readable = readable_note_ids(request.user, [event.note_id])
+        context["linked_note"] = event.note if event.note_id in readable else None
+        if context["is_owner"] and not context["is_subscribed"]:
+            context["can_link_note"] = True
+            context["linkable_notes"] = linkable_notes(request.user).values("id", "title")
     context.update(
         {
             "comments_enabled": comments_enabled,

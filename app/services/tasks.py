@@ -18,7 +18,7 @@ from app.models import (
     UserNotification,
 )
 from app.services.note_content import document_plain_text
-from app.services.notes import display_name
+from app.services.notes import display_name, note_title, readable_note_ids
 from app.services.user_preferences import (
     format_user_datetime,
     format_user_time,
@@ -144,6 +144,7 @@ def _apply_task_status(task, status, *, now=None):
             recurrence_weekdays=task.recurrence_weekdays,
             recurrence_until=task.recurrence_until,
             recurrence_count=task.recurrence_count - 1 if task.recurrence_count else None,
+            note_id=task.note_id,
         )
         next_task.labels.set(task.labels.all())
         TaskShare.objects.bulk_create(
@@ -563,11 +564,12 @@ def get_tasks_context(user, *, now=None, sort=None):
     )
     all_tasks = list(
         visible_tasks(user)
-        .select_related("task_list", "user__profile", "assignee__profile", "parent")
+        .select_related("task_list", "user__profile", "assignee__profile", "parent", "note")
         .prefetch_related("labels", "comments__author__profile", "shares__user__profile", "parent__shares")
         .order_by(*order_by)
     )
 
+    readable_notes = readable_note_ids(user, (task.note_id for task in all_tasks))
     subtasks_by_parent = {}
     top_level_tasks = []
     for task in all_tasks:
@@ -639,6 +641,9 @@ def get_tasks_context(user, *, now=None, sort=None):
             "shared_with_me": shared_with_me,
             "shared_names": [display_name(share.user) for share in shares],
             "share_ids": ",".join(str(share.user_id) for share in shares),
+            # Only a note the viewer may open is named.
+            "note_id": task.note_id if task.note_id in readable_notes else None,
+            "note_title": note_title(task.note) if task.note_id in readable_notes else "",
             # Only assigned or shared top-level tasks carry a conversation between the people involved.
             "comments": [
                 {
@@ -739,14 +744,14 @@ def _open_checklist_items(node):
         yield from _open_checklist_items(child)
 
 
-def create_tasks_from_checklist(user, document):
-    """The open checklist items of a note become the user's own Inbox tasks, a due date at
-    DEFAULT_DUE_TIME in the user's zone. Items matching an open task's title are skipped, so running
-    it twice adds nothing. Returns (created, skipped)."""
+def create_tasks_from_checklist(user, note):
+    """The open checklist items of `note` become the user's own Inbox tasks linked to it, a due date
+    at DEFAULT_DUE_TIME in the user's zone. Items matching an open task's title are skipped, so
+    running it twice adds nothing. Returns (created, skipped)."""
     open_titles = set(Task.objects.filter(user=user, is_done=False).values_list("title", flat=True))
     zone = localtime_for_user(profile_or_user=user).tzinfo
     created = skipped = 0
-    for text, due in islice(_open_checklist_items(document), MAX_CHECKLIST_TASKS):
+    for text, due in islice(_open_checklist_items(note.document), MAX_CHECKLIST_TASKS):
         title = text[:180]
         if not title or title in open_titles:
             skipped += 1
@@ -755,7 +760,7 @@ def create_tasks_from_checklist(user, document):
             due_at = datetime.combine(date.fromisoformat(due), DEFAULT_DUE_TIME, tzinfo=zone) if due else None
         except (TypeError, ValueError):
             due_at = None
-        Task.objects.create(user=user, title=title, due_at=due_at)
+        Task.objects.create(user=user, title=title, due_at=due_at, note=note)
         open_titles.add(title)
         created += 1
     return created, skipped

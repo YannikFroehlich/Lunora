@@ -27,6 +27,7 @@ from app.models import (
     Habit,
     HolidayOverride,
     KanbanCard,
+    Note,
     NotificationPreference,
     Profile,
     Recipe,
@@ -62,7 +63,8 @@ from app.services.expenses import euro
 from app.services.habits import WEEKDAY_SHORT
 from app.services.image_uploads import PROFILE_IMAGE_ACCEPT, validate_profile_image_file
 from app.services.kanban import board_members
-from app.services.notes import display_name
+from app.services.linked_notes import linkable_notes
+from app.services.notes import display_name, note_title
 from app.services.notification_preferences import CATEGORY_DEFINITIONS
 from app.services.quick_add import parse_quick_add
 from app.services.storage_quota import ensure_storage_available
@@ -870,6 +872,12 @@ class TaskForm(forms.ModelForm):
         required=False,
         empty_label="Niemand",
     )
+    note = forms.ModelChoiceField(
+        label="Verknüpfte Notiz",
+        queryset=Note.objects.none(),
+        required=False,
+        empty_label="Keine",
+    )
     # Not a model field: saved as TaskShare rows through save_shares() after the task is saved.
     shared_with = forms.ModelMultipleChoiceField(
         label="Teilen mit",
@@ -918,6 +926,7 @@ class TaskForm(forms.ModelForm):
             "recurrence_until",
             "recurrence_count",
             "assignee",
+            "note",
         ]
         labels = {"title": "Neue Aufgabe"}
         widgets = {
@@ -947,6 +956,8 @@ class TaskForm(forms.ModelForm):
             self.fields["assignee"].label_from_instance = display_name
             self.fields["shared_with"].queryset = self.fields["assignee"].queryset
             self.fields["shared_with"].label_from_instance = display_name
+            self.fields["note"].queryset = linkable_notes(user)
+            self.fields["note"].label_from_instance = note_title
         if self.instance.pk and not self.is_bound:
             self.initial["shared_with"] = list(self.instance.shares.values_list("user_id", flat=True))
             self.initial["recurrence_weekdays"] = self.instance.recurrence_weekdays.split(",")

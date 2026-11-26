@@ -45,6 +45,7 @@ def saved_search_items(user, query="", selected=""):
             "area_label": area_labels.get(item.area, ""),
             "url": search_url(item.query, item.area if item.area in area_labels else ""),
             "is_current": item.query == query and item.area == selected,
+            "notify": item.notify,
         }
         for item in SavedSearch.objects.filter(owner=user)
     ]

@@ -33,7 +33,7 @@
     </details>
 
     <details class="glass-panel wish-list-settings">
-        <summary><i class="fa-solid fa-file-import" aria-hidden="true"></i> Aus dem Browser importieren</summary>
+        <summary><i class="fa-solid fa-file-import" aria-hidden="true"></i> Importieren und exportieren</summary>
         <form class="bookmark-form" method="post" enctype="multipart/form-data">
             {% csrf_token %}
             <input type="hidden" name="form_name" value="bookmark_import">
@@ -41,6 +41,9 @@
             <button class="primary-button" type="submit"><i class="fa-solid fa-file-import" aria-hidden="true"></i> Importieren</button>
             <p class="bookmark-hint">Exportiere deine Lesezeichen in Firefox, Chrome, Edge oder Safari als HTML-Datei. Ordner werden zu Tags, Links, die du schon hast, werden übersprungen.</p>
         </form>
+        {% if bookmark_total %}
+        <p class="bookmark-export"><a class="ghost-button" href="{% url 'bookmarks_export' %}" download><i class="fa-solid fa-file-export" aria-hidden="true"></i> Als HTML-Datei exportieren ({{ bookmark_total }})</a></p>
+        {% endif %}
     </details>
 
     {% if bookmark_total %}

@@ -20,7 +20,7 @@
     <form class="glass-panel search-form" method="get" action="{% url 'global_search' %}">
         <label class="search-input-field">
             <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-            <input type="search" name="q" value="{{ query }}" placeholder="Suchbegriffe, &quot;Phrase&quot;, -ausschließen, #tag" aria-label="Suchbegriff" autofocus>
+            <input type="search" name="q" value="{{ query }}" placeholder="Suchbegriffe, &quot;Phrase&quot;, -ausschließen, #tag, nach:2026-10-01" aria-label="Suchbegriff" autofocus>
         </label>
         {% if selected_area %}<input type="hidden" name="in" value="{{ selected_area }}">{% endif %}
         <button class="primary-button" type="submit">Suchen</button>
@@ -39,6 +39,14 @@
                 <input type="hidden" name="q" value="{{ query }}">
                 <input type="hidden" name="in" value="{{ selected_area }}">
                 <button type="submit" aria-label="Gespeicherte Suche „{{ saved.query }}“ entfernen" title="Entfernen"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+            </form>
+            <form method="post" action="{% url 'saved_searches' %}">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="saved_search_notify">
+                <input type="hidden" name="saved_search_id" value="{{ saved.id }}">
+                <input type="hidden" name="q" value="{{ query }}">
+                <input type="hidden" name="in" value="{{ selected_area }}">
+                <button type="submit" aria-pressed="{{ saved.notify|yesno:'true,false' }}" aria-label="Bei neuen Treffern für „{{ saved.query }}“ benachrichtigen" title="{% if saved.notify %}Benachrichtigung bei neuen Treffern ist an{% else %}Bei neuen Treffern benachrichtigen{% endif %}"><i class="fa-{% if saved.notify %}solid{% else %}regular{% endif %} fa-bell" aria-hidden="true"></i></button>
             </form>
         </span>
         {% endfor %}
@@ -121,7 +129,7 @@
             <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
             <div>
                 <strong>Wonach suchst du?</strong>
-                <p>Mehrere Wörter müssen alle vorkommen, &bdquo;Anführungszeichen&ldquo; suchen eine Phrase, ein Minus schließt aus und #tag filtert Notizen und Lesezeichen.</p>
+                <p>Mehrere Wörter müssen alle vorkommen, &bdquo;Anführungszeichen&ldquo; suchen eine Phrase, ein Minus schließt aus und #tag filtert Notizen und Lesezeichen. Mit nach:2026-10-01 und vor:31.10.2026 grenzt du Notizen (zuletzt geändert), Termine, Aufgaben (fällig), Lesezeichen und Urlaub auf einen Zeitraum ein.</p>
             </div>
         </div>
         <nav class="search-shortcut-grid" aria-label="Suchbereiche öffnen">

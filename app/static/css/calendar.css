@@ -2183,3 +2183,20 @@ a.event-chip:hover {
     gap: 2px;
   }
 }
+
+.event-detail-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.event-detail-note label {
+  font-weight: 700;
+}
+
+.event-detail-note select {
+  flex: 1 1 200px;
+  max-width: 360px;
+}

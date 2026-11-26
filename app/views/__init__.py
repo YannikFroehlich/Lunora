@@ -11,7 +11,7 @@ from .auth_views import (
     register,
     register_confirm,
 )
-from .bookmark_views import bookmarks
+from .bookmark_views import bookmarks, bookmarks_export
 from .calendar_views import (
     calendar,
     calendar_availability,
@@ -130,6 +130,7 @@ from .wishlist_views import wish_item_image, wish_list_detail, wish_lists
 __all__ = [
     "wrapped",
     "bookmarks",
+    "bookmarks_export",
     "contracts",
     "calendar",
     "calendar_availability",

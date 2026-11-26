@@ -6,6 +6,14 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Lesezeichen: Export aller Lesezeichen als HTML-Datei, die jeder Browser (und Lunora selbst)
+  wieder einlesen kann.
+- Suche: `nach:2026-10-01` und `vor:31.10.2026` grenzen Notizen, Termine, Aufgaben, Lesezeichen
+  und Urlaub auf einen Zeitraum ein. Gespeicherte Suchen melden sich auf Wunsch (Glocke am Chip)
+  im Posteingang, sobald neue Treffer dazukommen.
+- Notizen: Aufgaben und Termine lassen sich mit einer Notiz verknüpfen (Aufgabe bearbeiten bzw.
+  Termindetails); die Notiz zeigt unten „Verknüpft mit …". Aufgaben aus der Checkliste einer
+  Notiz sind automatisch mit ihr verknüpft.
 - Dashboard: neues Widget „Gespeicherte Suchen" mit deinen gespeicherten Suchen als Chips.
 - Lesezeichen: Eine schon gespeicherte Adresse wird nicht noch einmal angelegt, und unter „Nicht
   erreichbar" lassen sich alle toten Links auf einmal löschen.

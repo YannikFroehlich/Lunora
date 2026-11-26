@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import date, datetime
 
 from django.db import connection
 from django.db.models import Case, FloatField, Q, Value, When
@@ -43,6 +44,9 @@ _TOKEN_PATTERN = re.compile(r'-?"[^"]*"|\S+')
 _WORD_PATTERN = re.compile(r"\w+", re.UNICODE)
 _SAFE_TERM_PATTERN = re.compile(r"^\w+$", re.UNICODE)
 _WHITESPACE_PATTERN = re.compile(r"\s+")
+# "nach:2026-10-01" / "vor:31.10.2026", the global search's date bounds (both inclusive).
+_DATE_FILTER_PATTERN = re.compile(r"(?<!\S)(nach|vor):(\S+)", re.IGNORECASE)
+_DATE_FORMATS = ("%Y-%m-%d", "%d.%m.%Y")
 
 
 @dataclass(frozen=True)
@@ -94,6 +98,31 @@ def parse_search_query(raw):
             collect(exclusions if negated else terms, word)
 
     return ParsedQuery(tuple(terms), tuple(phrases), tuple(exclusions))
+
+
+def _parse_date(value):
+    for date_format in _DATE_FORMATS:
+        try:
+            return datetime.strptime(value, date_format).date()
+        except ValueError:
+            continue
+    return None
+
+
+def split_date_filters(raw_query) -> tuple[date | None, date | None, str]:
+    """("plan nach:2026-10-01" →) (date(2026, 10, 1), None, "plan"). A token whose date doesn't
+    parse stays in the text, so a typo is searched for instead of silently ignored."""
+    bounds = {}
+
+    def take(match):
+        parsed = _parse_date(match.group(2))
+        if parsed is None:
+            return match.group(0)
+        bounds[match.group(1).lower()] = parsed
+        return " "
+
+    rest = _DATE_FILTER_PATTERN.sub(take, str(raw_query or ""))
+    return bounds.get("nach"), bounds.get("vor"), _WHITESPACE_PATTERN.sub(" ", rest).strip()
 
 
 def filter_by_query(queryset, raw_query, fields):

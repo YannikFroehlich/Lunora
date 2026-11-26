@@ -12,6 +12,7 @@ from app.models import (
     Habit,
     HabitCheck,
     MealPlanEntry,
+    Note,
     Profile,
     Recipe,
     SystemSettings,
@@ -83,14 +84,18 @@ class TrashTests(TestCase):
     def test_restore_drops_references_to_rows_that_are_gone(self):
         task_list = TaskList.objects.create(owner=self.user, name="Weg")
         label = TaskLabel.objects.create(owner=self.user, name="Weg")
+        note = Note.objects.create(owner=self.user, title="Weg")
         parent = Task.objects.create(user=self.user, title="Eltern")
-        subtask = Task.objects.create(user=self.user, title="Kind", parent=parent, task_list=task_list)
+        subtask = Task.objects.create(
+            user=self.user, title="Kind", parent=parent, task_list=task_list, note=note
+        )
         subtask.labels.add(label)
         TaskComment.objects.create(task=subtask, author=self.other, body="Hallo")
         self._delete_task(subtask)
         task_list.delete()
         label.delete()
         parent.delete()
+        note.delete()
         self.other.delete()
 
         self._restore(TrashedItem.objects.get())
@@ -98,6 +103,7 @@ class TrashTests(TestCase):
         restored = Task.objects.get(pk=subtask.pk)
         self.assertIsNone(restored.parent_id)
         self.assertIsNone(restored.task_list_id)
+        self.assertIsNone(restored.note_id)
         self.assertFalse(restored.labels.exists())
         self.assertFalse(TaskComment.objects.exists())
 
