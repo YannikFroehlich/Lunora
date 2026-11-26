@@ -73,7 +73,7 @@ Dieses Archiv enthält alle Daten, die du in Lunora angelegt hast:
 - whiteboards/*-bilder/: die Bilder darauf, benannt nach der file-Angabe im JSON
 - whiteboard-kommentare.json: deine Kommentare auf Whiteboards
 - kanban.json: deine Kanban-Boards mit Spalten, Swimlanes und Karten
-- retros.json: deine Retrospektiven mit Karten, Stimmen und Maßnahmen (ohne Einladungslink)
+- retros.json: deine Retrospektiven mit Karten, Stimmen und Actions (ohne Einladungslink)
 - urlaub.json: Urlaubsjahre, Urlaube und eigene Feiertage
 - gewohnheiten.json: Gewohnheiten mit allen abgehakten Tagen
 - lesezeichen.json: Lesezeichen mit Beschreibung und Tags
@@ -317,7 +317,8 @@ def _retros(user):
                 ],
                 "actions": [
                     {
-                        "text": action.text,
+                        "title": action.title,
+                        "description": action.description,
                         "assignee": participant_name(action.assignee) if action.assignee else "",
                     }
                     for action in board.actions.all()

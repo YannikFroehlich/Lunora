@@ -228,7 +228,11 @@ def renew_join_token(board):
 
 def take_action_as_task(action, user):
     """A Lunora user turns an action into their own task; it then counts as theirs."""
-    task = Task.objects.create(user=user, title=action.text[: Task._meta.get_field("title").max_length])
+    task = Task.objects.create(
+        user=user,
+        title=action.title[: Task._meta.get_field("title").max_length],
+        description=action.description,
+    )
     action.task = task
     if action.assignee_id is None:
         action.assignee = action.board.participants.filter(user=user).first()
@@ -248,10 +252,11 @@ def save_as_note(board, user):
         lines.append("")
     actions = list(board.actions.select_related("assignee__user__profile"))
     if actions:
-        lines.append("## Maßnahmen")
+        lines.append("## Actions")
         for action in actions:
-            owner = f" – {participant_name(action.assignee)}" if action.assignee else ""
-            lines.append(f"- [ ] {action.text}{owner}")
+            owner = f" ({participant_name(action.assignee)})" if action.assignee else ""
+            details = f" – {' '.join(action.description.split())}" if action.description else ""
+            lines.append(f"- [ ] {action.title}{owner}{details}")
     return create_markdown_note(user, "\n".join(lines), f"Retro: {board.title}")
 
 
@@ -357,7 +362,9 @@ def board_context(board, participant):
     actions = [
         {
             "id": action.pk,
-            "text": action.text,
+            "title": action.title,
+            "description": action.description,
+            "assignee_id": action.assignee_id,
             "assignee": names.get(action.assignee_id, ""),
             "has_task": action.task_id is not None,
             "can_take": (

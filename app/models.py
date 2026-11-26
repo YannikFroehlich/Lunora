@@ -1357,7 +1357,8 @@ class RetroVote(models.Model):
 
 class RetroAction(models.Model):
     board = models.ForeignKey(RetroBoard, on_delete=models.CASCADE, related_name="actions")
-    text = models.CharField(max_length=300)
+    title = models.CharField(max_length=300)
+    description = models.TextField(max_length=2000, blank=True, default="")
     assignee = models.ForeignKey(
         RetroParticipant, on_delete=models.SET_NULL, blank=True, null=True, related_name="actions"
     )
@@ -1369,7 +1370,7 @@ class RetroAction(models.Model):
         ordering = ["created_at", "id"]
 
     def __str__(self):
-        return self.text[:40]
+        return self.title[:40]
 
 
 VOCABULARY_LANGUAGE_CHOICES = [

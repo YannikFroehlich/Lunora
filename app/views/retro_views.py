@@ -19,7 +19,8 @@ from app.views.navigation import posted_id
 
 TITLE_MAX_LENGTH = RetroBoard._meta.get_field("title").max_length
 CARD_MAX_LENGTH = RetroCard._meta.get_field("text").max_length
-ACTION_MAX_LENGTH = RetroAction._meta.get_field("text").max_length
+ACTION_MAX_LENGTH = RetroAction._meta.get_field("title").max_length
+ACTION_DESCRIPTION_MAX_LENGTH = RetroAction._meta.get_field("description").max_length
 # Per participant and minute; generous for clicking votes, tight enough to stop a script.
 ACTIONS_PER_MINUTE = 120
 JOINS_PER_HOUR = 30
@@ -45,6 +46,21 @@ def _private(response):
 
 def _text(request, name, max_length):
     return " ".join(request.POST.get(name, "").split())[:max_length]
+
+
+def _multiline(request, name, max_length):
+    """Like `_text`, but keeps line breaks."""
+    lines = (" ".join(line.split()) for line in request.POST.get(name, "").splitlines())
+    return "\n".join(lines).strip()[:max_length]
+
+
+def _action_fields(request, board):
+    """(title, description, assignee) of an action form; the assignee must be on the board."""
+    return (
+        _text(request, "title", ACTION_MAX_LENGTH),
+        _multiline(request, "description", ACTION_DESCRIPTION_MAX_LENGTH),
+        board.participants.filter(pk=posted_id(request, "assignee_id")).first(),
+    )
 
 
 @login_required
@@ -176,15 +192,20 @@ def _handle_participant(request, board, participant, form_name):
         text = _text(request, "text", CARD_MAX_LENGTH)
         return retro.add_card(board, participant, column, text) if text else "Die Karte ist leer."
     if form_name == "retro_action_add":
-        text = _text(request, "text", ACTION_MAX_LENGTH)
-        if not text:
-            return "Die Maßnahme ist leer."
-        assignee = board.participants.filter(pk=posted_id(request, "assignee_id")).first()
-        RetroAction.objects.create(board=board, text=text, assignee=assignee)
+        title, description, assignee = _action_fields(request, board)
+        if not title:
+            return "Die Action braucht einen Titel."
+        RetroAction.objects.create(board=board, title=title, description=description, assignee=assignee)
         return None
-    if form_name in {"retro_action_delete", "retro_action_task"}:
+    if form_name in {"retro_action_edit", "retro_action_delete", "retro_action_task"}:
         action = get_object_or_404(board.actions, pk=posted_id(request, "action_id"))
-        if form_name == "retro_action_delete":
+        if form_name == "retro_action_edit":
+            title, description, assignee = _action_fields(request, board)
+            if not title:
+                return "Die Action braucht einen Titel."
+            action.title, action.description, action.assignee = title, description, assignee
+            action.save(update_fields=["title", "description", "assignee"])
+        elif form_name == "retro_action_delete":
             action.delete()
         elif participant.user_id and action.task_id is None and action.assignee_id in {None, participant.pk}:
             if not feature_enabled("tasks"):
@@ -258,6 +279,7 @@ def retro_board(request, board_id):
             "version": retro.board_version(board),
             "card_max_length": CARD_MAX_LENGTH,
             "action_max_length": ACTION_MAX_LENGTH,
+            "action_description_max_length": ACTION_DESCRIPTION_MAX_LENGTH,
             "is_guest": participant.user_id is None,
         }
     )

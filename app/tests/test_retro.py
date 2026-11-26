@@ -203,17 +203,51 @@ class RetroTests(TestCase):
     def test_actions_become_tasks_only_for_lunora_users(self):
         guest = self.join_guest()
         self.set_phase("discuss")
-        self.post("retro_action_add", client=self.guest, text="Tests schreiben", assignee_id=guest.pk)
-        self.post("retro_action_add", text="Deploy prüfen")
+        self.post("retro_action_add", client=self.guest, title="Tests schreiben", assignee_id=guest.pk)
+        self.post("retro_action_add", title="Deploy prüfen", description="Logs\r\nund   Metriken")
         guest_action, open_action = self.board.actions.order_by("id")
         self.post("retro_action_task", client=self.guest, action_id=guest_action.pk)
         self.post("retro_action_task", action_id=guest_action.pk)
         self.assertFalse(Task.objects.exists())
         self.post("retro_action_task", action_id=open_action.pk)
         task = Task.objects.get()
-        self.assertEqual((task.user, task.title), (self.owner, "Deploy prüfen"))
+        self.assertEqual(
+            (task.user, task.title, task.description), (self.owner, "Deploy prüfen", "Logs\nund Metriken")
+        )
         open_action.refresh_from_db()
         self.assertEqual(open_action.task, task)
+
+    def test_actions_have_title_description_and_can_be_reassigned(self):
+        guest = self.join_guest()
+        self.set_phase("discuss")
+        self.post("retro_action_add", title="  ", description="ohne Titel")
+        self.assertFalse(self.board.actions.exists())
+        self.post("retro_action_add", client=self.guest, title="Retro-Termin", description="Jeden Freitag")
+        action = self.board.actions.get()
+        self.assertIsNone(action.assignee)
+
+        self.post(
+            "retro_action_edit",
+            action_id=action.pk,
+            title="Retro-Termin festlegen",
+            description="Freitags\n10 Uhr",
+            assignee_id=guest.pk,
+        )
+        action.refresh_from_db()
+        self.assertEqual(
+            (action.title, action.description, action.assignee),
+            ("Retro-Termin festlegen", "Freitags\n10 Uhr", guest),
+        )
+        page = self.client.get(self.url)
+        self.assertContains(page, "Freitags<br>10 Uhr")
+        self.assertContains(page, "Kim")
+
+        other_board = create_retro(self.other, "Fremd", "start_stop")
+        self.post(
+            "retro_action_edit", action_id=action.pk, title="X", assignee_id=other_board.participants.get().pk
+        )
+        action.refresh_from_db()
+        self.assertIsNone(action.assignee)
 
     def test_summary_saves_a_note(self):
         self.post("retro_card_add", column_id=self.start.pk, text="Pairing")

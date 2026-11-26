@@ -6,6 +6,9 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Retro: Aus den Maßnahmen werden Actions mit Titel und Beschreibung. Alle in der Retro können sie
+  anlegen, bearbeiten und jemandem zuweisen (auch Gästen); als Aufgabe übernommen, landet die
+  Beschreibung mit in der Aufgabe.
 - Retro: Wer über die Stimmen einer Karte fährt, sieht, wer dafür gestimmt hat – sobald die
   Stimmen sichtbar sind und die Retro nicht anonym ist.
 - Aufgaben: Aufgaben und Unteraufgaben können eine Beschreibung haben (beim Anlegen unter
