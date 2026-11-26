@@ -4336,9 +4336,20 @@ form:has([name="split_mode"][value="amounts"]:checked) [data-split-hint="amounts
 
 .retro-limit {
   display: inline-flex;
+  align-items: center;
   gap: 3px;
   color: var(--color-accent-strong);
   font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.retro-limit.is-count {
+  gap: 6px;
+  font-weight: 600;
+}
+
+.retro-limit.is-empty {
+  color: var(--color-muted);
 }
 
 .retro-timer {

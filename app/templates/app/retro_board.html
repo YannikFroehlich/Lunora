@@ -32,14 +32,16 @@
         </ol>
 
         <div class="retro-bar-tools">
-            {% if board.phase == 'collect' and card_slots %}
-            <span class="retro-limit" title="Noch {{ cards_left }} von {{ board.max_cards }} Karten">
-                {% for used in card_slots %}<i class="fa-{% if used %}regular{% else %}solid{% endif %} fa-note-sticky" aria-hidden="true"></i>{% endfor %}
+            {% if board.phase == 'collect' and board.max_cards %}
+            <span class="retro-limit is-count{% if not cards_left %} is-empty{% endif %}" title="Noch {{ cards_left }} von {{ board.max_cards }} Karten">
+                <i class="fa-solid fa-note-sticky" aria-hidden="true"></i>
+                <span aria-hidden="true">{{ cards_left }}</span>
                 <span class="visually-hidden">Noch {{ cards_left }} von {{ board.max_cards }} Karten</span>
             </span>
             {% elif board.phase == 'vote' %}
-            <span class="retro-limit" title="Noch {{ votes_left }} von {{ board.votes_per_person }} Stimmen · höchstens {{ board.votes_per_card }} pro Karte">
-                {% for used in vote_slots %}<i class="fa-{% if used %}regular{% else %}solid{% endif %} fa-circle" aria-hidden="true"></i>{% endfor %}
+            <span class="retro-limit is-count{% if not votes_left %} is-empty{% endif %}" title="Noch {{ votes_left }} von {{ board.votes_per_person }} Stimmen · höchstens {{ board.votes_per_card }} pro Karte">
+                <i class="fa-solid fa-circle-dot" aria-hidden="true"></i>
+                <span aria-hidden="true">{{ votes_left }}</span>
                 <span class="visually-hidden">Noch {{ votes_left }} von {{ board.votes_per_person }} Stimmen</span>
             </span>
             {% endif %}

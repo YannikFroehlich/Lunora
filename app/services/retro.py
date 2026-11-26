@@ -390,9 +390,6 @@ def board_context(board, participant):
         "presented": presented,
         "cards_left": left_cards,
         "votes_left": left_votes,
-        # The header shows limits as icons: True for a used slot.
-        "card_slots": [index >= left_cards for index in range(board.max_cards)] if board.max_cards else [],
-        "vote_slots": [index >= left_votes for index in range(board.votes_per_person)],
         "participants": [
             {
                 "id": item.pk,
