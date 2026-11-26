@@ -39,6 +39,24 @@
                 {% endif %}
             </dl>
 
+            {% if can_link_note %}
+            <form class="event-detail-note" method="post">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="event_note">
+                <label for="event-note-select">Verknüpfte Notiz</label>
+                <select id="event-note-select" name="note_id">
+                    <option value="">Keine</option>
+                    {% for item in linkable_notes %}
+                    <option value="{{ item.id }}"{% if linked_note and linked_note.id == item.id %} selected{% endif %}>{{ item.title|default:"Unbenannte Notiz" }}</option>
+                    {% endfor %}
+                </select>
+                <button class="ghost-button" type="submit">Speichern</button>
+                {% if linked_note %}<a class="ghost-button" href="{% url 'note_detail' linked_note.id %}"><i class="fa-regular fa-note-sticky" aria-hidden="true"></i> Öffnen</a>{% endif %}
+            </form>
+            {% elif linked_note %}
+            <p class="event-detail-note"><i class="fa-regular fa-note-sticky" aria-hidden="true"></i> Notiz: <a href="{% url 'note_detail' linked_note.id %}">{{ linked_note.title|default:"Unbenannte Notiz" }}</a></p>
+            {% endif %}
+
             {% if own_attendee %}
             <form class="event-detail-rsvp" method="post">
                 {% csrf_token %}

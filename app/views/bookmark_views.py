@@ -1,13 +1,16 @@
 from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
+from django.http import HttpResponse
 from django.shortcuts import redirect, render
+from django.views.decorators.http import require_GET
 
 from app.forms import BookmarkForm
 from app.models import Bookmark
 from app.services.bookmarks import (
     MAX_BOOKMARKS,
     add_bookmark,
+    export_bookmark_file,
     find_duplicate,
     host_of,
     import_bookmark_file,
@@ -68,6 +71,17 @@ def bookmarks(request):
             "active_tag": tag,
         },
     )
+
+
+@login_required
+@require_GET
+def bookmarks_export(request):
+    if not feature_enabled("tools"):
+        return disabled_feature_response(request, "tools")
+    response = HttpResponse(export_bookmark_file(request.user), content_type="text/html; charset=utf-8")
+    response["Content-Disposition"] = 'attachment; filename="lunora-lesezeichen.html"'
+    response["Cache-Control"] = "private, no-store"
+    return response
 
 
 def _handle_post(request):

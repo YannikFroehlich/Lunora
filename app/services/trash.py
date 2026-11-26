@@ -33,7 +33,7 @@ from app.models import (
     VocabularyListShare,
 )
 from app.services.calendar_service import sync_event_reminders
-from app.services.notes import TRASH_RETENTION
+from app.services.notes import TRASH_RETENTION, readable_note_ids
 from app.services.system_settings import feature_enabled
 from app.services.user_preferences import format_user_date, format_user_datetime
 
@@ -187,6 +187,9 @@ def _restorable(user, item, deserialized):
         Task.objects.filter(user=user, parent=None, pk__in=parent_ids - task_ids).values_list("pk", flat=True)
     )
 
+    # A linked note may be gone or unshared since; such a link is dropped, not restored.
+    notes = readable_note_ids(user, (getattr(entry.object, "note_id", None) for entry in deserialized))
+
     kept = []
     for entry in deserialized:
         obj = entry.object
@@ -205,6 +208,8 @@ def _restorable(user, item, deserialized):
         else:
             continue
 
+        if isinstance(obj, (Task, CalendarEvent)):
+            obj.note_id = obj.note_id if obj.note_id in notes else None
         if isinstance(obj, Task):
             obj.task_list_id = obj.task_list_id if obj.task_list_id in lists else None
             obj.parent_id = obj.parent_id if obj.parent_id in parents else None

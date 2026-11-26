@@ -91,6 +91,7 @@ urlpatterns = [
     path("tools/kanban/", view.kanban_boards, name="kanban_boards"),
     path("tools/kanban/<int:board_id>/", view.kanban_board, name="kanban_board"),
     path("tools/bookmarks/", view.bookmarks, name="bookmarks"),
+    path("tools/bookmarks/export/", view.bookmarks_export, name="bookmarks_export"),
     path("tools/contracts/", view.contracts, name="contracts"),
     path("wrapped/", view.wrapped, name="wrapped"),
     path("tools/wishlist/", view.wish_lists, name="wish_lists"),

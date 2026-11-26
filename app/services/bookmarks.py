@@ -5,6 +5,7 @@ SSRF-safe fetcher and throttled per user; a page that can't be read just leaves 
 
 import re
 from datetime import timedelta
+from html import escape
 from html.parser import HTMLParser
 from urllib.parse import urlparse
 
@@ -303,6 +304,29 @@ def import_bookmark_file(user, uploaded):
         )
     Bookmark.objects.bulk_create(new)
     return len(new), skipped
+
+
+def export_bookmark_file(user):
+    """`user`'s bookmarks as a Netscape bookmark file, the format every browser imports (and
+    import_bookmark_file reads back): one flat list, tags in the TAGS attribute."""
+    lines = [
+        "<!DOCTYPE NETSCAPE-Bookmark-file-1>",
+        '<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">',
+        "<TITLE>Bookmarks</TITLE>",
+        "<H1>Lunora-Lesezeichen</H1>",
+        "<DL><p>",
+    ]
+    for bookmark in Bookmark.objects.filter(owner=user):
+        tags = escape(",".join(bookmark.tag_list))
+        lines.append(
+            f'    <DT><A HREF="{escape(bookmark.url)}" ADD_DATE="{int(bookmark.created_at.timestamp())}"'
+            + (f' TAGS="{tags}"' if tags else "")
+            + f">{escape(bookmark.title)}</A>"
+        )
+        if bookmark.description:
+            lines.append(f"    <DD>{escape(bookmark.description)}")
+    lines.append("</DL><p>")
+    return "\n".join(lines) + "\n"
 
 
 def search_bookmarks(queryset, query="", tag=""):

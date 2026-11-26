@@ -406,6 +406,7 @@
     const countInput = editForm?.querySelector("input[name='recurrence_count']");
     const parentInput = editForm?.querySelector("input[name='parent']");
     const assigneeSelect = editForm?.querySelector("select[name='assignee']");
+    const noteSelect = editForm?.querySelector("select[name='note']");
     const labelInputs = editForm?.querySelectorAll("input[name='labels']") || [];
     const shareInputs = editForm?.querySelectorAll("input[name='shared_with']") || [];
     const shareField = editForm?.querySelector("[data-task-share-field]");
@@ -427,6 +428,7 @@
       syncRecurrenceFields(editForm);
       if (parentInput) parentInput.value = data.parent || "";
       if (assigneeSelect) assigneeSelect.value = data.assignee || "";
+      if (noteSelect) noteSelect.value = data.note || "";
 
       const labelIds = (data.labels || "").split(",").filter(Boolean);
       labelInputs.forEach((input) => {
@@ -465,6 +467,7 @@
         parent: button.dataset.editParent,
         assignee: button.dataset.editAssignee,
         shared: button.dataset.editShared,
+        note: button.dataset.editNote,
       });
     });
 

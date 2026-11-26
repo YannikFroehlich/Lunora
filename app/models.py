@@ -627,6 +627,10 @@ class CalendarEvent(models.Model):
     subscription = models.ForeignKey(
         "CalendarSubscription", on_delete=models.CASCADE, blank=True, null=True, related_name="events"
     )
+    # A note the owner linked to this event; the note shows it under "Verknüpft mit".
+    note = models.ForeignKey(
+        "Note", on_delete=models.SET_NULL, blank=True, null=True, related_name="linked_events"
+    )
     # UID of the .ics VEVENT this was imported from, so importing the same file twice skips it.
     import_uid = models.CharField(max_length=255, blank=True, default="", db_index=True)
     # Minutes before the start at which the owner and everyone who accepted get reminded (None = off).
@@ -878,6 +882,10 @@ class Task(models.Model):
     recurrence_until = models.DateField(blank=True, null=True)
     recurrence_count = models.PositiveSmallIntegerField(blank=True, null=True)
     labels = models.ManyToManyField(TaskLabel, blank=True, related_name="tasks")
+    # A note the owner linked to this task (or the note whose checklist it came from).
+    note = models.ForeignKey(
+        "Note", on_delete=models.SET_NULL, blank=True, null=True, related_name="linked_tasks"
+    )
     position = models.PositiveIntegerField(default=0)
     is_done = models.BooleanField(default=False)
     # The board's middle column ("In Arbeit"); always False once the task is done.
@@ -1376,6 +1384,11 @@ class SavedSearch(models.Model):
     query = models.CharField(max_length=200)
     # A SEARCH_AREAS key, or "" for all areas.
     area = models.CharField(max_length=20, blank=True)
+    # With `notify` on, the automations compare the hits with `known_hits` (keys of the hits seen so
+    # far, see app.services.saved_searches.check_saved_searches) and report new ones in the inbox.
+    notify = models.BooleanField(default=False)
+    known_hits = models.JSONField(default=list, blank=True)
+    checked_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -1862,6 +1875,7 @@ class UserNotification(models.Model):
     KIND_CONTRACT_DEADLINE = "contract_deadline"
     KIND_WISH_PRICE_ALERT = "wish_price_alert"
     KIND_SECURITY_ALERT = "security_alert"
+    KIND_SAVED_SEARCH = "saved_search"
     KIND_CHOICES = [
         (KIND_CALENDAR_REMINDER, "Kalendererinnerung"),
         (KIND_TASK_DUE, "Fällige Aufgabe"),
@@ -1890,6 +1904,7 @@ class UserNotification(models.Model):
         (KIND_CONTRACT_DEADLINE, "Kündigungsfrist"),
         (KIND_WISH_PRICE_ALERT, "Preisalarm"),
         (KIND_SECURITY_ALERT, "Sicherheitswarnung"),
+        (KIND_SAVED_SEARCH, "Neue Suchtreffer"),
     ]
 
     recipient = models.ForeignKey(

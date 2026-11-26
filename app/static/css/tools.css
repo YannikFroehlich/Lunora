@@ -4215,3 +4215,7 @@ form:has([name="split_mode"][value="amounts"]:checked) [data-split-hint="amounts
   font-size: var(--text-sm);
   line-height: 1.45;
 }
+
+.bookmark-export {
+  margin: 12px 0 0;
+}

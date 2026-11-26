@@ -78,6 +78,7 @@ NOTIFICATION_PRESENTATION = {
     UserNotification.KIND_CONTRACT_DEADLINE: ("fa-file-signature", "Vertrag", "tools"),
     UserNotification.KIND_WISH_PRICE_ALERT: ("fa-tag", "Preisalarm", "tools"),
     UserNotification.KIND_SECURITY_ALERT: ("fa-shield-halved", "Sicherheit", "security"),
+    UserNotification.KIND_SAVED_SEARCH: ("fa-magnifying-glass", "Suche", "tools"),
 }
 
 
@@ -404,6 +405,24 @@ def materialize_wish_price_alert(item, point, *, price_label, target_label):
                 ],
                 "url": f"/tools/wishlist/{item.wish_list_id}/#wish-{item.pk}",
                 "source_key": f"wish-price:{point.pk}",
+            }
+        ]
+    )
+
+
+def materialize_saved_search_alert(saved, new_titles, *, url, now):
+    """One inbox row per check of a saved search that found hits it hadn't seen."""
+    count = len(new_titles)
+    return _create_missing_user_notifications(
+        [
+            {
+                "recipient_id": saved.owner_id,
+                "actor_id": None,
+                "kind": UserNotification.KIND_SAVED_SEARCH,
+                "title": f"{count} neue{'r' if count == 1 else ''} Treffer für „{saved.query}“"[:300],
+                "body": " · ".join(new_titles[:3])[:500],
+                "url": url,
+                "source_key": f"saved-search:{saved.pk}:{int(now.timestamp())}",
             }
         ]
     )
@@ -1350,6 +1369,7 @@ def send_pending_user_notification_emails(
             UserNotification.KIND_WISH_LIST_SHARE,
             UserNotification.KIND_WISH_PRICE_ALERT,
             UserNotification.KIND_CONTRACT_DEADLINE,
+            UserNotification.KIND_SAVED_SEARCH,
         ]
     if include_expense_groups:
         kinds.append(UserNotification.KIND_EXPENSE_GROUP)

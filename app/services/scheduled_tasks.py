@@ -8,6 +8,7 @@ from app.services.bookmarks import check_due_links
 from app.services.calendar_subscriptions import sync_due_subscriptions
 from app.services.chat import send_due_scheduled_messages
 from app.services.expenses import post_due_recurring_expenses
+from app.services.global_search import check_saved_searches
 from app.services.notifications import (
     materialize_due_contract_reminders,
     materialize_due_habit_reminders,
@@ -106,6 +107,8 @@ def run_scheduled_tasks(*, now=None):
         )
     else:
         scheduled_message_result = {"sent": 0, "skipped": 0, "disabled": True}
+    # Before the e-mail and push steps, so a new alert goes out in the same pass.
+    saved_search_result = _guarded("saved_searches", check_saved_searches, now=current_time)
     notification_email_result = _guarded(
         "notification_emails",
         send_pending_user_notification_emails,
@@ -137,6 +140,7 @@ def run_scheduled_tasks(*, now=None):
         "wish_prices": wish_price_result,
         "bookmark_links": bookmark_link_result,
         "contract_reminders": contract_result,
+        "saved_searches": saved_search_result,
         "scheduled_messages": scheduled_message_result,
         "notification_emails": notification_email_result,
         "web_push": web_push_result,

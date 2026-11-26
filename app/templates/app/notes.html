@@ -308,6 +308,17 @@
                 {% if selected_note_data.shares %}<span class="note-author-legend" data-note-author-legend hidden></span>{% endif %}
             </footer>
             <button type="button" class="note-editor-zoom-indicator" data-editor-zoom-level aria-label="Zoomstufe des Editors, klicken zum Zurücksetzen">100%</button>
+            {% if linked_items %}
+            <footer class="note-backlinks">
+                <i class="fa-solid fa-link" aria-hidden="true"></i>
+                <span>Verknüpft mit</span>
+                <div class="note-backlinks-list">
+                    {% for item in linked_items %}
+                    <a class="note-backlink-chip" href="{{ item.url }}"><i class="{{ item.icon }}" aria-hidden="true"></i> {{ item.title }}{% if item.meta %} · {{ item.meta }}{% endif %}</a>
+                    {% endfor %}
+                </div>
+            </footer>
+            {% endif %}
             {% if selected_note_data.backlinks %}
             <footer class="note-backlinks">
                 <i class="fa-solid fa-diagram-project" aria-hidden="true"></i>

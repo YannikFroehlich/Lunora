@@ -397,7 +397,7 @@
                             {{ item.due_label }}
                             {% if item.time_label %}<span class="task-time-total" title="Von dir erfasste Zeit"><i class="fa-regular fa-clock" aria-hidden="true"></i> {{ item.time_label }}</span>{% endif %}
                         </small>
-                        {% if item.task_list_name or item.labels or item.assignee_name or item.owner_name or item.shared_names %}
+                        {% if item.task_list_name or item.labels or item.assignee_name or item.owner_name or item.shared_names or item.note_title %}
                         <span class="task-chips">
                             {% if item.owner_name %}
                             <span class="task-label-chip"><i class="fa-solid fa-user" aria-hidden="true"></i> von {{ item.owner_name }}</span>
@@ -413,6 +413,9 @@
                             {% for label in item.labels %}
                             <span class="task-label-chip tone-{{ label.color }}">{{ label.name }}</span>
                             {% endfor %}
+                            {% if item.note_title %}
+                            <a class="task-label-chip task-note-chip" href="{% url 'note_detail' item.note_id %}"><i class="fa-regular fa-note-sticky" aria-hidden="true"></i> {{ item.note_title }}</a>
+                            {% endif %}
                         </span>
                         {% endif %}
                     </div>
@@ -452,6 +455,7 @@
                         data-edit-parent="{{ item.parent_id|default_if_none:'' }}"
                         data-edit-assignee="{{ item.assignee_id|default_if_none:'' }}"
                         data-edit-shared="{{ item.share_ids }}"
+                        data-edit-note="{{ item.note_id|default_if_none:'' }}"
                         aria-label="Aufgabe bearbeiten">
                         <i class="fa-solid fa-pen" aria-hidden="true"></i>
                     </button>
@@ -594,6 +598,7 @@
                         data-edit-count="{{ child.task.recurrence_count|default_if_none:'' }}"
                         data-edit-labels="{% for label in child.labels %}{{ label.id }}{% if not forloop.last %},{% endif %}{% endfor %}"
                         data-edit-parent="{{ child.parent_id|default_if_none:'' }}"
+                        data-edit-note="{{ child.note_id|default_if_none:'' }}"
                         aria-label="Unteraufgabe bearbeiten">
                         <i class="fa-solid fa-pen" aria-hidden="true"></i>
                     </button>
@@ -729,6 +734,14 @@
                 {{ edit_form.assignee }}
                 {{ edit_form.assignee.errors }}
             </label>
+
+            {% if feature_flags.notes %}
+            <label class="task-add-more-field">
+                <span>{{ edit_form.note.label }}</span>
+                {{ edit_form.note }}
+                {{ edit_form.note.errors }}
+            </label>
+            {% endif %}
 
             {% if edit_form.shared_with.field.queryset.exists %}
             <fieldset class="task-edit-field is-wide task-share-field" data-task-share-field>

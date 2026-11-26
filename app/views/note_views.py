@@ -27,6 +27,7 @@ from app.models import (
 )
 from app.services.daily_notes import open_daily_note
 from app.services.docx_import import import_docx_upload
+from app.services.linked_notes import note_linked_items
 from app.services.note_collab import sync_note
 from app.services.note_content import NOTE_TEMPLATE_LABELS, NOTE_TEMPLATES
 from app.services.note_docx import CONTENT_TYPE as DOCX_CONTENT_TYPE
@@ -490,6 +491,7 @@ def notes(request, note_id=None):
         "tree_items": tree_items,
         "folder_options": folder_options,
         "selected_note_data": selected_note_data,
+        "linked_items": note_linked_items(selected_note, request.user) if selected_note else [],
         "query": query,
         "current_status": status,
         "current_scope": scope,
@@ -798,7 +800,7 @@ def note_action_api(request, note_id):
             if not feature_enabled("tasks"):
                 raise ValidationError("Aufgaben sind gerade abgeschaltet.")
             note = get_accessible_note(request.user, note_id)
-            created, skipped = create_tasks_from_checklist(request.user, note.document)
+            created, skipped = create_tasks_from_checklist(request.user, note)
             return JsonResponse({"ok": True, "created": created, "skipped": skipped})
         raise ValidationError("Unbekannte Notizaktion.")
     except Note.DoesNotExist:

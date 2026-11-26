@@ -169,6 +169,18 @@ def accessible_notes(user, *, include_deleted=False):
     )
 
 
+def readable_note_ids(user, note_ids):
+    """The subset of `note_ids` that `user` may open."""
+    note_ids = {note_id for note_id in note_ids if note_id}
+    if not note_ids:
+        return set()
+    return set(accessible_notes(user).filter(pk__in=note_ids).values_list("id", flat=True))
+
+
+def note_title(note):
+    return note.title or "Unbenannte Notiz"
+
+
 def _accessible_note_queryset(user, note_id, *, for_update=False):
     # Exists instead of joining shares: the join needed DISTINCT, which PostgreSQL rejects together
     # with FOR UPDATE. of=("self",) keeps the lock off the nullable last_edited_by outer join.
