@@ -6,6 +6,11 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Werkzeuge: Retrospektiven wie in Kollabe – Karten sammeln (verdeckt), gruppieren, mit Punkten
+  abstimmen und besprechen, wobei die Erstellerin bzw. der Ersteller eine Karte für alle als
+  Popup präsentiert. Grenzen für Karten und Stimmen, Timer, anonyme Karten und ein
+  Einladungslink, über den auch Gäste ohne Lunora-Konto mitmachen. Maßnahmen lassen sich als
+  Aufgabe übernehmen, die ganze Retro als Notiz speichern.
 - Lesezeichen: Export aller Lesezeichen als HTML-Datei, die jeder Browser (und Lunora selbst)
   wieder einlesen kann.
 - Suche: `nach:2026-10-01` und `vor:31.10.2026` grenzen Notizen, Termine, Aufgaben, Lesezeichen

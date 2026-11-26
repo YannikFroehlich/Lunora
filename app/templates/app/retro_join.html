@@ -1,0 +1,29 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}{{ board.title }} beitreten | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="retro-join glass-panel">
+    <div class="retro-join-head">
+        <span class="retro-join-kicker"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Retrospektive</span>
+        <h1>{{ board.title }}</h1>
+        <p>Du bist eingeladen mitzumachen. Ein Lunora-Konto brauchst du dafür nicht.</p>
+    </div>
+    <form method="post" class="retro-join-form">
+        {% csrf_token %}
+        <label class="vocab-field">
+            <span>Wie sollen dich die anderen nennen?</span>
+            <input type="text" name="name" value="{{ name }}" maxlength="{{ name_max_length }}" autocomplete="nickname" placeholder="z. B. Kim" required autofocus>
+        </label>
+        {% if error %}<p class="form-errors" role="alert">{{ error }}</p>{% endif %}
+        <button class="primary-button" type="submit">Beitreten <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>
+        <p class="retro-join-hint">Dein Name ist nur in dieser Retro sichtbar. Dieser Browser merkt sich, dass du dabei bist.</p>
+    </form>
+    <p class="retro-join-login">Du hast ein Lunora-Konto? <a href="{{ login_url }}">Anmelden</a></p>
+</section>
+{% endblock %}

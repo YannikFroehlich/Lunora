@@ -43,6 +43,8 @@ from app.services.expenses import add_expense, create_group
 from app.services.kanban import add_card, add_lane, create_board
 from app.services.note_folder_shares import share_folder
 from app.services.notes import create_note_folder
+from app.services.retro import add_card as add_retro_card
+from app.services.retro import create_retro
 from app.services.uml_content import empty_uml_document
 
 UNNAMED_INPUT_TYPES = {"hidden", "submit", "button", "reset", "image"}
@@ -181,6 +183,21 @@ class PageAccessibilityMarkupTests(TestCase):
         add_lane(self.kanban, "Team B")
         KanbanBoardShare.objects.create(board=self.kanban, user=self.lukas)
         add_card(self.kanban, self.mira, self.kanban.columns.first(), self.kanban.lanes.first(), "Karte")
+        # One retro per phase layout: collecting, grouping, and discussing with a presented card.
+        self.retros = []
+        for phase in ["collect", "group", "discuss", "done"]:
+            retro = create_retro(self.mira, f"Retro {phase}", "four_l")
+            owner = retro.participants.get()
+            for column in retro.columns.all()[:2]:
+                add_retro_card(retro, owner, column, f"Karte {column.title}")
+            first, second = retro.cards.all()[:2]
+            second.group = first
+            second.save()
+            retro.phase = phase
+            retro.presented_card = first
+            retro.save()
+            retro.actions.create(text="Mehr testen", assignee=owner)
+            self.retros.append(retro)
         self.vocabulary = VocabularyList.objects.create(owner=self.mira, title="Englisch")
         VocabularyCard.objects.create(vocabulary_list=self.vocabulary, term="Haus", translation="house")
         MealPlanEntry.objects.create(owner=self.mira, recipe=self.recipe, date=date(2099, 3, 10))
@@ -235,6 +252,8 @@ class PageAccessibilityMarkupTests(TestCase):
             f"/tools/whiteboard/{self.whiteboard.pk}/",
             "/tools/kanban/",
             f"/tools/kanban/{self.kanban.pk}/",
+            "/tools/retro/",
+            *[f"/tools/retro/{retro.pk}/" for retro in self.retros],
             "/tools/wishlist/",
             "/tools/contracts/",
             "/tools/bookmarks/",
@@ -278,5 +297,17 @@ class PageAccessibilityMarkupTests(TestCase):
         self.client.logout()
         self.note.public_token = "public-token-123"
         self.note.save(update_fields=["public_token"])
-        for url in ["/login/", "/register/", "/password-reset/", "/s/notes/public-token-123/", "/offline/"]:
+        for url in [
+            "/login/",
+            "/register/",
+            "/password-reset/",
+            "/s/notes/public-token-123/",
+            "/offline/",
+            f"/retro/join/{self.retros[0].join_token}/",
+        ]:
+            self.assert_page_markup(url, self.collect(url))
+        # A guest on a board, in every phase layout.
+        for retro in self.retros:
+            self.client.post(f"/retro/join/{retro.join_token}/", {"name": "Kim"})
+            url = f"/tools/retro/{retro.pk}/"
             self.assert_page_markup(url, self.collect(url))

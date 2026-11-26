@@ -1,0 +1,64 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}Retrospektiven | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell tools-shell">
+    <header class="page-hero">
+        <div>
+            <a class="tools-back-link" href="{% url 'tools' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Werkzeuge</a>
+            <h1>Retrospektiven</h1>
+            <p>Sammeln, gruppieren, abstimmen, besprechen – mit dem Team, Gäste auch ohne Konto.</p>
+        </div>
+        <i class="fa-solid fa-clock-rotate-left hero-branch" aria-hidden="true"></i>
+    </header>
+
+    <section class="glass-panel uml-create-panel">
+        <form class="uml-create-form retro-create-form" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="retro_create">
+            <label class="uml-create-field">
+                <span class="visually-hidden">Titel der neuen Retro</span>
+                <i class="fa-solid fa-pen" aria-hidden="true"></i>
+                <input type="text" name="title" maxlength="{{ title_max_length }}" placeholder="Titel, z. B. „Sprint 47 Retro“" required>
+            </label>
+            <label class="uml-relation-select whiteboard-template-select">
+                <span class="visually-hidden">Vorlage</span>
+                <select name="template" title="Vorlage">
+                    {% for template in templates %}
+                    <option value="{{ template.key }}">{{ template.label }}{% if template.key == 'four_l' %}: {{ template.columns|join:" / " }}{% endif %}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <button class="primary-button" type="submit"><i class="fa-solid fa-plus" aria-hidden="true"></i> Neue Retro</button>
+        </form>
+    </section>
+
+    {% if boards %}
+    <ul class="uml-diagram-list">
+        {% for board in boards %}
+        <li class="glass-panel uml-diagram-card">
+            <a class="uml-diagram-link" href="{% url 'retro_board' board.id %}">
+                <span class="tool-card-icon" aria-hidden="true"><i class="fa-solid {% if board.is_done %}fa-circle-check{% else %}fa-clock-rotate-left{% endif %}"></i></span>
+                <span>
+                    <strong>{{ board.title }}</strong>
+                    <small>{{ board.phase }} · {{ board.card_count }} Karte(n) · {{ board.participant_count }} dabei · geändert {{ board.updated_label }}{% if not board.is_own %} · von {{ board.owner_name }}{% endif %}</small>
+                </span>
+            </a>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state-card uml-empty">
+        <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
+        <strong>Noch keine Retros</strong>
+        <p>Lege oben eine Retro an und teile den Einladungslink aus den Einstellungen.</p>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}
