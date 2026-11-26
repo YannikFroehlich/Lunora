@@ -4,7 +4,6 @@ from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
-from django.utils.http import urlencode
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
 
@@ -29,7 +28,13 @@ from app.services.note_search import (
     search_notes,
 )
 from app.services.notes import accessible_notes, filter_by_tags, split_tag_filters
-from app.services.system_settings import feature_flags
+from app.services.saved_searches import (
+    MAX_SAVED_SEARCHES,
+    SEARCH_AREAS,
+    enabled_search_areas,
+    saved_search_items,
+    search_url,
+)
 from app.services.tasks import visible_tasks
 from app.services.user_preferences import (
     format_user_date,
@@ -49,27 +54,10 @@ from app.views.navigation import posted_id
 SEARCH_RESULT_LIMIT = 20
 # With one area picked (?in=…), that area shows more of its hits.
 SEARCH_FILTERED_LIMIT = 60
-MAX_SAVED_SEARCHES = 20
 # The command palette's live preview: a few hits per area, a handful in total.
 QUICK_SEARCH_PER_AREA = 2
 QUICK_SEARCH_LIMIT = 8
 QUICK_SEARCH_MIN_LENGTH = 2
-
-# (key, label, icon, feature flag or None). The order is the order on the page.
-SEARCH_AREAS = (
-    ("notes", "Notizen", "fa-regular fa-note-sticky", "notes"),
-    ("messages", "Nachrichten", "fa-regular fa-comments", "messages"),
-    ("events", "Termine", "fa-regular fa-calendar", None),
-    ("tasks", "Aufgaben", "fa-regular fa-square-check", "tasks"),
-    ("bookmarks", "Lesezeichen", "fa-solid fa-bookmark", "tools"),
-    ("recipes", "Rezepte", "fa-solid fa-utensils", "tools"),
-    ("kanban", "Kanban", "fa-solid fa-table-columns", "tools"),
-    ("wishlists", "Wunschlisten", "fa-solid fa-gift", "tools"),
-    ("contracts", "Verträge", "fa-solid fa-file-signature", "tools"),
-    ("expenses", "Ausgaben", "fa-solid fa-scale-balanced", "tools"),
-    ("tools", "Weitere Werkzeuge", "fa-solid fa-toolbox", "tools"),
-    ("vacation", "Urlaub", "fa-solid fa-umbrella-beach", "vacation_planner"),
-)
 
 
 def _search_shortcuts(flags):
@@ -391,20 +379,10 @@ class _Search:
         ]
 
 
-def _enabled_areas():
-    flags = feature_flags()
-    return flags, [area for area in SEARCH_AREAS if area[3] is None or flags[area[3]]]
-
-
-def _search_url(query, area=""):
-    params = {"q": query, **({"in": area} if area else {})}
-    return f"{reverse('global_search')}?{urlencode(params)}"
-
-
 @login_required
 def global_search(request):
     query = request.GET.get("q", "").strip()
-    flags, areas = _enabled_areas()
+    flags, areas = enabled_search_areas()
     area_keys = {area[0] for area in areas}
     selected = request.GET.get("in", "")
     if selected not in area_keys:
@@ -430,17 +408,7 @@ def global_search(request):
     hit_sections = [section for section in sections if section["results"]]
     shown_sections = [section for section in hit_sections if not selected or section["key"] == selected]
 
-    area_labels = {area[0]: area[1] for area in areas}
-    saved = [
-        {
-            "id": item.pk,
-            "query": item.query,
-            "area_label": area_labels.get(item.area, ""),
-            "url": _search_url(item.query, item.area if item.area in area_keys else ""),
-            "is_current": item.query == query and item.area == selected,
-        }
-        for item in SavedSearch.objects.filter(owner=request.user)
-    ]
+    saved = saved_search_items(request.user, query, selected)
 
     return render(
         request,
@@ -487,7 +455,7 @@ def saved_searches(request):
             django_messages.error(request, f"Du kannst höchstens {MAX_SAVED_SEARCHES} Suchen speichern.")
         else:
             SavedSearch.objects.get_or_create(owner=request.user, query=query, area=area)
-    return redirect(_search_url(query, area) if query else "global_search")
+    return redirect(search_url(query, area) if query else "global_search")
 
 
 @never_cache
@@ -499,7 +467,7 @@ def quick_search(request):
     results = []
     if len(query) >= QUICK_SEARCH_MIN_LENGTH:
         search = _Search(request.user, query)
-        for key, label, _icon, _flag in _enabled_areas()[1]:
+        for key, label, _icon, _flag in enabled_search_areas()[1]:
             for row in getattr(search, key)(QUICK_SEARCH_PER_AREA):
                 results.append(
                     {

@@ -468,6 +468,28 @@ function normalizeCommandText(value) {
 
 // Ctrl/Cmd+K opens a palette of pages and settings; typing filters it, Enter opens the
 // highlighted entry or falls back to the global search for the typed text.
+const RECENT_COMMANDS_STORAGE_KEY = "lunora-recent-commands";
+const MAX_RECENT_COMMANDS = 5;
+
+function readRecentCommands() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(RECENT_COMMANDS_STORAGE_KEY) || "[]");
+    return Array.isArray(stored) ? stored.filter((id) => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberCommand(element) {
+  if (!element.hasAttribute("data-command-item")) return;
+  try {
+    const recent = [element.id, ...readRecentCommands().filter((id) => id !== element.id)];
+    localStorage.setItem(RECENT_COMMANDS_STORAGE_KEY, JSON.stringify(recent.slice(0, MAX_RECENT_COMMANDS)));
+  } catch {
+    // Storage unavailable (private mode, blocked site data): the list keeps its fixed order.
+  }
+}
+
 function initCommandPalette() {
   const dialog = document.querySelector("[data-command-palette]");
   if (!dialog) return;
@@ -480,10 +502,13 @@ function initCommandPalette() {
   let liveItems = [];
   let liveTimer = null;
   let liveSequence = 0;
-  const items = Array.from(dialog.querySelectorAll("[data-command-item]")).map((element) => ({
+  const items = Array.from(dialog.querySelectorAll("[data-command-item]")).map((element, index) => ({
     element,
+    index,
     text: normalizeCommandText(`${element.textContent} ${element.dataset.keywords || ""}`),
   }));
+  // The pages come first in the list; whatever follows them (live hits, quick capture) stays put.
+  const itemsEnd = items.at(-1)?.element.nextElementSibling ?? null;
   let visible = [];
   let activeIndex = 0;
 
@@ -610,7 +635,20 @@ function initCommandPalette() {
     }),
   );
 
+  // The pages opened last from here come first, newest on top; only page ids are kept in this
+  // browser, never typed text or search hits.
+  function sortByRecent() {
+    const recent = readRecentCommands();
+    const rank = (item) => {
+      const position = recent.indexOf(item.element.id);
+      return position === -1 ? recent.length + item.index : position;
+    };
+    items.sort((first, second) => rank(first) - rank(second));
+    items.forEach((item) => item.element.parentElement.insertBefore(item.element, itemsEnd));
+  }
+
   function open() {
+    sortByRecent();
     input.value = "";
     renderLive([]);
     filter();
@@ -631,6 +669,7 @@ function initCommandPalette() {
     } else if (event.key === "Enter" && visible[activeIndex]) {
       event.preventDefault();
       const active = visible[activeIndex];
+      rememberCommand(active);
       if (active.dataset.commandQuick) quickCapture(active);
       else if (active.target === "_blank") window.open(active.href, "_blank", "noopener");
       else window.location.href = active.href;
@@ -639,6 +678,8 @@ function initCommandPalette() {
   // A click on the backdrop lands on the dialog element itself, outside the panel.
   dialog.addEventListener("click", (event) => {
     if (event.target === dialog) dialog.close();
+    const item = event.target.closest?.("[data-command-item]");
+    if (item) rememberCommand(item);
   });
   document.addEventListener("keydown", (event) => {
     if (event.key.toLowerCase() !== "k" || !(event.ctrlKey || event.metaKey)) return;

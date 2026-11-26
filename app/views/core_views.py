@@ -38,6 +38,7 @@ from app.services.data_export import export_filename, export_temp_file, write_us
 from app.services.data_import import import_files
 from app.services.health import health_report
 from app.services.notes import display_name
+from app.services.notifications import send_weekly_summary_preview
 from app.services.storage_quota import storage_summary
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.user_preferences import format_user_datetime, localtime_for_user
@@ -274,6 +275,13 @@ def settings(request):
                 notification_preferences_form.save()
             django_messages.success(request, "Benachrichtigungseinstellungen gespeichert.")
             return redirect(_settings_section_url("notifications", return_to))
+    elif form_name == "weekly_summary_preview":
+        error = send_weekly_summary_preview(request.user)
+        if error:
+            django_messages.error(request, error)
+        else:
+            django_messages.success(request, f"Die Wochenübersicht wurde an {request.user.email} gesendet.")
+        return redirect(_settings_section_url("notifications", return_to))
     elif form_name == "weather":
         weather_form = WeatherPreferencesForm(request.POST, instance=profile)
         if weather_form.is_valid():

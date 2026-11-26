@@ -444,3 +444,86 @@ class SavedAndQuickSearchTests(TestCase):
             ],
         )
         self.assertEqual(self.client.get("/search/quick/", {"q": "k"}).json(), {"results": []})
+
+
+class BookmarkCleanupAndWidgetTests(TestCase):
+    def setUp(self):
+        self.mira = User.objects.create_user(username="mira", email="mira@example.com", password="pw-12345!")
+        self.lukas = User.objects.create_user(
+            username="lukas", email="lukas@example.com", password="pw-12345!"
+        )
+        self.client.force_login(self.mira)
+
+    @patch("app.services.bookmarks.fetch_page_preview", new=lambda user, url: {})
+    def test_the_same_address_is_not_saved_twice(self):
+        Bookmark.objects.create(owner=self.mira, title="Bank", url="https://bank.example/")
+        other = Bookmark.objects.create(owner=self.mira, title="Mail", url="https://mail.example")
+        response = self.client.post(
+            "/tools/bookmarks/",
+            {"form_name": "bookmark_add", "title": "", "url": "https://bank.example", "tags": ""},
+            follow=True,
+        )
+        self.assertContains(response, "schon als „Bank“ gespeichert")
+        self.client.post(
+            "/tools/bookmarks/",
+            {
+                "form_name": "bookmark_edit",
+                "bookmark_id": other.pk,
+                "title": "Mail",
+                "url": "https://bank.example/",
+            },
+        )
+        other.refresh_from_db()
+        self.assertEqual(other.url, "https://mail.example")
+        # Someone else's bookmark is no duplicate, and an edit keeping its own address still saves.
+        Bookmark.objects.create(owner=self.lukas, title="Shop", url="https://shop.example")
+        self.client.post(
+            "/tools/bookmarks/",
+            {"form_name": "bookmark_add", "title": "Shop", "url": "https://shop.example", "tags": ""},
+        )
+        self.client.post(
+            "/tools/bookmarks/",
+            {
+                "form_name": "bookmark_edit",
+                "bookmark_id": other.pk,
+                "title": "Post",
+                "url": "https://mail.example",
+            },
+        )
+        other.refresh_from_db()
+        self.assertEqual(other.title, "Post")
+        self.assertEqual(Bookmark.objects.filter(owner=self.mira).count(), 3)
+
+    def test_deleting_all_unreachable_bookmarks_keeps_the_rest(self):
+        from django.utils import timezone
+
+        broken = Bookmark.objects.create(
+            owner=self.mira, title="Alt", url="https://alt.example", unreachable_since=timezone.now()
+        )
+        working = Bookmark.objects.create(owner=self.mira, title="Gut", url="https://gut.example")
+        foreign = Bookmark.objects.create(
+            owner=self.lukas, title="Fremd", url="https://fremd.example", unreachable_since=timezone.now()
+        )
+        page = self.client.get("/tools/bookmarks/", {"broken": "1"})
+        self.assertContains(page, "Alle 1 nicht erreichbaren löschen")
+        response = self.client.post(
+            "/tools/bookmarks/?broken=1", {"form_name": "bookmark_delete_broken"}, follow=True
+        )
+        self.assertContains(response, "1 nicht erreichbare Lesezeichen gelöscht.")
+        self.assertFalse(Bookmark.objects.filter(pk=broken.pk).exists())
+        self.assertTrue(Bookmark.objects.filter(pk__in=[working.pk, foreign.pk]).count() == 2)
+
+    def test_dashboard_lists_saved_searches(self):
+        from app.models import SavedSearch
+
+        empty = self.client.get("/home/")
+        self.assertContains(empty, "Speichere auf der Suchseite eine Suche")
+        SavedSearch.objects.create(owner=self.mira, query="kaffee", area="bookmarks")
+        SavedSearch.objects.create(owner=self.lukas, query="geheim")
+        page = self.client.get("/home/")
+        self.assertEqual(
+            [item["url"] for item in page.context["dashboard_saved_searches"]],
+            ["/search/?q=kaffee&in=bookmarks"],
+        )
+        self.assertContains(page, "in Lesezeichen")
+        self.assertNotContains(page, "geheim")

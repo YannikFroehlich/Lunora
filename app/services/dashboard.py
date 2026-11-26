@@ -162,6 +162,14 @@ DASHBOARD_WIDGETS = (
         class_name="countdown-panel",
         default_size="full",
     ),
+    # A whole-width strip of chips, so the default layout keeps whole rows.
+    DashboardWidget(
+        id="saved_searches",
+        label="Gespeicherte Suchen",
+        template="app/partials/dashboard_saved_searches.html",
+        class_name="saved-searches-panel",
+        default_size="full",
+    ),
     # Full width like the countdown, so the default layout keeps whole rows.
     DashboardWidget(
         id="activity",
@@ -354,6 +362,7 @@ def dashboard_presets():
                     "meal_plan",
                     "expenses",
                     "countdown",
+                    "saved_searches",
                     "activity",
                 ],
                 {
@@ -382,6 +391,7 @@ def dashboard_presets():
                     "meal_plan",
                     "expenses",
                     "countdown",
+                    "saved_searches",
                     "activity",
                 ],
                 {

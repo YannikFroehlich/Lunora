@@ -1009,6 +1009,23 @@
   min-width: 304px;
 }
 
+.weekly-summary-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--glass-border-soft);
+}
+
+.weekly-summary-preview p {
+  flex: 1 1 260px;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
 /* Seven labelled tabs need about 900 px; below that they scroll sideways instead of overflowing. */
 @media (max-width: 920px) {
   .settings-section-tabs {

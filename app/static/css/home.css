@@ -786,6 +786,39 @@
 }
 
 /* Countdown */
+.saved-search-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.saved-search-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  text-decoration: none;
+  background: var(--surface-control);
+  border-radius: var(--radius-pill);
+}
+
+.saved-search-chip:hover {
+  background: var(--surface-control-hover);
+}
+
+.saved-search-chip i {
+  color: var(--widget-tone-strong);
+}
+
+.saved-search-chip small {
+  color: var(--color-muted);
+}
+
 .countdown-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));

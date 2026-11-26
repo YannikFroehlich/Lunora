@@ -39,6 +39,7 @@ from app.services.notification_preferences import (
     notification_preference_map,
 )
 from app.services.system_settings import feature_enabled
+from app.services.throttle import count_hit
 from app.services.time_tracking import time_report
 from app.services.user_preferences import format_user_date, format_user_datetime, localtime_for_user
 from app.services.weather_service import get_weather_alert_for_location, weather_location_to_dict
@@ -1094,6 +1095,29 @@ def send_weekly_summaries(*, now=None):
         sent += 1
 
     return {"sent": sent, "failed": failed, "skipped": skipped}
+
+
+WEEKLY_PREVIEWS_PER_HOUR = 3
+
+
+def send_weekly_summary_preview(user, *, now=None):
+    """Mails this week's summary to the user right away, outside the Monday schedule and without a
+    WeeklySummaryDelivery row. Returns an error message, or "" when the mail went out."""
+    if not user.email:
+        return "Dein Konto hat keine E-Mail-Adresse."
+    if count_hit(f"weekly-summary-preview:{user.pk}", 3600) > WEEKLY_PREVIEWS_PER_HOUR:
+        return "Du hast die Vorschau gerade schon mehrmals angefordert. Versuche es später noch einmal."
+    try:
+        send_mail(
+            subject="Deine Lunora-Wochenübersicht (Vorschau)",
+            message=_weekly_summary_text(user, now or timezone.now()),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+        )
+    except Exception:
+        logger.exception("Weekly summary preview failed for user %s", user.pk)
+        return "Die E-Mail konnte nicht gesendet werden."
+    return ""
 
 
 def _display_name(user):

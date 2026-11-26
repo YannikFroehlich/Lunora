@@ -353,6 +353,13 @@
                     Benachrichtigungen speichern
                 </button>
             </form>
+            <form class="weekly-summary-preview" method="post">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="weekly_summary_preview">
+                <input type="hidden" name="return_to" value="{{ return_to }}">
+                <p>Die Wochenübersicht kommt montags per E-Mail. Hier kannst du dir die aktuelle schon vorab schicken.</p>
+                <button class="ghost-button" type="submit"><i class="fa-regular fa-envelope" aria-hidden="true"></i> Wochenübersicht jetzt senden</button>
+            </form>
             </section>
         </div>
 

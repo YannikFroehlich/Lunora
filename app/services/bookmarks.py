@@ -135,12 +135,24 @@ def fetch_page_preview(user, url):
     return parse_page_preview(page)
 
 
+def find_duplicate(user, url, *, exclude_id=None):
+    """The user's bookmark with the same address, ignoring a trailing slash, or None."""
+    base = url.rstrip("/")
+    matches = Bookmark.objects.filter(owner=user, url__in=[base, base + "/"])
+    if exclude_id is not None:
+        matches = matches.exclude(pk=exclude_id)
+    return matches.first()
+
+
 def add_bookmark(user, form):
     """Saves a valid BookmarkForm for `user`, filling a missing title and the description from the
     page. Returns (bookmark, None) or (None, error message)."""
     if Bookmark.objects.filter(owner=user).count() >= MAX_BOOKMARKS:
         return None, f"Du kannst höchstens {MAX_BOOKMARKS} Lesezeichen anlegen."
     bookmark = form.save(commit=False)
+    existing = find_duplicate(user, bookmark.url)
+    if existing is not None:
+        return None, f"Diese Adresse ist schon als „{existing.title}“ gespeichert."
     bookmark.owner = user
     preview = fetch_page_preview(user, bookmark.url)
     bookmark.title = bookmark.title or preview.get("title") or host_of(bookmark.url)[:80]

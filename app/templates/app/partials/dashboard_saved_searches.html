@@ -1,0 +1,11 @@
+{% url 'global_search' as search_url %}
+{% include "app/partials/dashboard_widget_head.html" with icon="fa-solid fa-magnifying-glass" title="Gespeicherte Suchen" link_url=search_url link_label="Zur Suche" %}
+{% if dashboard_saved_searches %}
+<ul class="saved-search-chips">
+    {% for item in dashboard_saved_searches %}
+    <li><a class="saved-search-chip" href="{{ item.url }}"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> {{ item.query }}{% if item.area_label %} <small>in {{ item.area_label }}</small>{% endif %}</a></li>
+    {% endfor %}
+</ul>
+{% else %}
+<p class="widget-empty"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> Speichere auf der Suchseite eine Suche, die du oft brauchst; sie erscheint dann hier.</p>
+{% endif %}
