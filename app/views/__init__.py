@@ -83,6 +83,7 @@ from .notification_views import (
     web_push_test,
 )
 from .pwa_views import offline, service_worker, share_note, share_target
+from .retro_views import retro_board, retro_boards, retro_join
 from .search_views import global_search, quick_search, saved_searches
 from .tasks_views import task_time_report, tasks
 from .tools_views import (
@@ -219,6 +220,9 @@ __all__ = [
     "whiteboard_sync_api",
     "kanban_boards",
     "kanban_board",
+    "retro_boards",
+    "retro_board",
+    "retro_join",
     "wish_lists",
     "wish_list_detail",
     "wish_item_image",

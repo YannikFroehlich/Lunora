@@ -1,0 +1,97 @@
+{# One top-level card (with its stacked group) on the retro board. #}
+<article class="retro-card{% if card.hidden %} is-hidden{% endif %}{% if card.children %} is-group{% endif %}{% if card.own %} is-own{% endif %}" id="retro-card-{{ card.id }}" data-retro-card="{{ card.id }}"{% if board.phase == 'group' %} draggable="true" tabindex="0"{% endif %}>
+    {% if card.hidden %}
+    <p class="retro-card-covered"><i class="fa-solid fa-eye-slash" aria-hidden="true"></i> verdeckt</p>
+    {% elif is_owner and board.phase == 'discuss' %}
+    <form method="post" class="retro-present-form">
+        {% csrf_token %}
+        <input type="hidden" name="form_name" value="retro_present">
+        <input type="hidden" name="card_id" value="{{ card.id }}">
+        <button type="submit" class="retro-card-text retro-card-present" title="Allen zeigen">{{ card.text }}</button>
+    </form>
+    {% else %}
+    <p class="retro-card-text">{{ card.text }}</p>
+    {% endif %}
+
+    {% for child in card.children %}
+    <div class="retro-card-child">
+        <p class="retro-card-text">{{ child.text }}</p>
+        {% if board.phase == 'group' %}
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="retro_ungroup">
+            <input type="hidden" name="card_id" value="{{ child.id }}">
+            <button type="submit" class="icon-button retro-mini-button" title="Aus der Gruppe lösen" aria-label="„{{ child.text|truncatechars:30 }}“ aus der Gruppe lösen"><i class="fa-solid fa-link-slash" aria-hidden="true"></i></button>
+        </form>
+        {% endif %}
+    </div>
+    {% endfor %}
+
+    {% if not card.hidden %}
+    <footer class="retro-card-foot">
+        {% if card.author %}<span class="retro-card-author">{{ card.author }}</span>{% endif %}
+
+        {% if board.phase == 'collect' and card.can_change %}
+        <details class="retro-card-edit">
+            <summary class="icon-button retro-mini-button" title="Bearbeiten"><i class="fa-solid fa-pen" aria-hidden="true"></i><span class="visually-hidden">Bearbeiten</span></summary>
+            <form method="post" class="retro-edit-form">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="retro_card_edit">
+                <input type="hidden" name="card_id" value="{{ card.id }}">
+                <textarea name="text" rows="3" maxlength="{{ card_max_length }}" aria-label="Kartentext" required>{{ card.text }}</textarea>
+                <button type="submit" class="primary-button">Speichern</button>
+            </form>
+        </details>
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="retro_card_delete">
+            <input type="hidden" name="card_id" value="{{ card.id }}">
+            <button type="submit" class="icon-button retro-mini-button" title="Löschen" aria-label="Karte löschen"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
+        </form>
+        {% endif %}
+
+        {% if board.phase == 'group' %}
+        {% if card.children %}
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="retro_ungroup">
+            <input type="hidden" name="card_id" value="{{ card.id }}">
+            <button type="submit" class="icon-button retro-mini-button" title="Diese Karte aus der Gruppe lösen" aria-label="Diese Karte aus der Gruppe lösen"><i class="fa-solid fa-link-slash" aria-hidden="true"></i></button>
+        </form>
+        {% endif %}
+        <form method="post" class="retro-group-form">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="retro_group">
+            <input type="hidden" name="card_id" value="{{ card.id }}">
+            <select name="target_id" data-auto-submit aria-label="Gruppieren mit …">
+                <option value="">Gruppieren mit …</option>
+                {% for column in columns %}{% for other in column.cards %}{% if other.id != card.id %}
+                <option value="{{ other.id }}">{{ other.text|truncatechars:40 }}</option>
+                {% endif %}{% endfor %}{% endfor %}
+            </select>
+        </form>
+        {% endif %}
+
+        {% if board.phase == 'vote' %}
+        <div class="retro-vote" role="group" aria-label="Stimmen für diese Karte">
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="retro_vote">
+                <input type="hidden" name="card_id" value="{{ card.id }}">
+                <input type="hidden" name="direction" value="down">
+                <button type="submit" class="icon-button retro-mini-button" aria-label="Stimme zurücknehmen"{% if not card.my_votes %} disabled{% endif %}><i class="fa-solid fa-minus" aria-hidden="true"></i></button>
+            </form>
+            <span class="retro-vote-count" title="Deine Stimmen{% if card.votes is not None %} / alle{% endif %}">{{ card.my_votes }}{% if card.votes is not None %}<small> / {{ card.votes }}</small>{% endif %}</span>
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="retro_vote">
+                <input type="hidden" name="card_id" value="{{ card.id }}">
+                <button type="submit" class="icon-button retro-mini-button" aria-label="Stimme geben"{% if not votes_left or card.my_votes >= board.votes_per_card %} disabled{% endif %}><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
+            </form>
+        </div>
+        {% elif card.votes is not None and board.phase != 'collect' and board.phase != 'group' %}
+        <span class="retro-vote-total" title="Stimmen"><i class="fa-solid fa-circle-dot" aria-hidden="true"></i> {{ card.votes }}</span>
+        {% endif %}
+    </footer>
+    {% endif %}
+</article>

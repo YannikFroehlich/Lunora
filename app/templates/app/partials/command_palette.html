@@ -97,6 +97,9 @@
             <a class="command-palette-item" id="command-kanban" role="option" href="{% url 'kanban_boards' %}" data-command-item data-keywords="board spalten swimlanes karten projekt planung scrum">
                 <i class="fa-solid fa-table-columns" aria-hidden="true"></i><span>Kanban-Boards</span><small>Werkzeug</small>
             </a>
+            <a class="command-palette-item" id="command-retro" role="option" href="{% url 'retro_boards' %}" data-command-item data-keywords="retrospektive sprint team feedback agile abstimmen">
+                <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i><span>Retrospektiven</span><small>Werkzeug</small>
+            </a>
             {% endif %}
             <a class="command-palette-item" id="command-settings-appearance" role="option" href="{{ settings_url }}#settings-appearance" data-command-item data-keywords="design theme dunkel hell farbe akzent">
                 <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i><span>Darstellung</span><small>Einstellungen</small>

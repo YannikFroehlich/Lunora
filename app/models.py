@@ -1229,6 +1229,148 @@ class KanbanCard(models.Model):
         return self.title
 
 
+class RetroBoard(models.Model):
+    """A retrospective (app/services/retro.py). Lunora users and guests join through the invite link
+    as ``RetroParticipant`` rows; only the owner moves the phases and changes the settings.
+    ``updated_at`` is bumped by every change, so open boards poll it."""
+
+    PHASE_COLLECT = "collect"
+    PHASE_GROUP = "group"
+    PHASE_VOTE = "vote"
+    PHASE_DISCUSS = "discuss"
+    PHASE_DONE = "done"
+    PHASE_CHOICES = [
+        (PHASE_COLLECT, "Sammeln"),
+        (PHASE_GROUP, "Gruppieren"),
+        (PHASE_VOTE, "Abstimmen"),
+        (PHASE_DISCUSS, "Besprechen"),
+        (PHASE_DONE, "Abschluss"),
+    ]
+
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="retro_boards")
+    title = models.CharField(max_length=120)
+    phase = models.CharField(max_length=10, choices=PHASE_CHOICES, default=PHASE_COLLECT)
+    # Cards one participant may write across all columns; 0 means no limit.
+    max_cards = models.PositiveSmallIntegerField(default=5)
+    votes_per_person = models.PositiveSmallIntegerField(default=5)
+    votes_per_card = models.PositiveSmallIntegerField(default=3)
+    timer_minutes = models.PositiveSmallIntegerField(default=5)
+    timer_ends_at = models.DateTimeField(blank=True, null=True)
+    anonymous = models.BooleanField(default=True)
+    # While collecting, other people's cards show as covered placeholders.
+    hide_cards = models.BooleanField(default=True)
+    # Until the discussion, only one's own votes are shown.
+    hide_votes = models.BooleanField(default=True)
+    # The card the owner shows everyone as a popup while discussing.
+    presented_card = models.ForeignKey(
+        "RetroCard", on_delete=models.SET_NULL, blank=True, null=True, related_name="+"
+    )
+    # Credential of the invite link; never logged, renewed by the owner.
+    join_token = models.CharField(max_length=64, unique=True)
+    join_enabled = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at", "-id"]
+
+    def __str__(self):
+        return self.title
+
+
+class RetroParticipant(models.Model):
+    """A Lunora user (``user``) or a guest known only by ``guest_name`` and their browser session."""
+
+    board = models.ForeignKey(RetroBoard, on_delete=models.CASCADE, related_name="participants")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        blank=True,
+        null=True,
+        related_name="retro_participations",
+    )
+    guest_name = models.CharField(max_length=48, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["board", "user"],
+                condition=models.Q(user__isnull=False),
+                name="unique_retro_participant_user",
+            )
+        ]
+
+    def __str__(self):
+        return self.guest_name or str(self.user)
+
+
+class RetroColumn(models.Model):
+    TONE_CHOICES = [
+        ("green", "Grün"),
+        ("red", "Rot"),
+        ("sand", "Sand"),
+        ("blue", "Blau"),
+        ("violet", "Violett"),
+    ]
+
+    board = models.ForeignKey(RetroBoard, on_delete=models.CASCADE, related_name="columns")
+    title = models.CharField(max_length=60)
+    tone = models.CharField(max_length=10, choices=TONE_CHOICES, default="sand")
+    position = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["position", "id"]
+
+    def __str__(self):
+        return self.title
+
+
+class RetroCard(models.Model):
+    board = models.ForeignKey(RetroBoard, on_delete=models.CASCADE, related_name="cards")
+    column = models.ForeignKey(RetroColumn, on_delete=models.CASCADE, related_name="cards")
+    author = models.ForeignKey(
+        RetroParticipant, on_delete=models.SET_NULL, blank=True, null=True, related_name="cards"
+    )
+    text = models.CharField(max_length=500)
+    # Set when the card is stacked under another one; groups are one level deep.
+    group = models.ForeignKey(
+        "self", on_delete=models.SET_NULL, blank=True, null=True, related_name="grouped_cards"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return self.text[:40]
+
+
+class RetroVote(models.Model):
+    """One dot; a participant may put several on the same card up to ``votes_per_card``."""
+
+    card = models.ForeignKey(RetroCard, on_delete=models.CASCADE, related_name="votes")
+    participant = models.ForeignKey(RetroParticipant, on_delete=models.CASCADE, related_name="votes")
+
+
+class RetroAction(models.Model):
+    board = models.ForeignKey(RetroBoard, on_delete=models.CASCADE, related_name="actions")
+    text = models.CharField(max_length=300)
+    assignee = models.ForeignKey(
+        RetroParticipant, on_delete=models.SET_NULL, blank=True, null=True, related_name="actions"
+    )
+    # The task a Lunora user made from it ("Als Aufgabe übernehmen").
+    task = models.ForeignKey("Task", on_delete=models.SET_NULL, blank=True, null=True, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return self.text[:40]
+
+
 VOCABULARY_LANGUAGE_CHOICES = [
     ("de", "Deutsch"),
     ("en", "Englisch"),

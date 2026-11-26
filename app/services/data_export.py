@@ -32,6 +32,7 @@ from app.models import (
     NoteTag,
     NoteTemplate,
     Recipe,
+    RetroBoard,
     SavedSearch,
     ScheduledChatMessage,
     ShoppingItem,
@@ -53,6 +54,7 @@ from app.models import (
 )
 from app.services.note_markdown import note_markdown_filename, render_note_markdown
 from app.services.notes import display_name
+from app.services.retro import participant_name, ranked_topics
 
 README = """Lunora – Datenexport
 
@@ -71,6 +73,7 @@ Dieses Archiv enthält alle Daten, die du in Lunora angelegt hast:
 - whiteboards/*-bilder/: die Bilder darauf, benannt nach der file-Angabe im JSON
 - whiteboard-kommentare.json: deine Kommentare auf Whiteboards
 - kanban.json: deine Kanban-Boards mit Spalten, Swimlanes und Karten
+- retros.json: deine Retrospektiven mit Karten, Stimmen und Maßnahmen (ohne Einladungslink)
 - urlaub.json: Urlaubsjahre, Urlaube und eigene Feiertage
 - gewohnheiten.json: Gewohnheiten mit allen abgehakten Tagen
 - lesezeichen.json: Lesezeichen mit Beschreibung und Tags
@@ -279,6 +282,7 @@ def write_user_export(user, fileobj):
                 extension = Path(image.file.name).suffix
                 _add_file(archive, f"whiteboards/{board.pk}-bilder/{image.file_id}{extension}", image.file)
         _add_json(archive, "kanban.json", _kanban_boards(user))
+        _add_json(archive, "retros.json", _retros(user))
         _add_json(
             archive,
             "whiteboard-kommentare.json",
@@ -287,6 +291,40 @@ def write_user_export(user, fileobj):
                 for comment in WhiteboardComment.objects.filter(author=user).select_related("board")
             ],
         )
+
+
+def _retros(user):
+    """Own retros; the invite token stays out, authors and assignees appear by name only."""
+    retros = []
+    for board in RetroBoard.objects.filter(owner=user).prefetch_related(
+        "columns", "actions__assignee__user__profile"
+    ):
+        columns = {column.pk: column.title for column in board.columns.all()}
+        retros.append(
+            {
+                "title": board.title,
+                "phase": board.get_phase_display(),
+                "created_at": board.created_at,
+                "columns": list(columns.values()),
+                "topics": [
+                    {
+                        "column": columns[topic["column_id"]],
+                        "text": topic["text"],
+                        "grouped": topic["children"],
+                        "votes": topic["votes"],
+                    }
+                    for topic in ranked_topics(board)
+                ],
+                "actions": [
+                    {
+                        "text": action.text,
+                        "assignee": participant_name(action.assignee) if action.assignee else "",
+                    }
+                    for action in board.actions.all()
+                ],
+            }
+        )
+    return retros
 
 
 def _kanban_boards(user):

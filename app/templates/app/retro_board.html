@@ -1,0 +1,245 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}{{ board.title }} | Retro | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="retro-shell" aria-label="Retro">
+<div class="soft-contents" id="retro-board" data-soft-region data-retro-board data-version="{{ version }}" data-poll-url="{% url 'retro_board' board.id %}?version=1">
+    <header class="retro-bar glass-panel">
+        <div class="retro-bar-title">
+            {% if not is_guest %}<a class="icon-button" href="{% url 'retro_boards' %}" title="Alle Retros" aria-label="Alle Retros"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i></a>{% endif %}
+            <h1>{{ board.title }}</h1>
+        </div>
+
+        <ol class="retro-phases" aria-label="Phasen">
+            {% for phase in phases %}
+            <li class="retro-phase{% if phase.current %} is-current{% elif phase.done %} is-done{% endif %}"{% if phase.current %} aria-current="step"{% endif %}>
+                {% if is_owner and not phase.current %}
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="retro_phase">
+                    <input type="hidden" name="phase" value="{{ phase.key }}">
+                    <button type="submit">{{ phase.label }}</button>
+                </form>
+                {% else %}<span>{{ phase.label }}</span>{% endif %}
+            </li>
+            {% endfor %}
+        </ol>
+
+        <div class="retro-bar-tools">
+            {% if board.phase == 'collect' and card_slots %}
+            <span class="retro-limit" title="Noch {{ cards_left }} von {{ board.max_cards }} Karten">
+                {% for used in card_slots %}<i class="fa-{% if used %}regular{% else %}solid{% endif %} fa-note-sticky" aria-hidden="true"></i>{% endfor %}
+                <span class="visually-hidden">Noch {{ cards_left }} von {{ board.max_cards }} Karten</span>
+            </span>
+            {% elif board.phase == 'vote' %}
+            <span class="retro-limit" title="Noch {{ votes_left }} von {{ board.votes_per_person }} Stimmen · höchstens {{ board.votes_per_card }} pro Karte">
+                {% for used in vote_slots %}<i class="fa-{% if used %}regular{% else %}solid{% endif %} fa-circle" aria-hidden="true"></i>{% endfor %}
+                <span class="visually-hidden">Noch {{ votes_left }} von {{ board.votes_per_person }} Stimmen</span>
+            </span>
+            {% endif %}
+
+            {% if board.timer_ends_at %}
+            <span class="retro-timer" data-retro-timer data-ends-at="{{ board.timer_ends_at.isoformat }}" title="Timer"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i> <span data-retro-timer-text>–:–</span></span>
+            {% endif %}
+            {% if is_owner %}
+            <form method="post">
+                {% csrf_token %}
+                {% if board.timer_ends_at %}
+                <input type="hidden" name="form_name" value="retro_timer_stop">
+                <button type="submit" class="icon-button" title="Timer stoppen" aria-label="Timer stoppen"><i class="fa-solid fa-stop" aria-hidden="true"></i></button>
+                {% else %}
+                <input type="hidden" name="form_name" value="retro_timer_start">
+                <button type="submit" class="icon-button" title="Timer starten ({{ board.timer_minutes }} min)" aria-label="Timer starten, {{ board.timer_minutes }} Minuten"><i class="fa-solid fa-hourglass-start" aria-hidden="true"></i></button>
+                {% endif %}
+            </form>
+            {% endif %}
+
+            <ul class="retro-people" aria-label="Teilnehmende">
+                {% for person in participants %}
+                <li class="retro-avatar{% if person.is_guest %} is-guest{% endif %}{% if person.is_me %} is-me{% endif %}" title="{{ person.name }}{% if person.is_guest %} (Gast){% endif %}{% if board.phase == 'collect' %} · {{ person.cards }} Karte(n){% elif board.phase == 'vote' %} · {{ person.votes }} Stimme(n){% endif %}">
+                    <span aria-hidden="true">{{ person.initials }}</span><span class="visually-hidden">{{ person.name }}{% if person.is_guest %} (Gast){% endif %}</span>
+                </li>
+                {% endfor %}
+            </ul>
+
+            {% if is_owner %}
+            <button type="button" class="icon-button" data-retro-settings-open title="Einstellungen" aria-label="Einstellungen"><i class="fa-solid fa-sliders" aria-hidden="true"></i></button>
+            {% if next_phase %}
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="retro_phase">
+                <input type="hidden" name="phase" value="{{ next_phase }}">
+                <button type="submit" class="primary-button retro-next">Weiter <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>
+            </form>
+            {% endif %}
+            {% endif %}
+        </div>
+    </header>
+
+    {% if board.phase == 'done' %}
+    <div class="retro-done">
+        <section class="glass-panel retro-summary" aria-labelledby="retro-summary-title">
+            <h2 id="retro-summary-title">Zusammenfassung</h2>
+            <dl class="retro-stats">
+                <div><dt>Dabei</dt><dd>{{ participants|length }}</dd></div>
+                <div><dt>Karten</dt><dd>{{ card_count }}</dd></div>
+                <div><dt>Stimmen</dt><dd>{{ vote_count }}</dd></div>
+                <div><dt>Maßnahmen</dt><dd>{{ actions|length }}</dd></div>
+            </dl>
+            {% if top_three %}
+            <h3>Top-Themen</h3>
+            <ol class="retro-top">
+                {% for topic in top_three %}<li><span>{{ topic.text }}</span> <small>{{ topic.votes }} Stimme(n)</small></li>{% endfor %}
+            </ol>
+            {% endif %}
+            {% if is_owner %}
+            <div class="retro-summary-actions">
+                <form method="post" data-no-soft>
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="retro_note">
+                    <button type="submit" class="primary-button"><i class="fa-solid fa-note-sticky" aria-hidden="true"></i> Als Notiz speichern</button>
+                </form>
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="retro_phase">
+                    <input type="hidden" name="phase" value="discuss">
+                    <button type="submit" class="ghost-button"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Retro wieder öffnen</button>
+                </form>
+            </div>
+            {% endif %}
+        </section>
+        {% include 'app/partials/retro_actions.html' %}
+    </div>
+    {% else %}
+    <div class="retro-body{% if board.phase == 'discuss' %} has-side{% endif %}">
+        <div class="retro-columns" style="--retro-columns: {{ columns|length }}">
+            {% for column in columns %}
+            <section class="retro-column glass-panel tone-{{ column.tone }}" aria-labelledby="retro-column-{{ column.id }}-title">
+                <header class="retro-column-head">
+                    <h2 id="retro-column-{{ column.id }}-title">{{ column.title }}</h2>
+                    <span class="retro-column-count">{{ column.cards|length }}</span>
+                </header>
+                {% if board.phase == 'collect' and cards_left != 0 %}
+                <form method="post" class="retro-add-form" data-retro-add>
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="retro_card_add">
+                    <input type="hidden" name="column_id" value="{{ column.id }}">
+                    <textarea name="text" rows="2" maxlength="{{ card_max_length }}" placeholder="Neue Karte …" aria-label="Neue Karte in „{{ column.title }}“" required></textarea>
+                    <button type="submit" class="icon-button" title="Hinzufügen (Strg+Enter)" aria-label="Karte hinzufügen"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
+                </form>
+                {% endif %}
+                <div class="retro-column-cards">
+                    {% for card in column.cards %}
+                    {% include 'app/partials/retro_card.html' %}
+                    {% empty %}
+                    <p class="retro-column-empty">Noch keine Karten</p>
+                    {% endfor %}
+                </div>
+            </section>
+            {% endfor %}
+        </div>
+        {% if board.phase == 'discuss' %}
+        {% include 'app/partials/retro_actions.html' %}
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if presented %}
+    <dialog class="retro-present" data-retro-present aria-labelledby="retro-present-text">
+        <div class="glass-panel retro-present-card tone-{{ presented.column_tone }}">
+            <header>
+                <span class="retro-live">LIVE</span>
+                <span>{{ presented.column }} · Thema {{ presented.number }} von {{ presented.total }}</span>
+                {% if presented.votes is not None %}<span class="retro-vote-total"><i class="fa-solid fa-circle-dot" aria-hidden="true"></i> {{ presented.votes }}</span>{% endif %}
+            </header>
+            <p class="retro-present-text" id="retro-present-text">{{ presented.text }}</p>
+            {% if presented.children %}
+            <ul class="retro-present-children">{% for child in presented.children %}<li>{{ child.text }}</li>{% endfor %}</ul>
+            {% endif %}
+            {% if is_owner %}
+            <footer>
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="retro_present">
+                    <input type="hidden" name="card_id" value="{{ presented.previous_id|default_if_none:'' }}">
+                    <button type="submit" class="ghost-button"{% if not presented.previous_id %} disabled{% endif %}><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Zurück</button>
+                </form>
+                <form method="post" data-retro-present-close>
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="retro_present">
+                    <input type="hidden" name="card_id" value="">
+                    <button type="submit" class="ghost-button">Beenden</button>
+                </form>
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="retro_present">
+                    <input type="hidden" name="card_id" value="{{ presented.next_id|default_if_none:'' }}">
+                    <button type="submit" class="primary-button"{% if not presented.next_id %} disabled{% endif %}>Weiter <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>
+                </form>
+            </footer>
+            {% endif %}
+        </div>
+    </dialog>
+    {% endif %}
+</div>
+</section>
+
+{% if is_owner %}
+<dialog class="retro-settings" id="retro-settings-dialog" aria-labelledby="retro-settings-title">
+    <div class="glass-panel retro-settings-panel">
+        <header class="retro-settings-head">
+            <h2 id="retro-settings-title">Einstellungen</h2>
+            <button type="button" class="icon-button" data-retro-settings-close aria-label="Schließen"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+        </header>
+        <form method="post" class="retro-settings-form">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="retro_settings">
+            <label class="vocab-field"><span>{{ settings_form.title.label }}</span>{{ settings_form.title }}</label>
+            <fieldset class="retro-settings-limits">
+                <legend>Grenzen <small>(Karten 0 = unbegrenzt)</small></legend>
+                <label class="vocab-field"><span>{{ settings_form.max_cards.label }}</span>{{ settings_form.max_cards }}</label>
+                <label class="vocab-field"><span>{{ settings_form.votes_per_person.label }}</span>{{ settings_form.votes_per_person }}</label>
+                <label class="vocab-field"><span>{{ settings_form.votes_per_card.label }}</span>{{ settings_form.votes_per_card }}</label>
+                <label class="vocab-field"><span>{{ settings_form.timer_minutes.label }}</span>{{ settings_form.timer_minutes }}</label>
+            </fieldset>
+            <label class="retro-switch-row"><span>{{ settings_form.anonymous.label }}</span><span class="switch">{{ settings_form.anonymous }}</span></label>
+            <label class="retro-switch-row"><span>{{ settings_form.hide_cards.label }}</span><span class="switch">{{ settings_form.hide_cards }}</span></label>
+            <label class="retro-switch-row"><span>{{ settings_form.hide_votes.label }}</span><span class="switch">{{ settings_form.hide_votes }}</span></label>
+            <label class="retro-switch-row"><span>{{ settings_form.join_enabled.label }}</span><span class="switch">{{ settings_form.join_enabled }}</span></label>
+            <div class="retro-settings-actions">
+                <button type="submit" class="primary-button">Speichern</button>
+            </div>
+        </form>
+        <section class="retro-invite" aria-labelledby="retro-invite-title">
+            <h3 id="retro-invite-title">Einladungslink</h3>
+            <div class="retro-invite-row">
+                <input type="text" readonly value="{{ join_url }}" aria-label="Einladungslink" data-retro-invite-url>
+                <button type="button" class="ghost-button" data-retro-copy><i class="fa-solid fa-copy" aria-hidden="true"></i> <span data-retro-copy-label>Kopieren</span></button>
+            </div>
+            <div class="retro-invite-actions">
+                <form method="post" data-no-soft data-confirm="Neuen Link erzeugen? Der alte gilt dann nicht mehr.">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="retro_link_renew">
+                    <button type="submit" class="ghost-button"><i class="fa-solid fa-rotate" aria-hidden="true"></i> Erneuern</button>
+                </form>
+                <form method="post" data-no-soft data-confirm="Retro mit allen Karten löschen?">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="retro_delete">
+                    <button type="submit" class="ghost-button retro-danger"><i class="fa-solid fa-trash" aria-hidden="true"></i> Retro löschen</button>
+                </form>
+            </div>
+        </section>
+    </div>
+</dialog>
+{% endif %}
+{% endblock %}
+
+{% block page_js %}
+<script src="{% versioned_static 'js/retro.js' %}"></script>
+{% endblock %}

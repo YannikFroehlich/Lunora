@@ -54,6 +54,7 @@ from app.services.kanban import accessible_boards
 from app.services.message_queries import last_messages_by_conversation, unread_total_for_user
 from app.services.notes import accessible_notes
 from app.services.notifications import dashboard_latest_notifications
+from app.services.retro import accessible_retros
 from app.services.saved_searches import saved_search_items
 from app.services.shopping import group_items
 from app.services.system_settings import feature_enabled, feature_flags
@@ -528,6 +529,13 @@ TOOLS = (
         "url_name": "kanban_boards",
     },
     {
+        "id": "retro",
+        "title": "Retrospektive",
+        "description": "Sammeln, gruppieren, abstimmen, besprechen – mit dem Team, Gäste ohne Konto per Link.",
+        "icon": "fa-clock-rotate-left",
+        "url_name": "retro_boards",
+    },
+    {
         "id": "vocabulary",
         "title": "Vokabeltrainer",
         "description": "Vokabellisten anlegen, per Karteikarte, Eintippen oder Multiple Choice abfragen – mit Lernkartei.",
@@ -541,6 +549,7 @@ def get_tools_context(user):
     diagram_count = UmlDiagram.objects.filter(owner=user).count()
     whiteboard_count = accessible_whiteboards(user).count()
     kanban_count = accessible_boards(user).count()
+    retro_count = accessible_retros(user).count()
     vocabulary_count = VocabularyList.objects.filter(owner=user).count()
     due_cards = (
         VocabularyCard.objects.filter(vocabulary_list__owner=user).filter(due_filter(timezone.now())).count()
@@ -562,6 +571,7 @@ def get_tools_context(user):
         "uml": f"{diagram_count} Diagramm(e)" if diagram_count else "Noch keine Diagramme",
         "whiteboard": f"{whiteboard_count} Whiteboard(s)" if whiteboard_count else "Noch keine Whiteboards",
         "kanban": f"{kanban_count} Board(s)" if kanban_count else "Noch keine Boards",
+        "retro": f"{retro_count} Retro(s)" if retro_count else "Noch keine Retros",
         "vocabulary": (
             f"{vocabulary_count} Liste(n) · {due_cards} fällig"
             if vocabulary_count

@@ -7,6 +7,7 @@ from django.contrib.auth.forms import AuthenticationForm, UserCreationForm, User
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.core.files.storage import default_storage
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -31,6 +32,7 @@ from app.models import (
     NotificationPreference,
     Profile,
     Recipe,
+    RetroBoard,
     ShoppingItem,
     SystemSettings,
     Task,
@@ -1983,3 +1985,52 @@ class CalendarEventEditForm(_CalendarEventDateTimeForm):
         # After the attendee rows: removed invitees lose their reminder, the rest move with the event.
         sync_event_reminders(targets)
         return event
+
+
+class RetroSettingsForm(forms.ModelForm):
+    """The owner's settings dialog on a retro board."""
+
+    class Meta:
+        model = RetroBoard
+        fields = [
+            "title",
+            "max_cards",
+            "votes_per_person",
+            "votes_per_card",
+            "timer_minutes",
+            "anonymous",
+            "hide_cards",
+            "hide_votes",
+            "join_enabled",
+        ]
+        labels = {
+            "title": "Titel",
+            "max_cards": "Karten pro Person",
+            "votes_per_person": "Stimmen pro Person",
+            "votes_per_card": "Stimmen pro Karte",
+            "timer_minutes": "Timer in Minuten",
+            "anonymous": "Anonym",
+            "hide_cards": "Karten verdecken",
+            "hide_votes": "Stimmen verdecken",
+            "join_enabled": "Einladungslink aktiv",
+        }
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("auto_id", "retro_%s")
+        super().__init__(*args, **kwargs)
+        limits = {
+            "max_cards": (0, 50),
+            "votes_per_person": (1, 50),
+            "votes_per_card": (1, 50),
+            "timer_minutes": (1, 60),
+        }
+        for name, (low, high) in limits.items():
+            self.fields[name].validators += [MinValueValidator(low), MaxValueValidator(high)]
+            self.fields[name].widget.attrs.update(min=low, max=high)
+
+    def clean(self):
+        cleaned = super().clean()
+        per_card, per_person = cleaned.get("votes_per_card"), cleaned.get("votes_per_person")
+        if per_card and per_person and per_card > per_person:
+            cleaned["votes_per_card"] = per_person
+        return cleaned
