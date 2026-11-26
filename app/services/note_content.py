@@ -35,6 +35,8 @@ ALLOWED_NODE_TYPES = {
     "mathInline",
     "mathBlock",
     "formField",
+    "callout",
+    "details",
 }
 ALLOWED_MARK_TYPES = {
     "bold",
@@ -88,6 +90,17 @@ MAX_LATEX_LENGTH = 4000
 MAX_FORM_FIELD_VALUE = 2000
 MAX_FORM_FIELD_PLACEHOLDER = 200
 FORM_FIELD_BLANK = "__________"
+# Hint boxes ("callout", a colored box around blocks) and collapsible sections ("details", blocks
+# under a one-line summary that the reader opens and closes).
+CALLOUT_LABELS = {"info": "Info", "tip": "Tipp", "warning": "Warnung"}
+MAX_DETAILS_SUMMARY = 200
+DETAILS_FALLBACK = "Details"
+# Voice notes are ordinary file attachments; these extensions get a player instead of a file chip.
+AUDIO_NAME_RE = re.compile(r"\.(?:webm|ogg|oga|m4a|mp3)$", re.IGNORECASE)
+
+
+def is_audio_name(name):
+    return bool(AUDIO_NAME_RE.search(str(name or "")))
 
 
 EMPTY_DOCUMENT = {"type": "doc", "content": [{"type": "paragraph"}]}
@@ -254,6 +267,8 @@ NODE_ATTRIBUTES = {
     "mathInline": {"latex"},
     "mathBlock": {"latex"},
     "formField": {"placeholder", "value"},
+    "callout": {"tone"},
+    "details": {"summary", "open"},
 }
 
 
@@ -349,6 +364,15 @@ def _validate_node_attrs(node_type, attrs, state):
         if not isinstance(placeholder, str) or len(placeholder) > MAX_FORM_FIELD_PLACEHOLDER:
             raise ValidationError("Der Hinweistext eines Eingabefelds ist ungültig.")
         state["characters"] += len(value)
+    if node_type == "callout" and attrs.get("tone", "info") not in CALLOUT_LABELS:
+        raise ValidationError("Die Art des Hinweises ist ungültig.")
+    if node_type == "details":
+        summary = attrs.get("summary", "")
+        if not isinstance(summary, str) or len(summary) > MAX_DETAILS_SUMMARY:
+            raise ValidationError("Die Überschrift eines Aufklapp-Abschnitts ist ungültig.")
+        if not isinstance(attrs.get("open", True), bool):
+            raise ValidationError("Der Zustand eines Aufklapp-Abschnitts ist ungültig.")
+        state["characters"] += len(summary)
 
 
 def _validate_mark(mark, state):
@@ -554,6 +578,10 @@ def document_plain_text(document):
             parts.append(f"[[{(node.get('attrs') or {}).get('label', '')}]]")
         elif node.get("type") == "formField":
             parts.append((node.get("attrs") or {}).get("value", ""))
+        elif node.get("type") == "details":
+            if parts and not parts[-1].endswith("\n"):
+                parts.append("\n")
+            parts.append(f"{(node.get('attrs') or {}).get('summary', '')}\n")
         elif node.get("type") in {"hardBreak", "paragraph", "heading", "listItem", "taskItem", "tableRow"}:
             if parts and not parts[-1].endswith("\n"):
                 parts.append("\n")

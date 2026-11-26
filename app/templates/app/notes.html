@@ -171,11 +171,13 @@
                 <button type="button" data-command="duplicate" aria-label="Duplizieren"><i class="fa-regular fa-copy"></i></button>
                 <button type="button" data-command="saveAsTemplate" aria-label="Als Vorlage speichern"><i class="fa-solid fa-layer-group"></i></button>
                 <button type="button" data-command="present" aria-label="Präsentieren"><i class="fa-solid fa-person-chalkboard"></i></button>
+                <button type="button" data-command="focusMode" aria-label="Fokusmodus" aria-pressed="false"><i class="fa-solid fa-expand"></i></button>
                 {% comment %}A soft region of its own, so setting a reminder in the dialog updates the bell.{% endcomment %}
                 <span class="soft-contents" id="note-reminder-button" data-soft-region>
                     <button type="button" data-command="reminder" aria-label="{% if note_reminder %}Erinnerung am {{ note_reminder.label }}{% else %}Erinnerung{% endif %}" aria-pressed="{{ note_reminder|yesno:'true,false' }}"><i class="fa-{% if note_reminder %}solid{% else %}regular{% endif %} fa-bell"></i></button>
                 </span>
                 {% if feature_flags.tasks %}<button type="button" data-command="checklistTasks" aria-label="Offene Checklistenpunkte als Aufgaben übernehmen"><i class="fa-solid fa-list-check"></i></button>{% endif %}
+                {% if feature_flags.tools %}<button type="button" data-command="flashcards" aria-label="Karteikarten aus „Frage :: Antwort“-Zeilen"><i class="fa-solid fa-clone"></i></button>{% endif %}
                 <button type="button" data-command="exportPdf" aria-label="Als PDF exportieren"><i class="fa-solid fa-file-pdf"></i></button>
                 <button type="button" data-command="exportMarkdown" aria-label="Als Markdown exportieren"><i class="fa-brands fa-markdown"></i></button>
                 <button type="button" data-command="exportWord" aria-label="Als Word-Dokument exportieren"><i class="fa-solid fa-file-word"></i></button>
@@ -257,6 +259,9 @@
                         <button type="button" data-command="codeBlock" aria-label="Codeblock"><i class="fa-solid fa-code"></i></button>
                         <button type="button" data-command="insertMath" aria-label="Formel einfügen"><i class="fa-solid fa-square-root-variable"></i></button>
                         <button type="button" data-command="insertFormField" aria-label="Eingabefeld einfügen"><i class="fa-solid fa-i-cursor"></i></button>
+                        <button type="button" data-command="insertCallout" aria-label="Hinweis-Box"><i class="fa-solid fa-circle-info"></i></button>
+                        <button type="button" data-command="insertDetails" aria-label="Aufklapp-Abschnitt"><i class="fa-solid fa-square-caret-down"></i></button>
+                        <button type="button" data-command="recordVoice" aria-label="Sprachnotiz aufnehmen" aria-pressed="false"><i class="fa-solid fa-microphone"></i></button>
                         <button type="button" data-command="addComment" aria-label="Kommentar zur Auswahl hinzufügen"><i class="fa-solid fa-comment-medical"></i></button>
                         <button type="button" data-table-dialog-open aria-label="Tabelle einfügen" aria-haspopup="true" title="Tabelle einfügen">
                             <i class="fa-solid fa-table-cells"></i>
@@ -371,6 +376,12 @@
             {% endfor %}
         </div>
         {% endif %}
+        <p class="dialog-hint">Eigene Vorlagen dürfen Platzhalter enthalten: <code>{% verbatim %}{{datum}} {{wochentag}} {{uhrzeit}} {{kw}} {{jahr}} {{titel}}{% endverbatim %}</code></p>
+        <p class="dialog-hint">Artikel aus dem Web</p>
+        <div class="note-import-row">
+            <input class="file-input" type="url" name="url" maxlength="500" inputmode="url" placeholder="https://…" form="note-article-form" aria-label="Adresse des Artikels" required>
+            <button class="primary-button" type="submit" form="note-article-form"><i class="fa-solid fa-newspaper" aria-hidden="true"></i> Übernehmen</button>
+        </div>
         <p class="dialog-hint">Word-Dokument importieren</p>
         <div class="note-import-row">
             <input id="note-import-file" class="file-input" type="file" name="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" form="note-import-form" aria-label="Word-Datei (.docx)" required>
@@ -379,6 +390,7 @@
     </form>
     {% comment %}A nested form would be dropped by the parser, so the inputs above point here via form="…".{% endcomment %}
     <form id="note-import-form" method="post" action="{% url 'note_import' %}" enctype="multipart/form-data" hidden>{% csrf_token %}<input type="hidden" name="folder_id" value="" data-note-import-folder></form>
+    <form id="note-article-form" method="post" action="{% url 'note_article_import' %}" hidden>{% csrf_token %}<input type="hidden" name="folder_id" value="" data-note-import-folder></form>
 </dialog>
 
 <dialog class="notes-dialog math-dialog" data-math-dialog>

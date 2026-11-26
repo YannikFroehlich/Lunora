@@ -1,5 +1,6 @@
 from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ValidationError
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -34,6 +35,7 @@ from app.services.calendar_service import (
 from app.services.calendar_subscriptions import can_refresh, sync_subscription
 from app.services.habits import WEEKDAY_SHORT
 from app.services.linked_notes import link_event_note, linkable_notes
+from app.services.meeting_notes import create_meeting_note
 from app.services.notes import readable_note_ids
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.trash import trash_events
@@ -275,6 +277,15 @@ def calendar_event_detail(request, event_id):
             else:
                 django_messages.error(request, "Diese Notiz kannst du nicht verknüpfen.")
             return redirect(request.path)
+        if form_name == "event_meeting_note":
+            if not feature_enabled("notes"):
+                return disabled_feature_response(request, "notes")
+            try:
+                note = create_meeting_note(event, request.user)
+            except ValidationError as error:
+                django_messages.error(request, " ".join(error.messages))
+                return redirect(request.path)
+            return redirect("note_detail", note_id=note.id)
         if form_name in {"event_comment", "event_comment_delete"} and not comments_enabled:
             return disabled_feature_response(request, "calendar_event_creation")
         if form_name == "event_comment":

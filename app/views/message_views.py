@@ -8,12 +8,11 @@ from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Count, Max, Q
-from django.http import FileResponse, HttpResponse, JsonResponse
+from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.http import content_disposition_header
 
 from app.forms import ChatPollForm, ConversationStartForm, MessageForm
 from app.models import (
@@ -57,6 +56,7 @@ from app.services.chat import (
     toggle_poll_vote,
     toggle_reaction,
 )
+from app.services.file_responses import attachment_response
 from app.services.message_queries import (
     current_members_by_conversation,
     last_messages_by_conversation,
@@ -552,29 +552,7 @@ def chat_attachment_download(request, file_id, disposition):
     if not Conversation.visible_for(request.user).filter(pk=attachment.message.conversation_id).exists():
         return JsonResponse({"ok": False, "error": "Datei nicht gefunden."}, status=404)
 
-    content_type = attachment.content_type or "application/octet-stream"
-    byte_range = _requested_byte_range(request, attachment.size) if disposition == "inline" else None
-    if byte_range == "invalid":
-        response = HttpResponse(status=416)
-        response["Content-Range"] = f"bytes */{attachment.size}"
-        return response
-    if byte_range:
-        # Safari only plays <audio> from servers that answer Range requests with 206.
-        start, end = byte_range
-        with attachment.file.open("rb") as handle:
-            handle.seek(start)
-            chunk = handle.read(end - start + 1)
-        response = HttpResponse(chunk, status=206, content_type=content_type)
-        response["Content-Range"] = f"bytes {start}-{end}/{attachment.size}"
-    else:
-        response = FileResponse(attachment.file.open("rb"), content_type=content_type)
-    response["Accept-Ranges"] = "bytes" if disposition == "inline" else "none"
-    response["Content-Disposition"] = content_disposition_header(
-        disposition == "download",
-        attachment.original_name,
-    )
-    response["X-Content-Type-Options"] = "nosniff"
-    return response
+    return attachment_response(request, attachment, disposition)
 
 
 def _handle_chat_tool_post(request, form_name, conversation):
@@ -644,28 +622,6 @@ def _handle_chat_tool_post(request, form_name, conversation):
             conversation.mark_read_for(user)
     elif action == "cancel" and cancel_scheduled_message(conversation, user, scheduled_id):
         django_messages.success(request, "Geplante Nachricht gelöscht.")
-
-
-def _requested_byte_range(request, size):
-    """Parse a single ``bytes=start-end`` range; ``None`` serves the whole file."""
-    header = request.headers.get("Range", "")
-    if not header.startswith("bytes=") or "," in header or size <= 0:
-        return None
-    start_text, _, end_text = header[len("bytes=") :].strip().partition("-")
-    try:
-        if start_text:
-            start = int(start_text)
-            end = int(end_text) if end_text else size - 1
-        else:
-            suffix = int(end_text)
-            if suffix <= 0:
-                return "invalid"
-            start, end = max(size - suffix, 0), size - 1
-    except ValueError:
-        return None
-    if start < 0 or start >= size or end < start:
-        return "invalid"
-    return start, min(end, size - 1)
 
 
 def _get_user_conversation(user, conversation_id):

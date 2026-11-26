@@ -160,3 +160,46 @@ def copy_list(vocabulary_list, user):
         for card in vocabulary_list.cards.all()
     )
     return copy
+
+
+FLASHCARD_SEPARATOR = "::"
+
+
+def flashcards_from_text(text):
+    """(term, translation) pairs from "Frage :: Antwort" lines; other lines are ignored."""
+    cards = []
+    for line in (text or "").splitlines():
+        term, separator, translation = line.partition(FLASHCARD_SEPARATOR)
+        term, translation = term.strip(" \t-•*"), translation.strip()
+        if separator and term and translation:
+            cards.append((term[:TERM_MAX_LENGTH], translation[:TRANSLATION_MAX_LENGTH]))
+    return cards
+
+
+@transaction.atomic
+def cards_from_note(user, note):
+    """The user's vocabulary list named after `note`, with a card for every new "Frage :: Antwort"
+    line of it. Running it again after editing the note adds only the new questions.
+
+    Returns (list, added); the list is None when the note has no such line."""
+    cards = flashcards_from_text(note.plain_text)
+    if not cards:
+        return None, 0
+    title = (note.title or "Notiz")[: VocabularyList._meta.get_field("title").max_length]
+    vocabulary_list = VocabularyList.objects.filter(owner=user, title=title).first()
+    if vocabulary_list is None:
+        vocabulary_list = VocabularyList.objects.create(
+            owner=user, title=title, source_language="", target_language=""
+        )
+    known = {term.casefold() for term in vocabulary_list.cards.values_list("term", flat=True)}
+    room = MAX_CARDS_PER_LIST - len(known)
+    new_cards = []
+    for term, translation in cards:
+        if term.casefold() not in known and len(new_cards) < room:
+            known.add(term.casefold())
+            new_cards.append(
+                VocabularyCard(vocabulary_list=vocabulary_list, term=term, translation=translation)
+            )
+    VocabularyCard.objects.bulk_create(new_cards)
+    vocabulary_list.save(update_fields=["updated_at"])
+    return vocabulary_list, len(new_cards)

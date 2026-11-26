@@ -15,7 +15,10 @@
 
     {% for child in card.children %}
     <div class="retro-card-child">
-        <p class="retro-card-text">{{ child.text }}</p>
+        <div class="retro-card-child-body">
+            <p class="retro-card-text">{{ child.text }}</p>
+            {% if child.author %}<span class="retro-card-author">{{ child.author }}</span>{% endif %}
+        </div>
         {% if board.phase == 'group' %}
         <form method="post">
             {% csrf_token %}
@@ -81,7 +84,7 @@
                 <input type="hidden" name="direction" value="down">
                 <button type="submit" class="icon-button retro-mini-button" aria-label="Stimme zurücknehmen"{% if not card.my_votes %} disabled{% endif %}><i class="fa-solid fa-minus" aria-hidden="true"></i></button>
             </form>
-            <span class="retro-vote-count" title="Deine Stimmen{% if card.votes is not None %} / alle{% endif %}">{{ card.my_votes }}{% if card.votes is not None %}<small> / {{ card.votes }}</small>{% endif %}</span>
+            <span class="retro-vote-count" title="Deine Stimmen{% if card.votes is not None %} / alle{% endif %}{% if card.voters %}: {{ card.voters }}{% endif %}">{{ card.my_votes }}{% if card.votes is not None %}<small> / {{ card.votes }}</small>{% endif %}</span>
             <form method="post">
                 {% csrf_token %}
                 <input type="hidden" name="form_name" value="retro_vote">
@@ -90,7 +93,7 @@
             </form>
         </div>
         {% elif card.votes is not None and board.phase != 'collect' and board.phase != 'group' %}
-        <span class="retro-vote-total" title="Stimmen"><i class="fa-solid fa-circle-dot" aria-hidden="true"></i> {{ card.votes }}</span>
+        <span class="retro-vote-total" title="{% if card.voters %}{{ card.voters }}{% else %}Stimmen{% endif %}"><i class="fa-solid fa-circle-dot" aria-hidden="true"></i> {{ card.votes }}</span>
         {% endif %}
     </footer>
     {% endif %}

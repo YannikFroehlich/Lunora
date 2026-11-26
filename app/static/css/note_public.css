@@ -302,3 +302,48 @@
 .note-deck-controls [hidden] {
   display: none;
 }
+
+.note-public-body .note-callout {
+  margin: 1em 0;
+  padding: 10px 14px;
+  border-left: 4px solid var(--color-accent);
+  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+.note-public-body .note-callout.is-info {
+  border-left-color: #3b82c4;
+  background: color-mix(in srgb, #3b82c4 12%, transparent);
+}
+.note-public-body .note-callout.is-tip {
+  border-left-color: #3f9b62;
+  background: color-mix(in srgb, #3f9b62 12%, transparent);
+}
+.note-public-body .note-callout.is-warning {
+  border-left-color: #d08a1e;
+  background: color-mix(in srgb, #d08a1e 14%, transparent);
+}
+.note-public-body .note-callout > :first-child {
+  margin-top: 0;
+}
+.note-public-body .note-callout > :last-child {
+  margin-bottom: 0;
+}
+.note-public-body .note-details {
+  margin: 1em 0;
+}
+.note-public-body .note-details > summary {
+  font-weight: 600;
+  cursor: pointer;
+}
+.note-public-body .note-details > :not(summary) {
+  margin-left: 1.2em;
+}
+.note-public-body .note-audio {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+.note-public-body .note-audio audio {
+  max-width: 100%;
+}

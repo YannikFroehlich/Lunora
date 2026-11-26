@@ -1,40 +1,60 @@
 {# The actions list beside the discussion and on the summary. #}
 <section class="glass-panel retro-actions" aria-labelledby="retro-actions-title">
-    <h2 id="retro-actions-title">Maßnahmen</h2>
+    <h2 id="retro-actions-title">Actions</h2>
     <ul class="retro-action-list">
         {% for action in actions %}
         <li class="retro-action">
-            <span class="retro-action-text">{{ action.text }}{% if action.assignee %} <small>· {{ action.assignee }}</small>{% endif %}</span>
-            {% if action.has_task %}<span class="retro-action-task" title="Als Aufgabe übernommen"><i class="fa-solid fa-square-check" aria-hidden="true"></i><span class="visually-hidden">Als Aufgabe übernommen</span></span>{% endif %}
-            {% if action.can_take %}
-            <form method="post">
-                {% csrf_token %}
-                <input type="hidden" name="form_name" value="retro_action_task">
-                <input type="hidden" name="action_id" value="{{ action.id }}">
-                <button type="submit" class="icon-button retro-mini-button" title="Als Aufgabe übernehmen" aria-label="„{{ action.text|truncatechars:30 }}“ als Aufgabe übernehmen"><i class="fa-solid fa-list-check" aria-hidden="true"></i></button>
-            </form>
-            {% endif %}
-            {% if is_owner %}
-            <form method="post">
-                {% csrf_token %}
-                <input type="hidden" name="form_name" value="retro_action_delete">
-                <input type="hidden" name="action_id" value="{{ action.id }}">
-                <button type="submit" class="icon-button retro-mini-button" title="Löschen" aria-label="Maßnahme löschen"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
-            </form>
-            {% endif %}
+            <div class="retro-action-head">
+                <strong class="retro-action-title">{{ action.title }}</strong>
+                {% if action.has_task %}<span class="retro-action-task" title="Als Aufgabe übernommen"><i class="fa-solid fa-square-check" aria-hidden="true"></i><span class="visually-hidden">Als Aufgabe übernommen</span></span>{% endif %}
+                {% if action.can_take %}
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="retro_action_task">
+                    <input type="hidden" name="action_id" value="{{ action.id }}">
+                    <button type="submit" class="icon-button retro-mini-button" title="Als Aufgabe übernehmen" aria-label="„{{ action.title|truncatechars:30 }}“ als Aufgabe übernehmen"><i class="fa-solid fa-list-check" aria-hidden="true"></i></button>
+                </form>
+                {% endif %}
+                <details class="retro-card-edit">
+                    <summary class="icon-button retro-mini-button" title="Bearbeiten"><i class="fa-solid fa-pen" aria-hidden="true"></i><span class="visually-hidden">„{{ action.title|truncatechars:30 }}“ bearbeiten</span></summary>
+                    <form method="post" class="retro-action-form">
+                        {% csrf_token %}
+                        <input type="hidden" name="form_name" value="retro_action_edit">
+                        <input type="hidden" name="action_id" value="{{ action.id }}">
+                        <input type="text" name="title" value="{{ action.title }}" maxlength="{{ action_max_length }}" aria-label="Titel" required>
+                        <textarea name="description" rows="3" maxlength="{{ action_description_max_length }}" aria-label="Beschreibung" placeholder="Beschreibung (optional)">{{ action.description }}</textarea>
+                        <select name="assignee_id" aria-label="Zugewiesen an">
+                            <option value="">Niemand</option>
+                            {% for person in participants %}<option value="{{ person.id }}"{% if person.id == action.assignee_id %} selected{% endif %}>{{ person.name }}</option>{% endfor %}
+                        </select>
+                        <button type="submit" class="primary-button">Speichern</button>
+                    </form>
+                </details>
+                {% if is_owner %}
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="retro_action_delete">
+                    <input type="hidden" name="action_id" value="{{ action.id }}">
+                    <button type="submit" class="icon-button retro-mini-button" title="Löschen" aria-label="„{{ action.title|truncatechars:30 }}“ löschen"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
+                </form>
+                {% endif %}
+            </div>
+            {% if action.description %}<p class="retro-action-description">{{ action.description|linebreaksbr }}</p>{% endif %}
+            <p class="retro-action-assignee"><i class="fa-regular fa-user" aria-hidden="true"></i> {{ action.assignee|default:"Niemand zugewiesen" }}</p>
         </li>
         {% empty %}
-        <li class="retro-column-empty">Noch keine Maßnahmen</li>
+        <li class="retro-column-empty">Noch keine Actions</li>
         {% endfor %}
     </ul>
     <form method="post" class="retro-action-form">
         {% csrf_token %}
         <input type="hidden" name="form_name" value="retro_action_add">
-        <input type="text" name="text" maxlength="{{ action_max_length }}" placeholder="Neue Maßnahme …" aria-label="Neue Maßnahme" required>
-        <select name="assignee_id" aria-label="Zuständig">
+        <input type="text" name="title" maxlength="{{ action_max_length }}" placeholder="Neue Action …" aria-label="Titel der neuen Action" required>
+        <textarea name="description" rows="2" maxlength="{{ action_description_max_length }}" placeholder="Beschreibung (optional)" aria-label="Beschreibung der neuen Action"></textarea>
+        <select name="assignee_id" aria-label="Zugewiesen an">
             <option value="">Niemand</option>
             {% for person in participants %}<option value="{{ person.id }}">{{ person.name }}</option>{% endfor %}
         </select>
-        <button type="submit" class="icon-button" aria-label="Maßnahme hinzufügen" title="Hinzufügen"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
+        <button type="submit" class="icon-button" aria-label="Action hinzufügen" title="Hinzufügen"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
     </form>
 </section>

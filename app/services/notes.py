@@ -52,6 +52,12 @@ from app.services.note_content import (
 )
 from app.services.note_files import NOTE_TOTAL_ATTACHMENT_BYTES
 from app.services.storage_quota import ensure_storage_available
+from app.services.user_preferences import (
+    format_user_date,
+    format_user_time,
+    get_user_weekday_name,
+    localtime_for_user,
+)
 
 VERSION_INTERVAL = timedelta(minutes=5)
 VERSION_RETENTION = timedelta(days=90)
@@ -469,17 +475,50 @@ def move_note_tree_item(user, *, item_type, item_id, placement, target_type=None
     return moved_note or moved_folder
 
 
-def create_note(user, *, title="Unbenannte Notiz", template="blank", custom_template_id=None, folder_id=None):
+# "{{datum}}" and friends in a template, replaced when a note is created from it.
+PLACEHOLDER_RE = re.compile(r"\{\{\s*(\w+)\s*\}\}")
+
+
+def template_placeholders(user):
+    now = localtime_for_user(timezone.now(), user)
+    return {
+        "datum": format_user_date(now, user),
+        "wochentag": get_user_weekday_name(now, user),
+        "uhrzeit": format_user_time(now, user),
+        "kw": str(now.isocalendar().week),
+        "jahr": str(now.year),
+    }
+
+
+def fill_placeholders(text, values):
+    """`text` with every known {{placeholder}} replaced (case-insensitive); unknown ones stay."""
+    return PLACEHOLDER_RE.sub(lambda match: values.get(match.group(1).lower(), match.group(0)), text)
+
+
+def _fill_document_placeholders(node, values):
+    if node.get("type") == "text" and "{{" in node.get("text", ""):
+        node["text"] = fill_placeholders(node["text"], values)
+    for child in node.get("content") or []:
+        _fill_document_placeholders(child, values)
+
+
+def create_note(user, *, title=None, template="blank", custom_template_id=None, folder_id=None):
     folder = get_note_folder(user, folder_id) if folder_id is not None else None
+    values = template_placeholders(user)
     if custom_template_id is not None:
         custom_template = NoteTemplate.objects.get(owner=user, pk=custom_template_id)
         document = copy.deepcopy(custom_template.document)
-        validate_note_document(document)
+        # A note from an own template is named after it, so "Wochenbericht KW {{kw}}" works.
+        title = fill_placeholders(title or custom_template.name, values)
     else:
         document = NOTE_TEMPLATES.get(template, empty_note_document)()
+    title = (title or "Unbenannte Notiz")[:200]
+    values["titel"] = title
+    _fill_document_placeholders(document, values)
+    validate_note_document(document)
     note = Note.objects.create(
         owner=user,
-        title=(title or "Unbenannte Notiz")[:200],
+        title=title,
         document=document,
         plain_text=document_plain_text(document),
         last_edited_by=user,

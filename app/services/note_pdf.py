@@ -23,7 +23,7 @@ from reportlab.platypus import (
 )
 from reportlab.platypus.xpreformatted import XPreformatted
 
-from app.services.note_content import FORM_FIELD_BLANK, task_due_label
+from app.services.note_content import CALLOUT_LABELS, DETAILS_FALLBACK, FORM_FIELD_BLANK, task_due_label
 
 PAGE_WIDTH, PAGE_HEIGHT = A4
 PAGE_MARGIN = 19 * mm
@@ -33,6 +33,11 @@ MUTED_COLOR = colors.HexColor("#786f67")
 ACCENT_COLOR = colors.HexColor("#a67c52")
 LIGHT_BORDER = colors.HexColor("#e4ddd4")
 SOFT_BACKGROUND = colors.HexColor("#f7f3ed")
+CALLOUT_COLORS = {
+    "info": colors.HexColor("#3b82c4"),
+    "tip": colors.HexColor("#3f9b62"),
+    "warning": colors.HexColor("#d08a1e"),
+}
 
 FONT_MAP = {
     "Inter": "Helvetica",
@@ -118,6 +123,14 @@ class NotePdfRenderer:
                 flowables.extend(self.task_list(node, compact=compact))
             elif node_type == "blockquote":
                 flowables.append(self.blockquote(node))
+            elif node_type == "callout":
+                tone = (node.get("attrs") or {}).get("tone")
+                label = Paragraph(f"<b>{CALLOUT_LABELS.get(tone, 'Info')}</b>", self.body_style)
+                flowables.append(self.blockquote(node, color=CALLOUT_COLORS.get(tone), first=label))
+            elif node_type == "details":
+                summary = str((node.get("attrs") or {}).get("summary") or "").strip() or DETAILS_FALLBACK
+                flowables.append(Paragraph(f"<b>{escape(summary)}</b>", self.body_style))
+                flowables.extend(self.nodes(node.get("content") or [], compact=compact))
             elif node_type == "codeBlock":
                 flowables.append(self.code_block(node))
             elif node_type == "horizontalRule":
@@ -252,13 +265,15 @@ class NotePdfRenderer:
                 flowables.append(Paragraph(f"<b>{marker}</b>", self._style()))
         return flowables
 
-    def blockquote(self, node):
+    def blockquote(self, node, *, color=None, first=None):
         content = self.nodes(node.get("content") or []) or [Paragraph("&#160;", self.body_style)]
+        if first is not None:
+            content.insert(0, first)
         table = Table([[content]], colWidths=[CONTENT_WIDTH], hAlign="LEFT")
         table.setStyle(
             TableStyle(
                 [
-                    ("LINEBEFORE", (0, 0), (0, -1), 3, ACCENT_COLOR),
+                    ("LINEBEFORE", (0, 0), (0, -1), 3, color or ACCENT_COLOR),
                     ("BACKGROUND", (0, 0), (-1, -1), SOFT_BACKGROUND),
                     ("LEFTPADDING", (0, 0), (-1, -1), 14),
                     ("RIGHTPADDING", (0, 0), (-1, -1), 12),

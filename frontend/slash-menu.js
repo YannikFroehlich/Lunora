@@ -46,6 +46,24 @@ export const SLASH_MENU_ITEMS = [
     iconClass: "fa-solid fa-square-root-variable",
     keywords: ["math", "formula", "gleichung"],
   },
+  {
+    action: "insertCallout",
+    label: "Hinweis-Box",
+    iconClass: "fa-solid fa-circle-info",
+    keywords: ["callout", "info", "tipp", "warnung", "box", "hinweis"],
+  },
+  {
+    action: "insertDetails",
+    label: "Aufklapp-Abschnitt",
+    iconClass: "fa-solid fa-square-caret-down",
+    keywords: ["details", "toggle", "aufklappen", "zuklappen", "collapse"],
+  },
+  {
+    action: "recordVoice",
+    label: "Sprachnotiz",
+    iconClass: "fa-solid fa-microphone",
+    keywords: ["audio", "aufnahme", "voice", "mikrofon"],
+  },
   { action: "link", label: "Link", iconClass: "fa-solid fa-link", keywords: ["url", "hyperlink"] },
 ];
 

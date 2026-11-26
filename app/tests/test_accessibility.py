@@ -196,7 +196,7 @@ class PageAccessibilityMarkupTests(TestCase):
             retro.phase = phase
             retro.presented_card = first
             retro.save()
-            retro.actions.create(text="Mehr testen", assignee=owner)
+            retro.actions.create(title="Mehr testen", description="Mit Beschreibung", assignee=owner)
             self.retros.append(retro)
         self.vocabulary = VocabularyList.objects.create(owner=self.mira, title="Englisch")
         VocabularyCard.objects.create(vocabulary_list=self.vocabulary, term="Haus", translation="house")

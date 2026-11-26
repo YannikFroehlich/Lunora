@@ -4336,9 +4336,20 @@ form:has([name="split_mode"][value="amounts"]:checked) [data-split-hint="amounts
 
 .retro-limit {
   display: inline-flex;
+  align-items: center;
   gap: 3px;
   color: var(--color-accent-strong);
   font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.retro-limit.is-count {
+  gap: 6px;
+  font-weight: 600;
+}
+
+.retro-limit.is-empty {
+  color: var(--color-muted);
 }
 
 .retro-timer {
@@ -4458,6 +4469,7 @@ form:has([name="split_mode"][value="amounts"]:checked) [data-split-hint="amounts
 .retro-add-form textarea,
 .retro-edit-form textarea,
 .retro-action-form input,
+.retro-action-form textarea,
 .retro-action-form select,
 .retro-group-form select {
   width: 100%;
@@ -4589,10 +4601,22 @@ form:has([name="split_mode"][value="amounts"]:checked) [data-split-hint="amounts
   margin: 0;
 }
 
-.retro-card-child .retro-card-text {
+.retro-card-child-body {
+  display: grid;
   flex: 1;
+  gap: 2px;
+  min-width: 0;
+}
+
+.retro-card-child .retro-card-text {
   color: var(--color-muted);
   font-size: var(--text-md);
+}
+
+.retro-present-author {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
 }
 
 .retro-card-foot {
@@ -4700,9 +4724,8 @@ form:has([name="split_mode"][value="amounts"]:checked) [data-split-hint="amounts
 }
 
 .retro-action {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  display: grid;
+  gap: 4px;
   padding: 8px 10px;
   background: var(--surface-control);
   border-radius: var(--radius-sm);
@@ -4712,14 +4735,29 @@ form:has([name="split_mode"][value="amounts"]:checked) [data-split-hint="amounts
   margin: 0;
 }
 
-.retro-action-text {
+.retro-action-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.retro-action-title {
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.retro-action-text small {
+.retro-action-description,
+.retro-action-assignee {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--text-sm);
+}
+
+.retro-action-assignee {
   color: var(--color-muted);
+  font-size: var(--text-xs);
 }
 
 .retro-action-task {
@@ -4728,8 +4766,17 @@ form:has([name="split_mode"][value="amounts"]:checked) [data-split-hint="amounts
 
 .retro-action-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 0.7fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 6px;
+}
+
+.retro-action-form input[name="title"],
+.retro-action-form textarea {
+  grid-column: 1 / -1;
+}
+
+.retro-action-form textarea {
+  resize: vertical;
 }
 
 .retro-summary {

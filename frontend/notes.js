@@ -399,9 +399,33 @@ const NoteAttachmentNode = Node.create({
     };
   },
   parseHTML() {
-    return [{ tag: "a[data-note-attachment]" }];
+    return [{ tag: "[data-note-attachment]" }];
   },
   renderHTML({ HTMLAttributes }) {
+    // Voice notes (and other audio files) get a player instead of the file chip.
+    if (AUDIO_NAME.test(HTMLAttributes.name || "")) {
+      return [
+        "div",
+        {
+          "data-note-attachment": "true",
+          "data-attachment-id": HTMLAttributes.attachmentId,
+          "data-name": HTMLAttributes.name,
+          "data-size": HTMLAttributes.size,
+          class: "note-audio",
+          contenteditable: "false",
+        },
+        [
+          "audio",
+          {
+            controls: "",
+            preload: "metadata",
+            src: attachmentUrl(HTMLAttributes.attachmentId, "inline"),
+            "aria-label": HTMLAttributes.name,
+          },
+        ],
+        ["a", { href: attachmentUrl(HTMLAttributes.attachmentId, "download") }, HTMLAttributes.name],
+      ];
+    }
     return [
       "a",
       {
@@ -417,6 +441,8 @@ const NoteAttachmentNode = Node.create({
     ];
   },
 });
+
+const AUDIO_NAME = /\.(webm|ogg|oga|m4a|mp3)$/i;
 
 function formatBytes(value) {
   const bytes = Number(value) || 0;
@@ -674,6 +700,189 @@ const FormField = Node.create({
         // The input handles its own keys, clicks and selection; ProseMirror stays out of it.
         stopEvent: (event) => event.target === input,
         ignoreMutation: () => true,
+      };
+    };
+  },
+});
+
+const CALLOUT_TONES = {
+  info: { label: "Info", icon: "fa-circle-info" },
+  tip: { label: "Tipp", icon: "fa-lightbulb" },
+  warning: { label: "Warnung", icon: "fa-triangle-exclamation" },
+};
+const CALLOUT_ORDER = Object.keys(CALLOUT_TONES);
+
+// A colored hint box around blocks; its icon button switches the kind (Info → Tipp → Warnung).
+const Callout = Node.create({
+  name: "callout",
+  group: "block",
+  content: "block+",
+  defining: true,
+  addAttributes() {
+    return {
+      tone: {
+        default: "info",
+        parseHTML: (element) => (CALLOUT_TONES[element.dataset.tone] ? element.dataset.tone : "info"),
+        renderHTML: (attributes) => ({ "data-tone": attributes.tone }),
+      },
+    };
+  },
+  parseHTML() {
+    return [{ tag: "aside[data-callout]" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["aside", mergeAttributes(HTMLAttributes, { "data-callout": "true", class: "note-callout" }), 0];
+  },
+  addNodeView() {
+    return ({ node: initialNode, editor, getPos }) => {
+      let node = initialNode;
+      const dom = document.createElement("aside");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "note-callout-icon";
+      button.contentEditable = "false";
+      const icon = document.createElement("i");
+      icon.setAttribute("aria-hidden", "true");
+      button.append(icon);
+      const contentDOM = document.createElement("div");
+      contentDOM.className = "note-callout-body";
+      dom.append(button, contentDOM);
+      const sync = () => {
+        const tone = CALLOUT_TONES[node.attrs.tone] ? node.attrs.tone : "info";
+        dom.className = `note-callout is-${tone}`;
+        icon.className = `fa-solid ${CALLOUT_TONES[tone].icon}`;
+        button.title = CALLOUT_TONES[tone].label;
+        button.setAttribute("aria-label", `${CALLOUT_TONES[tone].label} – klicken, um die Art zu wechseln`);
+        button.disabled = !editor.isEditable;
+      };
+      button.addEventListener("mousedown", (event) => event.preventDefault());
+      button.addEventListener("click", () => {
+        const pos = typeof getPos === "function" ? getPos() : null;
+        if (typeof pos !== "number" || !editor.isEditable) return;
+        const next = CALLOUT_ORDER[(CALLOUT_ORDER.indexOf(node.attrs.tone) + 1) % CALLOUT_ORDER.length];
+        editor.view.dispatch(editor.view.state.tr.setNodeAttribute(pos, "tone", next));
+      });
+      sync();
+      return {
+        dom,
+        contentDOM,
+        update(updatedNode) {
+          if (updatedNode.type.name !== node.type.name) return false;
+          node = updatedNode;
+          sync();
+          return true;
+        },
+        stopEvent: (event) => button.contains(event.target),
+        ignoreMutation: (mutation) =>
+          button.contains(mutation.target) || (mutation.type === "attributes" && mutation.target === dom),
+      };
+    };
+  },
+});
+
+// A collapsible section: blocks under a one-line summary (a text field holding the node's `summary`).
+// Editors store whether it is open; readers open and close it for themselves only.
+const Details = Node.create({
+  name: "details",
+  group: "block",
+  content: "block+",
+  defining: true,
+  addAttributes() {
+    return {
+      summary: {
+        default: "",
+        rendered: false,
+        parseHTML: (element) => element.querySelector(":scope > summary")?.textContent || "",
+      },
+      open: { default: true, rendered: false, parseHTML: (element) => element.hasAttribute("open") },
+    };
+  },
+  parseHTML() {
+    return [
+      {
+        tag: "details",
+        contentElement: (element) => element.querySelector(":scope > [data-details-content]") || element,
+      },
+    ];
+  },
+  renderHTML({ node, HTMLAttributes }) {
+    return [
+      "details",
+      mergeAttributes(HTMLAttributes, { class: "note-details", open: node.attrs.open ? "" : null }),
+      ["summary", {}, node.attrs.summary || "Details"],
+      ["div", { "data-details-content": "true" }, 0],
+    ];
+  },
+  addNodeView() {
+    return ({ node: initialNode, editor, getPos }) => {
+      let node = initialNode;
+      const dom = document.createElement("div");
+      const head = document.createElement("div");
+      head.className = "note-details-head";
+      head.contentEditable = "false";
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "note-details-toggle";
+      toggle.innerHTML = '<i class="fa-solid fa-chevron-right" aria-hidden="true"></i>';
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "note-details-summary";
+      input.maxLength = 200;
+      input.placeholder = "Überschrift zum Aufklappen";
+      input.setAttribute("aria-label", "Überschrift des Aufklapp-Abschnitts");
+      head.append(toggle, input);
+      const contentDOM = document.createElement("div");
+      contentDOM.className = "note-details-content";
+      dom.append(head, contentDOM);
+      const position = () => (typeof getPos === "function" ? getPos() : null);
+      const setAttribute = (name, value) => {
+        const pos = position();
+        if (typeof pos === "number") editor.view.dispatch(editor.view.state.tr.setNodeAttribute(pos, name, value));
+      };
+      const show = (open) => {
+        dom.className = `note-details${open ? " is-open" : ""}`;
+        contentDOM.hidden = !open;
+        toggle.setAttribute("aria-expanded", String(open));
+        toggle.setAttribute("aria-label", open ? "Abschnitt zuklappen" : "Abschnitt aufklappen");
+      };
+      const sync = () => {
+        if (input.value !== node.attrs.summary) input.value = node.attrs.summary || "";
+        input.readOnly = !editor.isEditable;
+        show(node.attrs.open !== false);
+      };
+      toggle.addEventListener("mousedown", (event) => event.preventDefault());
+      toggle.addEventListener("click", () => {
+        if (editor.isEditable) setAttribute("open", node.attrs.open === false);
+        else show(contentDOM.hidden);
+      });
+      input.addEventListener("input", () => {
+        if (editor.isEditable) setAttribute("summary", input.value);
+      });
+      input.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== "ArrowDown") return;
+        event.preventDefault();
+        if (node.attrs.open === false) setAttribute("open", true);
+        const pos = position();
+        if (typeof pos === "number")
+          editor
+            .chain()
+            .focus(pos + 2)
+            .run();
+      });
+      sync();
+      return {
+        dom,
+        contentDOM,
+        update(updatedNode) {
+          if (updatedNode.type.name !== node.type.name) return false;
+          node = updatedNode;
+          sync();
+          return true;
+        },
+        stopEvent: (event) => head.contains(event.target),
+        ignoreMutation: (mutation) =>
+          head.contains(mutation.target) ||
+          (mutation.type === "attributes" && (mutation.target === dom || mutation.target === contentDOM)),
       };
     };
   },
@@ -981,6 +1190,9 @@ const COMMAND_DEFAULTS = {
   codeBlock: { label: "Codeblock", shortcut: "Mod+Alt+C" },
   insertMath: { label: "Formel einfügen", shortcut: "Mod+Alt+Q" },
   insertFormField: { label: "Eingabefeld einfügen", shortcut: "Mod+Alt+J" },
+  insertCallout: { label: "Hinweis-Box", shortcut: "Mod+Alt+B" },
+  insertDetails: { label: "Aufklapp-Abschnitt", shortcut: "Mod+Alt+Shift+D" },
+  recordVoice: { label: "Sprachnotiz aufnehmen/beenden", shortcut: "Mod+Alt+Shift+V" },
   addComment: { label: "Kommentar hinzufügen", shortcut: "Mod+Alt+M" },
   comments: { label: "Kommentare anzeigen", shortcut: "Mod+Alt+/" },
   insertTable: { label: "Tabelle einfügen", shortcut: "Ctrl+Alt+T" },
@@ -1015,6 +1227,8 @@ const COMMAND_DEFAULTS = {
   present: { label: "Präsentieren", shortcut: "Mod+Alt+S" },
   reminder: { label: "Erinnerung", shortcut: "Mod+Alt+R" },
   checklistTasks: { label: "Checkliste als Aufgaben übernehmen", shortcut: "Mod+Alt+Shift+T" },
+  flashcards: { label: "Karteikarten aus „Frage :: Antwort“", shortcut: "Mod+Alt+Shift+K" },
+  focusMode: { label: "Fokusmodus", shortcut: "Mod+Alt+Shift+F" },
   shortcutSettings: { label: "Hotkey-Einstellungen", shortcut: "Mod+Alt+K" },
 };
 
@@ -1127,6 +1341,8 @@ function initNotesApp() {
         MathInline.configure({ onEdit: openMathDialog }),
         MathBlock.configure({ onEdit: openMathDialog }),
         FormField,
+        Callout,
+        Details,
         CommentThread,
         Mention.configure({
           suggestion: {
@@ -1212,7 +1428,10 @@ function initNotesApp() {
         if (!isRemoteTransaction(transaction)) markDirty();
         if (outlinePanel && !outlinePanel.hidden) updateOutline();
       },
-      onSelectionUpdate: updateToolbarState,
+      onSelectionUpdate: () => {
+        updateToolbarState();
+        centerCursor();
+      },
     });
     let firstSync = true;
     collab = startCollabSync({
@@ -1425,6 +1644,9 @@ function initNotesApp() {
           .focus()
           .insertContent({ type: "formField", attrs: { placeholder: "", value: "" } })
           .run(),
+      insertCallout: () => editor?.chain().focus().toggleWrap("callout", { tone: "info" }).run(),
+      insertDetails: () => editor?.chain().focus().toggleWrap("details", { summary: "", open: true }).run(),
+      recordVoice: toggleVoiceRecording,
       addComment: addCommentToSelection,
       insertTable: () => insertTable(document.querySelector("[data-table-dialog-open]")),
       addRowBefore: () => editor?.chain().focus().addRowBefore().run(),
@@ -1476,6 +1698,8 @@ function initNotesApp() {
       present: presentNote,
       reminder: () => document.querySelector("[data-note-reminder-dialog]")?.showModal(),
       checklistTasks: createTasksFromChecklist,
+      flashcards: createFlashcards,
+      focusMode: () => setFocusMode(!app?.classList.contains("is-focus-mode")),
     };
     pageActions[action]?.();
   }
@@ -2103,6 +2327,127 @@ function initNotesApp() {
     window.location.assign(`/notes/${note.id}/present/`);
   }
 
+  async function createFlashcards() {
+    if (!note) return;
+    if (dirty && !(await saveNow())) return;
+    const { response, data } = await requestJson(`/notes/api/${note.id}/actions/`, {
+      method: "POST",
+      body: JSON.stringify({ action: "flashcards" }),
+    });
+    if (!response.ok || !data.ok) {
+      window.alert(data.error || "Die Karteikarten konnten nicht angelegt werden.");
+      return;
+    }
+    const added = data.added === 1 ? "1 neue Karte" : `${data.added} neue Karten`;
+    if (window.confirm(`${added} in der Vokabelliste. Jetzt öffnen?`)) window.location.assign(data.url);
+  }
+
+  // Focus mode: only the title and the page, full screen where the browser allows it, and the line
+  // being written stays in the middle of the screen. Esc (or leaving full screen) ends it.
+  function setFocusMode(on) {
+    if (!app || !editor) return;
+    app.classList.toggle("is-focus-mode", on);
+    document.querySelectorAll('[data-command="focusMode"]').forEach((button) => {
+      button.setAttribute("aria-pressed", String(on));
+    });
+    if (on) {
+      document.documentElement.requestFullscreen?.().catch(() => {});
+      editor.commands.focus();
+      centerCursor();
+    } else if (document.fullscreenElement) {
+      document.exitFullscreen?.().catch(() => {});
+    }
+  }
+
+  function centerCursor() {
+    if (!editor || !app?.classList.contains("is-focus-mode")) return;
+    const scroller = document.querySelector(".note-editor-scroll");
+    if (!scroller) return;
+    const caret = editor.view.coordsAtPos(editor.state.selection.head);
+    const box = scroller.getBoundingClientRect();
+    scroller.scrollTop += caret.top - (box.top + box.height / 2);
+  }
+
+  document.addEventListener("fullscreenchange", () => {
+    if (!document.fullscreenElement && app?.classList.contains("is-focus-mode")) setFocusMode(false);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && app?.classList.contains("is-focus-mode") && !document.querySelector("dialog[open]")) {
+      setFocusMode(false);
+    }
+  });
+
+  // Voice notes: MediaRecorder records into memory, and the finished recording is uploaded as a normal
+  // note attachment, which the editor shows as a player.
+  const VOICE_MAX_SECONDS = 300;
+  const VOICE_FORMATS = [
+    ["audio/webm;codecs=opus", "webm"],
+    ["audio/webm", "webm"],
+    ["audio/ogg;codecs=opus", "ogg"],
+    ["audio/mp4", "m4a"],
+  ];
+  let voiceRecording = null;
+
+  function showVoiceState(seconds) {
+    const recording = seconds !== null;
+    document.querySelectorAll('[data-command="recordVoice"]').forEach((button) => {
+      button.classList.toggle("is-recording", recording);
+      button.setAttribute("aria-pressed", String(recording));
+    });
+    if (recording) {
+      const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+      setSaveStatus(`Aufnahme läuft ${clock} – zum Beenden erneut auf das Mikrofon`);
+    }
+  }
+
+  async function toggleVoiceRecording() {
+    if (voiceRecording) {
+      voiceRecording.recorder.stop();
+      return;
+    }
+    const format =
+      navigator.mediaDevices?.getUserMedia && typeof window.MediaRecorder === "function"
+        ? VOICE_FORMATS.find(([mimeType]) => MediaRecorder.isTypeSupported?.(mimeType))
+        : null;
+    if (!format) {
+      window.alert("Dieser Browser kann keine Sprachnotizen aufnehmen.");
+      return;
+    }
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (_error) {
+      window.alert("Lunora darf das Mikrofon nicht benutzen. Erlaube den Zugriff in den Browsereinstellungen.");
+      return;
+    }
+    const [mimeType, extension] = format;
+    const recorder = new MediaRecorder(stream, { mimeType });
+    const chunks = [];
+    const started = Date.now();
+    const timer = window.setInterval(() => {
+      const seconds = Math.floor((Date.now() - started) / 1000);
+      if (seconds >= VOICE_MAX_SECONDS) recorder.stop();
+      else showVoiceState(seconds);
+    }, 1000);
+    recorder.addEventListener("dataavailable", (event) => {
+      if (event.data.size) chunks.push(event.data);
+    });
+    recorder.addEventListener("stop", async () => {
+      window.clearInterval(timer);
+      stream.getTracks().forEach((track) => track.stop());
+      voiceRecording = null;
+      showVoiceState(null);
+      if (!chunks.length) return;
+      const stamp = new Date().toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" }).replace(":", ".");
+      const file = new File(chunks, `Sprachnotiz ${stamp}.${extension}`, { type: mimeType.split(";")[0] });
+      await uploadFile(file, "file");
+      setSaveStatus("Sprachnotiz eingefügt");
+    });
+    recorder.start();
+    voiceRecording = { recorder };
+    showVoiceState(0);
+  }
+
   async function createTasksFromChecklist() {
     if (!note) return;
     if (dirty && !(await saveNow())) return;
@@ -2209,9 +2554,10 @@ function initNotesApp() {
   function openTemplateDialog(folderId = null) {
     const parsedFolderId = Number.parseInt(folderId, 10);
     pendingFolderId = Number.isInteger(parsedFolderId) && parsedFolderId > 0 ? parsedFolderId : null;
-    // The Word import is a plain form post, so it takes the folder along in a hidden field.
-    const importFolder = templateDialog?.querySelector("[data-note-import-folder]");
-    if (importFolder) importFolder.value = pendingFolderId ?? "";
+    // The Word and article imports are plain form posts, so they take the folder along in a hidden field.
+    templateDialog?.querySelectorAll("[data-note-import-folder]").forEach((field) => {
+      field.value = pendingFolderId ?? "";
+    });
     templateDialog?.showModal();
   }
 

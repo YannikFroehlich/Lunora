@@ -32,14 +32,16 @@
         </ol>
 
         <div class="retro-bar-tools">
-            {% if board.phase == 'collect' and card_slots %}
-            <span class="retro-limit" title="Noch {{ cards_left }} von {{ board.max_cards }} Karten">
-                {% for used in card_slots %}<i class="fa-{% if used %}regular{% else %}solid{% endif %} fa-note-sticky" aria-hidden="true"></i>{% endfor %}
+            {% if board.phase == 'collect' and board.max_cards %}
+            <span class="retro-limit is-count{% if not cards_left %} is-empty{% endif %}" title="Noch {{ cards_left }} von {{ board.max_cards }} Karten">
+                <i class="fa-solid fa-note-sticky" aria-hidden="true"></i>
+                <span aria-hidden="true">{{ cards_left }}</span>
                 <span class="visually-hidden">Noch {{ cards_left }} von {{ board.max_cards }} Karten</span>
             </span>
             {% elif board.phase == 'vote' %}
-            <span class="retro-limit" title="Noch {{ votes_left }} von {{ board.votes_per_person }} Stimmen · höchstens {{ board.votes_per_card }} pro Karte">
-                {% for used in vote_slots %}<i class="fa-{% if used %}regular{% else %}solid{% endif %} fa-circle" aria-hidden="true"></i>{% endfor %}
+            <span class="retro-limit is-count{% if not votes_left %} is-empty{% endif %}" title="Noch {{ votes_left }} von {{ board.votes_per_person }} Stimmen · höchstens {{ board.votes_per_card }} pro Karte">
+                <i class="fa-solid fa-circle-dot" aria-hidden="true"></i>
+                <span aria-hidden="true">{{ votes_left }}</span>
                 <span class="visually-hidden">Noch {{ votes_left }} von {{ board.votes_per_person }} Stimmen</span>
             </span>
             {% endif %}
@@ -90,7 +92,7 @@
                 <div><dt>Dabei</dt><dd>{{ participants|length }}</dd></div>
                 <div><dt>Karten</dt><dd>{{ card_count }}</dd></div>
                 <div><dt>Stimmen</dt><dd>{{ vote_count }}</dd></div>
-                <div><dt>Maßnahmen</dt><dd>{{ actions|length }}</dd></div>
+                <div><dt>Actions</dt><dd>{{ actions|length }}</dd></div>
             </dl>
             {% if top_three %}
             <h3>Top-Themen</h3>
@@ -156,11 +158,12 @@
             <header>
                 <span class="retro-live">LIVE</span>
                 <span>{{ presented.column }} · Thema {{ presented.number }} von {{ presented.total }}</span>
-                {% if presented.votes is not None %}<span class="retro-vote-total"><i class="fa-solid fa-circle-dot" aria-hidden="true"></i> {{ presented.votes }}</span>{% endif %}
+                {% if presented.votes is not None %}<span class="retro-vote-total"{% if presented.voters %} title="{{ presented.voters }}"{% endif %}><i class="fa-solid fa-circle-dot" aria-hidden="true"></i> {{ presented.votes }}</span>{% endif %}
             </header>
             <p class="retro-present-text" id="retro-present-text">{{ presented.text }}</p>
+            {% if presented.author %}<p class="retro-present-author">{{ presented.author }}</p>{% endif %}
             {% if presented.children %}
-            <ul class="retro-present-children">{% for child in presented.children %}<li>{{ child.text }}</li>{% endfor %}</ul>
+            <ul class="retro-present-children">{% for child in presented.children %}<li>{{ child.text }}{% if child.author %} <span class="retro-present-author">· {{ child.author }}</span>{% endif %}</li>{% endfor %}</ul>
             {% endif %}
             {% if is_owner %}
             <footer>

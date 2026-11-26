@@ -22,6 +22,13 @@
             <div class="event-detail-head">
                 <h2 id="event-detail-title"><span class="event-detail-dot" aria-hidden="true"></span> {{ category }}</h2>
                 <span class="event-detail-actions">
+                    {% if feature_flags.notes and not linked_note %}
+                    <form method="post" data-no-soft>
+                        {% csrf_token %}
+                        <input type="hidden" name="form_name" value="event_meeting_note">
+                        <button class="ghost-button" type="submit" title="Notiz mit Agenda und To-dos, geteilt mit allen Teilnehmenden"><i class="fa-regular fa-note-sticky" aria-hidden="true"></i> Notiz anlegen</button>
+                    </form>
+                    {% endif %}
                     <a class="ghost-button" href="{% url 'calendar_event_ics' event.id %}" download><i class="fa-solid fa-file-arrow-down" aria-hidden="true"></i> .ics herunterladen</a>
                     <a class="ghost-button" href="{{ day_url }}"><i class="fa-solid fa-calendar-day" aria-hidden="true"></i> Im Kalender{% if is_owner and not is_subscribed %} bearbeiten{% endif %}</a>
                 </span>

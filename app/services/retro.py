@@ -228,7 +228,11 @@ def renew_join_token(board):
 
 def take_action_as_task(action, user):
     """A Lunora user turns an action into their own task; it then counts as theirs."""
-    task = Task.objects.create(user=user, title=action.text[: Task._meta.get_field("title").max_length])
+    task = Task.objects.create(
+        user=user,
+        title=action.title[: Task._meta.get_field("title").max_length],
+        description=action.description,
+    )
     action.task = task
     if action.assignee_id is None:
         action.assignee = action.board.participants.filter(user=user).first()
@@ -248,10 +252,11 @@ def save_as_note(board, user):
         lines.append("")
     actions = list(board.actions.select_related("assignee__user__profile"))
     if actions:
-        lines.append("## Maßnahmen")
+        lines.append("## Actions")
         for action in actions:
-            owner = f" – {participant_name(action.assignee)}" if action.assignee else ""
-            lines.append(f"- [ ] {action.text}{owner}")
+            owner = f" ({participant_name(action.assignee)})" if action.assignee else ""
+            details = f" – {' '.join(action.description.split())}" if action.description else ""
+            lines.append(f"- [ ] {action.title}{owner}{details}")
     return create_markdown_note(user, "\n".join(lines), f"Retro: {board.title}")
 
 
@@ -291,6 +296,16 @@ def board_context(board, participant):
     my_votes = defaultdict(int)
     for card_id in participant.votes.filter(card__board=board).values_list("card_id", flat=True):
         my_votes[card_id] += 1
+    # Who voted how often per card; only named once votes are shown and the board isn't anonymous.
+    voters = defaultdict(lambda: defaultdict(int))
+    vote_counts = defaultdict(int)
+    for card_id, voter_id in RetroVote.objects.filter(card__board=board).values_list(
+        "card_id", "participant_id"
+    ):
+        voters[card_id][voter_id] += 1
+        vote_counts[voter_id] += 1
+    show_voters = votes_shown and not board.anonymous
+    show_authors = phase != RetroBoard.PHASE_COLLECT and not board.anonymous
     children = defaultdict(list)
     for card in cards:
         if card.group_id:
@@ -305,9 +320,16 @@ def board_context(board, participant):
             "hidden": not visible,
             "own": own,
             "can_change": own or is_owner,
-            "author": names.get(card.author_id, "") if visible and not board.anonymous else "",
+            # Authors show from grouping on, and never on anonymous boards.
+            "author": names.get(card.author_id, "") if show_authors else "",
             "votes": card.vote_count if votes_shown else None,
             "my_votes": my_votes[card.pk],
+            "voters": ", ".join(
+                f"{names.get(voter_id, '?')} ×{count}" if count > 1 else names.get(voter_id, "?")
+                for voter_id, count in voters[card.pk].items()
+            )
+            if show_voters
+            else "",
             "children": [card_item(child) for child in children[card.pk]],
             "column_id": card.column_id,
         }
@@ -339,13 +361,12 @@ def board_context(board, participant):
     card_counts = defaultdict(int)
     for card in cards:
         card_counts[card.author_id] += 1
-    vote_counts = defaultdict(int)
-    for voter_id in RetroVote.objects.filter(card__board=board).values_list("participant_id", flat=True):
-        vote_counts[voter_id] += 1
     actions = [
         {
             "id": action.pk,
-            "text": action.text,
+            "title": action.title,
+            "description": action.description,
+            "assignee_id": action.assignee_id,
             "assignee": names.get(action.assignee_id, ""),
             "has_task": action.task_id is not None,
             "can_take": (
@@ -378,9 +399,6 @@ def board_context(board, participant):
         "presented": presented,
         "cards_left": left_cards,
         "votes_left": left_votes,
-        # The header shows limits as icons: True for a used slot.
-        "card_slots": [index >= left_cards for index in range(board.max_cards)] if board.max_cards else [],
-        "vote_slots": [index >= left_votes for index in range(board.votes_per_person)],
         "participants": [
             {
                 "id": item.pk,
