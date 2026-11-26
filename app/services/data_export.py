@@ -32,6 +32,7 @@ from app.models import (
     NoteTag,
     NoteTemplate,
     Recipe,
+    SavedSearch,
     ScheduledChatMessage,
     ShoppingItem,
     ShoppingListShare,
@@ -73,6 +74,7 @@ Dieses Archiv enthält alle Daten, die du in Lunora angelegt hast:
 - urlaub.json: Urlaubsjahre, Urlaube und eigene Feiertage
 - gewohnheiten.json: Gewohnheiten mit allen abgehakten Tagen
 - lesezeichen.json: Lesezeichen mit Beschreibung und Tags
+- gespeicherte-suchen.json: gespeicherte Suchen der globalen Suche
 - countdowns.json: Countdowns vom Dashboard
 - einkaufszettel.json: Artikel auf deinem Einkaufszettel
 - rezepte.json, wochenplan.json: Rezepte und geplante Gerichte
@@ -135,6 +137,11 @@ def write_user_export(user, fileobj):
             archive,
             "lesezeichen.json",
             list(Bookmark.objects.filter(owner=user).values("title", "url", "description", "tags")),
+        )
+        _add_json(
+            archive,
+            "gespeicherte-suchen.json",
+            list(SavedSearch.objects.filter(owner=user).values("query", "area")),
         )
         _add_json(
             archive, "countdowns.json", list(Countdown.objects.filter(owner=user).values("title", "date"))

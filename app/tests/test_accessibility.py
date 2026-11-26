@@ -27,6 +27,7 @@ from app.models import (
     Note,
     Profile,
     Recipe,
+    SavedSearch,
     ScheduledChatMessage,
     SystemSettings,
     Task,
@@ -152,6 +153,8 @@ class PageAccessibilityMarkupTests(TestCase):
         Bookmark.objects.create(
             owner=self.mira, title="Packliste online", url="https://pack.example.com", tags="reise"
         )
+        SavedSearch.objects.create(owner=self.mira, query="Pack")
+        SavedSearch.objects.create(owner=self.mira, query="Reise", area="bookmarks")
         self.recipe = Recipe.objects.create(
             owner=self.mira,
             title="Pfannkuchen",

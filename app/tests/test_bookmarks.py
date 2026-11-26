@@ -283,3 +283,164 @@ class GlobalSearchAreaTests(TestCase):
         response = self.search("suppe", **{"in": "<script>"})
         self.assertEqual(response.context["selected_area"], "")
         self.assertEqual(self.titles(response, "recipe_results"), ["Suppe"])
+
+
+BOOKMARK_FILE = """<!DOCTYPE NETSCAPE-Bookmark-file-1>
+<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">
+<TITLE>Bookmarks</TITLE>
+<H1>Bookmarks</H1>
+<DL><p>
+    <DT><H3 ADD_DATE="1" PERSONAL_TOOLBAR_FOLDER="true">Lesezeichenleiste</H3>
+    <DL><p>
+        <DT><A HREF="https://bank.example.com/" ADD_DATE="1">Meine Bank</A>
+        <DT><H3>Rezepte Italien</H3>
+        <DL><p>
+            <DT><A HREF="https://pasta.example.com/" TAGS="kochen,pasta">Pasta &amp; Co</A>
+        </DL><p>
+    </DL><p>
+    <DT><A HREF="javascript:alert(1)">Skript</A>
+    <DT><A HREF="https://schon-da.example.com/">Doppelt</A>
+    <DT><A HREF="https://ohne-titel.example.com/pfad"></A>
+</DL><p>
+"""
+
+
+class BookmarkImportAndCheckTests(TestCase):
+    def setUp(self):
+        self.mira = User.objects.create_user(username="mira", email="mira@example.com", password="pw-12345!")
+        self.client.force_login(self.mira)
+        cache.clear()
+
+    def upload(self, content, name="bookmarks.html"):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        return self.client.post(
+            "/tools/bookmarks/",
+            {
+                "form_name": "bookmark_import",
+                "bookmark_file": SimpleUploadedFile(name, content.encode(), content_type="text/html"),
+            },
+            follow=True,
+        )
+
+    def test_import_turns_folders_into_tags_and_skips_duplicates_and_scripts(self):
+        Bookmark.objects.create(owner=self.mira, title="Alt", url="https://schon-da.example.com/")
+        with patch("app.services.bookmarks.safe_fetch.fetch") as fetch:
+            response = self.upload(BOOKMARK_FILE)
+        fetch.assert_not_called()
+
+        self.assertContains(response, "3 Lesezeichen importiert. 2 übersprungen")
+        self.assertEqual(
+            sorted(Bookmark.objects.exclude(title="Alt").values_list("title", "url", "tags")),
+            [
+                ("Meine Bank", "https://bank.example.com/", ""),
+                ("Pasta & Co", "https://pasta.example.com/", "rezepte-italien kochen pasta"),
+                ("ohne-titel.example.com", "https://ohne-titel.example.com/pfad", ""),
+            ],
+        )
+
+    def test_import_respects_the_limit_and_rejects_other_files(self):
+        with patch.object(bookmark_service, "MAX_BOOKMARKS", 2):
+            self.upload(BOOKMARK_FILE)
+        self.assertEqual(Bookmark.objects.count(), 2)
+
+        response = self.upload("Kein HTML", name="notizen.txt")
+        self.assertContains(response, "Die Datei enthält keine Lesezeichen.")
+
+    def test_link_check_marks_failing_pages_and_clears_them_again(self):
+        from django.utils import timezone
+
+        from app.services.bookmarks import check_due_links
+
+        now = timezone.now()
+        dead = Bookmark.objects.create(owner=self.mira, title="Weg", url="https://weg.example.com")
+        alive = Bookmark.objects.create(owner=self.mira, title="Da", url="https://da.example.com")
+
+        def fake_fetch(url, read, **kwargs):
+            if "weg" in url:
+                raise FetchError("Fehler 404")
+
+        with patch("app.services.bookmarks.safe_fetch.fetch", side_effect=fake_fetch) as fetch:
+            self.assertEqual(check_due_links(now=now), {"checked": 2, "unreachable": 1})
+            # Checked ones wait a week.
+            self.assertEqual(check_due_links(now=now), {"checked": 0, "unreachable": 0})
+            self.assertEqual(fetch.call_count, 2)
+        dead.refresh_from_db()
+        alive.refresh_from_db()
+        self.assertEqual(dead.unreachable_since, now)
+        self.assertIsNone(alive.unreachable_since)
+
+        response = self.client.get("/tools/bookmarks/?broken=1")
+        self.assertContains(response, "nicht erreichbar seit")
+        self.assertEqual([item["bookmark"] for item in response.context["bookmark_items"]], [dead])
+        self.assertEqual(response.context["broken_total"], 1)
+
+        # "Vorschau neu laden" clears the mark once the page answers again.
+        with patch("app.services.bookmarks.safe_fetch.fetch", return_value=PAGE):
+            self.client.post("/tools/bookmarks/", {"form_name": "bookmark_refresh", "bookmark_id": dead.pk})
+        dead.refresh_from_db()
+        self.assertIsNone(dead.unreachable_since)
+
+
+class SavedAndQuickSearchTests(TestCase):
+    def setUp(self):
+        self.mira = User.objects.create_user(username="mira", email="mira@example.com", password="pw-12345!")
+        self.lukas = User.objects.create_user(
+            username="lukas", email="lukas@example.com", password="pw-12345!"
+        )
+        self.client.force_login(self.mira)
+
+    def test_saving_listing_and_removing_a_search(self):
+        from app.models import SavedSearch
+
+        response = self.client.post("/search/saved/", {"q": "kaffee", "in": "bookmarks"})
+        self.assertRedirects(response, "/search/?q=kaffee&in=bookmarks", fetch_redirect_response=False)
+        self.client.post("/search/saved/", {"q": "kaffee", "in": "bookmarks"})
+        self.client.post("/search/saved/", {"q": "tee", "in": "erfunden"})
+        self.assertEqual(
+            sorted(SavedSearch.objects.filter(owner=self.mira).values_list("query", "area")),
+            [("kaffee", "bookmarks"), ("tee", "")],
+        )
+
+        page = self.client.get("/search/", {"q": "kaffee", "in": "bookmarks"})
+        self.assertTrue(page.context["is_saved"])
+        self.assertEqual([item["query"] for item in page.context["saved_searches"]], ["kaffee", "tee"])
+        self.assertContains(page, "in Lesezeichen")
+
+        foreign = SavedSearch.objects.create(owner=self.lukas, query="geheim")
+        own = SavedSearch.objects.get(query="tee")
+        for saved in (foreign, own):
+            self.client.post(
+                "/search/saved/", {"form_name": "saved_search_delete", "saved_search_id": saved.pk}
+            )
+        self.assertTrue(SavedSearch.objects.filter(pk=foreign.pk).exists())
+        self.assertFalse(SavedSearch.objects.filter(pk=own.pk).exists())
+
+    def test_quick_search_returns_a_few_own_hits_as_json(self):
+        Bookmark.objects.create(owner=self.mira, title="Kaffeebohnen", url="https://kaffee.example.com")
+        Bookmark.objects.create(owner=self.lukas, title="Kaffee von Lukas", url="https://l.example.com")
+        Recipe.objects.create(owner=self.mira, title="Kaffee-Tiramisu")
+
+        response = self.client.get("/search/quick/", {"q": "kaffee"})
+
+        self.assertIn("no-store", response["Cache-Control"])
+        self.assertEqual(
+            response.json()["results"],
+            [
+                {
+                    "title": "Kaffeebohnen",
+                    "url": "https://kaffee.example.com",
+                    "icon": "fa-solid fa-arrow-up-right-from-square",
+                    "area": "Lesezeichen",
+                    "external": True,
+                },
+                {
+                    "title": "Kaffee-Tiramisu",
+                    "url": f"/tools/recipes/{Recipe.objects.get().pk}/",
+                    "icon": "fa-solid fa-utensils",
+                    "area": "Rezepte",
+                    "external": False,
+                },
+            ],
+        )
+        self.assertEqual(self.client.get("/search/quick/", {"q": "k"}).json(), {"results": []})

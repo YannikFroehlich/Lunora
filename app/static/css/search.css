@@ -214,6 +214,52 @@
   border-color: transparent;
 }
 
+.search-saved {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.search-saved form {
+  display: contents;
+}
+
+.search-saved-chip {
+  padding-right: 6px;
+}
+
+.search-saved-chip a,
+.search-saved-chip button {
+  color: inherit;
+  text-decoration: none;
+}
+
+.search-saved-chip button {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+
+.search-saved-chip button:hover {
+  background: var(--surface-control-hover);
+}
+
+.search-saved-chip.is-active i,
+.search-saved-chip.is-active small {
+  color: inherit;
+}
+
+.search-save-button {
+  cursor: pointer;
+}
+
 .search-area-chip.is-active i,
 .search-area-chip.is-active small {
   color: inherit;

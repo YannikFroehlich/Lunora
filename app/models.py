@@ -1351,6 +1351,10 @@ class Bookmark(models.Model):
     # Lower-case tags separated by single spaces, normalized by app.services.bookmarks.normalize_tags.
     tags = models.CharField(max_length=200, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    # The automations' link check (app.services.bookmarks.check_due_links): when the page was last
+    # requested, and since when it hasn't answered (null while it does).
+    checked_at = models.DateTimeField(null=True, blank=True)
+    unreachable_since = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["created_at", "id"]
@@ -1361,6 +1365,27 @@ class Bookmark(models.Model):
     @property
     def tag_list(self):
         return self.tags.split()
+
+
+class SavedSearch(models.Model):
+    """A global search query kept as a chip on the search page."""
+
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="saved_searches"
+    )
+    query = models.CharField(max_length=200)
+    # A SEARCH_AREAS key, or "" for all areas.
+    area = models.CharField(max_length=20, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["owner", "query", "area"], name="unique_saved_search"),
+        ]
+
+    def __str__(self):
+        return self.query
 
 
 class Countdown(models.Model):

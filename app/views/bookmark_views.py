@@ -1,5 +1,6 @@
 from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ValidationError
 from django.shortcuts import redirect, render
 
 from app.forms import BookmarkForm
@@ -8,12 +9,14 @@ from app.services.bookmarks import (
     MAX_BOOKMARKS,
     add_bookmark,
     host_of,
+    import_bookmark_file,
     normalize_tags,
     refresh_preview,
     search_bookmarks,
     tag_counts,
 )
 from app.services.system_settings import disabled_feature_response, feature_enabled
+from app.services.user_preferences import format_user_date
 from app.views.navigation import posted_id
 
 
@@ -32,8 +35,12 @@ def bookmarks(request):
 
     query = request.GET.get("q", "").strip()
     tag = normalize_tags(request.GET.get("tag", "")).split(" ")[0]
+    broken_only = request.GET.get("broken") == "1"
     own = Bookmark.objects.filter(owner=request.user)
-    items = search_bookmarks(own, query, tag).order_by("-created_at", "-id")
+    items = search_bookmarks(own, query, tag)
+    if broken_only:
+        items = items.filter(unreachable_since__isnull=False)
+    items = items.order_by("-created_at", "-id")
     return render(
         request,
         "app/bookmarks.html",
@@ -43,11 +50,16 @@ def bookmarks(request):
                 {
                     "bookmark": item,
                     "host": host_of(item.url),
+                    "unreachable_label": format_user_date(item.unreachable_since, request.user)
+                    if item.unreachable_since
+                    else "",
                     "form": BookmarkForm(instance=item, auto_id=False),
                 }
                 for item in items
             ],
             "bookmark_total": own.count(),
+            "broken_total": own.filter(unreachable_since__isnull=False).count(),
+            "broken_only": broken_only,
             "bookmark_limit": MAX_BOOKMARKS,
             "bookmark_form": BookmarkForm(auto_id="bookmark_new_%s"),
             "tags": tag_counts(request.user),
@@ -69,6 +81,21 @@ def _handle_post(request):
             django_messages.error(request, error)
         else:
             django_messages.success(request, "Lesezeichen hinzugefügt.")
+        return
+    if form_name == "bookmark_import":
+        uploaded = request.FILES.get("bookmark_file")
+        if uploaded is None:
+            django_messages.error(request, "Bitte wähle eine Lesezeichen-Datei aus.")
+            return
+        try:
+            imported, skipped = import_bookmark_file(request.user, uploaded)
+        except ValidationError as error:
+            django_messages.error(request, " ".join(error.messages))
+            return
+        text = f"{imported} Lesezeichen importiert."
+        if skipped:
+            text += f" {skipped} übersprungen (schon vorhanden, keine Web-Adresse oder Limit von {MAX_BOOKMARKS} erreicht)."
+        django_messages.success(request, text)
         return
 
     bookmark = Bookmark.objects.filter(owner=request.user, pk=posted_id(request, "bookmark_id")).first()

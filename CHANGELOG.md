@@ -6,6 +6,14 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Lesezeichen: Import aus dem Browser (HTML-Export von Firefox, Chrome, Edge oder Safari), Ordner
+  werden zu Tags. Lunora prüft gespeicherte Links einmal pro Woche und markiert Seiten, die nicht
+  mehr antworten; ein Filter „Nicht erreichbar" zeigt sie gesammelt.
+- Suche: Suchen lassen sich speichern und erscheinen als Chips über der Suche. Die Befehlspalette
+  (Strg+K) zeigt beim Tippen direkt passende Treffer aus allen Bereichen, und mit `!a`, `!t` oder
+  `!n` vor dem Text legt sie gleich eine Aufgabe, einen Termin oder eine Notiz an.
+- Wochenübersicht: blickt jetzt auch auf die letzte Woche zurück – erledigte Aufgaben, neue
+  Notizen, abgehakte Gewohnheiten und dein Anteil an geteilten Ausgaben.
 - Lesezeichen (Werkzeuge): eine eigene Seite für alle Lesezeichen mit Tags, Suche und Tag-Filter,
   Bearbeiten und Löschen. Beim Hinzufügen liest Lunora Titel und Beschreibung von der Seite selbst
   (ein leerer Name wird damit gefüllt). Bis zu 200 Lesezeichen; das Dashboard-Widget zeigt die

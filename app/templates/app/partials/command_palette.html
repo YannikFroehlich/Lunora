@@ -1,5 +1,5 @@
 {% url 'settings' as settings_url %}
-<dialog class="command-palette" aria-label="Befehlspalette" data-command-palette>
+<dialog class="command-palette" aria-label="Befehlspalette" data-command-palette data-quick-search-url="{% url 'quick_search' %}">
     <form class="glass-panel command-palette-panel" method="get" action="{% url 'global_search' %}" role="search" data-command-form>
         <label class="command-palette-input">
             <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
@@ -121,7 +121,9 @@
                 <i class="fa-solid fa-shield-halved" aria-hidden="true"></i><span>Administration</span><small>Seite</small>
             </a>
             {% endif %}
-            {% comment %}Quick capture: the typed line goes to the tasks/calendar quick-add (date, time, !priority, #label) and the page stays.{% endcomment %}
+            {% comment %}Live hits from /search/quick/, filled in by base.js while typing.{% endcomment %}
+            <div class="command-palette-live" role="presentation" data-command-live></div>
+            {% comment %}Quick capture: the typed line goes to the tasks/calendar quick-add (date, time, !priority, #label) and the page stays; a note opens. "!a", "!t" and "!n" in front pick one directly.{% endcomment %}
             {% if feature_flags.tasks %}
             <a class="command-palette-item" id="command-quick-task" role="option" href="{% url 'tasks' %}" data-command-quick="task" hidden>
                 <i class="fa-solid fa-plus" aria-hidden="true"></i>
@@ -136,13 +138,20 @@
                 <small>Schnellerfassung</small>
             </a>
             {% endif %}
+            {% if feature_flags.notes %}
+            <a class="command-palette-item" id="command-quick-note" role="option" href="{% url 'notes' %}" data-command-quick="note" hidden>
+                <i class="fa-regular fa-note-sticky" aria-hidden="true"></i>
+                <span>Notiz anlegen: „<span data-command-query></span>“</span>
+                <small>Schnellerfassung</small>
+            </a>
+            {% endif %}
             <a class="command-palette-item" id="command-search" role="option" href="{% url 'global_search' %}" data-command-search hidden>
                 <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
                 <span>Überall suchen nach „<span data-command-query></span>“</span>
                 <small>Suche</small>
             </a>
         </div>
-        <p class="command-palette-hint"><kbd>↑</kbd><kbd>↓</kbd> auswählen · <kbd>Enter</kbd> öffnen oder anlegen · <kbd>Strg</kbd>+<kbd>K</kbd> schließen</p>
+        <p class="command-palette-hint"><kbd>↑</kbd><kbd>↓</kbd> auswählen · <kbd>Enter</kbd> öffnen oder anlegen · <kbd>!a</kbd> Aufgabe, <kbd>!t</kbd> Termin, <kbd>!n</kbd> Notiz · <kbd>Strg</kbd>+<kbd>K</kbd> schließen</p>
     </form>
     {% if feature_flags.tasks %}
     <form method="post" action="{% url 'tasks' %}" hidden data-command-quick-form="task">
@@ -158,6 +167,12 @@
         <input type="hidden" name="form_name" value="calendar_quick_add">
         <input type="hidden" name="text" data-command-quick-text>
         <input type="hidden" name="return_to" data-command-quick-return>
+    </form>
+    {% endif %}
+    {% if feature_flags.notes %}
+    <form method="post" action="{% url 'share_note' %}" hidden data-command-quick-form="note" data-no-soft>
+        {% csrf_token %}
+        <input type="hidden" name="title" data-command-quick-text>
     </form>
     {% endif %}
 </dialog>

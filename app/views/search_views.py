@@ -1,9 +1,23 @@
+from django.contrib import messages as django_messages
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q
-from django.shortcuts import render
+from django.http import JsonResponse
+from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils.http import urlencode
+from django.views.decorators.cache import never_cache
+from django.views.decorators.http import require_GET, require_POST
 
-from app.models import Bookmark, Contract, Conversation, Recipe, UmlDiagram, VacationPeriod, VocabularyList
+from app.models import (
+    Bookmark,
+    Contract,
+    Conversation,
+    Recipe,
+    SavedSearch,
+    UmlDiagram,
+    VacationPeriod,
+    VocabularyList,
+)
 from app.services.bookmarks import host_of, search_bookmarks
 from app.services.expenses import user_groups
 from app.services.kanban import accessible_boards
@@ -30,10 +44,16 @@ from app.views.message_views import (
     _conversation_ids_matching_message_query,
     _filter_inbox_items,
 )
+from app.views.navigation import posted_id
 
 SEARCH_RESULT_LIMIT = 20
 # With one area picked (?in=…), that area shows more of its hits.
 SEARCH_FILTERED_LIMIT = 60
+MAX_SAVED_SEARCHES = 20
+# The command palette's live preview: a few hits per area, a handful in total.
+QUICK_SEARCH_PER_AREA = 2
+QUICK_SEARCH_LIMIT = 8
+QUICK_SEARCH_MIN_LENGTH = 2
 
 # (key, label, icon, feature flag or None). The order is the order on the page.
 SEARCH_AREAS = (
@@ -371,11 +391,20 @@ class _Search:
         ]
 
 
+def _enabled_areas():
+    flags = feature_flags()
+    return flags, [area for area in SEARCH_AREAS if area[3] is None or flags[area[3]]]
+
+
+def _search_url(query, area=""):
+    params = {"q": query, **({"in": area} if area else {})}
+    return f"{reverse('global_search')}?{urlencode(params)}"
+
+
 @login_required
 def global_search(request):
     query = request.GET.get("q", "").strip()
-    flags = feature_flags()
-    areas = [area for area in SEARCH_AREAS if area[3] is None or flags[area[3]]]
+    flags, areas = _enabled_areas()
     area_keys = {area[0] for area in areas}
     selected = request.GET.get("in", "")
     if selected not in area_keys:
@@ -401,12 +430,27 @@ def global_search(request):
     hit_sections = [section for section in sections if section["results"]]
     shown_sections = [section for section in hit_sections if not selected or section["key"] == selected]
 
+    area_labels = {area[0]: area[1] for area in areas}
+    saved = [
+        {
+            "id": item.pk,
+            "query": item.query,
+            "area_label": area_labels.get(item.area, ""),
+            "url": _search_url(item.query, item.area if item.area in area_keys else ""),
+            "is_current": item.query == query and item.area == selected,
+        }
+        for item in SavedSearch.objects.filter(owner=request.user)
+    ]
+
     return render(
         request,
         "app/search.html",
         {
             "active_page": "search",
             "query": query,
+            "saved_searches": saved,
+            "is_saved": any(item["is_current"] for item in saved),
+            "saved_search_limit_reached": len(saved) >= MAX_SAVED_SEARCHES,
             "selected_area": selected,
             "has_search_results": bool(hit_sections),
             "hit_sections": hit_sections,
@@ -427,3 +471,45 @@ def global_search(request):
             "expense_results": results_by_key.get("expenses", []),
         },
     )
+
+
+@login_required
+@require_POST
+def saved_searches(request):
+    query = request.POST.get("q", "").strip()[: SavedSearch._meta.get_field("query").max_length]
+    area = request.POST.get("in", "")
+    if area not in {key for key, *_rest in SEARCH_AREAS}:
+        area = ""
+    if request.POST.get("form_name") == "saved_search_delete":
+        SavedSearch.objects.filter(owner=request.user, pk=posted_id(request, "saved_search_id")).delete()
+    elif query:
+        if SavedSearch.objects.filter(owner=request.user).count() >= MAX_SAVED_SEARCHES:
+            django_messages.error(request, f"Du kannst höchstens {MAX_SAVED_SEARCHES} Suchen speichern.")
+        else:
+            SavedSearch.objects.get_or_create(owner=request.user, query=query, area=area)
+    return redirect(_search_url(query, area) if query else "global_search")
+
+
+@never_cache
+@login_required
+@require_GET
+def quick_search(request):
+    """The command palette's live preview: the best few hits of every enabled area as JSON."""
+    query = request.GET.get("q", "").strip()
+    results = []
+    if len(query) >= QUICK_SEARCH_MIN_LENGTH:
+        search = _Search(request.user, query)
+        for key, label, _icon, _flag in _enabled_areas()[1]:
+            for row in getattr(search, key)(QUICK_SEARCH_PER_AREA):
+                results.append(
+                    {
+                        "title": row["title"] or "Ohne Titel",
+                        "url": row["url"],
+                        "icon": row["icon"],
+                        "area": label,
+                        "external": bool(row.get("external")),
+                    }
+                )
+            if len(results) >= QUICK_SEARCH_LIMIT:
+                break
+    return JsonResponse({"results": results[:QUICK_SEARCH_LIMIT]})

@@ -32,6 +32,17 @@
         </form>
     </details>
 
+    <details class="glass-panel wish-list-settings">
+        <summary><i class="fa-solid fa-file-import" aria-hidden="true"></i> Aus dem Browser importieren</summary>
+        <form class="bookmark-form" method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="bookmark_import">
+            <label><span>Lesezeichen-Datei (HTML)</span><input type="file" name="bookmark_file" accept=".html,.htm,text/html" required></label>
+            <button class="primary-button" type="submit"><i class="fa-solid fa-file-import" aria-hidden="true"></i> Importieren</button>
+            <p class="bookmark-hint">Exportiere deine Lesezeichen in Firefox, Chrome, Edge oder Safari als HTML-Datei. Ordner werden zu Tags, Links, die du schon hast, werden übersprungen.</p>
+        </form>
+    </details>
+
     {% if bookmark_total %}
     <form class="glass-panel bookmark-search" method="get" role="search">
         <label class="bookmark-search-field">
@@ -39,12 +50,16 @@
             <input type="search" name="q" value="{{ query }}" placeholder="Name, Adresse, Beschreibung oder Tag" aria-label="Lesezeichen durchsuchen">
         </label>
         {% if active_tag %}<input type="hidden" name="tag" value="{{ active_tag }}">{% endif %}
+        {% if broken_only %}<input type="hidden" name="broken" value="1">{% endif %}
         <button class="ghost-button" type="submit">Suchen</button>
     </form>
 
-    {% if tags %}
+    {% if tags or broken_total %}
     <nav class="bookmark-tags" aria-label="Nach Tag filtern">
-        <a class="bookmark-tag{% if not active_tag %} is-active{% endif %}" href="?{% if query %}q={{ query|urlencode }}{% endif %}"{% if not active_tag %} aria-current="page"{% endif %}>Alle</a>
+        <a class="bookmark-tag{% if not active_tag and not broken_only %} is-active{% endif %}" href="?{% if query %}q={{ query|urlencode }}{% endif %}"{% if not active_tag and not broken_only %} aria-current="page"{% endif %}>Alle</a>
+        {% if broken_total %}
+        <a class="bookmark-tag is-warning{% if broken_only %} is-active{% endif %}" href="?broken=1{% if query %}&amp;q={{ query|urlencode }}{% endif %}"{% if broken_only %} aria-current="page"{% endif %}><i class="fa-solid fa-link-slash" aria-hidden="true"></i> Nicht erreichbar <small>{{ broken_total }}</small></a>
+        {% endif %}
         {% for tag, count in tags %}
         <a class="bookmark-tag{% if tag == active_tag %} is-active{% endif %}" href="?tag={{ tag|urlencode }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}"{% if tag == active_tag %} aria-current="page"{% endif %}>#{{ tag }} <small>{{ count }}</small></a>
         {% endfor %}
@@ -58,7 +73,7 @@
         <li class="glass-panel bookmark-card" id="bookmark-{{ bookmark.id }}">
             <div class="bookmark-card-body">
                 <a class="bookmark-card-title" href="{{ bookmark.url }}" target="_blank" rel="noopener noreferrer">{{ bookmark.title }} <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a>
-                <small class="bookmark-card-host">{{ item.host }}</small>
+                <small class="bookmark-card-host">{{ item.host }}{% if bookmark.unreachable_since %} · <span class="bookmark-card-broken" title="Beim letzten Aufruf hat die Seite nicht geantwortet. „Vorschau neu laden“ prüft sie erneut."><i class="fa-solid fa-link-slash" aria-hidden="true"></i> nicht erreichbar seit {{ item.unreachable_label }}</span>{% endif %}</small>
                 {% if bookmark.description %}<p class="bookmark-card-description">{{ bookmark.description }}</p>{% endif %}
                 {% if bookmark.tag_list %}
                 <p class="bookmark-card-tags">{% for tag in bookmark.tag_list %}<a class="bookmark-tag" href="?tag={{ tag|urlencode }}">#{{ tag }}</a>{% endfor %}</p>

@@ -81,7 +81,7 @@ Accounts and security (login throttling, TOTP two-factor, passkeys, data export/
 
 ### Global search
 
-`/search/` (`app/views/search_views.py`) searches every enabled area with the note search's syntax (all words, `"phrases"`, `-exclusions`, `#tag` for notes and bookmarks). Notes use `search_notes`; every other area goes through `note_search.filter_by_query(queryset, query, fields)` on a queryset that is already permission-scoped (`accessible_*`, `visible_tasks`, `owner=`). Areas are listed in `SEARCH_AREAS` with their feature flag; `?in=<area>` shows one area with more hits.
+`/search/` (`app/views/search_views.py`) searches every enabled area with the note search's syntax (all words, `"phrases"`, `-exclusions`, `#tag` for notes and bookmarks). Notes use `search_notes`; every other area goes through `note_search.filter_by_query(queryset, query, fields)` on a queryset that is already permission-scoped (`accessible_*`, `visible_tasks`, `owner=`). Areas are listed in `SEARCH_AREAS` with their feature flag; `?in=<area>` shows one area with more hits. `SavedSearch` rows (`/search/saved/`) are chips above the search. `/search/quick/` returns the top hits per area as JSON for the command palette's live list, built from the same `_Search` methods, so a new area shows up in both.
 
 ### Notes
 
@@ -166,7 +166,7 @@ POST forms inside a `[data-soft-region]`, or carrying `data-soft` themselves, ar
 
 ### Command palette
 
-`app/templates/app/partials/command_palette.html` (included in `base.html` for signed-in users) is a `<dialog>` of plain links, gated by `feature_flags` like the navigation; `initCommandPalette` in `base.js` opens it on Ctrl/Cmd+K, filters entries by their text plus `data-keywords` (case- and accent-insensitive), and falls back to `/search/?q=` for the typed text. A new page or settings section that users navigate to belongs in that partial.
+`app/templates/app/partials/command_palette.html` (included in `base.html` for signed-in users) is a `<dialog>` of plain links, gated by `feature_flags` like the navigation; `initCommandPalette` in `base.js` opens it on Ctrl/Cmd+K, filters entries by their text plus `data-keywords` (case- and accent-insensitive), and falls back to `/search/?q=` for the typed text. While typing it also lists live hits from `/search/quick/`; quick capture sends the line to the tasks/calendar quick-add or `share_note`, and a leading `!a`/`!t`/`!n` picks one of those directly. A new page or settings section that users navigate to belongs in that partial.
 
 ### Static asset versioning
 

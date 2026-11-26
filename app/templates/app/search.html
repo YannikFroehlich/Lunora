@@ -26,6 +26,34 @@
         <button class="primary-button" type="submit">Suchen</button>
     </form>
 
+    <div class="soft-contents" id="search-saved" data-soft-region>
+    {% if saved_searches or query %}
+    <div class="search-saved" role="group" aria-label="Gespeicherte Suchen">
+        {% for saved in saved_searches %}
+        <span class="search-area-chip search-saved-chip{% if saved.is_current %} is-active{% endif %}">
+            <a href="{{ saved.url }}"{% if saved.is_current %} aria-current="page"{% endif %}><i class="fa-solid fa-star" aria-hidden="true"></i> {{ saved.query }}{% if saved.area_label %} <small>in {{ saved.area_label }}</small>{% endif %}</a>
+            <form method="post" action="{% url 'saved_searches' %}">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="saved_search_delete">
+                <input type="hidden" name="saved_search_id" value="{{ saved.id }}">
+                <input type="hidden" name="q" value="{{ query }}">
+                <input type="hidden" name="in" value="{{ selected_area }}">
+                <button type="submit" aria-label="Gespeicherte Suche „{{ saved.query }}“ entfernen" title="Entfernen"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+            </form>
+        </span>
+        {% endfor %}
+        {% if query and not is_saved and not saved_search_limit_reached %}
+        <form method="post" action="{% url 'saved_searches' %}">
+            {% csrf_token %}
+            <input type="hidden" name="q" value="{{ query }}">
+            <input type="hidden" name="in" value="{{ selected_area }}">
+            <button class="search-area-chip search-save-button" type="submit"><i class="fa-regular fa-star" aria-hidden="true"></i> Suche speichern</button>
+        </form>
+        {% endif %}
+    </div>
+    {% endif %}
+    </div>
+
     {% if query %}
     {% if has_search_results %}
     <nav class="search-area-filter" aria-label="Treffer nach Bereich filtern">

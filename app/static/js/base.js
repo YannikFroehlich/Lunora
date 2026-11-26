@@ -476,6 +476,10 @@ function initCommandPalette() {
   const searchOption = dialog.querySelector("[data-command-search]");
   const quickOptions = Array.from(dialog.querySelectorAll("[data-command-quick]"));
   const queryLabels = dialog.querySelectorAll("[data-command-query]");
+  const liveList = dialog.querySelector("[data-command-live]");
+  let liveItems = [];
+  let liveTimer = null;
+  let liveSequence = 0;
   const items = Array.from(dialog.querySelectorAll("[data-command-item]")).map((element) => ({
     element,
     text: normalizeCommandText(`${element.textContent} ${element.dataset.keywords || ""}`),
@@ -487,7 +491,7 @@ function initCommandPalette() {
     activeIndex = index;
     const active = visible[index];
     // Clear every entry, not just visible ones, so a filtered-out item never keeps the highlight.
-    [...items.map((item) => item.element), ...quickOptions, searchOption].forEach((element) =>
+    [...items.map((item) => item.element), ...liveItems, ...quickOptions, searchOption].forEach((element) =>
       element.classList.toggle("is-active", element === active),
     );
     if (active) {
@@ -498,35 +502,104 @@ function initCommandPalette() {
     }
   }
 
+  // "!a text" creates a task, "!t text" an event, "!n text" a note, without the other entries.
+  const QUICK_PREFIXES = { a: "task", t: "event", n: "note" };
+
+  function parseInput() {
+    const raw = input.value.trim();
+    const match = raw.match(/^!([atn])(?:\s+|$)/i);
+    const kind = match && QUICK_PREFIXES[match[1].toLowerCase()];
+    const forced = kind && quickOptions.find((option) => option.dataset.commandQuick === kind);
+    return forced ? { text: raw.slice(match[0].length).trim(), forced } : { text: raw, forced: null };
+  }
+
   function filter() {
-    const query = input.value.trim();
+    const { text: query, forced } = parseInput();
     const words = normalizeCommandText(query).split(/\s+/).filter(Boolean);
     const matches = [];
     items.forEach((item) => {
-      const match = words.every((word) => item.text.includes(word));
+      const match = !forced && words.every((word) => item.text.includes(word));
       item.element.hidden = !match;
       if (match) matches.push(item.element);
     });
-    searchOption.hidden = !query;
+    const shownQuick = forced ? [forced] : query ? quickOptions : [];
+    searchOption.hidden = !query || Boolean(forced);
     quickOptions.forEach((option) => {
-      option.hidden = !query;
+      option.hidden = !shownQuick.includes(option);
+    });
+    liveItems.forEach((element) => {
+      element.hidden = Boolean(forced);
     });
     queryLabels.forEach((label) => {
       label.textContent = query;
     });
     searchOption.href = `${form.action}?${new URLSearchParams({ q: query })}`;
-    // Commands come first; creating from the text and the search entry stay reachable after them.
-    visible = query ? [...matches, ...quickOptions, searchOption] : matches;
+    // Commands come first, then live hits; creating from the text and the search entry stay
+    // reachable after them.
+    if (forced) visible = query ? [forced] : [];
+    else visible = query ? [...matches, ...liveItems, ...shownQuick, searchOption] : matches;
     setActive(0);
   }
 
-  // Sends the typed line to the tasks or calendar quick-add; both redirect back to this page.
+  function renderLive(results) {
+    liveList.replaceChildren();
+    liveItems = results.map((result, index) => {
+      const link = document.createElement("a");
+      link.className = "command-palette-item";
+      link.id = `command-live-${index}`;
+      link.setAttribute("role", "option");
+      link.href = result.url;
+      if (result.external) {
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+      }
+      const icon = document.createElement("i");
+      icon.className = result.icon;
+      icon.setAttribute("aria-hidden", "true");
+      const title = document.createElement("span");
+      title.textContent = result.title;
+      const area = document.createElement("small");
+      area.textContent = result.area;
+      link.append(icon, title, area);
+      liveList.append(link);
+      return link;
+    });
+  }
+
+  // Asks the server for matching notes, tasks, bookmarks … while typing; a slower answer to an
+  // older text never replaces a newer one.
+  function scheduleLiveSearch() {
+    window.clearTimeout(liveTimer);
+    const { text, forced } = parseInput();
+    const sequence = ++liveSequence;
+    if (!liveList || forced || text.length < 2) {
+      renderLive([]);
+      return;
+    }
+    liveTimer = window.setTimeout(async () => {
+      try {
+        const response = await fetch(`${dialog.dataset.quickSearchUrl}?${new URLSearchParams({ q: text })}`, {
+          headers: { Accept: "application/json" },
+        });
+        if (!response.ok || sequence !== liveSequence) return;
+        const payload = await response.json();
+        if (sequence !== liveSequence) return;
+        renderLive(payload.results || []);
+        filter();
+      } catch {
+        // Offline or blocked: the pages and the full search entry still work.
+      }
+    }, 200);
+  }
+
+  // Sends the typed line to the tasks or calendar quick-add (both redirect back to this page) or
+  // creates a note, which then opens.
   function quickCapture(option) {
     const quickForm = dialog.querySelector(`[data-command-quick-form="${option.dataset.commandQuick}"]`);
     if (!quickForm) return;
-    quickForm.querySelector("[data-command-quick-text]").value = input.value.trim();
-    quickForm.querySelector("[data-command-quick-return]").value =
-      `${window.location.pathname}${window.location.search}`;
+    quickForm.querySelector("[data-command-quick-text]").value = parseInput().text;
+    const returnField = quickForm.querySelector("[data-command-quick-return]");
+    if (returnField) returnField.value = `${window.location.pathname}${window.location.search}`;
     quickForm.requestSubmit();
   }
 
@@ -539,12 +612,16 @@ function initCommandPalette() {
 
   function open() {
     input.value = "";
+    renderLive([]);
     filter();
     dialog.showModal();
     input.focus();
   }
 
-  input.addEventListener("input", filter);
+  input.addEventListener("input", () => {
+    scheduleLiveSearch();
+    filter();
+  });
   input.addEventListener("keydown", (event) => {
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
@@ -553,8 +630,10 @@ function initCommandPalette() {
       setActive((activeIndex + step + visible.length) % visible.length);
     } else if (event.key === "Enter" && visible[activeIndex]) {
       event.preventDefault();
-      if (visible[activeIndex].dataset.commandQuick) quickCapture(visible[activeIndex]);
-      else window.location.href = visible[activeIndex].href;
+      const active = visible[activeIndex];
+      if (active.dataset.commandQuick) quickCapture(active);
+      else if (active.target === "_blank") window.open(active.href, "_blank", "noopener");
+      else window.location.href = active.href;
     }
   });
   // A click on the backdrop lands on the dialog element itself, outside the panel.

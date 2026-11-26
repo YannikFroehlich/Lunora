@@ -965,6 +965,10 @@ dialog .glass-panel {
   overflow-y: auto;
 }
 
+.command-palette-live {
+  display: contents;
+}
+
 .command-palette-item {
   display: grid;
   grid-template-columns: 22px minmax(0, 1fr) auto;
