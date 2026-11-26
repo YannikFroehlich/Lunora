@@ -1,0 +1,112 @@
+{% extends 'app/base.html' %}
+{% load static static_versioning %}
+
+{% block title %}Lesezeichen | Lunora{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{% versioned_static 'css/tools.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell tools-shell">
+    <header class="page-hero">
+        <div>
+            <a class="tools-back-link" href="{% url 'tools' %}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Werkzeuge</a>
+            <h1>Lesezeichen</h1>
+            <p>{% if bookmark_total %}{{ bookmark_total }} von höchstens {{ bookmark_limit }} Links, mit Tags sortiert{% else %}Links sammeln, verschlagworten und wiederfinden{% endif %}</p>
+        </div>
+        <i class="fa-solid fa-bookmark hero-branch" aria-hidden="true"></i>
+    </header>
+
+    <div class="soft-contents" id="bookmarks-content" data-soft-region>
+    <details class="glass-panel wish-list-settings"{% if not bookmark_total %} open{% endif %}>
+        <summary><i class="fa-solid fa-plus" aria-hidden="true"></i> Lesezeichen hinzufügen</summary>
+        <form class="bookmark-form" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="bookmark_add">
+            <label><span>{{ bookmark_form.url.label }}</span>{{ bookmark_form.url }}</label>
+            <label><span>{{ bookmark_form.title.label }}</span>{{ bookmark_form.title }}</label>
+            <label><span>{{ bookmark_form.tags.label }}</span>{{ bookmark_form.tags }}</label>
+            <button class="primary-button" type="submit"><i class="fa-solid fa-plus" aria-hidden="true"></i> Hinzufügen</button>
+            <p class="bookmark-hint">Titel und Beschreibung liest Lunora von der Seite selbst, wenn du den Namen leer lässt.</p>
+        </form>
+    </details>
+
+    {% if bookmark_total %}
+    <form class="glass-panel bookmark-search" method="get" role="search">
+        <label class="bookmark-search-field">
+            <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+            <input type="search" name="q" value="{{ query }}" placeholder="Name, Adresse, Beschreibung oder Tag" aria-label="Lesezeichen durchsuchen">
+        </label>
+        {% if active_tag %}<input type="hidden" name="tag" value="{{ active_tag }}">{% endif %}
+        <button class="ghost-button" type="submit">Suchen</button>
+    </form>
+
+    {% if tags %}
+    <nav class="bookmark-tags" aria-label="Nach Tag filtern">
+        <a class="bookmark-tag{% if not active_tag %} is-active{% endif %}" href="?{% if query %}q={{ query|urlencode }}{% endif %}"{% if not active_tag %} aria-current="page"{% endif %}>Alle</a>
+        {% for tag, count in tags %}
+        <a class="bookmark-tag{% if tag == active_tag %} is-active{% endif %}" href="?tag={{ tag|urlencode }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}"{% if tag == active_tag %} aria-current="page"{% endif %}>#{{ tag }} <small>{{ count }}</small></a>
+        {% endfor %}
+    </nav>
+    {% endif %}
+
+    {% if bookmark_items %}
+    <ul class="bookmark-list">
+        {% for item in bookmark_items %}
+        {% with bookmark=item.bookmark %}
+        <li class="glass-panel bookmark-card" id="bookmark-{{ bookmark.id }}">
+            <div class="bookmark-card-body">
+                <a class="bookmark-card-title" href="{{ bookmark.url }}" target="_blank" rel="noopener noreferrer">{{ bookmark.title }} <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a>
+                <small class="bookmark-card-host">{{ item.host }}</small>
+                {% if bookmark.description %}<p class="bookmark-card-description">{{ bookmark.description }}</p>{% endif %}
+                {% if bookmark.tag_list %}
+                <p class="bookmark-card-tags">{% for tag in bookmark.tag_list %}<a class="bookmark-tag" href="?tag={{ tag|urlencode }}">#{{ tag }}</a>{% endfor %}</p>
+                {% endif %}
+                <details class="wish-item-edit">
+                    <summary><i class="fa-solid fa-pen" aria-hidden="true"></i> Bearbeiten</summary>
+                    <form class="bookmark-form" method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="form_name" value="bookmark_edit">
+                        <input type="hidden" name="bookmark_id" value="{{ bookmark.id }}">
+                        <label><span>{{ item.form.url.label }}</span>{{ item.form.url }}</label>
+                        <label><span>{{ item.form.title.label }}</span>{{ item.form.title }}</label>
+                        <label><span>{{ item.form.tags.label }}</span>{{ item.form.tags }}</label>
+                        <button class="primary-button" type="submit"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Speichern</button>
+                    </form>
+                </details>
+            </div>
+            <div class="uml-diagram-actions">
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="bookmark_refresh">
+                    <input type="hidden" name="bookmark_id" value="{{ bookmark.id }}">
+                    <button class="icon-button" type="submit" aria-label="Vorschau von „{{ bookmark.title }}“ neu laden" title="Vorschau neu laden"><i class="fa-solid fa-rotate" aria-hidden="true"></i></button>
+                </form>
+                <form method="post" data-confirm="Lesezeichen „{{ bookmark.title }}“ löschen?">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="bookmark_delete">
+                    <input type="hidden" name="bookmark_id" value="{{ bookmark.id }}">
+                    <button class="icon-button" type="submit" aria-label="„{{ bookmark.title }}“ löschen" title="Löschen"><i class="fa-regular fa-trash-can" aria-hidden="true"></i></button>
+                </form>
+            </div>
+        </li>
+        {% endwith %}
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state-card is-compact">
+        <i class="fa-solid fa-magnifying-glass-minus" aria-hidden="true"></i>
+        <div><strong>Keine Treffer</strong><p>Kein Lesezeichen passt zu dieser Suche.</p></div>
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="empty-state-card uml-empty">
+        <i class="fa-solid fa-bookmark" aria-hidden="true"></i>
+        <strong>Noch keine Lesezeichen</strong>
+        <p>Speichere Links zu Seiten, die du immer wieder brauchst. Mit Tags findest du sie schnell wieder, die ersten 24 erscheinen auch im Dashboard-Widget.</p>
+    </div>
+    {% endif %}
+    </div>
+</section>
+{% endblock %}

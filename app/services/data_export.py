@@ -72,7 +72,7 @@ Dieses Archiv enthält alle Daten, die du in Lunora angelegt hast:
 - kanban.json: deine Kanban-Boards mit Spalten, Swimlanes und Karten
 - urlaub.json: Urlaubsjahre, Urlaube und eigene Feiertage
 - gewohnheiten.json: Gewohnheiten mit allen abgehakten Tagen
-- lesezeichen.json: Lesezeichen vom Dashboard
+- lesezeichen.json: Lesezeichen mit Beschreibung und Tags
 - countdowns.json: Countdowns vom Dashboard
 - einkaufszettel.json: Artikel auf deinem Einkaufszettel
 - rezepte.json, wochenplan.json: Rezepte und geplante Gerichte
@@ -132,7 +132,9 @@ def write_user_export(user, fileobj):
         _add_json(archive, "urlaub.json", _vacation(user))
         _add_json(archive, "gewohnheiten.json", _habits(user))
         _add_json(
-            archive, "lesezeichen.json", list(Bookmark.objects.filter(owner=user).values("title", "url"))
+            archive,
+            "lesezeichen.json",
+            list(Bookmark.objects.filter(owner=user).values("title", "url", "description", "tags")),
         )
         _add_json(
             archive, "countdowns.json", list(Countdown.objects.filter(owner=user).values("title", "date"))

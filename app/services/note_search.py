@@ -96,6 +96,26 @@ def parse_search_query(raw):
     return ParsedQuery(tuple(terms), tuple(phrases), tuple(exclusions))
 
 
+def filter_by_query(queryset, raw_query, fields):
+    """Plain substring search over `fields` with the note search's syntax: every word and phrase
+    must appear in one of the fields, every exclusion in none. For areas without a ranked index.
+
+    Fields across a multi-valued relation can repeat a row, so the result is distinct."""
+    parsed = raw_query if isinstance(raw_query, ParsedQuery) else parse_search_query(raw_query)
+
+    def any_field(fragment):
+        condition = Q()
+        for field in fields:
+            condition |= Q(**{f"{field}__icontains": fragment})
+        return condition
+
+    for fragment in parsed.terms + parsed.phrases:
+        queryset = queryset.filter(any_field(fragment))
+    for fragment in parsed.exclusions:
+        queryset = queryset.exclude(any_field(fragment))
+    return queryset.distinct()
+
+
 def search_notes(queryset, raw_query):
     """Filter and rank ``queryset`` by relevance, annotating ``search_rank``.
 

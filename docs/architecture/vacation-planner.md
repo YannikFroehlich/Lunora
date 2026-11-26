@@ -1,0 +1,5 @@
+# Vacation planner
+
+Moved out of CLAUDE.md, which keeps the summary and the cross-cutting rules ([CLAUDE.md](../../CLAUDE.md)).
+
+`app/services/vacation_planner.py` computes German vacation-day accounting per user per year: `VacationYear` (allowance + federal-state `subdivision`), `VacationPeriod` (booked ranges), `OfficialHoliday` (state public holidays, generated via `holidays.country_holidays("DE", ...)` with a hand-written `_fallback_public_holidays` stdlib fallback when the package is absent), `CustomHoliday`, and `HolidayOverride` (per-user day-value adjustments to an official holiday). `calculate_period` walks a date range day-by-day to net out weekends and holiday credit against the required vacation days, split per calendar year (a period can span a year boundary); `annual_summary`/`month_summary`/`month_calendar` build the read views. `app/views/vacation_planner_views.py` holds one view per form (year, period, custom holiday, override) plus a JSON `vacation_preview` endpoint the client calls before submitting a period. Gated by the `vacation_planner` feature flag.

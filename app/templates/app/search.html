@@ -12,7 +12,7 @@
     <header class="page-hero">
         <div>
             <h1>Suche</h1>
-            <p>Finde Notizen, Nachrichten, Termine, Aufgaben, Urlaub, Vokabeln und Diagramme an einem Ort.</p>
+            <p>Finde Notizen, Nachrichten, Termine, Aufgaben, Lesezeichen, Rezepte, Boards und mehr an einem Ort.</p>
         </div>
         <i class="hero-branch fa-solid fa-seedling" aria-hidden="true"></i>
     </header>
@@ -20,177 +20,50 @@
     <form class="glass-panel search-form" method="get" action="{% url 'global_search' %}">
         <label class="search-input-field">
             <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-            <input type="search" name="q" value="{{ query }}" placeholder="Notizen, Nachrichten, Termine durchsuchen" autofocus>
+            <input type="search" name="q" value="{{ query }}" placeholder="Suchbegriffe, &quot;Phrase&quot;, -ausschließen, #tag" aria-label="Suchbegriff" autofocus>
         </label>
+        {% if selected_area %}<input type="hidden" name="in" value="{{ selected_area }}">{% endif %}
         <button class="primary-button" type="submit">Suchen</button>
     </form>
 
     {% if query %}
     {% if has_search_results %}
-    <div class="search-results-grid">
-        <section class="glass-panel search-result-panel">
+    <nav class="search-area-filter" aria-label="Treffer nach Bereich filtern">
+        <a class="search-area-chip{% if not selected_area %} is-active{% endif %}" href="?q={{ query|urlencode }}"{% if not selected_area %} aria-current="page"{% endif %}>Alle</a>
+        {% for section in hit_sections %}
+        <a class="search-area-chip{% if section.key == selected_area %} is-active{% endif %}" href="?q={{ query|urlencode }}&amp;in={{ section.key }}"{% if section.key == selected_area %} aria-current="page"{% endif %}><i class="{{ section.icon }}" aria-hidden="true"></i> {{ section.label }} <small>{{ section.count_label }}</small></a>
+        {% endfor %}
+    </nav>
+    {% if shown_sections %}
+    <div class="search-results-grid{% if selected_area %} is-single{% endif %}">
+        {% for section in shown_sections %}
+        <section class="glass-panel search-result-panel" aria-labelledby="search-section-{{ section.key }}">
             <div class="panel-title panel-title-between">
-                <span><i class="fa-regular fa-note-sticky"></i> Notizen</span>
-                {% if notes_results %}<small>{{ notes_results|length }} Treffer</small>{% endif %}
+                <span id="search-section-{{ section.key }}"><i class="{{ section.icon }}" aria-hidden="true"></i> {{ section.label }}</span>
+                <small>{{ section.count_label }} Treffer</small>
             </div>
-            {% if not notes_enabled %}
-            <div class="empty-state-card is-compact">
-                <i class="fa-regular fa-circle-pause" aria-hidden="true"></i>
-                <div><strong>Notizen deaktiviert</strong><p>Diese Funktion ist aktuell nicht verfügbar.</p></div>
-            </div>
-            {% elif notes_results %}
-            {% for note in notes_results %}
-            <a class="search-result-row" href="{% url 'note_detail' note.id %}">
-                <i class="fa-regular fa-note-sticky" aria-hidden="true"></i>
+            {% for item in section.results %}
+            <a class="search-result-row" href="{{ item.url }}"{% if item.external %} target="_blank" rel="noopener noreferrer"{% endif %}>
+                <i class="{{ item.icon }}" aria-hidden="true"></i>
                 <span>
-                    <strong>{% for part in note.title_segments %}{% if part.match %}<mark class="search-hit">{{ part.text }}</mark>{% else %}{{ part.text }}{% endif %}{% endfor %}</strong>
-                    <small>{% for part in note.snippet %}{% if part.match %}<mark class="search-hit">{{ part.text }}</mark>{% else %}{{ part.text }}{% endif %}{% empty %}Kein Inhalt{% endfor %}</small>
+                    <strong>{% for part in item.title_segments %}{% if part.match %}<mark class="search-hit">{{ part.text }}</mark>{% else %}{{ part.text }}{% endif %}{% endfor %}</strong>
+                    {% if item.subtitle %}<small>{{ item.subtitle }}</small>{% endif %}
+                    {% if item.snippet %}<small>{% for part in item.snippet %}{% if part.match %}<mark class="search-hit">{{ part.text }}</mark>{% else %}{{ part.text }}{% endif %}{% endfor %}</small>{% endif %}
                 </span>
             </a>
             {% endfor %}
-            {% else %}
-            <div class="empty-state-card is-compact">
-                <i class="fa-regular fa-note-sticky" aria-hidden="true"></i>
-                <div><strong>Keine Treffer</strong><p>Keine Notiz passt zu &bdquo;{{ query }}&ldquo;.</p></div>
-            </div>
+            {% if not selected_area and section.has_more %}
+            <a class="search-more-link" href="?q={{ query|urlencode }}&amp;in={{ section.key }}">Mehr in {{ section.label }} <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>
             {% endif %}
         </section>
-
-        <section class="glass-panel search-result-panel">
-            <div class="panel-title panel-title-between">
-                <span><i class="fa-regular fa-comments"></i> Nachrichten</span>
-                {% if message_results %}<small>{{ message_results|length }} Treffer</small>{% endif %}
-            </div>
-            {% if not messages_enabled %}
-            <div class="empty-state-card is-compact">
-                <i class="fa-regular fa-circle-pause" aria-hidden="true"></i>
-                <div><strong>Nachrichten deaktiviert</strong><p>Diese Funktion ist aktuell nicht verfügbar.</p></div>
-            </div>
-            {% elif message_results %}
-            {% for item in message_results %}
-            <a class="search-result-row" href="{% url 'messages_detail' item.conversation.id %}">
-                <i class="fa-solid {% if item.is_group %}fa-user-group{% else %}fa-comment{% endif %}" aria-hidden="true"></i>
-                <span>
-                    <strong>{{ item.title }}</strong>
-                    <small>{{ item.preview|default:item.last_message_body|truncatechars:120 }}</small>
-                </span>
-            </a>
-            {% endfor %}
-            {% else %}
-            <div class="empty-state-card is-compact">
-                <i class="fa-regular fa-comments" aria-hidden="true"></i>
-                <div><strong>Keine Treffer</strong><p>Keine Unterhaltung passt zu &bdquo;{{ query }}&ldquo;.</p></div>
-            </div>
-            {% endif %}
-        </section>
-
-        <section class="glass-panel search-result-panel">
-            <div class="panel-title panel-title-between">
-                <span><i class="fa-regular fa-calendar"></i> Termine</span>
-                {% if event_results %}<small>{{ event_results|length }} Treffer</small>{% endif %}
-            </div>
-            {% if event_results %}
-            {% for event in event_results %}
-            <a class="search-result-row" href="{% url 'calendar' %}?year={{ event.year }}&month={{ event.month }}">
-                <i class="fa-regular fa-calendar-days" aria-hidden="true"></i>
-                <span>
-                    <strong>{{ event.title }}</strong>
-                    <small>{{ event.date }} · {{ event.time }}{% if event.location %} · {{ event.location }}{% endif %}</small>
-                </span>
-            </a>
-            {% endfor %}
-            {% else %}
-            <div class="empty-state-card is-compact">
-                <i class="fa-regular fa-calendar" aria-hidden="true"></i>
-                <div><strong>Keine Treffer</strong><p>Kein Termin passt zu &bdquo;{{ query }}&ldquo;.</p></div>
-            </div>
-            {% endif %}
-        </section>
-
-        <section class="glass-panel search-result-panel">
-            <div class="panel-title panel-title-between">
-                <span><i class="fa-regular fa-square-check"></i> Aufgaben</span>
-                {% if task_results %}<small>{{ task_results|length }} Treffer</small>{% endif %}
-            </div>
-            {% if not tasks_enabled %}
-            <div class="empty-state-card is-compact">
-                <i class="fa-regular fa-circle-pause" aria-hidden="true"></i>
-                <div><strong>Aufgaben deaktiviert</strong><p>Diese Funktion ist aktuell nicht verfügbar.</p></div>
-            </div>
-            {% elif task_results %}
-            {% for task in task_results %}
-            <a class="search-result-row" href="{% url 'tasks' %}">
-                <i class="fa-regular {% if task.is_done %}fa-square-check{% else %}fa-square{% endif %}" aria-hidden="true"></i>
-                <span>
-                    <strong>{{ task.title }}</strong>
-                    {% if task.due_at %}<small>Fällig {{ task.due_at }}</small>{% endif %}
-                </span>
-            </a>
-            {% endfor %}
-            {% else %}
-            <div class="empty-state-card is-compact">
-                <i class="fa-regular fa-square-check" aria-hidden="true"></i>
-                <div><strong>Keine Treffer</strong><p>Keine Aufgabe passt zu &bdquo;{{ query }}&ldquo;.</p></div>
-            </div>
-            {% endif %}
-        </section>
-
-        <section class="glass-panel search-result-panel">
-            <div class="panel-title panel-title-between">
-                <span><i class="fa-solid fa-umbrella-beach"></i> Urlaub</span>
-                {% if vacation_results %}<small>{{ vacation_results|length }} Treffer</small>{% endif %}
-            </div>
-            {% if not vacation_planner_enabled %}
-            <div class="empty-state-card is-compact">
-                <i class="fa-regular fa-circle-pause" aria-hidden="true"></i>
-                <div><strong>Urlaubsplaner deaktiviert</strong><p>Diese Funktion ist aktuell nicht verfügbar.</p></div>
-            </div>
-            {% elif vacation_results %}
-            {% for period in vacation_results %}
-            <a class="search-result-row" href="{% url 'vacation_planner' %}?year={{ period.year }}">
-                <i class="fa-solid fa-umbrella-beach" aria-hidden="true"></i>
-                <span>
-                    <strong>{{ period.label }}</strong>
-                    <small>{{ period.start_date }} – {{ period.end_date }}</small>
-                </span>
-            </a>
-            {% endfor %}
-            {% else %}
-            <div class="empty-state-card is-compact">
-                <i class="fa-solid fa-umbrella-beach" aria-hidden="true"></i>
-                <div><strong>Keine Treffer</strong><p>Kein Urlaub passt zu &bdquo;{{ query }}&ldquo;.</p></div>
-            </div>
-            {% endif %}
-        </section>
-
-        <section class="glass-panel search-result-panel">
-            <div class="panel-title panel-title-between">
-                <span><i class="fa-solid fa-toolbox"></i> Werkzeuge</span>
-                {% if tool_results %}<small>{{ tool_results|length }} Treffer</small>{% endif %}
-            </div>
-            {% if not tools_enabled %}
-            <div class="empty-state-card is-compact">
-                <i class="fa-regular fa-circle-pause" aria-hidden="true"></i>
-                <div><strong>Werkzeuge deaktiviert</strong><p>Diese Funktion ist aktuell nicht verfügbar.</p></div>
-            </div>
-            {% elif tool_results %}
-            {% for item in tool_results %}
-            <a class="search-result-row" href="{{ item.url }}">
-                <i class="fa-solid {{ item.icon }}" aria-hidden="true"></i>
-                <span>
-                    <strong>{{ item.title }}</strong>
-                    <small>{{ item.subtitle }}{% if item.snippet %} · {% for part in item.snippet %}{% if part.match %}<mark class="search-hit">{{ part.text }}</mark>{% else %}{{ part.text }}{% endif %}{% endfor %}{% endif %}</small>
-                </span>
-            </a>
-            {% endfor %}
-            {% else %}
-            <div class="empty-state-card is-compact">
-                <i class="fa-solid fa-toolbox" aria-hidden="true"></i>
-                <div><strong>Keine Treffer</strong><p>Keine Vokabelliste, kein Diagramm und kein Whiteboard passt zu &bdquo;{{ query }}&ldquo;.</p></div>
-            </div>
-            {% endif %}
-        </section>
+        {% endfor %}
     </div>
+    {% else %}
+    <div class="empty-state-card is-compact search-area-empty">
+        <i class="fa-solid fa-magnifying-glass-minus" aria-hidden="true"></i>
+        <div><strong>Keine Treffer in diesem Bereich</strong><p><a href="?q={{ query|urlencode }}">Alle Bereiche anzeigen</a></p></div>
+    </div>
+    {% endif %}
     {% else %}
     <div class="search-empty-layout">
         <div class="empty-state-card search-empty-state">
@@ -220,7 +93,7 @@
             <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
             <div>
                 <strong>Wonach suchst du?</strong>
-                <p>Notizen, Nachrichten und Termine an einem Ort.</p>
+                <p>Mehrere Wörter müssen alle vorkommen, &bdquo;Anführungszeichen&ldquo; suchen eine Phrase, ein Minus schließt aus und #tag filtert Notizen und Lesezeichen.</p>
             </div>
         </div>
         <nav class="search-shortcut-grid" aria-label="Suchbereiche öffnen">

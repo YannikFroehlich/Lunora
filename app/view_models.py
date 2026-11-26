@@ -33,6 +33,7 @@ from app.models import (
     VocabularyCard,
     VocabularyList,
 )
+from app.services.bookmarks import DASHBOARD_BOOKMARKS
 from app.services.calendar_service import location_link
 from app.services.dashboard import (
     ITEM_LIMITS,
@@ -126,7 +127,7 @@ def get_dashboard_context(user=None):
     dashboard_bookmarks = (
         [
             {"id": item.pk, "title": item.title, "url": item.url, "host": urlparse(item.url).hostname or ""}
-            for item in Bookmark.objects.filter(owner=user)
+            for item in Bookmark.objects.filter(owner=user)[:DASHBOARD_BOOKMARKS]
         ]
         if user and "bookmarks" in visible_widget_ids
         else []
@@ -473,6 +474,13 @@ TOOLS = (
         "url_name": "wish_lists",
     },
     {
+        "id": "bookmarks",
+        "title": "Lesezeichen",
+        "description": "Links sammeln, mit Tags ordnen und mit Titel und Beschreibung der Seite wiederfinden.",
+        "icon": "fa-bookmark",
+        "url_name": "bookmarks",
+    },
+    {
         "id": "contracts",
         "title": "Verträge & Abos",
         "description": "Laufende Kosten zusammenrechnen und rechtzeitig vor jeder Kündigungsfrist erinnert werden.",
@@ -537,7 +545,9 @@ def get_tools_context(user):
     recipe_count = Recipe.objects.filter(owner=user).count()
     expense_group_count = ExpenseGroupMember.objects.filter(user=user).count()
     contract_count = Contract.objects.filter(owner=user).count()
+    bookmark_count = Bookmark.objects.filter(owner=user).count()
     meta = {
+        "bookmarks": f"{bookmark_count} Lesezeichen" if bookmark_count else "Noch keine Lesezeichen",
         "contracts": f"{contract_count} Vertrag/Verträge" if contract_count else "Noch keine Verträge",
         "habits": f"{habit_count} Gewohnheit(en)" if habit_count else "Noch keine Gewohnheiten",
         "shopping": f"{open_shopping_items} offen" if open_shopping_items else "Nichts offen",

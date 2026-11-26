@@ -593,6 +593,8 @@ class DashboardStatsWidgetTests(TestCase):
         self.assertEqual(response.context["dashboard_stats"], {})
 
 
+# Adding a bookmark reads the page; no network in tests.
+@patch("app.services.bookmarks.fetch_page_preview", new=lambda user, url: {})
 class DashboardBookmarkWidgetTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(

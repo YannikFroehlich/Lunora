@@ -6,6 +6,15 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Lesezeichen (Werkzeuge): eine eigene Seite für alle Lesezeichen mit Tags, Suche und Tag-Filter,
+  Bearbeiten und Löschen. Beim Hinzufügen liest Lunora Titel und Beschreibung von der Seite selbst
+  (ein leerer Name wird damit gefüllt). Bis zu 200 Lesezeichen; das Dashboard-Widget zeigt die
+  ersten 24 und verlinkt auf die Seite.
+- Globale Suche: findet jetzt auch Lesezeichen, Rezepte, Kanban-Boards (samt Karten), Wunschlisten,
+  Verträge und Ausgabengruppen. Überall gilt die Suchsyntax der Notizen (alle Wörter,
+  „Phrasen", -Ausschluss, #tag), Treffer sind hervorgehoben, Bereiche ohne Treffer werden
+  ausgeblendet und lassen sich über Filter-Chips einzeln mit mehr Treffern anzeigen. Termine führen
+  direkt zur Termin-Seite.
 - Verträge & Abos (Werkzeuge): contracts and subscriptions with their cost, minimum term and notice
   period. Lunora adds up the monthly and yearly cost per category, shows until when each contract
   can still be cancelled and sends a reminder (inbox, e-mail, push) before every deadline.
