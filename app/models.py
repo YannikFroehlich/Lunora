@@ -867,6 +867,7 @@ class Task(models.Model):
         related_name="assigned_tasks",
     )
     title = models.CharField(max_length=180)
+    description = models.TextField(max_length=5000, blank=True, default="")
     due_at = models.DateTimeField(blank=True, null=True)
     priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default=PRIORITY_NONE, blank=True)
     recurrence_rule = models.CharField(

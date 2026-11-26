@@ -200,6 +200,10 @@
                 <details class="task-add-more">
                     <summary>Weitere Optionen <i class="fa-solid fa-chevron-down" aria-hidden="true"></i></summary>
                     <div class="task-add-more-grid">
+                        <label class="task-add-more-field is-full">
+                            <span>{{ task_form.description.label }}</span>
+                            {{ task_form.description }}
+                        </label>
                         <label class="task-add-more-field">
                             <span>Liste</span>
                             {{ task_form.task_list }}
@@ -391,7 +395,10 @@
                     >
 
                     <div class="task-copy">
-                        <strong>{{ item.title }}{% if item.status == "in_progress" %} <span class="task-progress-chip"><i class="fa-solid fa-person-digging" aria-hidden="true"></i> In Arbeit</span>{% endif %}</strong>
+                        <details class="task-title-details" id="task-details-{{ item.task.id }}">
+                            <summary><strong>{{ item.title }}{% if item.status == "in_progress" %} <span class="task-progress-chip"><i class="fa-solid fa-person-digging" aria-hidden="true"></i> In Arbeit</span>{% endif %}</strong>{% if item.task.description %}<i class="fa-solid fa-align-left task-description-hint" aria-hidden="true"></i><span class="visually-hidden">(mit Beschreibung)</span>{% endif %}</summary>
+                            {% if item.task.description %}<p class="task-description">{{ item.task.description }}</p>{% endif %}
+                        </details>
                         <small>
                             <i class="fa-regular fa-calendar" aria-hidden="true"></i>
                             {{ item.due_label }}
@@ -443,6 +450,7 @@
                     <button type="button" class="task-edit-button" data-task-edit-open
                         data-task-id="{{ item.task.id }}"
                         data-edit-title="{{ item.title }}"
+                        data-edit-description="{{ item.task.description }}"
                         data-edit-due="{{ item.task.due_at|date:'Y-m-d\TH:i' }}"
                         data-edit-priority="{{ item.priority }}"
                         data-edit-list="{{ item.task_list_id|default_if_none:'' }}"
@@ -568,7 +576,10 @@
                     >
 
                     <div class="task-copy">
-                        <strong>{{ child.title }}{% if child.status == "in_progress" %} <span class="task-progress-chip"><i class="fa-solid fa-person-digging" aria-hidden="true"></i> In Arbeit</span>{% endif %}</strong>
+                        <details class="task-title-details" id="task-details-{{ child.task.id }}">
+                            <summary><strong>{{ child.title }}{% if child.status == "in_progress" %} <span class="task-progress-chip"><i class="fa-solid fa-person-digging" aria-hidden="true"></i> In Arbeit</span>{% endif %}</strong>{% if child.task.description %}<i class="fa-solid fa-align-left task-description-hint" aria-hidden="true"></i><span class="visually-hidden">(mit Beschreibung)</span>{% endif %}</summary>
+                            {% if child.task.description %}<p class="task-description">{{ child.task.description }}</p>{% endif %}
+                        </details>
                         <small>
                             <i class="fa-regular fa-calendar" aria-hidden="true"></i>
                             {{ child.due_label }}
@@ -588,6 +599,7 @@
                     <button type="button" class="task-edit-button" data-task-edit-open
                         data-task-id="{{ child.task.id }}"
                         data-edit-title="{{ child.title }}"
+                        data-edit-description="{{ child.task.description }}"
                         data-edit-due="{{ child.task.due_at|date:'Y-m-d\TH:i' }}"
                         data-edit-priority="{{ child.priority }}"
                         data-edit-list="{{ child.task_list_id|default_if_none:'' }}"
@@ -684,6 +696,12 @@
                 <span>Titel</span>
                 {{ edit_form.title }}
                 {{ edit_form.title.errors }}
+            </label>
+
+            <label class="task-edit-field is-wide" for="{{ edit_form.description.id_for_label }}">
+                <span>{{ edit_form.description.label }}</span>
+                {{ edit_form.description }}
+                {{ edit_form.description.errors }}
             </label>
 
             <label class="task-edit-field is-wide" for="{{ edit_form.due_at.id_for_label }}">

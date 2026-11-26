@@ -917,6 +917,7 @@ class TaskForm(forms.ModelForm):
         model = Task
         fields = [
             "title",
+            "description",
             "due_at",
             "task_list",
             "parent",
@@ -930,14 +931,15 @@ class TaskForm(forms.ModelForm):
             "assignee",
             "note",
         ]
-        labels = {"title": "Neue Aufgabe"}
+        labels = {"title": "Neue Aufgabe", "description": "Beschreibung"}
         widgets = {
             "title": forms.TextInput(
                 attrs={
                     "placeholder": "Neue Aufgabe, z. B. „Bericht abgeben Freitag 14 Uhr !hoch“",
                     "autocomplete": "off",
                 }
-            )
+            ),
+            "description": forms.Textarea(attrs={"rows": 3, "placeholder": "Details, Links, Notizen …"}),
         }
 
     def __init__(self, *args, user=None, **kwargs):

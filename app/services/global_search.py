@@ -162,7 +162,8 @@ class GlobalSearch:
 
     def tasks(self, limit):
         tasks = self.text_matches(
-            self.dated(visible_tasks(self.user), "tasks"), ["title", "labels__name", "comments__body"]
+            self.dated(visible_tasks(self.user), "tasks"),
+            ["title", "description", "labels__name", "comments__body"],
         ).order_by("is_done", "due_at", "-id")[:limit]
         return [
             {
