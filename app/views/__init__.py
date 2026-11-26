@@ -11,6 +11,7 @@ from .auth_views import (
     register,
     register_confirm,
 )
+from .bookmark_views import bookmarks
 from .calendar_views import (
     calendar,
     calendar_availability,
@@ -82,7 +83,7 @@ from .notification_views import (
     web_push_test,
 )
 from .pwa_views import offline, service_worker, share_note, share_target
-from .search_views import global_search
+from .search_views import global_search, quick_search, saved_searches
 from .tasks_views import task_time_report, tasks
 from .tools_views import (
     contracts,
@@ -128,6 +129,7 @@ from .wishlist_views import wish_item_image, wish_list_detail, wish_lists
 
 __all__ = [
     "wrapped",
+    "bookmarks",
     "contracts",
     "calendar",
     "calendar_availability",
@@ -194,6 +196,8 @@ __all__ = [
     "note_template_detail_api",
     "note_tree_move_api",
     "global_search",
+    "quick_search",
+    "saved_searches",
     "tasks",
     "task_time_report",
     "trash",

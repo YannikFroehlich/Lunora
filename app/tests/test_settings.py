@@ -1766,7 +1766,7 @@ class DataExportTests(TestCase):
         )
         self.assertEqual(
             json.loads(archive.read("lesezeichen.json")),
-            [{"title": "Bank", "url": "https://bank.example.com"}],
+            [{"title": "Bank", "url": "https://bank.example.com", "description": "", "tags": ""}],
         )
         shopping = json.loads(archive.read("einkaufszettel.json"))
         self.assertEqual([(item["name"], item["quantity"]) for item in shopping], [("Milch", "2 Liter")])

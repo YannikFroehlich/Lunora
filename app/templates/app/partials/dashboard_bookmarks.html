@@ -1,5 +1,6 @@
 <div class="soft-contents" id="dashboard-body-bookmarks" data-soft-region>
-{% include "app/partials/dashboard_widget_head.html" with icon="fa-solid fa-bookmark" title="Lesezeichen" action_dialog="bookmark-dialog" action_label="Lesezeichen hinzufügen" %}
+{% if feature_flags.tools %}{% url 'bookmarks' as bookmarks_url %}{% endif %}
+{% include "app/partials/dashboard_widget_head.html" with icon="fa-solid fa-bookmark" title="Lesezeichen" action_dialog="bookmark-dialog" action_label="Lesezeichen hinzufügen" link_url=bookmarks_url link_label="Alle Lesezeichen" %}
 {% if dashboard_bookmarks %}
 <ul class="bookmark-grid">
     {% for bookmark in dashboard_bookmarks %}
@@ -40,6 +41,10 @@
         <label>
             <span>{{ bookmark_form.url.label }}</span>
             {{ bookmark_form.url }}
+        </label>
+        <label>
+            <span>{{ bookmark_form.tags.label }}</span>
+            {{ bookmark_form.tags }}
         </label>
         <div class="widget-dialog-actions">
             <button class="ghost-button" type="button" data-dialog-close>Abbrechen</button>

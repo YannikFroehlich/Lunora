@@ -14,6 +14,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 
 from app.models import (
+    Bookmark,
     CalendarEvent,
     CalendarEventAttendee,
     CalendarEventComment,
@@ -26,6 +27,7 @@ from app.models import (
     Note,
     Profile,
     Recipe,
+    SavedSearch,
     ScheduledChatMessage,
     SystemSettings,
     Task,
@@ -148,6 +150,11 @@ class PageAccessibilityMarkupTests(TestCase):
         CalendarEventAttendee.objects.create(event=self.event, user=self.lukas, invited_by=self.mira)
         CalendarEventComment.objects.create(event=self.event, author=self.lukas, body="Ich komme mit.")
         Habit.objects.create(owner=self.mira, title="Lesen")
+        Bookmark.objects.create(
+            owner=self.mira, title="Packliste online", url="https://pack.example.com", tags="reise"
+        )
+        SavedSearch.objects.create(owner=self.mira, query="Pack")
+        SavedSearch.objects.create(owner=self.mira, query="Reise", area="bookmarks")
         self.recipe = Recipe.objects.create(
             owner=self.mira,
             title="Pfannkuchen",
@@ -230,6 +237,8 @@ class PageAccessibilityMarkupTests(TestCase):
             f"/tools/kanban/{self.kanban.pk}/",
             "/tools/wishlist/",
             "/tools/contracts/",
+            "/tools/bookmarks/",
+            "/tools/bookmarks/?tag=reise&q=pack",
             "/wrapped/",
             f"/tools/wishlist/{self.wish_list.pk}/",
             "/tools/vocabulary/",

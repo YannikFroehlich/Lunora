@@ -43,6 +43,7 @@ from app.models import (
     WishListItem,
 )
 from app.services import audit_log
+from app.services.bookmarks import normalize_tags
 from app.services.calendar_service import (
     AVAILABILITY_MAX_SPAN,
     AVAILABILITY_MAX_USERS,
@@ -1117,13 +1118,32 @@ class BookmarkForm(forms.ModelForm):
         ),
     )
 
+    tags = forms.CharField(
+        label="Tags",
+        required=False,
+        max_length=300,
+        widget=forms.TextInput(attrs={"placeholder": "z. B. arbeit finanzen", "autocomplete": "off"}),
+    )
+
     class Meta:
         model = Bookmark
-        fields = ["title", "url"]
+        fields = ["title", "url", "tags"]
         labels = {"title": "Name"}
         widgets = {
-            "title": forms.TextInput(attrs={"placeholder": "z. B. Bank", "autocomplete": "off"}),
+            "title": forms.TextInput(
+                attrs={"placeholder": "Leer lassen für den Seitentitel", "autocomplete": "off"}
+            ),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # A blank name is filled from the page's title (or its host) when saving.
+        self.fields["title"].required = False
+        if self.instance.pk:
+            self.fields["tags"].initial = self.instance.tags
+
+    def clean_tags(self):
+        return normalize_tags(self.cleaned_data["tags"])
 
     def clean_url(self):
         # URLField also accepts ftp:// etc.; links on the dashboard stay plain web links.

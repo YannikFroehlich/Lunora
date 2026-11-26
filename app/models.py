@@ -1346,13 +1346,46 @@ class Bookmark(models.Model):
     title = models.CharField(max_length=80)
     # Only http(s) URLs, enforced by BookmarkForm; templates render it as a plain link.
     url = models.URLField(max_length=500)
+    # The page's own description, read once when the bookmark is added (or refreshed on request).
+    description = models.CharField(max_length=300, blank=True)
+    # Lower-case tags separated by single spaces, normalized by app.services.bookmarks.normalize_tags.
+    tags = models.CharField(max_length=200, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    # The automations' link check (app.services.bookmarks.check_due_links): when the page was last
+    # requested, and since when it hasn't answered (null while it does).
+    checked_at = models.DateTimeField(null=True, blank=True)
+    unreachable_since = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["created_at", "id"]
 
     def __str__(self):
         return self.title
+
+    @property
+    def tag_list(self):
+        return self.tags.split()
+
+
+class SavedSearch(models.Model):
+    """A global search query kept as a chip on the search page."""
+
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="saved_searches"
+    )
+    query = models.CharField(max_length=200)
+    # A SEARCH_AREAS key, or "" for all areas.
+    area = models.CharField(max_length=20, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["owner", "query", "area"], name="unique_saved_search"),
+        ]
+
+    def __str__(self):
+        return self.query
 
 
 class Countdown(models.Model):

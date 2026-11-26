@@ -71,7 +71,7 @@ class GlobalSearchTests(TestCase):
             [self.rendered_title(item) for item in response.context["notes_results"]], ["Raketenstart planen"]
         )
         self.assertContains(response, "Rakete ist startklar")
-        self.assertContains(response, "Raketenstart")
+        self.assertEqual([item["title"] for item in response.context["event_results"]], ["Raketenstart"])
 
     def test_global_search_empty_query_shows_no_results(self):
         Note.objects.create(owner=self.mira, title="Irgendeine Notiz")
@@ -164,7 +164,7 @@ class GlobalSearchTests(TestCase):
         self.assertEqual(len(response.context["task_results"]), 1)
         self.assertEqual(response.context["task_results"][0]["title"], "Raketenstart vorbereiten")
         self.assertEqual(len(response.context["vacation_results"]), 1)
-        self.assertContains(response, "Raketenstart vorbereiten")
+        self.assertContains(response, '<mark class="search-hit">Rakete</mark>nstart vorbereiten', html=False)
 
     def test_global_search_hides_disabled_sections(self):
         SystemSettings.objects.create(notes_enabled=False, messages_enabled=False)
@@ -180,10 +180,13 @@ class GlobalSearchTests(TestCase):
         response = self.client.get("/search/?q=Rakete")
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Notizen deaktiviert")
-        self.assertContains(response, "Nachrichten deaktiviert")
         self.assertEqual(response.context["notes_results"], [])
-        self.assertContains(response, "Raketenstart")
+        self.assertEqual([section["key"] for section in response.context["hit_sections"]], ["events"])
+        self.assertNotContains(response, "nidee")
+        self.assertEqual([item["title"] for item in response.context["event_results"]], ["Raketenstart"])
+        # A disabled area can't be picked as a filter either.
+        response = self.client.get("/search/?q=Rakete&in=notes")
+        self.assertEqual(response.context["selected_area"], "")
 
 
 class GlobalSearchToolTests(TestCase):

@@ -4,7 +4,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.core.mail import send_mail
 from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db.models import Q, Sum
 from django.utils import timezone
 
 from app.models import (
@@ -12,8 +12,10 @@ from app.models import (
     CalendarEventAttendee,
     CalendarReminder,
     Contract,
+    ExpenseShare,
     Habit,
     HabitCheck,
+    Note,
     NoteActivityNotification,
     NoteReminder,
     NoteShare,
@@ -1427,13 +1429,7 @@ def _weekly_summary_text(user, current_time):
     else:
         lines.append("- Keine offenen Erinnerungen")
 
-    if feature_enabled("tasks"):
-        local_today = localtime_for_user(current_time, user).date()
-        last_week = local_today - timedelta(days=local_today.weekday() + 7)
-        report = time_report(user, "week", last_week, now=current_time)
-        if report["total_seconds"]:
-            lines.extend(["", f"Erfasste Zeit letzte Woche: {report['total_label']}"])
-            lines.extend(f"- {task['title']} ({task['label']})" for task in report["tasks"][:3])
+    lines.extend(_last_week_lines(user, current_time))
 
     lines.extend(
         [
@@ -1445,6 +1441,60 @@ def _weekly_summary_text(user, current_time):
         ]
     )
     return "\n".join(lines)
+
+
+def _last_week_lines(user, current_time):
+    """The weekly summary's look back at the previous Monday-to-Sunday week in the user's timezone:
+    tasks done, notes written, habit check-ins, shared expenses and tracked time."""
+    from app.services.expenses import euro  # expenses imports this module
+
+    local_now = localtime_for_user(current_time, user)
+    this_monday = local_now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(
+        days=local_now.weekday()
+    )
+    start, end = this_monday - timedelta(days=7), this_monday
+    facts = []
+    if feature_enabled("tasks"):
+        # ponytail: tasks keep no completion time (see app.services.wrapped), so "done last week"
+        # means done and last changed last week.
+        done = Task.objects.filter(
+            Q(user=user, assignee__isnull=True) | Q(assignee=user),
+            is_done=True,
+            updated_at__gte=start,
+            updated_at__lt=end,
+        ).count()
+        if done:
+            facts.append(f"- {done} Aufgabe{'n' if done != 1 else ''} erledigt")
+    if feature_enabled("notes"):
+        written = Note.objects.filter(
+            owner=user, deleted_at__isnull=True, created_at__gte=start, created_at__lt=end
+        ).count()
+        if written:
+            facts.append(f"- {written} Notiz{'en' if written != 1 else ''} geschrieben")
+    if feature_enabled("tools"):
+        checks = HabitCheck.objects.filter(
+            habit__owner=user, date__gte=start.date(), date__lt=end.date()
+        ).count()
+        if checks:
+            facts.append(f"- {checks} Gewohnheit{'en' if checks != 1 else ''} abgehakt")
+        spent = ExpenseShare.objects.filter(
+            user=user,
+            expense__is_settlement=False,
+            expense__spent_on__gte=start.date(),
+            expense__spent_on__lt=end.date(),
+        ).aggregate(total=Sum("amount"))["total"]
+        if spent:
+            facts.append(f"- Dein Anteil an geteilten Ausgaben: {euro(spent)}")
+
+    lines = []
+    if facts:
+        lines.extend(["", "Deine letzte Woche:", *facts])
+    if feature_enabled("tasks"):
+        report = time_report(user, "week", start.date(), now=current_time)
+        if report["total_seconds"]:
+            lines.extend(["", f"Erfasste Zeit letzte Woche: {report['total_label']}"])
+            lines.extend(f"- {task['title']} ({task['label']})" for task in report["tasks"][:3])
+    return lines
 
 
 def materialize_due_weather_alerts(user, *, now=None, limit=5):

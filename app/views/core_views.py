@@ -31,6 +31,7 @@ from app.forms import (
 from app.models import AuditLogEntry, Bookmark, Countdown, Profile
 from app.services import audit_log, passkeys, two_factor
 from app.services.accounts import account_deletion_blocked_reason, delete_account
+from app.services.bookmarks import add_bookmark
 from app.services.calendar_service import disable_calendar_feed, reset_calendar_feed_token
 from app.services.dashboard import normalize_dashboard_layout, validate_dashboard_layout
 from app.services.data_export import export_filename, export_temp_file, write_user_export
@@ -153,22 +154,18 @@ def dashboard_layout_update(request):
     return JsonResponse({"ok": True, "layout": layout})
 
 
-MAX_BOOKMARKS = 24
-
-
 @login_required
 @require_POST
 def dashboard_bookmarks(request):
     form_name = request.POST.get("form_name")
     if form_name == "bookmark_add":
         form = BookmarkForm(request.POST)
-        if Bookmark.objects.filter(owner=request.user).count() >= MAX_BOOKMARKS:
-            django_messages.error(request, f"Du kannst höchstens {MAX_BOOKMARKS} Lesezeichen anlegen.")
-        elif form.is_valid():
-            bookmark = form.save(commit=False)
-            bookmark.owner = request.user
-            bookmark.save()
-            django_messages.success(request, "Lesezeichen hinzugefügt.")
+        if form.is_valid():
+            bookmark, error = add_bookmark(request.user, form)
+            if error:
+                django_messages.error(request, error)
+            else:
+                django_messages.success(request, "Lesezeichen hinzugefügt.")
         else:
             django_messages.error(
                 request, " ".join(error for errors in form.errors.values() for error in errors)

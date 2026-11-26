@@ -391,6 +391,16 @@ class PwaTests(TestCase):
         self.assertIn("https://example.com/artikel", json.dumps(note.document))
         self.assertIn('"type": "link"', json.dumps(note.document))
 
+    def test_a_title_alone_becomes_an_empty_note(self):
+        # The command palette's "!n …" posts only the typed line as the title.
+        self.client.login(username="pwa@example.com", password="secret-12345")
+        response = self.client.post("/share/note/", {"title": "Ideen für Freitag"})
+
+        note = Note.objects.get(owner=self.user)
+        self.assertRedirects(response, f"/notes/{note.pk}/", fetch_redirect_response=False)
+        self.assertEqual(note.title, "Ideen für Freitag")
+        self.assertEqual(note.plain_text, "")
+
     def test_shared_note_respects_the_notes_switch(self):
         SystemSettings.objects.update_or_create(pk=1, defaults={"notes_enabled": False})
         self.client.login(username="pwa@example.com", password="secret-12345")

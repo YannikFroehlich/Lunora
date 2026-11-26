@@ -4,6 +4,7 @@ import traceback
 from django.utils import timezone
 
 from app.services.audit_log import purge_old_entries
+from app.services.bookmarks import check_due_links
 from app.services.calendar_subscriptions import sync_due_subscriptions
 from app.services.chat import send_due_scheduled_messages
 from app.services.expenses import post_due_recurring_expenses
@@ -89,6 +90,7 @@ def run_scheduled_tasks(*, now=None):
             lambda: {"created": post_due_recurring_expenses(today=timezone.localdate(current_time))},
         )
         wish_price_result = _guarded("wish_prices", refresh_due_prices, now=current_time)
+        bookmark_link_result = _guarded("bookmark_links", check_due_links, now=current_time)
         contract_result = _guarded(
             "contract_reminders", lambda: {"created": materialize_due_contract_reminders(now=current_time)}
         )
@@ -96,6 +98,7 @@ def run_scheduled_tasks(*, now=None):
         habit_reminder_result = {"created": 0, "disabled": True}
         recurring_expense_result = {"created": 0, "disabled": True}
         wish_price_result = {"checked": 0, "failed": 0, "disabled": True}
+        bookmark_link_result = {"checked": 0, "unreachable": 0, "disabled": True}
         contract_result = {"created": 0, "disabled": True}
     if feature_enabled("messages"):
         scheduled_message_result = _guarded(
@@ -132,6 +135,7 @@ def run_scheduled_tasks(*, now=None):
         "habit_reminders": habit_reminder_result,
         "recurring_expenses": recurring_expense_result,
         "wish_prices": wish_price_result,
+        "bookmark_links": bookmark_link_result,
         "contract_reminders": contract_result,
         "scheduled_messages": scheduled_message_result,
         "notification_emails": notification_email_result,

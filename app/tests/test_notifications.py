@@ -217,6 +217,34 @@ class ScheduledAutomationTests(TestCase):
 
         self.assertIn("Erfasste Zeit letzte Woche: 50 min\n- Angebot schreiben (50 min)", mail.outbox[0].body)
 
+    def test_weekly_summary_looks_back_at_last_week(self):
+        from datetime import date
+
+        from app.models import Habit, HabitCheck, Note
+        from app.services.expenses import create_group
+
+        monday = timezone.make_aware(datetime(2026, 8, 10, 9, 0), ZoneInfo("Europe/Berlin"))
+        last_week, two_weeks_ago = monday - timedelta(days=3), monday - timedelta(days=10)
+        for when in (last_week, last_week, two_weeks_ago):
+            task = Task.objects.create(user=self.user, title="Erledigt", is_done=True)
+            note = Note.objects.create(owner=self.user, title="Notiz")
+            Task.objects.filter(pk=task.pk).update(updated_at=when)
+            Note.objects.filter(pk=note.pk).update(created_at=when)
+        habit = Habit.objects.create(owner=self.user, title="Lesen")
+        HabitCheck.objects.create(habit=habit, date=date(2026, 8, 5))
+        group, _error = create_group(self.user, "WG")
+        group.expenses.create(
+            title="Einkauf", amount="30.00", paid_by=self.user, spent_on=date(2026, 8, 6)
+        ).shares.create(user=self.user, amount="12.50")
+
+        send_weekly_summaries(now=monday)
+
+        self.assertIn(
+            "Deine letzte Woche:\n- 2 Aufgaben erledigt\n- 2 Notizen geschrieben\n"
+            "- 1 Gewohnheit abgehakt\n- Dein Anteil an geteilten Ausgaben: 12,50 €",
+            mail.outbox[0].body,
+        )
+
     def test_automation_command_runs_one_cycle_by_default(self):
         result = {
             "reminder_emails": {"sent": 1, "failed": 0},
