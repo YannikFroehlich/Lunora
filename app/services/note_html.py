@@ -19,8 +19,11 @@ from app.services.note_content import (
     ALLOWED_FONT_SIZES,
     ALLOWED_FONTS,
     ALLOWED_LINE_HEIGHTS,
+    CALLOUT_LABELS,
+    DETAILS_FALLBACK,
     FORM_FIELD_BLANK,
     HEX_COLOR_RE,
+    is_audio_name,
     task_due_label,
 )
 from app.services.note_markdown import NoteMarkdownRenderer
@@ -108,6 +111,16 @@ class NoteHtmlRenderer:
             )
         if node_type == "blockquote":
             return f"<blockquote>{self.blocks(content)}</blockquote>"
+        if node_type == "callout":
+            tone = attrs.get("tone") if attrs.get("tone") in CALLOUT_LABELS else "info"
+            return (
+                f'<aside class="note-callout is-{tone}" aria-label="{CALLOUT_LABELS[tone]}">'
+                f"{self.blocks(content)}</aside>"
+            )
+        if node_type == "details":
+            summary = escape(str(attrs.get("summary") or "").strip() or DETAILS_FALLBACK)
+            open_attr = " open" if attrs.get("open") is not False else ""
+            return f'<details class="note-details"{open_attr}><summary>{summary}</summary>{self.blocks(content)}</details>'
         if node_type == "codeBlock":
             language = attrs.get("language")
             language_attr = (
@@ -182,6 +195,14 @@ class NoteHtmlRenderer:
         if attachment is None:
             return format_html(
                 '<p class="missing-file">Anhang nicht verfügbar: {}</p>', attrs.get("name") or "Datei"
+            )
+        if is_audio_name(attachment.original_name):
+            return format_html(
+                '<p class="note-file note-audio"><audio controls preload="metadata" src="{}"></audio> '
+                '<a href="{}" download>{}</a></p>',
+                self.attachment_url(attachment, "inline"),
+                self.attachment_url(attachment, "download"),
+                attachment.original_name,
             )
         return format_html(
             '<p class="note-file"><a href="{}" download><i class="fa-solid fa-paperclip" aria-hidden="true"></i> '

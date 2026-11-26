@@ -46,6 +46,15 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   „Phrasen", -Ausschluss, #tag), Treffer sind hervorgehoben, Bereiche ohne Treffer werden
   ausgeblendet und lassen sich über Filter-Chips einzeln mit mehr Treffern anzeigen. Termine führen
   direkt zur Termin-Seite.
+- Notes: hint boxes (Info, Tipp, Warnung) and collapsible sections, in the editor and in every export.
+- Notes: record voice notes right in the editor; audio files play inline.
+- Notes: focus mode – only the page, full screen, with the line you write kept in the middle.
+- Notes: own templates may contain {{datum}}, {{wochentag}}, {{uhrzeit}}, {{kw}}, {{jahr}} and
+  {{titel}}, filled in when a note is created; such notes are named after the template.
+- Notes: "Frage :: Antwort" lines become flashcards in the vocabulary trainer with one click.
+- Notes: import an article from a web address (new-note dialog or share menu), without ads or menus.
+- Calendar: "Notiz anlegen" on an appointment creates a meeting note with agenda and to-dos,
+  shared with everyone taking part and linked to the appointment.
 - Verträge & Abos (Werkzeuge): contracts and subscriptions with their cost, minimum term and notice
   period. Lunora adds up the monthly and yearly cost per category, shows until when each contract
   can still be cancelled and sends a reminder (inbox, e-mail, push) before every deadline.

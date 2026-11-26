@@ -39,6 +39,7 @@
         <div class="share-actions">
             {% if feature_flags.notes %}
             <button class="primary-button" type="submit"><i class="fa-solid fa-note-sticky" aria-hidden="true"></i> Als Notiz</button>
+            <button class="ghost-button" type="submit" formaction="{% url 'note_article_import' %}" data-share-needs-link><i class="fa-solid fa-newspaper" aria-hidden="true"></i> Artikel als Notiz</button>
             {% endif %}
             {% if feature_flags.tasks %}
             <button class="ghost-button" type="submit" formaction="{% url 'tasks' %}" name="form_name" value="task_add"><i class="fa-solid fa-list-check" aria-hidden="true"></i> Als Aufgabe</button>

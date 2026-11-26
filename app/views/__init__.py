@@ -35,6 +35,7 @@ from .kanban_views import kanban_board, kanban_boards
 from .message_views import chat_attachment_download, chat_typing_ping, messages, messages_live_updates
 from .note_views import (
     note_action_api,
+    note_article_import,
     note_attachment_download,
     note_attachment_upload_api,
     note_bulk_action_api,
@@ -161,6 +162,7 @@ __all__ = [
     "share_target",
     "notes",
     "note_create_api",
+    "note_article_import",
     "note_import",
     "note_detail_api",
     "note_pdf_export",

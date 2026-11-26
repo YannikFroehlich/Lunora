@@ -27,7 +27,7 @@ DOCUMENT_CONTENT_TYPES = {
     ".xlsx": {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
     ".pptx": {"application/vnd.openxmlformats-officedocument.presentationml.presentation"},
 }
-NOTE_FILE_ACCEPT = ".pdf,.txt,.md,.csv,.docx,.xlsx,.pptx"
+NOTE_FILE_ACCEPT = ".pdf,.txt,.md,.csv,.docx,.xlsx,.pptx,.webm,.ogg,.oga,.m4a,.mp3"
 NOTE_IMAGE_ACCEPT = "image/jpeg,image/png,image/webp"
 
 
@@ -67,9 +67,15 @@ def validate_note_upload(upload, *, kind):
         _validate_image(data, extension, content_type)
         return
 
+    from app.services.chat_files import AUDIO_EXTENSIONS, _validate_audio
+
+    if extension in AUDIO_EXTENSIONS:
+        # Voice notes recorded in the editor (and audio files) are checked like chat voice messages.
+        _validate_audio(upload)
+        return
     allowed_types = DOCUMENT_CONTENT_TYPES.get(extension)
     if not allowed_types:
-        raise ValidationError("Erlaubt sind PDF, TXT, Markdown, CSV, DOCX, XLSX und PPTX.")
+        raise ValidationError("Erlaubt sind PDF, TXT, Markdown, CSV, DOCX, XLSX, PPTX und Audio.")
     if content_type and content_type not in allowed_types and content_type != "application/octet-stream":
         raise ValidationError("Dateiendung und gemeldeter Dateityp passen nicht zusammen.")
 

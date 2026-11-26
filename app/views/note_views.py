@@ -11,7 +11,6 @@ from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.http import content_disposition_header
 from django.views.decorators.http import require_http_methods
 
 from app.forms import NoteReminderForm
@@ -25,11 +24,14 @@ from app.models import (
     NoteVersion,
     Profile,
 )
+from app.services.article_import import import_article
+from app.services.chat_files import audio_content_type
 from app.services.daily_notes import open_daily_note
 from app.services.docx_import import import_docx_upload
+from app.services.file_responses import attachment_response
 from app.services.linked_notes import note_linked_items
 from app.services.note_collab import sync_note
-from app.services.note_content import NOTE_TEMPLATE_LABELS, NOTE_TEMPLATES
+from app.services.note_content import NOTE_TEMPLATE_LABELS, NOTE_TEMPLATES, is_audio_name
 from app.services.note_docx import CONTENT_TYPE as DOCX_CONTENT_TYPE
 from app.services.note_docx import note_docx_filename, render_note_docx
 from app.services.note_files import NOTE_FILE_ACCEPT, NOTE_IMAGE_ACCEPT
@@ -96,9 +98,11 @@ from app.services.notes import (
     split_tag_filters,
     user_tag_names,
 )
+from app.services.safe_fetch import FetchError
 from app.services.system_settings import disabled_feature_response, feature_enabled
 from app.services.tasks import create_tasks_from_checklist
 from app.services.user_preferences import format_user_datetime, localtime_for_user
+from app.services.vocabulary import cards_from_note
 from app.views.navigation import posted_id
 
 # Every action of COMMAND_DEFAULTS in frontend/notes.js: the shortcut dialog always sends all of them,
@@ -174,6 +178,11 @@ SHORTCUT_ACTIONS = {
     "present",
     "reminder",
     "checklistTasks",
+    "insertCallout",
+    "insertDetails",
+    "recordVoice",
+    "flashcards",
+    "focusMode",
 }
 RESERVED_SHORTCUTS = {"Mod+W", "Mod+T", "Mod+N", "Mod+L", "Mod+R", "Mod+Shift+N"}
 SHORTCUT_RE = re.compile(r"^(?=.{3,40}$)(?=.*(?:Mod|Ctrl|Alt|Shift)\+)[A-Za-z0-9+\[\]\\\-.,;/=]+$")
@@ -564,7 +573,7 @@ def note_create_api(request):
         if custom_template_id is not None:
             note = create_note(
                 request.user,
-                title=payload.get("title", "Unbenannte Notiz"),
+                title=payload.get("title"),
                 custom_template_id=custom_template_id,
                 folder_id=folder_id,
             )
@@ -609,6 +618,28 @@ def note_import(request):
         return redirect("notes")
     if skipped_images:
         django_messages.warning(request, f"{skipped_images} Bild(er) konnten nicht übernommen werden.")
+    return redirect("note_detail", note_id=note.id)
+
+
+@login_required
+@require_http_methods(["POST"])
+def note_article_import(request):
+    """Create a note from the article at a web address and open it."""
+    disabled = _feature_guard(request)
+    if disabled:
+        return disabled
+    try:
+        folder_id = _optional_positive_int(request.POST.get("folder_id"), "Der Ordner")
+        note = import_article(request.user, request.POST.get("url", ""), folder_id=folder_id)
+    except NoteFolder.DoesNotExist:
+        django_messages.error(request, "Ordner nicht gefunden.")
+        return redirect("notes")
+    except FetchError as error:
+        django_messages.error(request, str(error))
+        return redirect("notes")
+    except ValidationError as error:
+        django_messages.error(request, " ".join(error.messages))
+        return redirect("notes")
     return redirect("note_detail", note_id=note.id)
 
 
@@ -802,6 +833,17 @@ def note_action_api(request, note_id):
             note = get_accessible_note(request.user, note_id)
             created, skipped = create_tasks_from_checklist(request.user, note)
             return JsonResponse({"ok": True, "created": created, "skipped": skipped})
+        if action == "flashcards":
+            if not feature_enabled("tools"):
+                raise ValidationError("Werkzeuge sind gerade abgeschaltet.")
+            note = get_accessible_note(request.user, note_id)
+            vocabulary_list, added = cards_from_note(request.user, note)
+            if vocabulary_list is None:
+                raise ValidationError(
+                    "Keine Karteikarten gefunden. Schreib Zeilen wie „Frage :: Antwort“ in die Notiz."
+                )
+            url = reverse("vocabulary_list_detail", args=[vocabulary_list.pk])
+            return JsonResponse({"ok": True, "added": added, "url": url})
         raise ValidationError("Unbekannte Notizaktion.")
     except Note.DoesNotExist:
         return _error_response("Notiz nicht gefunden.", status=404)
@@ -1122,20 +1164,15 @@ def note_attachment_download(request, file_id, disposition):
         get_accessible_note(request.user, attachment.note_id)
     except Note.DoesNotExist:
         return _error_response("Datei nicht gefunden.", status=404)
-    return _attachment_response(attachment, disposition)
+    return _attachment_response(request, attachment, disposition)
 
 
-def _attachment_response(attachment, disposition):
-    response = FileResponse(
-        attachment.file.open("rb"),
-        content_type=attachment.content_type or "application/octet-stream",
+def _attachment_response(request, attachment, disposition):
+    # Voice notes get their audio type from the extension, never from what the browser reported.
+    content_type = (
+        audio_content_type(attachment.original_name) if is_audio_name(attachment.original_name) else None
     )
-    response["Content-Disposition"] = content_disposition_header(
-        disposition == "download",
-        attachment.original_name,
-    )
-    response["X-Content-Type-Options"] = "nosniff"
-    return response
+    return attachment_response(request, attachment, disposition, content_type=content_type)
 
 
 @login_required
@@ -1213,7 +1250,7 @@ def note_public_attachment(request, token, file_id, disposition):
     attachment = note.attachments.filter(file_id=file_id).first() if note else None
     if attachment is None or disposition not in {"inline", "download"}:
         raise Http404
-    return _public_response(_attachment_response(attachment, disposition))
+    return _public_response(_attachment_response(request, attachment, disposition))
 
 
 @login_required

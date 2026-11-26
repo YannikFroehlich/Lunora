@@ -4,9 +4,13 @@ import re
 
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.html import escape
 from django.utils.text import slugify
 
-from app.services.note_content import FORM_FIELD_BLANK, task_due_label
+from app.services.note_content import DETAILS_FALLBACK, FORM_FIELD_BLANK, task_due_label
+
+# GitHub's alert syntax, which plain Markdown viewers still show as a quote.
+CALLOUT_ALERTS = {"info": "NOTE", "tip": "TIP", "warning": "WARNING"}
 
 ESCAPE_RE = re.compile(r"([\\`*_\[\]<>|])")
 
@@ -61,6 +65,15 @@ class NoteMarkdownRenderer:
         if node_type == "blockquote":
             inner = self.blocks(node.get("content") or [], list_depth=list_depth)
             return "\n".join(f"> {line}" if line else ">" for line in inner.split("\n"))
+        if node_type == "callout":
+            tone = (node.get("attrs") or {}).get("tone")
+            inner = self.blocks(node.get("content") or [], list_depth=list_depth)
+            lines = [f"[!{CALLOUT_ALERTS.get(tone, 'NOTE')}]", *inner.split("\n")]
+            return "\n".join(f"> {line}" if line else ">" for line in lines)
+        if node_type == "details":
+            summary = str((node.get("attrs") or {}).get("summary") or "").strip() or DETAILS_FALLBACK
+            inner = self.blocks(node.get("content") or [], list_depth=list_depth)
+            return f"<details>\n<summary>{escape(summary)}</summary>\n\n{inner}\n\n</details>"
         if node_type == "codeBlock":
             return self.code_block(node)
         if node_type == "horizontalRule":

@@ -20,6 +20,8 @@ from app.services.note_content import (
     ALLOWED_FONT_SIZES,
     ALLOWED_FONTS,
     ALLOWED_LINE_HEIGHTS,
+    CALLOUT_LABELS,
+    DETAILS_FALLBACK,
     HEX_COLOR_RE,
     safe_link_href,
     task_due_label,
@@ -188,6 +190,18 @@ class NoteDocxRenderer:
             return self.task_items(content, depth, quote_block, force_bold)
         if node_type == "blockquote":
             return self.blocks(content, depth, True, force_bold)
+        if node_type == "callout":
+            label = CALLOUT_LABELS.get(attrs.get("tone"), "Info")
+            head = (
+                f'<w:p><w:pPr><w:pStyle w:val="Quote"/></w:pPr>{_run(label, "<w:rPr><w:b/></w:rPr>")}</w:p>'
+            )
+            return [head, *self.blocks(content, depth, True, force_bold)]
+        if node_type == "details":
+            summary = str(attrs.get("summary") or "").strip() or DETAILS_FALLBACK
+            return [
+                f"<w:p>{_run(summary, '<w:rPr><w:b/></w:rPr>')}</w:p>",
+                *self.blocks(content, depth, quote_block, force_bold),
+            ]
         if node_type == "codeBlock":
             text = "".join(
                 child.get("text", "")
