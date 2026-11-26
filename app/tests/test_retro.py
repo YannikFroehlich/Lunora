@@ -249,6 +249,31 @@ class RetroTests(TestCase):
         action.refresh_from_db()
         self.assertIsNone(action.assignee)
 
+    def test_authors_show_from_grouping_on_unless_anonymous(self):
+        self.board.anonymous, self.board.hide_cards = False, False
+        self.board.save()
+        self.join_guest()
+        self.post("retro_card_add", client=self.guest, column_id=self.start.pk, text="A")
+        self.post("retro_card_add", column_id=self.start.pk, text="B")
+        first, second = RetroCard.objects.order_by("id")
+
+        def authors():
+            return [card["author"] for card in self.client.get(self.url).context["columns"][0]["cards"]]
+
+        self.assertEqual(authors(), ["", ""])
+        self.set_phase("group")
+        self.assertEqual(authors(), ["Kim", "lea@example.com"])
+        self.post("retro_group", card_id=second.pk, target_id=first.pk)
+        card = self.client.get(self.url).context["columns"][0]["cards"][0]
+        self.assertEqual((card["author"], card["children"][0]["author"]), ("Kim", "lea@example.com"))
+        self.assertContains(
+            self.client.get(self.url), '<span class="retro-card-author">lea@example.com</span>'
+        )
+
+        self.board.anonymous = True
+        self.board.save()
+        self.assertEqual(authors(), [""])
+
     def test_summary_saves_a_note(self):
         self.post("retro_card_add", column_id=self.start.pk, text="Pairing")
         self.set_phase("done")

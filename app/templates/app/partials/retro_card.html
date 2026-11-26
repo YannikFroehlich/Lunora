@@ -15,7 +15,10 @@
 
     {% for child in card.children %}
     <div class="retro-card-child">
-        <p class="retro-card-text">{{ child.text }}</p>
+        <div class="retro-card-child-body">
+            <p class="retro-card-text">{{ child.text }}</p>
+            {% if child.author %}<span class="retro-card-author">{{ child.author }}</span>{% endif %}
+        </div>
         {% if board.phase == 'group' %}
         <form method="post">
             {% csrf_token %}

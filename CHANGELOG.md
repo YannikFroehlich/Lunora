@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Retro: Ab dem Gruppieren steht unter jeder Karte (auch gruppierten und der präsentierten), wer sie
+  geschrieben hat – außer bei anonymen Retros.
 - Retro: Aus den Maßnahmen werden Actions mit Titel und Beschreibung. Alle in der Retro können sie
   anlegen, bearbeiten und jemandem zuweisen (auch Gästen); als Aufgabe übernommen, landet die
   Beschreibung mit in der Aufgabe.

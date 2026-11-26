@@ -305,6 +305,7 @@ def board_context(board, participant):
         voters[card_id][voter_id] += 1
         vote_counts[voter_id] += 1
     show_voters = votes_shown and not board.anonymous
+    show_authors = phase != RetroBoard.PHASE_COLLECT and not board.anonymous
     children = defaultdict(list)
     for card in cards:
         if card.group_id:
@@ -319,7 +320,8 @@ def board_context(board, participant):
             "hidden": not visible,
             "own": own,
             "can_change": own or is_owner,
-            "author": names.get(card.author_id, "") if visible and not board.anonymous else "",
+            # Authors show from grouping on, and never on anonymous boards.
+            "author": names.get(card.author_id, "") if show_authors else "",
             "votes": card.vote_count if votes_shown else None,
             "my_votes": my_votes[card.pk],
             "voters": ", ".join(
