@@ -502,6 +502,7 @@ def _tasks(user):
             {
                 "id": task.pk,
                 "title": task.title,
+                "description": task.description,
                 "due_at": task.due_at,
                 "priority": task.priority,
                 "recurrence_rule": task.recurrence_rule,

@@ -396,6 +396,7 @@
     const editForm = editDialog.querySelector("[data-task-edit-form]");
     const idInput = editForm?.querySelector("[data-task-edit-id-input]");
     const titleInput = editForm?.querySelector("input[name='title']");
+    const descriptionInput = editForm?.querySelector("textarea[name='description']");
     const dueInput = editForm?.querySelector("input[name='due_at']");
     const listSelect = editForm?.querySelector("select[name='task_list']");
     const prioritySelect = editForm?.querySelector("select[name='priority']");
@@ -414,6 +415,7 @@
     const openEditDialog = (data) => {
       if (idInput) idInput.value = data.taskId || "";
       if (titleInput) titleInput.value = data.title || "";
+      if (descriptionInput) descriptionInput.value = data.description || "";
       if (dueInput) dueInput.value = data.due || "";
       if (listSelect) listSelect.value = data.list || "";
       if (prioritySelect) prioritySelect.value = data.priority || "none";
@@ -455,6 +457,7 @@
       openEditDialog({
         taskId: button.dataset.taskId,
         title: button.dataset.editTitle,
+        description: button.dataset.editDescription,
         due: button.dataset.editDue,
         list: button.dataset.editList,
         priority: button.dataset.editPriority,

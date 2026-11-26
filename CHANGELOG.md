@@ -6,6 +6,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Aufgaben: Aufgaben und Unteraufgaben können eine Beschreibung haben (beim Anlegen unter
+  „Weitere Optionen“ und im Bearbeiten-Dialog). Ein Klick auf den Titel klappt die Aufgabe auf
+  und zeigt lange Titel vollständig sowie die Beschreibung; ein Symbol kennzeichnet Aufgaben mit
+  Beschreibung. Die globale Suche findet auch Text aus Beschreibungen.
 - Werkzeuge: Retrospektiven wie in Kollabe – Karten sammeln (verdeckt), gruppieren, mit Punkten
   abstimmen und besprechen, wobei die Erstellerin bzw. der Ersteller eine Karte für alle als
   Popup präsentiert. Grenzen für Karten und Stimmen, Timer, anonyme Karten und ein

@@ -137,6 +137,7 @@ def _apply_task_status(task, status, *, now=None):
             task_list=task.task_list,
             parent=task.parent,
             title=task.title,
+            description=task.description,
             due_at=next_due,
             priority=task.priority,
             recurrence_rule=task.recurrence_rule,

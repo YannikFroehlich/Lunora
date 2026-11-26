@@ -227,6 +227,51 @@ class TaskTests(TestCase):
         task.refresh_from_db()
         self.assertEqual(task.title, "Bleibt gleich")
 
+    def test_task_description_is_saved_shown_searchable_and_editable(self):
+        self._login()
+        long_title = "Sehr langer Aufgabentitel " * 6
+
+        self.client.post(
+            "/tasks/",
+            {
+                "form_name": "task_add",
+                "title": long_title,
+                "description": "Zugangscode <b>liegt</b>\nim Schrank",
+            },
+        )
+
+        task = Task.objects.get(user=self.user)
+        self.assertEqual(task.title, long_title.strip())
+        self.assertEqual(task.description, "Zugangscode <b>liegt</b>\nim Schrank")
+        page = self.client.get("/tasks/")
+        self.assertContains(page, f'id="task-details-{task.id}"')
+        self.assertContains(
+            page, '<p class="task-description">Zugangscode &lt;b&gt;liegt&lt;/b&gt;\nim Schrank</p>'
+        )
+        self.assertContains(self.client.get("/search/", {"q": "Zugangscode"}), "Sehr langer Aufgabentitel")
+
+        self.client.post(
+            "/tasks/",
+            {"form_name": "task_edit", "task_id": str(task.id), "title": task.title, "description": ""},
+        )
+        task.refresh_from_db()
+        self.assertEqual(task.description, "")
+        self.assertNotContains(self.client.get("/tasks/"), 'class="task-description"')
+
+    def test_recurring_task_keeps_its_description(self):
+        task = Task.objects.create(
+            user=self.user,
+            title="Pflanzen gießen",
+            description="Auch die auf dem Balkon",
+            due_at=timezone.now() + timedelta(days=1),
+            recurrence_rule="DAILY",
+        )
+
+        toggle_task(self.user, task.id, True)
+
+        next_task = Task.objects.get(user=self.user, title="Pflanzen gießen", is_done=False)
+        self.assertEqual(next_task.description, "Auch die auf dem Balkon")
+
     def test_task_reorder_updates_positions(self):
         self._login()
         first = Task.objects.create(user=self.user, title="Erstens")
