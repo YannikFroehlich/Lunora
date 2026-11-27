@@ -6,6 +6,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Retro: In den Einstellungen entfernt die Erstellerin bzw. der Ersteller der Retro ausgewählte
+  Teilnehmende, etwa doppelte Gäste. Ihre Karten bleiben ohne Namen stehen, ihre Stimmen und
+  Bewertungen fallen weg; wer den Einladungslink noch hat, kann wieder beitreten, bis er erneuert
+  wird.
 - Retro: Der Timer lässt sich mit „+1“ um eine Minute verlängern (ein abgelaufener startet damit
   neu). Läuft er ab, ertönen bei allen drei kurze Pieptöne und die Anzeige blinkt kurz auf – der
   Ton kommt, sobald man einmal auf die Seite geklickt oder getippt hat, weil Browser vorher

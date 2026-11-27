@@ -37,6 +37,7 @@ OWNER_FORMS = {
     "retro_column_edit",
     "retro_column_move",
     "retro_column_delete",
+    "retro_participants_remove",
     "retro_link_renew",
     "retro_duplicate",
     "retro_delete",
@@ -202,6 +203,11 @@ def _handle_owner(request, board, form_name):
             if form_name == "retro_column_add":
                 return retro.add_column(board, column, title, tone)
             retro.edit_column(column, title, tone)
+    elif form_name == "retro_participants_remove":
+        ids = [int(value) for value in request.POST.getlist("participant_id") if value.isdigit()]
+        removed = retro.remove_participants(board, ids)
+        if removed:
+            django_messages.success(request, f"{removed} Teilnehmende entfernt.")
     elif form_name == "retro_link_renew":
         retro.renew_join_token(board)
         django_messages.success(request, "Der alte Einladungslink gilt nicht mehr.")

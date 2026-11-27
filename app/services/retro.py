@@ -158,6 +158,14 @@ def join_as_guest(request, board, name):
     return participant, None
 
 
+def remove_participants(board, participant_ids):
+    """The owner removes people; the owner can't be removed. Their cards stay (without author),
+    their votes and rating go with them. Anyone still holding the invite link can join again."""
+    people = board.participants.filter(pk__in=participant_ids).exclude(user_id=board.owner_id)
+    _total, deleted = people.delete()
+    return deleted.get(RetroParticipant._meta.label, 0)
+
+
 def participant_name(participant):
     return display_name(participant.user) if participant.user_id else participant.guest_name
 
@@ -620,6 +628,7 @@ def board_context(board, participant):
                 "initials": initials(names[item.pk]),
                 "is_guest": item.user_id is None,
                 "is_me": item.pk == participant.pk,
+                "is_owner": item.user_id == board.owner_id,
                 # Progress without content: how many cards someone wrote and votes they gave.
                 "cards": card_counts[item.pk],
                 "votes": vote_counts[item.pk],

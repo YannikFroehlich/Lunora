@@ -238,6 +238,27 @@
                 <button type="submit" class="primary-button">Speichern</button>
             </div>
         </form>
+        <section class="retro-invite" aria-labelledby="retro-people-title">
+            <h3 id="retro-people-title">Teilnehmende</h3>
+            {# Its own region, so the list follows joins and removals; the dialog itself isn't one. #}
+            <div class="soft-contents" id="retro-people-editor" data-soft-region>
+                {% if participants|length > 1 %}
+                <form method="post" class="retro-people-form" data-confirm="Ausgewählte entfernen? Ihre Karten bleiben, ihre Stimmen und Bewertungen nicht.">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="retro_participants_remove">
+                    <ul class="retro-people-list">
+                        {% for person in participants %}{% if not person.is_owner %}
+                        <li><label><input type="checkbox" name="participant_id" value="{{ person.id }}"> {{ person.name }}{% if person.is_guest %} <small>(Gast)</small>{% endif %}</label></li>
+                        {% endif %}{% endfor %}
+                    </ul>
+                    <button type="submit" class="ghost-button retro-danger"><i class="fa-solid fa-user-minus" aria-hidden="true"></i> Ausgewählte entfernen</button>
+                </form>
+                <p class="retro-invite-hint">Wer den Einladungslink noch hat, kann wieder beitreten – dann den Link unten erneuern.</p>
+                {% else %}
+                <p class="retro-invite-hint">Noch niemand außer dir. Teile den Einladungslink unten.</p>
+                {% endif %}
+            </div>
+        </section>
         <section class="retro-invite" aria-labelledby="retro-duplicate-title">
             <h3 id="retro-duplicate-title">Folge-Retro</h3>
             <p class="retro-invite-hint">Gleiche Spalten und Einstellungen, ohne Karten. Beim Sammeln stehen die Actions dieser Retro daneben; Teilnehmende kommen über einen neuen Einladungslink dazu.</p>

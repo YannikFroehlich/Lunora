@@ -392,6 +392,37 @@ class RetroTests(TestCase):
         self.assertEqual(next_title("Q4 Team 7"), "Q4 Team 8")
         self.assertEqual(next_title("Teamretro"), "Teamretro (Kopie)")
 
+    def test_owner_removes_participants_who_keep_their_cards_but_lose_votes(self):
+        kim = self.join_guest("Kim")
+        other_guest = Client()
+        tom = self.join_guest("Tom", client=other_guest)
+        member_client = Client()
+        member_client.force_login(self.other)
+        member_client.get(self.join_url)
+        member = self.board.participants.get(user=self.other)
+        owner = self.board.participants.get(user=self.owner)
+        self.post("retro_card_add", client=self.guest, column_id=self.start.pk, text="Von Kim")
+        card = RetroCard.objects.get()
+        RetroVote.objects.create(card=card, participant=kim)
+        self.assertContains(self.client.get(self.url), f'name="participant_id" value="{kim.pk}"')
+        self.assertNotContains(self.client.get(self.url), f'name="participant_id" value="{owner.pk}"')
+
+        response = self.post("retro_participants_remove", client=other_guest, participant_id=[kim.pk])
+        self.assertEqual(response.status_code, 404)
+        self.client.post(
+            self.url,
+            {"form_name": "retro_participants_remove", "participant_id": [kim.pk, member.pk, owner.pk, "x"]},
+        )
+        self.assertEqual(set(self.board.participants.all()), {owner, tom})
+        card.refresh_from_db()
+        self.assertIsNone(card.author)
+        self.assertFalse(RetroVote.objects.exists())
+        # Both lose access; a guest is sent to sign in, a Lunora user gets a 404.
+        self.assertRedirects(
+            self.guest.get(self.url), f"/login/?next={self.url}", fetch_redirect_response=False
+        )
+        self.assertEqual(member_client.get(self.url).status_code, 404)
+
     def test_owner_adds_a_minute_to_the_timer_up_to_an_hour(self):
         self.join_guest()
         self.post("retro_timer_extend")
