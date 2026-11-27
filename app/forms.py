@@ -69,6 +69,7 @@ from app.services.linked_notes import linkable_notes
 from app.services.notes import display_name, note_title
 from app.services.notification_preferences import CATEGORY_DEFINITIONS
 from app.services.quick_add import parse_quick_add
+from app.services.retro import previous_choices
 from app.services.storage_quota import ensure_storage_available
 from app.services.tasks import DEFAULT_DUE_TIME, update_task_shares
 from app.services.throttle import count_hit
@@ -2004,8 +2005,10 @@ class RetroSettingsForm(forms.ModelForm):
             "hide_cards",
             "hide_votes",
             "join_enabled",
+            "previous",
         ]
         labels = {
+            "previous": "Actions aus Retro",
             "title": "Titel",
             "max_cards": "Karten pro Person",
             "votes_per_person": "Stimmen pro Person",
@@ -2020,6 +2023,8 @@ class RetroSettingsForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         kwargs.setdefault("auto_id", "retro_%s")
         super().__init__(*args, **kwargs)
+        self.fields["previous"].queryset = previous_choices(self.instance.owner, exclude=self.instance)
+        self.fields["previous"].empty_label = "Keine"
         limits = {
             "max_cards": (0, 50),
             "votes_per_person": (1, 50),

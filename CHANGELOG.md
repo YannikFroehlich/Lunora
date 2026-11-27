@@ -6,6 +6,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Retro: Eine neue Retro knüpft an eine frühere eigene an (beim Anlegen ist die neueste
+  vorausgewählt, änderbar in den Einstellungen). Beim Sammeln stehen deren Actions daneben und
+  alle Teilnehmenden haken sie gemeinsam ab; als Aufgabe übernommene Actions zeigen den Stand der
+  Aufgabe. Auch die Actions der laufenden Retro lassen sich abhaken.
 - Retro: Karten lassen sich nur noch beim Sammeln bearbeiten oder löschen und Gruppen nur beim
   Gruppieren auflösen – auch der Server prüft das jetzt, sodass niemand eine Karte nach der
   Abstimmung ändert oder Stimmen zwischen Gruppen verschiebt. Verdeckte Karten anderer kann auch

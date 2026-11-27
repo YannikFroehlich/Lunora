@@ -4760,8 +4760,24 @@ form:has([name="split_mode"][value="amounts"]:checked) [data-split-hint="amounts
   font-size: var(--text-xs);
 }
 
-.retro-action-task {
+.retro-action-status {
+  color: var(--color-muted);
+}
+
+.retro-action-status.is-done {
   color: var(--color-success);
+}
+
+.retro-action.is-done .retro-action-title {
+  color: var(--color-muted);
+  text-decoration: line-through;
+}
+
+.retro-previous-source {
+  margin: -6px 0 0;
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
 }
 
 .retro-action-form {

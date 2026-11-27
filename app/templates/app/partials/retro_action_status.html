@@ -1,0 +1,12 @@
+{# Done state of an action: a toggle, or the state of the task it became. #}
+{% if action.has_task %}
+<span class="retro-action-status{% if action.done %} is-done{% endif %}" title="{% if action.done %}Aufgabe erledigt{% else %}Als Aufgabe übernommen, noch offen{% endif %}"><i class="fa-solid {% if action.done %}fa-square-check{% else %}fa-list-check{% endif %}" aria-hidden="true"></i><span class="visually-hidden">{% if action.done %}Aufgabe erledigt{% else %}Als Aufgabe übernommen, noch offen{% endif %}</span></span>
+{% else %}
+<form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="form_name" value="retro_action_done">
+    <input type="hidden" name="action_id" value="{{ action.id }}">
+    <input type="hidden" name="done" value="{% if action.done %}0{% else %}1{% endif %}">
+    <button type="submit" class="icon-button retro-mini-button retro-action-status{% if action.done %} is-done{% endif %}" aria-pressed="{{ action.done|yesno:'true,false' }}" title="Erledigt" aria-label="„{{ action.title|truncatechars:30 }}“ erledigt"><i class="{% if action.done %}fa-solid fa-square-check{% else %}fa-regular fa-square{% endif %}" aria-hidden="true"></i></button>
+</form>
+{% endif %}

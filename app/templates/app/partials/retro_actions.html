@@ -3,10 +3,10 @@
     <h2 id="retro-actions-title">Actions</h2>
     <ul class="retro-action-list">
         {% for action in actions %}
-        <li class="retro-action">
+        <li class="retro-action{% if action.done %} is-done{% endif %}">
             <div class="retro-action-head">
+                {% include 'app/partials/retro_action_status.html' %}
                 <strong class="retro-action-title">{{ action.title }}</strong>
-                {% if action.has_task %}<span class="retro-action-task" title="Als Aufgabe übernommen"><i class="fa-solid fa-square-check" aria-hidden="true"></i><span class="visually-hidden">Als Aufgabe übernommen</span></span>{% endif %}
                 {% if action.can_take %}
                 <form method="post">
                     {% csrf_token %}

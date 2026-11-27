@@ -73,7 +73,8 @@ def retro_boards(request):
         if not title:
             django_messages.error(request, "Der Titel darf nicht leer sein.")
             return redirect("retro_boards")
-        board = retro.create_retro(request.user, title, request.POST.get("template", ""))
+        previous = retro.previous_choices(request.user).filter(pk=posted_id(request, "previous_id")).first()
+        board = retro.create_retro(request.user, title, request.POST.get("template", ""), previous)
         return redirect("retro_board", board_id=board.pk)
 
     boards = (
@@ -108,6 +109,8 @@ def retro_boards(request):
                 for key, (label, columns) in retro.TEMPLATES.items()
             ],
             "title_max_length": TITLE_MAX_LENGTH,
+            # Preselects the newest, since retros usually follow up on the last one.
+            "previous_choices": list(retro.previous_choices(request.user).values("id", "title")),
         },
     )
 
@@ -197,6 +200,9 @@ def _handle_participant(request, board, participant, form_name):
             return "Die Action braucht einen Titel."
         RetroAction.objects.create(board=board, title=title, description=description, assignee=assignee)
         return None
+    if form_name == "retro_action_done":
+        action = get_object_or_404(retro.reviewable_actions(board), pk=posted_id(request, "action_id"))
+        return retro.set_action_done(action, request.POST.get("done") == "1")
     if form_name in {"retro_action_edit", "retro_action_delete", "retro_action_task"}:
         action = get_object_or_404(board.actions, pk=posted_id(request, "action_id"))
         if form_name == "retro_action_edit":

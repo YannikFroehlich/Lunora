@@ -35,6 +35,17 @@
                     {% endfor %}
                 </select>
             </label>
+            {% if previous_choices %}
+            <label class="uml-relation-select whiteboard-template-select">
+                <span class="visually-hidden">Actions aus Retro</span>
+                <select name="previous_id" title="Actions aus Retro">
+                    {% for choice in previous_choices %}
+                    <option value="{{ choice.id }}"{% if forloop.first %} selected{% endif %}>Actions aus „{{ choice.title|truncatechars:30 }}“</option>
+                    {% endfor %}
+                    <option value="">Ohne letzte Actions</option>
+                </select>
+            </label>
+            {% endif %}
             <button class="primary-button" type="submit"><i class="fa-solid fa-plus" aria-hidden="true"></i> Neue Retro</button>
         </form>
     </section>

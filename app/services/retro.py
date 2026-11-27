@@ -11,7 +11,7 @@ from django.db import transaction
 from django.db.models import Count, Q
 from django.utils import timezone
 
-from app.models import RetroBoard, RetroCard, RetroColumn, RetroParticipant, RetroVote, Task
+from app.models import RetroAction, RetroBoard, RetroCard, RetroColumn, RetroParticipant, RetroVote, Task
 from app.services.data_import import create_markdown_note
 from app.services.notes import display_name
 
@@ -52,10 +52,17 @@ def new_join_token():
     return secrets.token_urlsafe(32)
 
 
+def previous_choices(user, exclude=None):
+    """The user's own retros a new one can follow up on, newest first. Only own ones, so a board's
+    participants never see actions from a retro its owner merely joined."""
+    boards = RetroBoard.objects.filter(owner=user).order_by("-created_at", "-id")
+    return boards.exclude(pk=exclude.pk) if exclude else boards
+
+
 @transaction.atomic
-def create_retro(user, title, template):
+def create_retro(user, title, template, previous=None):
     _label, columns = TEMPLATES.get(template, TEMPLATES["start_stop"])
-    board = RetroBoard.objects.create(owner=user, title=title, join_token=new_join_token())
+    board = RetroBoard.objects.create(owner=user, title=title, join_token=new_join_token(), previous=previous)
     RetroColumn.objects.bulk_create(
         RetroColumn(board=board, title=name, tone=tone, position=index)
         for index, (name, tone) in enumerate(columns)
@@ -245,6 +252,25 @@ def take_action_as_task(action, user):
     return task
 
 
+def reviewable_actions(board):
+    """Actions a board's participants may tick off: its own and those of the retro it follows up on."""
+    return RetroAction.objects.filter(board_id__in=[board.pk, board.previous_id]).select_related("board")
+
+
+def set_action_done(action, done):
+    """An action taken over as a task gets its state from the task, so only the others change."""
+    if action.task_id:
+        return "Der Stand kommt aus der Aufgabe."
+    action.done = done
+    action.save(update_fields=["done"])
+    touch_board(action.board)
+    return None
+
+
+def action_done(action):
+    return action.task.is_done if action.task_id else action.done
+
+
 def save_as_note(board, user):
     topics = ranked_topics(board)
     lines = [f"# Retro: {board.title}", ""]
@@ -255,13 +281,14 @@ def save_as_note(board, user):
             lines.append(f"- {topic['text']}{votes}")
             lines.extend(f"  - {child}" for child in topic["children"])
         lines.append("")
-    actions = list(board.actions.select_related("assignee__user__profile"))
+    actions = list(board.actions.select_related("assignee__user__profile", "task"))
     if actions:
         lines.append("## Actions")
         for action in actions:
+            mark = "x" if action_done(action) else " "
             owner = f" ({participant_name(action.assignee)})" if action.assignee else ""
             details = f" – {' '.join(action.description.split())}" if action.description else ""
-            lines.append(f"- [ ] {action.title}{owner}{details}")
+            lines.append(f"- [{mark}] {action.title}{owner}{details}")
     return create_markdown_note(user, "\n".join(lines), f"Retro: {board.title}")
 
 
@@ -374,14 +401,29 @@ def board_context(board, participant):
             "assignee_id": action.assignee_id,
             "assignee": names.get(action.assignee_id, ""),
             "has_task": action.task_id is not None,
+            "done": action_done(action),
             "can_take": (
                 participant.user_id is not None
                 and action.task_id is None
                 and action.assignee_id in {None, participant.pk}
             ),
         }
-        for action in board.actions.all()
+        for action in board.actions.select_related("task")
     ]
+    # Reviewed while collecting: what the retro this one follows up on decided.
+    previous_actions = None
+    if board.previous_id and phase == RetroBoard.PHASE_COLLECT:
+        previous_actions = [
+            {
+                "id": action.pk,
+                "title": action.title,
+                "description": action.description,
+                "assignee": participant_name(action.assignee) if action.assignee else "",
+                "has_task": action.task_id is not None,
+                "done": action_done(action),
+            }
+            for action in board.previous.actions.select_related("task", "assignee__user__profile")
+        ]
     left_cards = cards_left(board, participant)
     left_votes = votes_left(board, participant)
     return {
@@ -418,6 +460,7 @@ def board_context(board, participant):
             for item in participants
         ],
         "actions": actions,
+        "previous_actions": previous_actions,
         "card_count": len(cards),
         "vote_count": sum(vote_counts.values()),
         "topic_count": len(tops),

@@ -6,7 +6,7 @@ from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.test import Client, TestCase
 
-from app.models import Note, RetroBoard, RetroCard, RetroVote, SystemSettings, Task
+from app.models import Note, RetroAction, RetroBoard, RetroCard, RetroVote, SystemSettings, Task
 from app.services.data_export import write_user_export
 from app.services.retro import create_retro
 
@@ -218,6 +218,51 @@ class RetroTests(TestCase):
         self.post("retro_ungroup", card_id=first.pk)
         second.refresh_from_db()
         self.assertEqual(second.group, first)
+
+    def test_new_retro_follows_up_on_own_last_retro_and_reviews_its_actions(self):
+        old_action = RetroAction.objects.create(board=self.board, title="Daily kürzen")
+        task = Task.objects.create(user=self.other, title="Doku")
+        task_action = RetroAction.objects.create(board=self.board, title="Doku", task=task)
+        foreign = create_retro(self.other, "Fremd", "blank")
+        page = self.client.get("/tools/retro/")
+        self.assertEqual([choice["id"] for choice in page.context["previous_choices"]], [self.board.pk])
+
+        # Someone else's retro can't be picked; the own one can.
+        self.client.post(
+            "/tools/retro/",
+            {"form_name": "retro_create", "title": "Fremd-Folge", "previous_id": foreign.pk},
+        )
+        self.assertIsNone(RetroBoard.objects.get(title="Fremd-Folge").previous)
+        self.client.post(
+            "/tools/retro/",
+            {"form_name": "retro_create", "title": "Sprint 48", "previous_id": self.board.pk},
+        )
+        follow_up = RetroBoard.objects.get(title="Sprint 48")
+        self.assertEqual(follow_up.previous, self.board)
+
+        # A guest of the new retro sees the old actions while collecting and ticks them off.
+        url = f"/tools/retro/{follow_up.pk}/"
+        guest = Client()
+        guest.post(f"/retro/join/{follow_up.join_token}/", {"name": "Kim"})
+        self.assertContains(guest.get(url), "Daily kürzen")
+        guest.post(url, {"form_name": "retro_action_done", "action_id": old_action.pk, "done": "1"})
+        old_action.refresh_from_db()
+        self.assertTrue(old_action.done)
+        # A task's state wins and can't be overridden from the retro.
+        guest.post(url, {"form_name": "retro_action_done", "action_id": task_action.pk, "done": "1"})
+        task_action.refresh_from_db()
+        self.assertFalse(task_action.done)
+        task.is_done = True
+        task.save()
+        previous = {item["id"]: item["done"] for item in guest.get(url).context["previous_actions"]}
+        self.assertEqual(previous, {old_action.pk: True, task_action.pk: True})
+
+        # Unrelated boards' actions stay out of reach, and the panel leaves after collecting.
+        stranger = RetroAction.objects.create(board=foreign, title="X")
+        response = guest.post(url, {"form_name": "retro_action_done", "action_id": stranger.pk, "done": "1"})
+        self.assertEqual(response.status_code, 404)
+        self.client.post(url, {"form_name": "retro_phase", "phase": "group"})
+        self.assertIsNone(guest.get(url).context["previous_actions"])
 
     def test_presented_card_shows_for_everyone_and_owner_clears_it(self):
         self.join_guest()

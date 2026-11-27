@@ -1266,6 +1266,8 @@ class RetroBoard(models.Model):
     presented_card = models.ForeignKey(
         "RetroCard", on_delete=models.SET_NULL, blank=True, null=True, related_name="+"
     )
+    # The owner's earlier retro whose actions are reviewed while collecting.
+    previous = models.ForeignKey("self", on_delete=models.SET_NULL, blank=True, null=True, related_name="+")
     # Credential of the invite link; never logged, renewed by the owner.
     join_token = models.CharField(max_length=64, unique=True)
     join_enabled = models.BooleanField(default=True)
@@ -1362,8 +1364,9 @@ class RetroAction(models.Model):
     assignee = models.ForeignKey(
         RetroParticipant, on_delete=models.SET_NULL, blank=True, null=True, related_name="actions"
     )
-    # The task a Lunora user made from it ("Als Aufgabe übernehmen").
+    # The task a Lunora user made from it ("Als Aufgabe übernehmen"); its state then wins over ``done``.
     task = models.ForeignKey("Task", on_delete=models.SET_NULL, blank=True, null=True, related_name="+")
+    done = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

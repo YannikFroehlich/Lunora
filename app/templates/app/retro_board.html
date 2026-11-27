@@ -119,7 +119,7 @@
         {% include 'app/partials/retro_actions.html' %}
     </div>
     {% else %}
-    <div class="retro-body{% if board.phase == 'discuss' %} has-side{% endif %}">
+    <div class="retro-body{% if board.phase == 'discuss' or previous_actions is not None %} has-side{% endif %}">
         <div class="retro-columns" style="--retro-columns: {{ columns|length }}">
             {% for column in columns %}
             <section class="retro-column glass-panel tone-{{ column.tone }}" aria-labelledby="retro-column-{{ column.id }}-title">
@@ -148,6 +148,8 @@
         </div>
         {% if board.phase == 'discuss' %}
         {% include 'app/partials/retro_actions.html' %}
+        {% elif previous_actions is not None %}
+        {% include 'app/partials/retro_previous_actions.html' %}
         {% endif %}
     </div>
     {% endif %}
@@ -204,6 +206,7 @@
             {% csrf_token %}
             <input type="hidden" name="form_name" value="retro_settings">
             <label class="vocab-field"><span>{{ settings_form.title.label }}</span>{{ settings_form.title }}</label>
+            <label class="vocab-field"><span>{{ settings_form.previous.label }}</span>{{ settings_form.previous }}</label>
             <fieldset class="retro-settings-limits">
                 <legend>Grenzen <small>(Karten 0 = unbegrenzt)</small></legend>
                 <label class="vocab-field"><span>{{ settings_form.max_cards.label }}</span>{{ settings_form.max_cards }}</label>

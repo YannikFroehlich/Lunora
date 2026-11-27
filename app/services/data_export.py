@@ -54,7 +54,7 @@ from app.models import (
 )
 from app.services.note_markdown import note_markdown_filename, render_note_markdown
 from app.services.notes import display_name
-from app.services.retro import participant_name, ranked_topics
+from app.services.retro import action_done, participant_name, ranked_topics
 
 README = """Lunora – Datenexport
 
@@ -297,7 +297,7 @@ def _retros(user):
     """Own retros; the invite token stays out, authors and assignees appear by name only."""
     retros = []
     for board in RetroBoard.objects.filter(owner=user).prefetch_related(
-        "columns", "actions__assignee__user__profile"
+        "columns", "actions__assignee__user__profile", "actions__task", "previous"
     ):
         columns = {column.pk: column.title for column in board.columns.all()}
         retros.append(
@@ -320,9 +320,11 @@ def _retros(user):
                         "title": action.title,
                         "description": action.description,
                         "assignee": participant_name(action.assignee) if action.assignee else "",
+                        "done": action_done(action),
                     }
                     for action in board.actions.all()
                 ],
+                "follows_up_on": board.previous.title if board.previous else "",
             }
         )
     return retros
