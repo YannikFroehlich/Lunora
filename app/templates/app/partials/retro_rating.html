@@ -1,0 +1,25 @@
+{# Closing rating ("return on time invested"): everyone rates 1–5; totals show once you rated. #}
+<section class="retro-rating" aria-labelledby="retro-rating-title">
+    <h3 id="retro-rating-title">Hat sich die Retro gelohnt?</h3>
+    <div class="retro-rating-options" role="group" aria-labelledby="retro-rating-title">
+        {% for option in rating.options %}
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="retro_rate">
+            <input type="hidden" name="score" value="{{ option.score }}">
+            <button type="submit" class="retro-rating-option{% if option.score == rating.mine %} is-selected{% endif %}" aria-pressed="{% if option.score == rating.mine %}true{% else %}false{% endif %}" style="--share: {{ option.share }}%">
+                <strong>{{ option.score }}</strong>
+                <small>{{ option.label }}</small>
+                {% if rating.shown %}<span class="retro-rating-count">{{ option.count }}×</span>{% endif %}
+            </button>
+        </form>
+        {% endfor %}
+    </div>
+    <p class="retro-rating-result">
+        {% if rating.shown %}
+        Ø {{ rating.average|floatformat:1 }} · {{ rating.count }} von {{ participants|length }} haben bewertet
+        {% else %}
+        {{ rating.count }} von {{ participants|length }} haben bewertet · das Ergebnis siehst du nach deiner Bewertung
+        {% endif %}
+    </p>
+</section>

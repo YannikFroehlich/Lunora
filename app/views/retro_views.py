@@ -230,6 +230,8 @@ def _handle_participant(request, board, participant, form_name):
             return "Die Action braucht einen Titel."
         RetroAction.objects.create(board=board, title=title, description=description, assignee=assignee)
         return None
+    if form_name == "retro_rate":
+        return retro.rate(board, participant, posted_id(request, "score"))
     if form_name == "retro_action_done":
         action = get_object_or_404(retro.reviewable_actions(board), pk=posted_id(request, "action_id"))
         return retro.set_action_done(action, request.POST.get("done") == "1")

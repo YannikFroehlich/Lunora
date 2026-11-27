@@ -54,7 +54,7 @@ from app.models import (
 )
 from app.services.note_markdown import note_markdown_filename, render_note_markdown
 from app.services.notes import display_name
-from app.services.retro import action_done, participant_name, ranked_topics
+from app.services.retro import action_done, participant_name, ranked_topics, rating_summary
 
 README = """Lunora – Datenexport
 
@@ -326,6 +326,8 @@ def _retros(user):
                     for action in board.actions.all()
                 ],
                 "follows_up_on": board.previous.title if board.previous else "",
+                # Totals only, like on the board: who gave which score stays out.
+                "rating": rating_summary(board),
             }
         )
     return retros

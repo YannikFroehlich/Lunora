@@ -106,6 +106,7 @@
                 {% for topic in top_three %}<li><span>{{ topic.text }}</span> <small>{{ topic.votes }} Stimme(n)</small></li>{% endfor %}
             </ol>
             {% endif %}
+            {% include 'app/partials/retro_rating.html' %}
             {% if is_owner %}
             <div class="retro-summary-actions">
                 <form method="post" data-no-soft>

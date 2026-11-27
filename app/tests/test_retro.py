@@ -353,6 +353,38 @@ class RetroTests(TestCase):
         self.assertFalse(copy.cards.exists() or copy.actions.exists())
         self.assertContains(self.client.get(f"/tools/retro/{copy.pk}/"), "Daily kürzen")
 
+    def test_closing_rating_shows_totals_only_after_rating_yourself(self):
+        guest = self.join_guest()
+        self.post("retro_rate", client=self.guest, score="4")
+        guest.refresh_from_db()
+        self.assertIsNone(guest.rating)  # Only at the end.
+
+        self.set_phase("done")
+        for score in ("0", "6", "x"):
+            self.post("retro_rate", client=self.guest, score=score)
+        guest.refresh_from_db()
+        self.assertIsNone(guest.rating)
+        self.post("retro_rate", client=self.guest, score="4")
+        self.post("retro_rate", client=self.guest, score="2")  # Changing one's mind.
+        guest.refresh_from_db()
+        self.assertEqual(guest.rating, 2)
+
+        rating = self.client.get(self.url).context["rating"]
+        self.assertEqual((rating["shown"], rating["count"], rating["average"]), (False, 1, None))
+        self.assertEqual({option["count"] for option in rating["options"]}, {None})
+        self.post("retro_rate", score="5")
+        rating = self.client.get(self.url).context["rating"]
+        self.assertEqual((rating["mine"], rating["average"]), (5, 3.5))
+        self.assertEqual([option["count"] for option in rating["options"]], [0, 1, 0, 0, 1])
+        self.assertContains(self.guest.get(self.url), "Ø 3,5")
+
+        buffer = BytesIO()
+        write_user_export(self.owner, buffer)
+        exported = json.loads(zipfile.ZipFile(buffer).read("retros.json"))[0]["rating"]
+        self.assertEqual((exported["count"], exported["average"]), (2, 3.5))
+        self.post("retro_note")
+        self.assertIn("Ø 3,5 von 5", Note.objects.get().plain_text)
+
     def test_next_title_bumps_the_last_number(self):
         self.assertEqual(next_title("Sprint 09 Retro"), "Sprint 10 Retro")
         self.assertEqual(next_title("Q4 Team 7"), "Q4 Team 8")

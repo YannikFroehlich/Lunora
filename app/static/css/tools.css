@@ -4919,6 +4919,72 @@ form:has([name="split_mode"][value="amounts"]:checked) [data-split-hint="amounts
   color: var(--color-muted);
 }
 
+.retro-rating {
+  display: grid;
+  gap: 8px;
+}
+
+.retro-rating-options {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.retro-rating-options form {
+  display: grid;
+  margin: 0;
+}
+
+/* The fill from the bottom is that score's share of all ratings. */
+.retro-rating-option {
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 2px;
+  padding: 8px 4px;
+  color: var(--color-text);
+  font: inherit;
+  text-align: center;
+  background:
+    linear-gradient(
+        to top,
+        color-mix(in srgb, var(--color-accent) 28%, transparent) var(--share, 0%),
+        transparent var(--share, 0%)
+      ),
+    var(--surface-control);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.retro-rating-option strong {
+  color: var(--color-heading);
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+}
+
+.retro-rating-option small {
+  color: var(--color-muted);
+  font-size: var(--text-2xs);
+  line-height: 1.2;
+}
+
+.retro-rating-option.is-selected {
+  border-color: var(--color-accent-strong);
+  box-shadow: inset 0 0 0 1px var(--color-accent-strong);
+}
+
+.retro-rating-count {
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+
+.retro-rating-result {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
 .retro-summary-actions {
   display: flex;
   flex-wrap: wrap;

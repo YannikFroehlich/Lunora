@@ -6,6 +6,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Retro: Zum Abschluss bewerten alle (auch Gäste), wie sehr sich die Retro gelohnt hat – von 1
+  „Verschwendete Zeit“ bis 5 „Sehr wertvoll“. Das Ergebnis (Durchschnitt und Verteilung) sieht
+  man erst nach der eigenen Bewertung, und nie, wer was gegeben hat. Notiz und Datenexport
+  enthalten den Durchschnitt.
 - Retro: „Folge-Retro anlegen“ (in den Einstellungen und auf der Zusammenfassung) dupliziert eine
   Retro mit ihren Spalten und Einstellungen, aber ohne Karten, Stimmen und Actions. Der Titel zählt
   die letzte Zahl hoch („Sprint 47“ → „Sprint 48“), und beim Sammeln stehen die Actions der

@@ -329,6 +329,38 @@ def renew_join_token(board):
     board.save(update_fields=["join_token", "updated_at"])
 
 
+# ---- closing rating ------------------------------------------------------------------------------------
+
+RATINGS = {
+    1: "Verschwendete Zeit",
+    2: "Eher wenig gebracht",
+    3: "Okay",
+    4: "Gut investiert",
+    5: "Sehr wertvoll",
+}
+
+
+def rate(board, participant, score):
+    if board.phase != RetroBoard.PHASE_DONE:
+        return "Bewerten geht erst zum Abschluss."
+    if score not in RATINGS:
+        return "Bitte wähl eine Bewertung von 1 bis 5."
+    participant.rating = score
+    participant.save(update_fields=["rating"])
+    return None
+
+
+def rating_summary(board):
+    """Totals only: how many gave each score and the average, never who gave which."""
+    scores = list(board.participants.exclude(rating=None).values_list("rating", flat=True))
+    counts = {score: scores.count(score) for score in RATINGS}
+    return {
+        "count": len(scores),
+        "average": sum(scores) / len(scores) if scores else None,
+        "counts": counts,
+    }
+
+
 # ---- actions -----------------------------------------------------------------------------------------
 
 
@@ -383,6 +415,10 @@ def save_as_note(board, user):
             owner = f" ({participant_name(action.assignee)})" if action.assignee else ""
             details = f" – {' '.join(action.description.split())}" if action.description else ""
             lines.append(f"- [{mark}] {action.title}{owner}{details}")
+    totals = rating_summary(board)
+    if totals["count"]:
+        average = f"{totals['average']:.1f}".replace(".", ",")
+        lines.extend(["", "## Bewertung", f"Ø {average} von 5 ({totals['count']} Bewertungen)"])
     return create_markdown_note(user, "\n".join(lines), f"Retro: {board.title}")
 
 
@@ -520,6 +556,26 @@ def board_context(board, participant):
             }
             for action in board.previous.actions.select_related("task", "assignee__user__profile")
         ]
+    # Results show only to those who rated themselves, so nobody is nudged by the others' scores.
+    rating = None
+    if phase == RetroBoard.PHASE_DONE:
+        totals = rating_summary(board)
+        shown = participant.rating is not None
+        rating = {
+            "mine": participant.rating,
+            "shown": shown,
+            "count": totals["count"],
+            "average": totals["average"] if shown else None,
+            "options": [
+                {
+                    "score": score,
+                    "label": label,
+                    "count": totals["counts"][score] if shown else None,
+                    "share": round(100 * totals["counts"][score] / totals["count"]) if shown else 0,
+                }
+                for score, label in RATINGS.items()
+            ],
+        }
     left_cards = cards_left(board, participant)
     left_votes = votes_left(board, participant)
     return {
@@ -557,6 +613,7 @@ def board_context(board, participant):
         ],
         "actions": actions,
         "previous_actions": previous_actions,
+        "rating": rating,
         "card_count": len(cards),
         "vote_count": sum(vote_counts.values()),
         "topic_count": len(tops),

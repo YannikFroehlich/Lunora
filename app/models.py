@@ -1293,16 +1293,22 @@ class RetroParticipant(models.Model):
         related_name="retro_participations",
     )
     guest_name = models.CharField(max_length=48, blank=True)
+    # "Return on time invested", 1–5, given at the end; shown only as totals, never by name.
+    rating = models.PositiveSmallIntegerField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["created_at", "id"]
         constraints = [
+            models.CheckConstraint(
+                condition=models.Q(rating__isnull=True) | models.Q(rating__gte=1, rating__lte=5),
+                name="retro_participant_rating_range",
+            ),
             models.UniqueConstraint(
                 fields=["board", "user"],
                 condition=models.Q(user__isnull=False),
                 name="unique_retro_participant_user",
-            )
+            ),
         ]
 
     def __str__(self):
