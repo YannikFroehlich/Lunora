@@ -6,6 +6,42 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Retro: Die Übersicht filtert nach „Laufend“, „Abgeschlossen“ und „Von anderen“, jeweils mit
+  Anzahl.
+- Retro: Die Moderation lässt sich in den Einstellungen an eine andere teilnehmende Person mit
+  Lunora-Konto abgeben. Die Retro gehört danach ihr – mit Phasen, Einstellungen und
+  Einladungslink –, und die bisherige Erstellerin bzw. der bisherige Ersteller macht normal mit.
+- Retro: In den Einstellungen entfernt die Erstellerin bzw. der Ersteller der Retro ausgewählte
+  Teilnehmende, etwa doppelte Gäste. Ihre Karten bleiben ohne Namen stehen, ihre Stimmen und
+  Bewertungen fallen weg; wer den Einladungslink noch hat, kann wieder beitreten, bis er erneuert
+  wird.
+- Retro: Der Timer lässt sich mit „+1“ um eine Minute verlängern (ein abgelaufener startet damit
+  neu). Läuft er ab, ertönen bei allen drei kurze Pieptöne und die Anzeige blinkt kurz auf – der
+  Ton kommt, sobald man einmal auf die Seite geklickt oder getippt hat, weil Browser vorher
+  keinen Ton erlauben.
+- Retro: Zum Abschluss bewerten alle (auch Gäste), wie sehr sich die Retro gelohnt hat – von 1
+  „Verschwendete Zeit“ bis 5 „Sehr wertvoll“. Das Ergebnis (Durchschnitt und Verteilung) sieht
+  man erst nach der eigenen Bewertung, und nie, wer was gegeben hat. Notiz und Datenexport
+  enthalten den Durchschnitt.
+- Retro: „Folge-Retro anlegen“ (in den Einstellungen und auf der Zusammenfassung) dupliziert eine
+  Retro mit ihren Spalten und Einstellungen, aber ohne Karten, Stimmen und Actions. Der Titel zählt
+  die letzte Zahl hoch („Sprint 47“ → „Sprint 48“), und beim Sammeln stehen die Actions der
+  alten Retro daneben. Teilnehmende kommen über einen neuen Einladungslink dazu.
+- Retro: Die Spalten lassen sich anpassen. Über das Menü im Spaltenkopf benennt die Erstellerin bzw.
+  der Ersteller der Retro eine Spalte um, gibt ihr eine andere Farbe, verschiebt sie, löscht sie
+  samt Karten oder fügt rechts daneben eine neue ein (bis zu sechs Spalten, eine bleibt immer).
+- Retro: Besprochene Themen werden abgehakt. Wer die Retro leitet, hakt ein präsentiertes Thema
+  automatisch ab, sobald es weitergeht, und kann jedes Thema auch von Hand ab- oder wieder
+  anhaken. Abgehakte Karten treten zurück, und die Leiste zählt mit, wie viele Themen schon
+  besprochen sind.
+- Retro: Eine neue Retro knüpft an eine frühere eigene an (beim Anlegen ist die neueste
+  vorausgewählt, änderbar in den Einstellungen). Beim Sammeln stehen deren Actions daneben und
+  alle Teilnehmenden haken sie gemeinsam ab; als Aufgabe übernommene Actions zeigen den Stand der
+  Aufgabe. Auch die Actions der laufenden Retro lassen sich abhaken.
+- Retro: Karten lassen sich nur noch beim Sammeln bearbeiten oder löschen und Gruppen nur beim
+  Gruppieren auflösen – auch der Server prüft das jetzt, sodass niemand eine Karte nach der
+  Abstimmung ändert oder Stimmen zwischen Gruppen verschiebt. Verdeckte Karten anderer kann auch
+  die Erstellerin bzw. der Ersteller der Retro nicht mehr ungesehen ändern.
 - Retro: Ab dem Gruppieren steht unter jeder Karte (auch gruppierten und der präsentierten), wer sie
   geschrieben hat – außer bei anonymen Retros.
 - Retro: Aus den Maßnahmen werden Actions mit Titel und Beschreibung. Alle in der Retro können sie

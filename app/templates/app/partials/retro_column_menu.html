@@ -1,0 +1,52 @@
+{# The owner's column menu in a column header: rename, colour, move, delete, insert one after it. #}
+<details class="retro-card-edit retro-column-menu">
+    <summary class="icon-button retro-mini-button" title="Spalte bearbeiten"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i><span class="visually-hidden">Spalte „{{ column.title }}“ bearbeiten</span></summary>
+    <div class="retro-column-menu-panel">
+        <form method="post" class="retro-column-form">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="retro_column_edit">
+            <input type="hidden" name="column_id" value="{{ column.id }}">
+            <input type="text" name="title" value="{{ column.title }}" maxlength="{{ column_max_length }}" aria-label="Name der Spalte" required>
+            <select name="tone" aria-label="Farbe der Spalte">
+                {% for value, label in tone_choices %}<option value="{{ value }}"{% if value == column.tone %} selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+            <button type="submit" class="icon-button retro-mini-button" title="Speichern" aria-label="Spalte speichern"><i class="fa-solid fa-check" aria-hidden="true"></i></button>
+        </form>
+
+        <div class="retro-column-tools">
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="retro_column_move">
+                <input type="hidden" name="column_id" value="{{ column.id }}">
+                <input type="hidden" name="direction" value="left">
+                <button type="submit" class="icon-button retro-mini-button" title="Nach links" aria-label="Spalte nach links"{% if forloop.first %} disabled{% endif %}><i class="fa-solid fa-arrow-left" aria-hidden="true"></i></button>
+            </form>
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="retro_column_move">
+                <input type="hidden" name="column_id" value="{{ column.id }}">
+                <input type="hidden" name="direction" value="right">
+                <button type="submit" class="icon-button retro-mini-button" title="Nach rechts" aria-label="Spalte nach rechts"{% if forloop.last %} disabled{% endif %}><i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>
+            </form>
+            <form method="post" data-confirm="Spalte „{{ column.title }}“ mit allen Karten und Stimmen löschen?">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="retro_column_delete">
+                <input type="hidden" name="column_id" value="{{ column.id }}">
+                <button type="submit" class="icon-button retro-mini-button retro-danger" title="Spalte löschen" aria-label="Spalte löschen"{% if columns|length == 1 %} disabled{% endif %}><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
+            </form>
+        </div>
+
+        {% if columns|length < max_columns %}
+        <form method="post" class="retro-column-form">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="retro_column_add">
+            <input type="hidden" name="column_id" value="{{ column.id }}">
+            <input type="text" name="title" maxlength="{{ column_max_length }}" placeholder="Neue Spalte rechts davon …" aria-label="Name der neuen Spalte" required>
+            <select name="tone" aria-label="Farbe der neuen Spalte">
+                {% for value, label in tone_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+            </select>
+            <button type="submit" class="icon-button retro-mini-button" title="Spalte einfügen" aria-label="Spalte einfügen"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
+        </form>
+        {% endif %}
+    </div>
+</details>

@@ -1,0 +1,19 @@
+{# While collecting: the actions of the retro this one follows up on, to tick off together. #}
+<section class="glass-panel retro-actions" aria-labelledby="retro-previous-title">
+    <h2 id="retro-previous-title">Letzte Actions</h2>
+    <p class="retro-previous-source">aus „{{ board.previous.title }}“</p>
+    <ul class="retro-action-list">
+        {% for action in previous_actions %}
+        <li class="retro-action{% if action.done %} is-done{% endif %}">
+            <div class="retro-action-head">
+                {% include 'app/partials/retro_action_status.html' %}
+                <strong class="retro-action-title">{{ action.title }}</strong>
+            </div>
+            {% if action.description %}<p class="retro-action-description">{{ action.description|linebreaksbr }}</p>{% endif %}
+            {% if action.assignee %}<p class="retro-action-assignee"><i class="fa-regular fa-user" aria-hidden="true"></i> {{ action.assignee }}</p>{% endif %}
+        </li>
+        {% empty %}
+        <li class="retro-column-empty">Die letzte Retro hatte keine Actions.</li>
+        {% endfor %}
+    </ul>
+</section>

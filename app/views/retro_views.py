@@ -8,7 +8,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
 from app.forms import RetroSettingsForm
-from app.models import RetroAction, RetroBoard, RetroCard
+from app.models import RetroAction, RetroBoard, RetroCard, RetroColumn
 from app.services import retro
 from app.services.audit_log import client_ip
 from app.services.notes import display_name
@@ -19,6 +19,7 @@ from app.views.navigation import posted_id
 
 TITLE_MAX_LENGTH = RetroBoard._meta.get_field("title").max_length
 CARD_MAX_LENGTH = RetroCard._meta.get_field("text").max_length
+COLUMN_MAX_LENGTH = RetroColumn._meta.get_field("title").max_length
 ACTION_MAX_LENGTH = RetroAction._meta.get_field("title").max_length
 ACTION_DESCRIPTION_MAX_LENGTH = RetroAction._meta.get_field("description").max_length
 # Per participant and minute; generous for clicking votes, tight enough to stop a script.
@@ -28,9 +29,18 @@ OWNER_FORMS = {
     "retro_phase",
     "retro_settings",
     "retro_timer_start",
+    "retro_timer_extend",
     "retro_timer_stop",
     "retro_present",
+    "retro_discussed",
+    "retro_column_add",
+    "retro_column_edit",
+    "retro_column_move",
+    "retro_column_delete",
+    "retro_participants_remove",
+    "retro_hand_over",
     "retro_link_renew",
+    "retro_duplicate",
     "retro_delete",
     "retro_note",
 }
@@ -73,7 +83,8 @@ def retro_boards(request):
         if not title:
             django_messages.error(request, "Der Titel darf nicht leer sein.")
             return redirect("retro_boards")
-        board = retro.create_retro(request.user, title, request.POST.get("template", ""))
+        previous = retro.previous_choices(request.user).filter(pk=posted_id(request, "previous_id")).first()
+        board = retro.create_retro(request.user, title, request.POST.get("template", ""), previous)
         return redirect("retro_board", board_id=board.pk)
 
     boards = (
@@ -97,17 +108,33 @@ def retro_boards(request):
         }
         for board in boards
     ]
+    # Status chips; every count comes from the same list, so they always add up.
+    status = request.GET.get("status", "")
+    filters = [
+        ("", "Alle", items),
+        ("open", "Laufend", [item for item in items if not item["is_done"]]),
+        ("done", "Abgeschlossen", [item for item in items if item["is_done"]]),
+        ("others", "Von anderen", [item for item in items if not item["is_own"]]),
+    ]
+    shown = next((matches for key, _label, matches in filters if key == status), items)
     return render(
         request,
         "app/retro_boards.html",
         {
             "active_page": "tools",
-            "boards": items,
+            "boards": shown,
+            "has_boards": bool(items),
+            "status": status if any(key == status for key, _label, _matches in filters) else "",
+            "status_filters": [
+                {"key": key, "label": label, "count": len(matches)} for key, label, matches in filters
+            ],
             "templates": [
                 {"key": key, "label": label, "columns": [name for name, _tone in columns]}
                 for key, (label, columns) in retro.TEMPLATES.items()
             ],
             "title_max_length": TITLE_MAX_LENGTH,
+            # Preselects the newest, since retros usually follow up on the last one.
+            "previous_choices": list(retro.previous_choices(request.user).values("id", "title")),
         },
     )
 
@@ -162,7 +189,9 @@ def _handle_owner(request, board, form_name):
         form.save()
     elif form_name == "retro_timer_start":
         minutes = posted_id(request, "minutes") or board.timer_minutes
-        retro.start_timer(board, min(max(minutes, 1), 60))
+        retro.start_timer(board, min(max(minutes, 1), retro.MAX_TIMER_MINUTES))
+    elif form_name == "retro_timer_extend":
+        retro.extend_timer(board)
     elif form_name == "retro_timer_stop":
         retro.stop_timer(board)
     elif form_name == "retro_present":
@@ -170,9 +199,45 @@ def _handle_owner(request, board, form_name):
         card = board.cards.filter(pk=card_id).first() if card_id else None
         if board.phase == RetroBoard.PHASE_DISCUSS:
             retro.present_card(board, card)
+    elif form_name == "retro_discussed":
+        card = get_object_or_404(board.cards, pk=posted_id(request, "card_id"))
+        if board.phase != RetroBoard.PHASE_DISCUSS:
+            return "Abhaken geht nur beim Besprechen."
+        retro.set_discussed(card, request.POST.get("discussed") == "1")
+    elif form_name.startswith("retro_column_"):
+        column = get_object_or_404(board.columns, pk=posted_id(request, "column_id"))
+        if form_name == "retro_column_move":
+            retro.move_column(board, column, -1 if request.POST.get("direction") == "left" else 1)
+        elif form_name == "retro_column_delete":
+            return retro.delete_column(board, column)
+        else:
+            title = _text(request, "title", COLUMN_MAX_LENGTH)
+            if not title:
+                return "Die Spalte braucht einen Namen."
+            tone = request.POST.get("tone", "")
+            if form_name == "retro_column_add":
+                return retro.add_column(board, column, title, tone)
+            retro.edit_column(column, title, tone)
+    elif form_name == "retro_participants_remove":
+        ids = [int(value) for value in request.POST.getlist("participant_id") if value.isdigit()]
+        removed = retro.remove_participants(board, ids)
+        if removed:
+            django_messages.success(request, f"{removed} Teilnehmende entfernt.")
+    elif form_name == "retro_hand_over":
+        new_owner = get_object_or_404(board.participants, pk=posted_id(request, "participant_id"))
+        error = retro.hand_over(board, new_owner)
+        if error:
+            return error
+        django_messages.success(
+            request, f"Die Moderation liegt jetzt bei {retro.participant_name(new_owner)}."
+        )
     elif form_name == "retro_link_renew":
         retro.renew_join_token(board)
         django_messages.success(request, "Der alte Einladungslink gilt nicht mehr.")
+    elif form_name == "retro_duplicate":
+        title = _text(request, "title", TITLE_MAX_LENGTH) or retro.next_title(board.title)
+        copy = retro.duplicate_retro(board, title)
+        return redirect("retro_board", board_id=copy.pk)
     elif form_name == "retro_delete":
         board.delete()
         django_messages.success(request, "Retro gelöscht.")
@@ -197,6 +262,11 @@ def _handle_participant(request, board, participant, form_name):
             return "Die Action braucht einen Titel."
         RetroAction.objects.create(board=board, title=title, description=description, assignee=assignee)
         return None
+    if form_name == "retro_rate":
+        return retro.rate(board, participant, posted_id(request, "score"))
+    if form_name == "retro_action_done":
+        action = get_object_or_404(retro.reviewable_actions(board), pk=posted_id(request, "action_id"))
+        return retro.set_action_done(action, request.POST.get("done") == "1")
     if form_name in {"retro_action_edit", "retro_action_delete", "retro_action_task"}:
         action = get_object_or_404(board.actions, pk=posted_id(request, "action_id"))
         if form_name == "retro_action_edit":
@@ -217,15 +287,21 @@ def _handle_participant(request, board, participant, form_name):
     card = get_object_or_404(board.cards.select_related("group"), pk=posted_id(request, "card_id"))
     if form_name == "retro_vote":
         return retro.vote(board, participant, card, -1 if request.POST.get("direction") == "down" else 1)
-    if form_name == "retro_group":
-        target = get_object_or_404(board.cards.select_related("group"), pk=posted_id(request, "target_id"))
+    # Phases are checked here, not just hidden in the template: a stale page or a hand-made POST
+    # must not move votes between groups or change a card people already voted on.
+    if form_name in {"retro_group", "retro_ungroup"}:
         if board.phase != RetroBoard.PHASE_GROUP:
             return "Gruppieren geht nur in der Gruppierphase."
-        retro.group_card(card, target)
+        if form_name == "retro_group":
+            target = get_object_or_404(
+                board.cards.select_related("group"), pk=posted_id(request, "target_id")
+            )
+            retro.group_card(card, target)
+        else:
+            retro.ungroup_card(card)
         return None
-    if form_name == "retro_ungroup":
-        retro.ungroup_card(card)
-        return None
+    if board.phase != RetroBoard.PHASE_COLLECT:
+        return "Karten lassen sich nur beim Sammeln ändern."
     if not retro.can_change_card(board, participant, card):
         raise Http404
     if form_name == "retro_card_edit":
@@ -278,6 +354,9 @@ def retro_board(request, board_id):
             "active_page": "tools",
             "version": retro.board_version(board),
             "card_max_length": CARD_MAX_LENGTH,
+            "column_max_length": COLUMN_MAX_LENGTH,
+            "max_columns": retro.MAX_COLUMNS,
+            "tone_choices": RetroColumn.TONE_CHOICES,
             "action_max_length": ACTION_MAX_LENGTH,
             "action_description_max_length": ACTION_DESCRIPTION_MAX_LENGTH,
             "is_guest": participant.user_id is None,
@@ -286,4 +365,6 @@ def retro_board(request, board_id):
     if context["is_owner"]:
         context["settings_form"] = RetroSettingsForm(instance=board)
         context["join_url"] = request.build_absolute_uri(reverse("retro_join", args=[board.join_token]))
+        context["next_title"] = retro.next_title(board.title)
+        context["title_max_length"] = TITLE_MAX_LENGTH
     return _private(render(request, "app/retro_board.html", context))

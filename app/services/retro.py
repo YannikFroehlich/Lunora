@@ -3,6 +3,7 @@
 Guests have no account: joining through the invite link stores their participant id in the
 session (``retro_guests``), which is what identifies them on later requests."""
 
+import re
 import secrets
 from collections import defaultdict
 from datetime import timedelta
@@ -11,7 +12,7 @@ from django.db import transaction
 from django.db.models import Count, Q
 from django.utils import timezone
 
-from app.models import RetroBoard, RetroCard, RetroColumn, RetroParticipant, RetroVote, Task
+from app.models import RetroAction, RetroBoard, RetroCard, RetroColumn, RetroParticipant, RetroVote, Task
 from app.services.data_import import create_markdown_note
 from app.services.notes import display_name
 
@@ -30,6 +31,7 @@ TEMPLATES = {
 }
 PHASES = [key for key, _label in RetroBoard.PHASE_CHOICES]
 MAX_PARTICIPANTS = 50
+MAX_COLUMNS = 6
 GUEST_NAME_MAX_LENGTH = 40
 SESSION_KEY = "retro_guests"
 
@@ -52,16 +54,65 @@ def new_join_token():
     return secrets.token_urlsafe(32)
 
 
+def previous_choices(user, exclude=None):
+    """The user's own retros a new one can follow up on, newest first. Only own ones, so a board's
+    participants never see actions from a retro its owner merely joined."""
+    boards = RetroBoard.objects.filter(owner=user).order_by("-created_at", "-id")
+    return boards.exclude(pk=exclude.pk) if exclude else boards
+
+
 @transaction.atomic
-def create_retro(user, title, template):
-    _label, columns = TEMPLATES.get(template, TEMPLATES["start_stop"])
-    board = RetroBoard.objects.create(owner=user, title=title, join_token=new_join_token())
+def create_retro(user, title, template, previous=None, columns=None, **settings):
+    """A new board with the template's columns, or ``columns`` as (title, tone) pairs."""
+    if columns is None:
+        _label, columns = TEMPLATES.get(template, TEMPLATES["start_stop"])
+    board = RetroBoard.objects.create(
+        owner=user, title=title, join_token=new_join_token(), previous=previous, **settings
+    )
     RetroColumn.objects.bulk_create(
         RetroColumn(board=board, title=name, tone=tone, position=index)
         for index, (name, tone) in enumerate(columns)
     )
     RetroParticipant.objects.create(board=board, user=user)
     return board
+
+
+# What a follow-up retro takes over; cards, votes, actions and participants stay behind.
+COPIED_SETTINGS = [
+    "max_cards",
+    "votes_per_person",
+    "votes_per_card",
+    "timer_minutes",
+    "anonymous",
+    "hide_cards",
+    "hide_votes",
+    "join_enabled",
+]
+
+
+def next_title(title):
+    """Sprint 47 → Sprint 48 (leading zeros kept); without a number, "(Kopie)" is added."""
+    numbers = list(re.finditer(r"\d+", title))
+    if not numbers:
+        return f"{title} (Kopie)"[: RetroBoard._meta.get_field("title").max_length]
+    last = numbers[-1]
+    bumped = str(int(last.group()) + 1).zfill(len(last.group()))
+    return f"{title[: last.start()]}{bumped}{title[last.end() :]}"[
+        : RetroBoard._meta.get_field("title").max_length
+    ]
+
+
+def duplicate_retro(board, title):
+    """A fresh retro with the board's columns and settings that reviews the board's actions. Guests
+    can't come along (their session knows only the old board), so it gets its own invite link."""
+    return create_retro(
+        board.owner,
+        title,
+        None,
+        previous=board,
+        columns=list(board.columns.values_list("title", "tone")),
+        **{name: getattr(board, name) for name in COPIED_SETTINGS},
+    )
 
 
 # ---- participants ---------------------------------------------------------------------------------
@@ -107,6 +158,26 @@ def join_as_guest(request, board, name):
     return participant, None
 
 
+def remove_participants(board, participant_ids):
+    """The owner removes people; the owner can't be removed. Their cards stay (without author),
+    their votes and rating go with them. Anyone still holding the invite link can join again."""
+    people = board.participants.filter(pk__in=participant_ids).exclude(user_id=board.owner_id)
+    _total, deleted = people.delete()
+    return deleted.get(RetroParticipant._meta.label, 0)
+
+
+def hand_over(board, participant):
+    """Makes a Lunora user on the board its owner; the previous owner stays as a participant.
+    Guests can't take over: owning a board needs an account (export, the retro list, follow-ups)."""
+    if participant.board_id != board.pk or participant.user_id is None:
+        return "Abgeben geht nur an Teilnehmende mit Lunora-Konto."
+    if participant.user_id == board.owner_id:
+        return None
+    board.owner_id = participant.user_id
+    board.save(update_fields=["owner", "updated_at"])
+    return None
+
+
 def participant_name(participant):
     return display_name(participant.user) if participant.user_id else participant.guest_name
 
@@ -135,7 +206,12 @@ def add_card(board, participant, column, text):
 
 
 def can_change_card(board, participant, card):
-    return card.author_id == participant.pk or board.owner_id == participant.user_id
+    """Authors change their own cards; the owner others' only once they are revealed, so a hidden
+    card is never overwritten unseen. Which phase allows changes is the caller's check."""
+    if card.author_id == participant.pk:
+        return True
+    hidden = board.phase == RetroBoard.PHASE_COLLECT and board.hide_cards
+    return board.owner_id == participant.user_id and not hidden
 
 
 @transaction.atomic
@@ -208,19 +284,116 @@ def start_timer(board, minutes):
     board.save(update_fields=["timer_minutes", "timer_ends_at", "updated_at"])
 
 
+MAX_TIMER_MINUTES = 60
+
+
+def extend_timer(board):
+    """One more minute; a timer that already ran out starts again from now. Never more than an
+    hour from now, like the timer itself."""
+    if board.timer_ends_at is None:
+        return
+    now = timezone.now()
+    board.timer_ends_at = min(
+        max(board.timer_ends_at, now) + timedelta(minutes=1), now + timedelta(minutes=MAX_TIMER_MINUTES)
+    )
+    board.save(update_fields=["timer_ends_at", "updated_at"])
+
+
 def stop_timer(board):
     board.timer_ends_at = None
     board.save(update_fields=["timer_ends_at", "updated_at"])
 
 
 def present_card(board, card):
+    """Whatever was presented before counts as discussed once the owner moves on (forward, back or
+    closing); a wrong tick is undone with `set_discussed`."""
+    if board.presented_card_id:
+        RetroCard.objects.filter(pk=board.presented_card_id).update(discussed=True)
     board.presented_card = (card.group or card) if card else None
     board.save(update_fields=["presented_card", "updated_at"])
+
+
+def set_discussed(card, discussed):
+    RetroCard.objects.filter(pk=card.group_id or card.pk).update(discussed=discussed)
+
+
+def _renumber(columns):
+    for position, column in enumerate(columns):
+        column.position = position
+    RetroColumn.objects.bulk_update(columns, ["position"])
+
+
+def _tone(tone):
+    return tone if tone in dict(RetroColumn.TONE_CHOICES) else "sand"
+
+
+def add_column(board, after, title, tone):
+    """Inserts a column right after ``after``."""
+    columns = list(board.columns.all())
+    if len(columns) >= MAX_COLUMNS:
+        return f"Mehr als {MAX_COLUMNS} Spalten gehen nicht."
+    column = RetroColumn.objects.create(board=board, title=title, tone=_tone(tone))
+    columns.insert(columns.index(after) + 1, column)
+    _renumber(columns)
+    return None
+
+
+def edit_column(column, title, tone):
+    column.title, column.tone = title, _tone(tone)
+    column.save(update_fields=["title", "tone"])
+
+
+def move_column(board, column, delta):
+    columns = list(board.columns.all())
+    index = columns.index(column)
+    if 0 <= index + delta < len(columns):
+        columns[index], columns[index + delta] = columns[index + delta], columns[index]
+        _renumber(columns)
+
+
+def delete_column(board, column):
+    """Deletes the column with its cards (and their votes); the last column stays."""
+    if board.columns.count() <= 1:
+        return "Eine Spalte muss bleiben."
+    column.delete()
+    return None
 
 
 def renew_join_token(board):
     board.join_token = new_join_token()
     board.save(update_fields=["join_token", "updated_at"])
+
+
+# ---- closing rating ------------------------------------------------------------------------------------
+
+RATINGS = {
+    1: "Verschwendete Zeit",
+    2: "Eher wenig gebracht",
+    3: "Okay",
+    4: "Gut investiert",
+    5: "Sehr wertvoll",
+}
+
+
+def rate(board, participant, score):
+    if board.phase != RetroBoard.PHASE_DONE:
+        return "Bewerten geht erst zum Abschluss."
+    if score not in RATINGS:
+        return "Bitte wähl eine Bewertung von 1 bis 5."
+    participant.rating = score
+    participant.save(update_fields=["rating"])
+    return None
+
+
+def rating_summary(board):
+    """Totals only: how many gave each score and the average, never who gave which."""
+    scores = list(board.participants.exclude(rating=None).values_list("rating", flat=True))
+    counts = {score: scores.count(score) for score in RATINGS}
+    return {
+        "count": len(scores),
+        "average": sum(scores) / len(scores) if scores else None,
+        "counts": counts,
+    }
 
 
 # ---- actions -----------------------------------------------------------------------------------------
@@ -240,6 +413,25 @@ def take_action_as_task(action, user):
     return task
 
 
+def reviewable_actions(board):
+    """Actions a board's participants may tick off: its own and those of the retro it follows up on."""
+    return RetroAction.objects.filter(board_id__in=[board.pk, board.previous_id]).select_related("board")
+
+
+def set_action_done(action, done):
+    """An action taken over as a task gets its state from the task, so only the others change."""
+    if action.task_id:
+        return "Der Stand kommt aus der Aufgabe."
+    action.done = done
+    action.save(update_fields=["done"])
+    touch_board(action.board)
+    return None
+
+
+def action_done(action):
+    return action.task.is_done if action.task_id else action.done
+
+
 def save_as_note(board, user):
     topics = ranked_topics(board)
     lines = [f"# Retro: {board.title}", ""]
@@ -250,13 +442,18 @@ def save_as_note(board, user):
             lines.append(f"- {topic['text']}{votes}")
             lines.extend(f"  - {child}" for child in topic["children"])
         lines.append("")
-    actions = list(board.actions.select_related("assignee__user__profile"))
+    actions = list(board.actions.select_related("assignee__user__profile", "task"))
     if actions:
         lines.append("## Actions")
         for action in actions:
+            mark = "x" if action_done(action) else " "
             owner = f" ({participant_name(action.assignee)})" if action.assignee else ""
             details = f" – {' '.join(action.description.split())}" if action.description else ""
-            lines.append(f"- [ ] {action.title}{owner}{details}")
+            lines.append(f"- [{mark}] {action.title}{owner}{details}")
+    totals = rating_summary(board)
+    if totals["count"]:
+        average = f"{totals['average']:.1f}".replace(".", ",")
+        lines.extend(["", "## Bewertung", f"Ø {average} von 5 ({totals['count']} Bewertungen)"])
     return create_markdown_note(user, "\n".join(lines), f"Retro: {board.title}")
 
 
@@ -277,6 +474,7 @@ def ranked_topics(board):
             "children": children[card.pk],
             "votes": card.vote_count,
             "column_id": card.column_id,
+            "discussed": card.discussed,
         }
         for card in cards
         if not card.group_id
@@ -319,7 +517,7 @@ def board_context(board, participant):
             "text": card.text if visible else "",
             "hidden": not visible,
             "own": own,
-            "can_change": own or is_owner,
+            "can_change": can_change_card(board, participant, card),
             # Authors show from grouping on, and never on anonymous boards.
             "author": names.get(card.author_id, "") if show_authors else "",
             "votes": card.vote_count if votes_shown else None,
@@ -332,6 +530,7 @@ def board_context(board, participant):
             else "",
             "children": [card_item(child) for child in children[card.pk]],
             "column_id": card.column_id,
+            "discussed": card.discussed,
         }
 
     tops = [card_item(card) for card in cards if not card.group_id]
@@ -369,14 +568,49 @@ def board_context(board, participant):
             "assignee_id": action.assignee_id,
             "assignee": names.get(action.assignee_id, ""),
             "has_task": action.task_id is not None,
+            "done": action_done(action),
             "can_take": (
                 participant.user_id is not None
                 and action.task_id is None
                 and action.assignee_id in {None, participant.pk}
             ),
         }
-        for action in board.actions.all()
+        for action in board.actions.select_related("task")
     ]
+    # Reviewed while collecting: what the retro this one follows up on decided.
+    previous_actions = None
+    if board.previous_id and phase == RetroBoard.PHASE_COLLECT:
+        previous_actions = [
+            {
+                "id": action.pk,
+                "title": action.title,
+                "description": action.description,
+                "assignee": participant_name(action.assignee) if action.assignee else "",
+                "has_task": action.task_id is not None,
+                "done": action_done(action),
+            }
+            for action in board.previous.actions.select_related("task", "assignee__user__profile")
+        ]
+    # Results show only to those who rated themselves, so nobody is nudged by the others' scores.
+    rating = None
+    if phase == RetroBoard.PHASE_DONE:
+        totals = rating_summary(board)
+        shown = participant.rating is not None
+        rating = {
+            "mine": participant.rating,
+            "shown": shown,
+            "count": totals["count"],
+            "average": totals["average"] if shown else None,
+            "options": [
+                {
+                    "score": score,
+                    "label": label,
+                    "count": totals["counts"][score] if shown else None,
+                    "share": round(100 * totals["counts"][score] / totals["count"]) if shown else 0,
+                }
+                for score, label in RATINGS.items()
+            ],
+        }
     left_cards = cards_left(board, participant)
     left_votes = votes_left(board, participant)
     return {
@@ -406,6 +640,7 @@ def board_context(board, participant):
                 "initials": initials(names[item.pk]),
                 "is_guest": item.user_id is None,
                 "is_me": item.pk == participant.pk,
+                "is_owner": item.user_id == board.owner_id,
                 # Progress without content: how many cards someone wrote and votes they gave.
                 "cards": card_counts[item.pk],
                 "votes": vote_counts[item.pk],
@@ -413,7 +648,15 @@ def board_context(board, participant):
             for item in participants
         ],
         "actions": actions,
+        "handover_candidates": [
+            {"id": item.pk, "name": names[item.pk]}
+            for item in participants
+            if item.user_id is not None and item.user_id != board.owner_id
+        ],
+        "previous_actions": previous_actions,
+        "rating": rating,
         "card_count": len(cards),
         "vote_count": sum(vote_counts.values()),
         "topic_count": len(tops),
+        "discussed_count": sum(item["discussed"] for item in tops),
     }

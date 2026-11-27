@@ -1266,6 +1266,8 @@ class RetroBoard(models.Model):
     presented_card = models.ForeignKey(
         "RetroCard", on_delete=models.SET_NULL, blank=True, null=True, related_name="+"
     )
+    # The owner's earlier retro whose actions are reviewed while collecting.
+    previous = models.ForeignKey("self", on_delete=models.SET_NULL, blank=True, null=True, related_name="+")
     # Credential of the invite link; never logged, renewed by the owner.
     join_token = models.CharField(max_length=64, unique=True)
     join_enabled = models.BooleanField(default=True)
@@ -1291,16 +1293,22 @@ class RetroParticipant(models.Model):
         related_name="retro_participations",
     )
     guest_name = models.CharField(max_length=48, blank=True)
+    # "Return on time invested", 1–5, given at the end; shown only as totals, never by name.
+    rating = models.PositiveSmallIntegerField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["created_at", "id"]
         constraints = [
+            models.CheckConstraint(
+                condition=models.Q(rating__isnull=True) | models.Q(rating__gte=1, rating__lte=5),
+                name="retro_participant_rating_range",
+            ),
             models.UniqueConstraint(
                 fields=["board", "user"],
                 condition=models.Q(user__isnull=False),
                 name="unique_retro_participant_user",
-            )
+            ),
         ]
 
     def __str__(self):
@@ -1339,6 +1347,8 @@ class RetroCard(models.Model):
     group = models.ForeignKey(
         "self", on_delete=models.SET_NULL, blank=True, null=True, related_name="grouped_cards"
     )
+    # Ticked off while discussing; only meaningful on a group's top card.
+    discussed = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -1362,8 +1372,9 @@ class RetroAction(models.Model):
     assignee = models.ForeignKey(
         RetroParticipant, on_delete=models.SET_NULL, blank=True, null=True, related_name="actions"
     )
-    # The task a Lunora user made from it ("Als Aufgabe übernehmen").
+    # The task a Lunora user made from it ("Als Aufgabe übernehmen"); its state then wins over ``done``.
     task = models.ForeignKey("Task", on_delete=models.SET_NULL, blank=True, null=True, related_name="+")
+    done = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

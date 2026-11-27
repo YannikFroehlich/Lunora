@@ -44,12 +44,25 @@
                 <span aria-hidden="true">{{ votes_left }}</span>
                 <span class="visually-hidden">Noch {{ votes_left }} von {{ board.votes_per_person }} Stimmen</span>
             </span>
+            {% elif board.phase == 'discuss' and topic_count %}
+            <span class="retro-limit is-count" title="{{ discussed_count }} von {{ topic_count }} Themen besprochen">
+                <i class="fa-solid fa-check" aria-hidden="true"></i>
+                <span aria-hidden="true">{{ discussed_count }}/{{ topic_count }}</span>
+                <span class="visually-hidden">{{ discussed_count }} von {{ topic_count }} Themen besprochen</span>
+            </span>
             {% endif %}
 
             {% if board.timer_ends_at %}
             <span class="retro-timer" data-retro-timer data-ends-at="{{ board.timer_ends_at.isoformat }}" title="Timer"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i> <span data-retro-timer-text>–:–</span></span>
             {% endif %}
             {% if is_owner %}
+            {% if board.timer_ends_at %}
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="retro_timer_extend">
+                <button type="submit" class="icon-button retro-timer-extend" title="Eine Minute mehr" aria-label="Timer um eine Minute verlängern">+1</button>
+            </form>
+            {% endif %}
             <form method="post">
                 {% csrf_token %}
                 {% if board.timer_ends_at %}
@@ -100,6 +113,7 @@
                 {% for topic in top_three %}<li><span>{{ topic.text }}</span> <small>{{ topic.votes }} Stimme(n)</small></li>{% endfor %}
             </ol>
             {% endif %}
+            {% include 'app/partials/retro_rating.html' %}
             {% if is_owner %}
             <div class="retro-summary-actions">
                 <form method="post" data-no-soft>
@@ -114,18 +128,20 @@
                     <button type="submit" class="ghost-button"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Retro wieder öffnen</button>
                 </form>
             </div>
+            {% include 'app/partials/retro_duplicate_form.html' %}
             {% endif %}
         </section>
         {% include 'app/partials/retro_actions.html' %}
     </div>
     {% else %}
-    <div class="retro-body{% if board.phase == 'discuss' %} has-side{% endif %}">
+    <div class="retro-body{% if board.phase == 'discuss' or previous_actions is not None %} has-side{% endif %}">
         <div class="retro-columns" style="--retro-columns: {{ columns|length }}">
             {% for column in columns %}
             <section class="retro-column glass-panel tone-{{ column.tone }}" aria-labelledby="retro-column-{{ column.id }}-title">
                 <header class="retro-column-head">
                     <h2 id="retro-column-{{ column.id }}-title">{{ column.title }}</h2>
                     <span class="retro-column-count">{{ column.cards|length }}</span>
+                    {% if is_owner %}{% include 'app/partials/retro_column_menu.html' %}{% endif %}
                 </header>
                 {% if board.phase == 'collect' and cards_left != 0 %}
                 <form method="post" class="retro-add-form" data-retro-add>
@@ -148,6 +164,8 @@
         </div>
         {% if board.phase == 'discuss' %}
         {% include 'app/partials/retro_actions.html' %}
+        {% elif previous_actions is not None %}
+        {% include 'app/partials/retro_previous_actions.html' %}
         {% endif %}
     </div>
     {% endif %}
@@ -204,6 +222,7 @@
             {% csrf_token %}
             <input type="hidden" name="form_name" value="retro_settings">
             <label class="vocab-field"><span>{{ settings_form.title.label }}</span>{{ settings_form.title }}</label>
+            <label class="vocab-field"><span>{{ settings_form.previous.label }}</span>{{ settings_form.previous }}</label>
             <fieldset class="retro-settings-limits">
                 <legend>Grenzen <small>(Karten 0 = unbegrenzt)</small></legend>
                 <label class="vocab-field"><span>{{ settings_form.max_cards.label }}</span>{{ settings_form.max_cards }}</label>
@@ -219,6 +238,50 @@
                 <button type="submit" class="primary-button">Speichern</button>
             </div>
         </form>
+        <section class="retro-invite" aria-labelledby="retro-people-title">
+            <h3 id="retro-people-title">Teilnehmende</h3>
+            {# Its own region, so the list follows joins and removals; the dialog itself isn't one. #}
+            <div class="soft-contents" id="retro-people-editor" data-soft-region>
+                {% if participants|length > 1 %}
+                <form method="post" class="retro-people-form" data-confirm="Ausgewählte entfernen? Ihre Karten bleiben, ihre Stimmen und Bewertungen nicht.">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="retro_participants_remove">
+                    <ul class="retro-people-list">
+                        {% for person in participants %}{% if not person.is_owner %}
+                        <li><label><input type="checkbox" name="participant_id" value="{{ person.id }}"> {{ person.name }}{% if person.is_guest %} <small>(Gast)</small>{% endif %}</label></li>
+                        {% endif %}{% endfor %}
+                    </ul>
+                    <button type="submit" class="ghost-button retro-danger"><i class="fa-solid fa-user-minus" aria-hidden="true"></i> Ausgewählte entfernen</button>
+                </form>
+                <p class="retro-invite-hint">Wer den Einladungslink noch hat, kann wieder beitreten – dann den Link unten erneuern.</p>
+                {% else %}
+                <p class="retro-invite-hint">Noch niemand außer dir. Teile den Einladungslink unten.</p>
+                {% endif %}
+            </div>
+        </section>
+        <section class="retro-invite" aria-labelledby="retro-hand-over-title">
+            <h3 id="retro-hand-over-title">Moderation abgeben</h3>
+            <div class="soft-contents" id="retro-hand-over" data-soft-region>
+                {% if handover_candidates %}
+                <form method="post" class="retro-duplicate-form" data-no-soft data-confirm="Moderation wirklich abgeben? Danach steuert die andere Person die Retro, und du machst normal mit.">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="retro_hand_over">
+                    <select name="participant_id" aria-label="Neue Moderation" required>
+                        {% for person in handover_candidates %}<option value="{{ person.id }}">{{ person.name }}</option>{% endfor %}
+                    </select>
+                    <button type="submit" class="ghost-button"><i class="fa-solid fa-user-gear" aria-hidden="true"></i> Abgeben</button>
+                </form>
+                <p class="retro-invite-hint">Die Retro gehört danach der anderen Person, mit Einstellungen, Phasen und Einladungslink.</p>
+                {% else %}
+                <p class="retro-invite-hint">Abgeben geht an Teilnehmende mit Lunora-Konto; Gäste können die Moderation nicht übernehmen.</p>
+                {% endif %}
+            </div>
+        </section>
+        <section class="retro-invite" aria-labelledby="retro-duplicate-title">
+            <h3 id="retro-duplicate-title">Folge-Retro</h3>
+            <p class="retro-invite-hint">Gleiche Spalten und Einstellungen, ohne Karten. Beim Sammeln stehen die Actions dieser Retro daneben; Teilnehmende kommen über einen neuen Einladungslink dazu.</p>
+            {% include 'app/partials/retro_duplicate_form.html' %}
+        </section>
         <section class="retro-invite" aria-labelledby="retro-invite-title">
             <h3 id="retro-invite-title">Einladungslink</h3>
             <div class="retro-invite-row">

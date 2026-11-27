@@ -1,0 +1,7 @@
+{# The owner's "Folge-Retro": same columns and settings, reviews this retro's actions. #}
+<form method="post" class="retro-duplicate-form" data-no-soft>
+    {% csrf_token %}
+    <input type="hidden" name="form_name" value="retro_duplicate">
+    <input type="text" name="title" value="{{ next_title }}" maxlength="{{ title_max_length }}" aria-label="Titel der Folge-Retro" required>
+    <button type="submit" class="ghost-button"><i class="fa-solid fa-clone" aria-hidden="true"></i> Folge-Retro anlegen</button>
+</form>

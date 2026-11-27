@@ -1,14 +1,16 @@
 import json
 import zipfile
+from datetime import timedelta
 from io import BytesIO
 
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.test import Client, TestCase
+from django.utils import timezone
 
-from app.models import Note, RetroBoard, RetroCard, RetroVote, SystemSettings, Task
+from app.models import Note, RetroAction, RetroBoard, RetroCard, RetroVote, SystemSettings, Task
 from app.services.data_export import write_user_export
-from app.services.retro import create_retro
+from app.services.retro import accessible_retros, create_retro, next_title
 
 
 class RetroTests(TestCase):
@@ -55,6 +57,35 @@ class RetroTests(TestCase):
         )
         self.assertEqual(board.participants.get().user, self.owner)
         self.assertContains(self.client.get("/tools/retro/"), "Q4")
+
+    def test_retro_list_filters_by_status_and_owner(self):
+        done = create_retro(self.owner, "Sprint 46", "start_stop")
+        done.phase = RetroBoard.PHASE_DONE
+        done.save()
+        joined = create_retro(self.other, "Fremde Retro", "blank")
+        self.client.get(f"/retro/join/{joined.join_token}/")
+
+        def titles(status=""):
+            response = self.client.get("/tools/retro/", {"status": status} if status else {})
+            return sorted(board["title"] for board in response.context["boards"])
+
+        self.assertEqual(titles(), ["Fremde Retro", "Sprint 46", "Sprint 47"])
+        self.assertEqual(titles("open"), ["Fremde Retro", "Sprint 47"])
+        self.assertEqual(titles("done"), ["Sprint 46"])
+        self.assertEqual(titles("others"), ["Fremde Retro"])
+        self.assertEqual(titles("nonsense"), ["Fremde Retro", "Sprint 46", "Sprint 47"])
+        counts = {
+            option["key"]: option["count"]
+            for option in self.client.get("/tools/retro/").context["status_filters"]
+        }
+        self.assertEqual(counts, {"": 3, "open": 2, "done": 1, "others": 1})
+
+        joined.phase = RetroBoard.PHASE_DONE
+        joined.save()
+        done.delete()
+        self.assertContains(self.client.get("/tools/retro/?status=done"), "Fremde Retro")
+        self.board.delete()
+        self.assertContains(self.client.get("/tools/retro/?status=open"), "Keine Retros in diesem Filter")
 
     def test_guests_join_by_link_with_unique_names_and_others_need_it(self):
         anonymous = Client()
@@ -186,6 +217,310 @@ class RetroTests(TestCase):
         second.refresh_from_db()
         self.assertIsNone(second.group)
         self.assertEqual(second.votes.count(), 1)
+
+    def test_cards_change_only_while_collecting_and_hidden_cards_stay_untouchable(self):
+        self.join_guest()
+        self.post("retro_card_add", client=self.guest, column_id=self.start.pk, text="Gast")
+        self.post("retro_card_add", column_id=self.start.pk, text="Eigene")
+        guest_card, own_card = RetroCard.objects.order_by("id")
+        # Hidden while collecting: the owner can neither overwrite nor delete it unseen.
+        self.assertEqual(self.post("retro_card_edit", card_id=guest_card.pk, text="X").status_code, 404)
+        self.assertEqual(self.post("retro_card_delete", card_id=guest_card.pk).status_code, 404)
+        self.board.hide_cards = False
+        self.board.save()
+        self.post("retro_card_edit", card_id=guest_card.pk, text="Moderiert")
+        guest_card.refresh_from_db()
+        self.assertEqual(guest_card.text, "Moderiert")
+
+        self.set_phase("vote")
+        self.post("retro_card_edit", card_id=own_card.pk, text="Nachträglich")
+        self.post("retro_card_delete", client=self.guest, card_id=guest_card.pk)
+        own_card.refresh_from_db()
+        self.assertEqual(own_card.text, "Eigene")
+        self.assertTrue(RetroCard.objects.filter(pk=guest_card.pk).exists())
+
+    def test_ungrouping_only_while_grouping(self):
+        self.post("retro_card_add", column_id=self.start.pk, text="A")
+        self.post("retro_card_add", column_id=self.start.pk, text="B")
+        first, second = RetroCard.objects.order_by("id")
+        self.set_phase("group")
+        self.post("retro_group", card_id=second.pk, target_id=first.pk)
+        self.set_phase("discuss")
+        self.post("retro_ungroup", card_id=first.pk)
+        second.refresh_from_db()
+        self.assertEqual(second.group, first)
+
+    def test_new_retro_follows_up_on_own_last_retro_and_reviews_its_actions(self):
+        old_action = RetroAction.objects.create(board=self.board, title="Daily kürzen")
+        task = Task.objects.create(user=self.other, title="Doku")
+        task_action = RetroAction.objects.create(board=self.board, title="Doku", task=task)
+        foreign = create_retro(self.other, "Fremd", "blank")
+        page = self.client.get("/tools/retro/")
+        self.assertEqual([choice["id"] for choice in page.context["previous_choices"]], [self.board.pk])
+
+        # Someone else's retro can't be picked; the own one can.
+        self.client.post(
+            "/tools/retro/",
+            {"form_name": "retro_create", "title": "Fremd-Folge", "previous_id": foreign.pk},
+        )
+        self.assertIsNone(RetroBoard.objects.get(title="Fremd-Folge").previous)
+        self.client.post(
+            "/tools/retro/",
+            {"form_name": "retro_create", "title": "Sprint 48", "previous_id": self.board.pk},
+        )
+        follow_up = RetroBoard.objects.get(title="Sprint 48")
+        self.assertEqual(follow_up.previous, self.board)
+
+        # A guest of the new retro sees the old actions while collecting and ticks them off.
+        url = f"/tools/retro/{follow_up.pk}/"
+        guest = Client()
+        guest.post(f"/retro/join/{follow_up.join_token}/", {"name": "Kim"})
+        self.assertContains(guest.get(url), "Daily kürzen")
+        guest.post(url, {"form_name": "retro_action_done", "action_id": old_action.pk, "done": "1"})
+        old_action.refresh_from_db()
+        self.assertTrue(old_action.done)
+        # A task's state wins and can't be overridden from the retro.
+        guest.post(url, {"form_name": "retro_action_done", "action_id": task_action.pk, "done": "1"})
+        task_action.refresh_from_db()
+        self.assertFalse(task_action.done)
+        task.is_done = True
+        task.save()
+        previous = {item["id"]: item["done"] for item in guest.get(url).context["previous_actions"]}
+        self.assertEqual(previous, {old_action.pk: True, task_action.pk: True})
+
+        # Unrelated boards' actions stay out of reach, and the panel leaves after collecting.
+        stranger = RetroAction.objects.create(board=foreign, title="X")
+        response = guest.post(url, {"form_name": "retro_action_done", "action_id": stranger.pk, "done": "1"})
+        self.assertEqual(response.status_code, 404)
+        self.client.post(url, {"form_name": "retro_phase", "phase": "group"})
+        self.assertIsNone(guest.get(url).context["previous_actions"])
+
+    def test_moving_on_from_a_presented_topic_ticks_it_off_and_owner_can_untick(self):
+        self.join_guest()
+        self.post("retro_card_add", column_id=self.start.pk, text="A")
+        self.post("retro_card_add", column_id=self.start.pk, text="B")
+        first, second = RetroCard.objects.order_by("id")
+        self.set_phase("group")
+        self.post("retro_group", card_id=second.pk, target_id=first.pk)
+        self.post("retro_discussed", card_id=first.pk, discussed="1")
+        first.refresh_from_db()
+        self.assertFalse(first.discussed)  # Only while discussing.
+
+        self.set_phase("discuss")
+        self.post("retro_present", card_id=first.pk)
+        first.refresh_from_db()
+        self.assertFalse(first.discussed)  # Not until moving on.
+        self.post("retro_present", card_id="")
+        first.refresh_from_db()
+        self.assertTrue(first.discussed)
+        context = self.guest.get(self.url).context
+        self.assertEqual((context["discussed_count"], context["topic_count"]), (1, 1))
+
+        # Ticking a grouped card means its group; guests can't tick at all.
+        self.post("retro_discussed", card_id=second.pk, discussed="0")
+        first.refresh_from_db()
+        self.assertFalse(first.discussed)
+        response = self.post("retro_discussed", client=self.guest, card_id=first.pk, discussed="1")
+        self.assertEqual(response.status_code, 404)
+
+    def test_owner_renames_moves_inserts_and_deletes_columns(self):
+        def titles():
+            return list(self.board.columns.values_list("title", "tone"))
+
+        self.post("retro_column_edit", column_id=self.keep.pk, title=" Weiter so ", tone="blue")
+        self.post("retro_column_edit", column_id=self.stop.pk, title="Halt", tone="pink")  # Unknown tone.
+        self.post("retro_column_move", column_id=self.keep.pk, direction="left")
+        self.post("retro_column_move", column_id=self.start.pk, direction="left")  # Already first.
+        self.post("retro_column_add", column_id=self.start.pk, title="Fragen", tone="violet")
+        self.assertEqual(
+            titles(), [("Start", "green"), ("Fragen", "violet"), ("Weiter so", "blue"), ("Halt", "sand")]
+        )
+        self.assertEqual(list(self.board.columns.values_list("position", flat=True)), [0, 1, 2, 3])
+
+        self.join_guest()
+        self.post("retro_card_add", client=self.guest, column_id=self.stop.pk, text="Weg damit")
+        for form_name in (
+            "retro_column_add",
+            "retro_column_edit",
+            "retro_column_move",
+            "retro_column_delete",
+        ):
+            response = self.post(form_name, client=self.guest, column_id=self.start.pk, title="X")
+            self.assertEqual(response.status_code, 404)
+        self.post("retro_column_delete", column_id=self.stop.pk)
+        self.assertFalse(RetroCard.objects.exists())
+
+        for title in ("E", "F", "G", "H"):  # H is one too many.
+            self.post("retro_column_add", column_id=self.start.pk, title=title)
+        self.assertEqual(self.board.columns.count(), 6)  # MAX_COLUMNS
+        for column in list(self.board.columns.all())[1:]:
+            self.post("retro_column_delete", column_id=column.pk)
+        self.post("retro_column_delete", column_id=self.start.pk)
+        self.assertEqual(titles(), [("Start", "green")])
+        self.assertContains(self.client.get(self.url), "Spalte „Start“ bearbeiten")
+        self.assertNotContains(self.guest.get(self.url), "Spalte „Start“ bearbeiten")
+
+    def test_follow_up_retro_copies_columns_and_settings_but_not_content(self):
+        self.post("retro_column_edit", column_id=self.keep.pk, title="Weiter so", tone="blue")
+        self.board.max_cards, self.board.anonymous, self.board.phase = 9, False, RetroBoard.PHASE_DONE
+        self.board.save()
+        self.join_guest()
+        self.post("retro_card_add", client=self.guest, column_id=self.start.pk, text="Karte")
+        RetroAction.objects.create(board=self.board, title="Daily kürzen")
+        self.assertContains(self.client.get(self.url), 'value="Sprint 48"')
+        self.assertEqual(self.post("retro_duplicate", client=self.guest).status_code, 404)
+
+        response = self.post("retro_duplicate", title="")  # Empty: the suggested title.
+        copy = RetroBoard.objects.get(title="Sprint 48")
+        self.assertRedirects(response, f"/tools/retro/{copy.pk}/")
+        self.assertEqual(
+            list(copy.columns.values_list("title", "tone", "position")),
+            [("Start", "green", 0), ("Stop", "red", 1), ("Weiter so", "blue", 2)],
+        )
+        self.assertEqual((copy.max_cards, copy.anonymous, copy.phase), (9, False, RetroBoard.PHASE_COLLECT))
+        self.assertEqual(copy.previous, self.board)
+        self.assertNotEqual(copy.join_token, self.board.join_token)
+        self.assertEqual(list(copy.participants.values_list("user", flat=True)), [self.owner.pk])
+        self.assertFalse(copy.cards.exists() or copy.actions.exists())
+        self.assertContains(self.client.get(f"/tools/retro/{copy.pk}/"), "Daily kürzen")
+
+    def test_closing_rating_shows_totals_only_after_rating_yourself(self):
+        guest = self.join_guest()
+        self.post("retro_rate", client=self.guest, score="4")
+        guest.refresh_from_db()
+        self.assertIsNone(guest.rating)  # Only at the end.
+
+        self.set_phase("done")
+        for score in ("0", "6", "x"):
+            self.post("retro_rate", client=self.guest, score=score)
+        guest.refresh_from_db()
+        self.assertIsNone(guest.rating)
+        self.post("retro_rate", client=self.guest, score="4")
+        self.post("retro_rate", client=self.guest, score="2")  # Changing one's mind.
+        guest.refresh_from_db()
+        self.assertEqual(guest.rating, 2)
+
+        rating = self.client.get(self.url).context["rating"]
+        self.assertEqual((rating["shown"], rating["count"], rating["average"]), (False, 1, None))
+        self.assertEqual({option["count"] for option in rating["options"]}, {None})
+        self.post("retro_rate", score="5")
+        rating = self.client.get(self.url).context["rating"]
+        self.assertEqual((rating["mine"], rating["average"]), (5, 3.5))
+        self.assertEqual([option["count"] for option in rating["options"]], [0, 1, 0, 0, 1])
+        self.assertContains(self.guest.get(self.url), "Ø 3,5")
+
+        buffer = BytesIO()
+        write_user_export(self.owner, buffer)
+        exported = json.loads(zipfile.ZipFile(buffer).read("retros.json"))[0]["rating"]
+        self.assertEqual((exported["count"], exported["average"]), (2, 3.5))
+        self.post("retro_note")
+        self.assertIn("Ø 3,5 von 5", Note.objects.get().plain_text)
+
+    def test_next_title_bumps_the_last_number(self):
+        self.assertEqual(next_title("Sprint 09 Retro"), "Sprint 10 Retro")
+        self.assertEqual(next_title("Q4 Team 7"), "Q4 Team 8")
+        self.assertEqual(next_title("Teamretro"), "Teamretro (Kopie)")
+
+    def test_owner_removes_participants_who_keep_their_cards_but_lose_votes(self):
+        kim = self.join_guest("Kim")
+        other_guest = Client()
+        tom = self.join_guest("Tom", client=other_guest)
+        member_client = Client()
+        member_client.force_login(self.other)
+        member_client.get(self.join_url)
+        member = self.board.participants.get(user=self.other)
+        owner = self.board.participants.get(user=self.owner)
+        self.post("retro_card_add", client=self.guest, column_id=self.start.pk, text="Von Kim")
+        card = RetroCard.objects.get()
+        RetroVote.objects.create(card=card, participant=kim)
+        self.assertContains(self.client.get(self.url), f'name="participant_id" value="{kim.pk}"')
+        self.assertNotContains(self.client.get(self.url), f'name="participant_id" value="{owner.pk}"')
+
+        response = self.post("retro_participants_remove", client=other_guest, participant_id=[kim.pk])
+        self.assertEqual(response.status_code, 404)
+        self.client.post(
+            self.url,
+            {"form_name": "retro_participants_remove", "participant_id": [kim.pk, member.pk, owner.pk, "x"]},
+        )
+        self.assertEqual(set(self.board.participants.all()), {owner, tom})
+        card.refresh_from_db()
+        self.assertIsNone(card.author)
+        self.assertFalse(RetroVote.objects.exists())
+        # Both lose access; a guest is sent to sign in, a Lunora user gets a 404.
+        self.assertRedirects(
+            self.guest.get(self.url), f"/login/?next={self.url}", fetch_redirect_response=False
+        )
+        self.assertEqual(member_client.get(self.url).status_code, 404)
+
+    def test_owner_hands_moderation_to_a_lunora_user_but_not_a_guest(self):
+        older = create_retro(self.owner, "Sprint 46", "start_stop")
+        self.board.previous = older
+        self.board.save()
+        guest = self.join_guest()
+        member_client = Client()
+        member_client.force_login(self.other)
+        member_client.get(self.join_url)
+        member = self.board.participants.get(user=self.other)
+        candidates = self.client.get(self.url).context["handover_candidates"]
+        self.assertEqual([item["id"] for item in candidates], [member.pk])
+
+        self.post("retro_hand_over", participant_id=guest.pk)
+        self.board.refresh_from_db()
+        self.assertEqual(self.board.owner, self.owner)
+        self.assertEqual(
+            self.post("retro_hand_over", client=member_client, participant_id=member.pk).status_code, 404
+        )
+
+        self.post("retro_hand_over", participant_id=member.pk)
+        self.board.refresh_from_db()
+        self.assertEqual(self.board.owner, self.other)
+        # The old owner now just takes part; the new one steers, settings included.
+        self.assertTrue(self.board.participants.filter(user=self.owner).exists())
+        self.assertEqual(self.post("retro_phase", phase="vote").status_code, 404)
+        self.assertNotContains(self.client.get(self.url), "retro-settings-dialog")
+        member_client.post(
+            self.url,
+            {
+                "form_name": "retro_settings",
+                "title": "Übernommen",
+                "max_cards": 5,
+                "votes_per_person": 5,
+                "votes_per_card": 3,
+                "timer_minutes": 5,
+                "previous": older.pk,  # The old owner's retro stays a valid choice.
+            },
+        )
+        self.board.refresh_from_db()
+        self.assertEqual((self.board.title, self.board.previous), ("Übernommen", older))
+        self.assertIn(self.board, accessible_retros(self.other))
+
+    def test_owner_adds_a_minute_to_the_timer_up_to_an_hour(self):
+        self.join_guest()
+        self.post("retro_timer_extend")
+        self.board.refresh_from_db()
+        self.assertIsNone(self.board.timer_ends_at)  # Nothing to extend.
+
+        self.post("retro_timer_start")
+        self.board.refresh_from_db()
+        started = self.board.timer_ends_at
+        self.assertContains(self.client.get(self.url), "Timer um eine Minute verlängern")
+        self.assertNotContains(self.guest.get(self.url), "Timer um eine Minute verlängern")
+        self.assertEqual(self.post("retro_timer_extend", client=self.guest).status_code, 404)
+        self.post("retro_timer_extend")
+        self.board.refresh_from_db()
+        self.assertEqual(self.board.timer_ends_at - started, timedelta(minutes=1))
+
+        # A timer that ran out starts again from now; nothing goes past an hour from now.
+        self.board.timer_ends_at = timezone.now() - timedelta(minutes=5)
+        self.board.save()
+        self.post("retro_timer_extend")
+        self.board.refresh_from_db()
+        self.assertAlmostEqual((self.board.timer_ends_at - timezone.now()).total_seconds(), 60, delta=5)
+        self.board.timer_ends_at = timezone.now() + timedelta(minutes=60)
+        self.board.save()
+        self.post("retro_timer_extend")
+        self.board.refresh_from_db()
+        self.assertLessEqual(self.board.timer_ends_at, timezone.now() + timedelta(minutes=60))
 
     def test_presented_card_shows_for_everyone_and_owner_clears_it(self):
         self.join_guest()

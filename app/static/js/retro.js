@@ -102,14 +102,56 @@
   });
 
   // ---- timer
+  // The end the tone is still due for: set while a timer is seen running, so a page opened after
+  // it ran out stays quiet, and "+1" (a new end) arms it again.
+  let armedFor = null;
+  let audio = null;
+
+  // Browsers only let a page play sound after the viewer interacted with it, so the audio context
+  // is created on the first click or key press; without one the timer just stays silent.
+  function unlockAudio() {
+    if (audio || !window.AudioContext) return;
+    audio = new AudioContext();
+  }
+  document.addEventListener("pointerdown", unlockAudio, { once: true });
+  document.addEventListener("keydown", unlockAudio, { once: true });
+
+  // Three short rising beeps.
+  function playTone() {
+    if (!audio) return;
+    audio.resume();
+    [660, 880, 1100].forEach((frequency, index) => {
+      const start = audio.currentTime + index * 0.22;
+      const oscillator = audio.createOscillator();
+      const gain = audio.createGain();
+      oscillator.frequency.value = frequency;
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.2, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.18);
+      oscillator.connect(gain).connect(audio.destination);
+      oscillator.start(start);
+      oscillator.stop(start + 0.2);
+    });
+  }
+
   function tickTimer() {
     const timer = document.querySelector("[data-retro-timer]");
-    if (!timer) return;
-    const left = Math.max(0, Math.round((new Date(timer.dataset.endsAt) - Date.now()) / 1000));
+    if (!timer) {
+      armedFor = null;
+      return;
+    }
+    const endsAt = timer.dataset.endsAt;
+    const left = Math.max(0, Math.round((new Date(endsAt) - Date.now()) / 1000));
     const minutes = Math.floor(left / 60);
     const seconds = String(left % 60).padStart(2, "0");
     timer.querySelector("[data-retro-timer-text]").textContent = `${minutes}:${seconds}`;
     timer.classList.toggle("is-over", left === 0);
+    if (left > 0) {
+      armedFor = endsAt;
+    } else if (armedFor === endsAt) {
+      armedFor = null;
+      playTone();
+    }
   }
 
   // ---- live updates: reload the board when its version changed, unless someone is mid-way.
