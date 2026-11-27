@@ -174,10 +174,23 @@ Sie ist vollständig von der Produktion getrennt und folgt deren Aufbau mit eige
 
 Die Dev-Env wurde aus der produktiven erzeugt; abweichend sind eigener `DJANGO_SECRET_KEY`,
 eigenes VAPID-Schlüsselpaar (`/etc/lunora-dev/vapid_private.pem`), Hostname, Datenbank,
-Redis-DB, Absender „Lunora Dev“, `LUNORA_TITLE_SUFFIX=-dev` (Tab-Titel „… | Lunora-dev“) und
-`CLOUDFLARE_TURNSTILE_REQUIRED=false` (Cloudflare Access
-schützt die ganze Dev-Domain). SMTP und Wetter-Key sind dieselben wie in der Produktion. Es gibt
-kein Backup und keinen Purge-Timer; die Datenbank enthält nur Testdaten.
+Redis-DB, `LUNORA_TITLE_SUFFIX=-dev` (Tab-Titel „… | Lunora-dev“),
+`CLOUDFLARE_TURNSTILE_REQUIRED=false` (Cloudflare Access schützt die ganze Dev-Domain) und das
+Console-Mail-Backend (`DJANGO_EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend`,
+`DJANGO_SILENCED_SYSTEM_CHECKS=mail.E001`, kein SMTP-Passwort): Mails landen nur im Journal der
+Dev-Dienste. Der Wetter-Key ist derselbe wie in der Produktion. Es gibt kein Backup und keinen
+Purge-Timer.
+
+**Nächtliche Datenkopie:** `lunora-dev-refresh.timer` startet jeden Tag um 03:00 (Europe/Berlin)
+`/usr/local/sbin/lunora-dev-refresh` (= `scripts/refresh-dev.sh`). Das Skript hält den
+Dev-Auto-Deploy und die Dev-Dienste an, ersetzt `lunora_dev` durch einen `pg_dump` von `lunora`,
+spiegelt `media/` und `private_media/` per `rsync --delete`, wendet die Migrationen von `develop`
+an, löscht alle Web-Push-Abonnements (sie gehören zu echten Geräten und zum produktiven
+VAPID-Schlüssel), leert Redis-DB `2` und startet alles wieder. Die Produktion wird dabei nur
+gelesen; Änderungen auf Dev gehen bei der nächsten Kopie verloren. Weil Dev damit echte
+Nutzerdaten enthält, bricht das Skript ab, solange die Dev-Env nicht das Console-Mail-Backend
+setzt. Passkeys aus der Produktion funktionieren auf Dev nicht (andere Domain), Passwort und
+TOTP schon. Manuell: `sudo systemctl start lunora-dev-refresh.service`.
 
 Die Dev-Units sind keine eigenen Dateien im Repository: Sie entstehen aus den versionierten
 Units unter `deploy/`, indem Pfade, Dienstkonto und Unit-Namen ersetzt werden (Gunicorn mit
