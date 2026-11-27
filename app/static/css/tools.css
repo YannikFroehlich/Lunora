@@ -4542,6 +4542,22 @@ form:has([name="split_mode"][value="amounts"]:checked) [data-split-hint="amounts
   outline-offset: 2px;
 }
 
+.retro-card.is-discussed {
+  background: var(--surface-control);
+}
+
+.retro-card.is-discussed .retro-card-text {
+  color: var(--color-muted);
+}
+
+.retro-discussed {
+  color: var(--color-muted);
+}
+
+.retro-discussed.is-done {
+  color: var(--color-success);
+}
+
 .retro-card.is-hidden {
   background: repeating-linear-gradient(
     -45deg,

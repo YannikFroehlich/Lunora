@@ -44,6 +44,12 @@
                 <span aria-hidden="true">{{ votes_left }}</span>
                 <span class="visually-hidden">Noch {{ votes_left }} von {{ board.votes_per_person }} Stimmen</span>
             </span>
+            {% elif board.phase == 'discuss' and topic_count %}
+            <span class="retro-limit is-count" title="{{ discussed_count }} von {{ topic_count }} Themen besprochen">
+                <i class="fa-solid fa-check" aria-hidden="true"></i>
+                <span aria-hidden="true">{{ discussed_count }}/{{ topic_count }}</span>
+                <span class="visually-hidden">{{ discussed_count }} von {{ topic_count }} Themen besprochen</span>
+            </span>
             {% endif %}
 
             {% if board.timer_ends_at %}

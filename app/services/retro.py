@@ -226,8 +226,16 @@ def stop_timer(board):
 
 
 def present_card(board, card):
+    """Whatever was presented before counts as discussed once the owner moves on (forward, back or
+    closing); a wrong tick is undone with `set_discussed`."""
+    if board.presented_card_id:
+        RetroCard.objects.filter(pk=board.presented_card_id).update(discussed=True)
     board.presented_card = (card.group or card) if card else None
     board.save(update_fields=["presented_card", "updated_at"])
+
+
+def set_discussed(card, discussed):
+    RetroCard.objects.filter(pk=card.group_id or card.pk).update(discussed=discussed)
 
 
 def renew_join_token(board):
@@ -309,6 +317,7 @@ def ranked_topics(board):
             "children": children[card.pk],
             "votes": card.vote_count,
             "column_id": card.column_id,
+            "discussed": card.discussed,
         }
         for card in cards
         if not card.group_id
@@ -364,6 +373,7 @@ def board_context(board, participant):
             else "",
             "children": [card_item(child) for child in children[card.pk]],
             "column_id": card.column_id,
+            "discussed": card.discussed,
         }
 
     tops = [card_item(card) for card in cards if not card.group_id]
@@ -464,4 +474,5 @@ def board_context(board, participant):
         "card_count": len(cards),
         "vote_count": sum(vote_counts.values()),
         "topic_count": len(tops),
+        "discussed_count": sum(item["discussed"] for item in tops),
     }

@@ -1,5 +1,5 @@
 {# One top-level card (with its stacked group) on the retro board. #}
-<article class="retro-card{% if card.hidden %} is-hidden{% endif %}{% if card.children %} is-group{% endif %}{% if card.own %} is-own{% endif %}" id="retro-card-{{ card.id }}" data-retro-card="{{ card.id }}"{% if board.phase == 'group' %} draggable="true" tabindex="0"{% endif %}>
+<article class="retro-card{% if card.hidden %} is-hidden{% endif %}{% if card.children %} is-group{% endif %}{% if card.own %} is-own{% endif %}{% if card.discussed and board.phase == 'discuss' %} is-discussed{% endif %}" id="retro-card-{{ card.id }}" data-retro-card="{{ card.id }}"{% if board.phase == 'group' %} draggable="true" tabindex="0"{% endif %}>
     {% if card.hidden %}
     <p class="retro-card-covered"><i class="fa-solid fa-eye-slash" aria-hidden="true"></i> verdeckt</p>
     {% elif is_owner and board.phase == 'discuss' %}
@@ -33,6 +33,20 @@
     {% if not card.hidden %}
     <footer class="retro-card-foot">
         {% if card.author %}<span class="retro-card-author">{{ card.author }}</span>{% endif %}
+
+        {% if board.phase == 'discuss' %}
+        {% if is_owner %}
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="form_name" value="retro_discussed">
+            <input type="hidden" name="card_id" value="{{ card.id }}">
+            <input type="hidden" name="discussed" value="{% if card.discussed %}0{% else %}1{% endif %}">
+            <button type="submit" class="icon-button retro-mini-button retro-discussed{% if card.discussed %} is-done{% endif %}" aria-pressed="{{ card.discussed|yesno:'true,false' }}" title="Besprochen" aria-label="„{{ card.text|truncatechars:30 }}“ besprochen"><i class="{% if card.discussed %}fa-solid{% else %}fa-regular{% endif %} fa-circle-check" aria-hidden="true"></i></button>
+        </form>
+        {% elif card.discussed %}
+        <span class="retro-discussed is-done" title="Besprochen"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span class="visually-hidden">Besprochen</span></span>
+        {% endif %}
+        {% endif %}
 
         {% if board.phase == 'collect' and card.can_change %}
         <details class="retro-card-edit">

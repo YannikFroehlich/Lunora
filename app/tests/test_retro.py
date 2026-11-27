@@ -264,6 +264,34 @@ class RetroTests(TestCase):
         self.client.post(url, {"form_name": "retro_phase", "phase": "group"})
         self.assertIsNone(guest.get(url).context["previous_actions"])
 
+    def test_moving_on_from_a_presented_topic_ticks_it_off_and_owner_can_untick(self):
+        self.join_guest()
+        self.post("retro_card_add", column_id=self.start.pk, text="A")
+        self.post("retro_card_add", column_id=self.start.pk, text="B")
+        first, second = RetroCard.objects.order_by("id")
+        self.set_phase("group")
+        self.post("retro_group", card_id=second.pk, target_id=first.pk)
+        self.post("retro_discussed", card_id=first.pk, discussed="1")
+        first.refresh_from_db()
+        self.assertFalse(first.discussed)  # Only while discussing.
+
+        self.set_phase("discuss")
+        self.post("retro_present", card_id=first.pk)
+        first.refresh_from_db()
+        self.assertFalse(first.discussed)  # Not until moving on.
+        self.post("retro_present", card_id="")
+        first.refresh_from_db()
+        self.assertTrue(first.discussed)
+        context = self.guest.get(self.url).context
+        self.assertEqual((context["discussed_count"], context["topic_count"]), (1, 1))
+
+        # Ticking a grouped card means its group; guests can't tick at all.
+        self.post("retro_discussed", card_id=second.pk, discussed="0")
+        first.refresh_from_db()
+        self.assertFalse(first.discussed)
+        response = self.post("retro_discussed", client=self.guest, card_id=first.pk, discussed="1")
+        self.assertEqual(response.status_code, 404)
+
     def test_presented_card_shows_for_everyone_and_owner_clears_it(self):
         self.join_guest()
         self.post("retro_card_add", column_id=self.start.pk, text="Thema")

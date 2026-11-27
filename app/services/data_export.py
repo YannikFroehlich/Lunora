@@ -312,6 +312,7 @@ def _retros(user):
                         "text": topic["text"],
                         "grouped": topic["children"],
                         "votes": topic["votes"],
+                        "discussed": topic["discussed"],
                     }
                     for topic in ranked_topics(board)
                 ],

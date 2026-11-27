@@ -30,6 +30,7 @@ OWNER_FORMS = {
     "retro_timer_start",
     "retro_timer_stop",
     "retro_present",
+    "retro_discussed",
     "retro_link_renew",
     "retro_delete",
     "retro_note",
@@ -173,6 +174,11 @@ def _handle_owner(request, board, form_name):
         card = board.cards.filter(pk=card_id).first() if card_id else None
         if board.phase == RetroBoard.PHASE_DISCUSS:
             retro.present_card(board, card)
+    elif form_name == "retro_discussed":
+        card = get_object_or_404(board.cards, pk=posted_id(request, "card_id"))
+        if board.phase != RetroBoard.PHASE_DISCUSS:
+            return "Abhaken geht nur beim Besprechen."
+        retro.set_discussed(card, request.POST.get("discussed") == "1")
     elif form_name == "retro_link_renew":
         retro.renew_join_token(board)
         django_messages.success(request, "Der alte Einladungslink gilt nicht mehr.")

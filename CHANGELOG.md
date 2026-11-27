@@ -6,6 +6,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Retro: Besprochene Themen werden abgehakt. Wer die Retro leitet, hakt ein präsentiertes Thema
+  automatisch ab, sobald es weitergeht, und kann jedes Thema auch von Hand ab- oder wieder
+  anhaken. Abgehakte Karten treten zurück, und die Leiste zählt mit, wie viele Themen schon
+  besprochen sind.
 - Retro: Eine neue Retro knüpft an eine frühere eigene an (beim Anlegen ist die neueste
   vorausgewählt, änderbar in den Einstellungen). Beim Sammeln stehen deren Actions daneben und
   alle Teilnehmenden haken sie gemeinsam ab; als Aufgabe übernommene Actions zeigen den Stand der

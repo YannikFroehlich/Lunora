@@ -1341,6 +1341,8 @@ class RetroCard(models.Model):
     group = models.ForeignKey(
         "self", on_delete=models.SET_NULL, blank=True, null=True, related_name="grouped_cards"
     )
+    # Ticked off while discussing; only meaningful on a group's top card.
+    discussed = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
