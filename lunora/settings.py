@@ -5,6 +5,7 @@ Django settings for the Lunora project.
 import mimetypes
 import os
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from django.core.exceptions import ImproperlyConfigured
 from django.utils.csp import CSP
@@ -438,6 +439,11 @@ OIDC_ISSUER = os.environ.get("OIDC_ISSUER", "").strip().rstrip("/")
 OIDC_CLIENT_ID = os.environ.get("OIDC_CLIENT_ID", "").strip()
 OIDC_CLIENT_SECRET = os.environ.get("OIDC_CLIENT_SECRET", "").strip()
 OIDC_REQUIRED_GROUP = os.environ.get("OIDC_REQUIRED_GROUP", "").strip()
+if OIDC_ISSUER:
+    # Logout answers the POST /logout/ with a redirect to Keycloak, and browsers apply the page's
+    # form-action to that redirect too, so the Keycloak origin must be allowed there.
+    _oidc_issuer = urlsplit(OIDC_ISSUER)
+    SECURE_CSP["form-action"].append(f"{_oidc_issuer.scheme}://{_oidc_issuer.netloc}")
 
 # Weather API settings are kept server-side so browser code never exposes keys.
 WEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY") or os.getenv("WEATHER_API_KEY", "")
