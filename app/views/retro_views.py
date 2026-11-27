@@ -108,12 +108,26 @@ def retro_boards(request):
         }
         for board in boards
     ]
+    # Status chips; every count comes from the same list, so they always add up.
+    status = request.GET.get("status", "")
+    filters = [
+        ("", "Alle", items),
+        ("open", "Laufend", [item for item in items if not item["is_done"]]),
+        ("done", "Abgeschlossen", [item for item in items if item["is_done"]]),
+        ("others", "Von anderen", [item for item in items if not item["is_own"]]),
+    ]
+    shown = next((matches for key, _label, matches in filters if key == status), items)
     return render(
         request,
         "app/retro_boards.html",
         {
             "active_page": "tools",
-            "boards": items,
+            "boards": shown,
+            "has_boards": bool(items),
+            "status": status if any(key == status for key, _label, _matches in filters) else "",
+            "status_filters": [
+                {"key": key, "label": label, "count": len(matches)} for key, label, matches in filters
+            ],
             "templates": [
                 {"key": key, "label": label, "columns": [name for name, _tone in columns]}
                 for key, (label, columns) in retro.TEMPLATES.items()

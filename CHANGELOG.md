@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Retro: Die Übersicht filtert nach „Laufend“, „Abgeschlossen“ und „Von anderen“, jeweils mit
+  Anzahl.
 - Retro: Die Moderation lässt sich in den Einstellungen an eine andere teilnehmende Person mit
   Lunora-Konto abgeben. Die Retro gehört danach ihr – mit Phasen, Einstellungen und
   Einladungslink –, und die bisherige Erstellerin bzw. der bisherige Ersteller macht normal mit.

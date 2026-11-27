@@ -50,6 +50,14 @@
         </form>
     </section>
 
+    {% if has_boards %}
+    <nav class="bookmark-tags" aria-label="Retros filtern">
+        {% for option in status_filters %}{% if option.count or option.key == status or not option.key %}
+        <a class="bookmark-tag{% if option.key == status %} is-active{% endif %}" href="{% if option.key %}?status={{ option.key }}{% else %}?{% endif %}"{% if option.key == status %} aria-current="page"{% endif %}>{{ option.label }} <small>{{ option.count }}</small></a>
+        {% endif %}{% endfor %}
+    </nav>
+    {% endif %}
+
     {% if boards %}
     <ul class="uml-diagram-list">
         {% for board in boards %}
@@ -64,6 +72,12 @@
         </li>
         {% endfor %}
     </ul>
+    {% elif has_boards %}
+    <div class="empty-state-card uml-empty">
+        <i class="fa-solid fa-filter" aria-hidden="true"></i>
+        <strong>Keine Retros in diesem Filter</strong>
+        <p><a href="?">Alle Retros zeigen</a></p>
+    </div>
     {% else %}
     <div class="empty-state-card uml-empty">
         <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>

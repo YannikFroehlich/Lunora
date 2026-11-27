@@ -58,6 +58,35 @@ class RetroTests(TestCase):
         self.assertEqual(board.participants.get().user, self.owner)
         self.assertContains(self.client.get("/tools/retro/"), "Q4")
 
+    def test_retro_list_filters_by_status_and_owner(self):
+        done = create_retro(self.owner, "Sprint 46", "start_stop")
+        done.phase = RetroBoard.PHASE_DONE
+        done.save()
+        joined = create_retro(self.other, "Fremde Retro", "blank")
+        self.client.get(f"/retro/join/{joined.join_token}/")
+
+        def titles(status=""):
+            response = self.client.get("/tools/retro/", {"status": status} if status else {})
+            return sorted(board["title"] for board in response.context["boards"])
+
+        self.assertEqual(titles(), ["Fremde Retro", "Sprint 46", "Sprint 47"])
+        self.assertEqual(titles("open"), ["Fremde Retro", "Sprint 47"])
+        self.assertEqual(titles("done"), ["Sprint 46"])
+        self.assertEqual(titles("others"), ["Fremde Retro"])
+        self.assertEqual(titles("nonsense"), ["Fremde Retro", "Sprint 46", "Sprint 47"])
+        counts = {
+            option["key"]: option["count"]
+            for option in self.client.get("/tools/retro/").context["status_filters"]
+        }
+        self.assertEqual(counts, {"": 3, "open": 2, "done": 1, "others": 1})
+
+        joined.phase = RetroBoard.PHASE_DONE
+        joined.save()
+        done.delete()
+        self.assertContains(self.client.get("/tools/retro/?status=done"), "Fremde Retro")
+        self.board.delete()
+        self.assertContains(self.client.get("/tools/retro/?status=open"), "Keine Retros in diesem Filter")
+
     def test_guests_join_by_link_with_unique_names_and_others_need_it(self):
         anonymous = Client()
         self.assertRedirects(
