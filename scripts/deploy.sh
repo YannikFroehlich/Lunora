@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-APP_DIR="/srv/lunora/app"
-VENV_DIR="/srv/lunora/venv"
-ENV_FILE="/etc/lunora/lunora.env"
+# The defaults are the production instance. The dev instance (DEPLOYMENT.md, "Dev-Instanz")
+# overrides them through LUNORA_* environment variables set in its systemd unit.
+APP_DIR="${LUNORA_APP_DIR:-/srv/lunora/app}"
+VENV_DIR="${LUNORA_VENV_DIR:-/srv/lunora/venv}"
+ENV_FILE="${LUNORA_ENV_FILE:-/etc/lunora/lunora.env}"
+BRANCH="${LUNORA_BRANCH:-main}"
+APP_GROUP="${LUNORA_APP_GROUP:-lunora}"
+read -r -a SERVICES <<< "${LUNORA_SERVICES:-lunora-web.service lunora-automations.service}"
 RESTART_SERVICES="${LUNORA_RESTART_SERVICES:-true}"
 
 if [[ ${EUID} -eq 0 ]]; then
@@ -23,7 +28,7 @@ if [[ -n "$(git status --porcelain)" ]]; then
     exit 1
 fi
 
-git fetch --prune origin main
+git fetch --prune origin "${BRANCH}"
 
 # Validate the new commit outside the live checkout first, so a failing pip install or
 # deploy check or a model change without its migration leaves the running release untouched.
@@ -35,7 +40,7 @@ trap 'rm -rf -- "${preflight_dir}"' EXIT
 # Not `git archive | tar -x`: under lunora-auto-deploy.service's RestrictSUIDSGID=true, GNU tar
 # 1.35 on Ubuntu 26.04 fails every file with "Function not implemented". A throwaway index
 # keeps the live checkout's index untouched.
-GIT_INDEX_FILE="${preflight_dir}/index" git read-tree origin/main
+GIT_INDEX_FILE="${preflight_dir}/index" git read-tree "origin/${BRANCH}"
 GIT_INDEX_FILE="${preflight_dir}/index" git checkout-index --all --prefix="${preflight_dir}/app/"
 python3 -m venv "${preflight_dir}/venv"
 "${preflight_dir}/venv/bin/python" -m pip install --require-virtualenv --quiet --disable-pip-version-check \
@@ -48,10 +53,10 @@ python3 -m venv "${preflight_dir}/venv"
     "${preflight_dir}/venv/bin/python" manage.py check --deploy
     "${preflight_dir}/venv/bin/python" manage.py makemigrations --check --dry-run
 )
-echo "Vorabprüfung für $(git rev-parse --short origin/main) erfolgreich."
+echo "Vorabprüfung für $(git rev-parse --short "origin/${BRANCH}") erfolgreich."
 
-git switch main
-git merge --ff-only origin/main
+git switch "${BRANCH}"
+git merge --ff-only "origin/${BRANCH}"
 
 ensure_deployment_directory() {
     local path="$1"
@@ -63,7 +68,7 @@ ensure_deployment_directory() {
     fi
 
     if [[ ! -d "${path}" ]]; then
-        install -d -m "${mode}" -g lunora "${path}"
+        install -d -m "${mode}" -g "${APP_GROUP}" "${path}"
     elif [[ ! -w "${path}" ]]; then
         echo "Abbruch: ${path} ist für den Deployment-Benutzer nicht beschreibbar." >&2
         exit 1
@@ -89,9 +94,10 @@ set +a
 "${VENV_DIR}/bin/python" manage.py collectstatic --noinput
 
 if [[ "${RESTART_SERVICES}" == "true" ]]; then
-    sudo systemctl restart lunora-web.service
-    sudo systemctl restart lunora-automations.service
-    systemctl --no-pager --full status lunora-web.service
+    for service in "${SERVICES[@]}"; do
+        sudo systemctl restart "${service}"
+    done
+    systemctl --no-pager --full status "${SERVICES[0]}"
 else
     echo "Dienstneustart wird vom übergeordneten Deployment-Dienst ausgeführt."
 fi

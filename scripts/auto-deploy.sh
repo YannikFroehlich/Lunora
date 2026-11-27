@@ -1,11 +1,21 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-APP_DIR="/srv/lunora/app"
+# The defaults are the production instance. The dev instance (DEPLOYMENT.md, "Dev-Instanz")
+# overrides them through LUNORA_* environment variables set in its systemd unit; they are
+# passed on to scripts/deploy.sh unchanged.
+APP_DIR="${LUNORA_APP_DIR:-/srv/lunora/app}"
+export LUNORA_APP_DIR="${APP_DIR}"
+BRANCH="${LUNORA_BRANCH:-main}"
 DEPLOY_USER="yunnik"
-APP_USER="lunora"
-STATE_DIR="/var/lib/lunora-auto-deploy"
-RUNTIME_DIR="/run/lunora-auto-deploy"
+APP_USER="${LUNORA_APP_USER:-lunora}"
+STATE_DIR="${LUNORA_STATE_DIR:-/var/lib/lunora-auto-deploy}"
+RUNTIME_DIR="${LUNORA_RUNTIME_DIR:-/run/lunora-auto-deploy}"
+read -r -a SERVICES <<< "${LUNORA_SERVICES:-lunora-web.service lunora-automations.service}"
+# Empty disables the pre-deploy backup (the dev instance has none).
+BACKUP_SERVICE="${LUNORA_BACKUP_SERVICE-lunora-backup.service}"
+HEALTH_HOST="${LUNORA_HOSTNAME:-lunora.yfserver.de}"
+HEALTH_URL="${LUNORA_HEALTH_URL:-http://127.0.0.1:8090/login/}"
 SUCCESS_STATE="${STATE_DIR}/last-successful-commit"
 BACKUP_STATE="${STATE_DIR}/last-backed-up-commit"
 LOCK_FILE="${RUNTIME_DIR}/deploy.lock"
@@ -81,10 +91,10 @@ if [[ -n "$(as_deployer git -C "${APP_DIR}" status --porcelain)" ]]; then
     exit 1
 fi
 
-as_deployer git -C "${APP_DIR}" fetch --quiet --prune origin main
+as_deployer git -C "${APP_DIR}" fetch --quiet --prune origin "${BRANCH}"
 
 current_commit=$(as_deployer git -C "${APP_DIR}" rev-parse --verify HEAD)
-remote_commit=$(as_deployer git -C "${APP_DIR}" rev-parse --verify origin/main)
+remote_commit=$(as_deployer git -C "${APP_DIR}" rev-parse --verify "origin/${BRANCH}")
 successful_commit=$(read_state "${SUCCESS_STATE}")
 
 if [[ -z "${successful_commit}" && "${current_commit}" == "${remote_commit}" ]]; then
@@ -94,24 +104,24 @@ if [[ -z "${successful_commit}" && "${current_commit}" == "${remote_commit}" ]];
 fi
 
 if [[ "${remote_commit}" == "${successful_commit}" ]]; then
-    echo "Lunora ist bereits auf dem erfolgreich geprüften main-Commit ${remote_commit:0:12}."
+    echo "Lunora ist bereits auf dem erfolgreich geprüften ${BRANCH}-Commit ${remote_commit:0:12}."
     exit 0
 fi
 
 if ! as_deployer git -C "${APP_DIR}" merge-base --is-ancestor \
     "${current_commit}" "${remote_commit}"; then
-    echo "Abbruch: origin/main ist kein Fast-Forward des Produktions-Checkouts." >&2
+    echo "Abbruch: origin/${BRANCH} ist kein Fast-Forward des Checkouts ${APP_DIR}." >&2
     exit 1
 fi
 
 backed_up_commit=$(read_state "${BACKUP_STATE}")
-if [[ "${backed_up_commit}" != "${remote_commit}" ]]; then
+if [[ -n "${BACKUP_SERVICE}" && "${backed_up_commit}" != "${remote_commit}" ]]; then
     echo "Erstelle vor dem Deployment ein Backup für ${remote_commit:0:12}."
-    systemctl start lunora-backup.service
+    systemctl start "${BACKUP_SERVICE}"
     write_state "${BACKUP_STATE}" "${remote_commit}"
 fi
 
-echo "Deploye origin/main ${remote_commit:0:12}."
+echo "Deploye origin/${BRANCH} ${remote_commit:0:12}."
 as_deployer env LUNORA_RESTART_SERVICES=false "${APP_DIR}/scripts/deploy.sh"
 
 deployed_commit=$(as_deployer git -C "${APP_DIR}" rev-parse --verify HEAD)
@@ -131,18 +141,19 @@ then
     exit 1
 fi
 
-systemctl restart lunora-web.service
-systemctl restart lunora-automations.service
-systemctl is-active --quiet lunora-web.service lunora-automations.service
+for service in "${SERVICES[@]}"; do
+    systemctl restart "${service}"
+done
+systemctl is-active --quiet "${SERVICES[@]}"
 
 curl \
     --fail \
     --silent \
     --show-error \
     --output /dev/null \
-    --header 'Host: lunora.yfserver.de' \
+    --header "Host: ${HEALTH_HOST}" \
     --header 'X-Forwarded-Proto: https' \
-    http://127.0.0.1:8090/login/
+    "${HEALTH_URL}"
 
 write_state "${SUCCESS_STATE}" "${deployed_commit}"
 echo "Lunora ${deployed_commit:0:12} wurde automatisch deployt und geprüft."
