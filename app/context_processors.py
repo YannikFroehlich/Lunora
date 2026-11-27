@@ -72,6 +72,7 @@ def system_settings(request):
         "system_settings": get_system_settings(),
         "feature_flags": flags,
         "unread_notification_count": unread_notification_count,
+        "title_suffix": django_settings.LUNORA_TITLE_SUFFIX,
         "web_push_enabled": django_settings.WEB_PUSH_ENABLED,
         "web_push_public_key": (
             django_settings.WEB_PUSH_VAPID_PUBLIC_KEY

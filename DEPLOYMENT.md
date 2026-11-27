@@ -174,7 +174,8 @@ Sie ist vollständig von der Produktion getrennt und folgt deren Aufbau mit eige
 
 Die Dev-Env wurde aus der produktiven erzeugt; abweichend sind eigener `DJANGO_SECRET_KEY`,
 eigenes VAPID-Schlüsselpaar (`/etc/lunora-dev/vapid_private.pem`), Hostname, Datenbank,
-Redis-DB, Absender „Lunora Dev“ und `CLOUDFLARE_TURNSTILE_REQUIRED=false` (Cloudflare Access
+Redis-DB, Absender „Lunora Dev“, `LUNORA_TITLE_SUFFIX=-dev` (Tab-Titel „… | Lunora-dev“) und
+`CLOUDFLARE_TURNSTILE_REQUIRED=false` (Cloudflare Access
 schützt die ganze Dev-Domain). SMTP und Wetter-Key sind dieselben wie in der Produktion. Es gibt
 kein Backup und keinen Purge-Timer; die Datenbank enthält nur Testdaten.
 

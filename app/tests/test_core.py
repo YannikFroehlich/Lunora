@@ -555,6 +555,19 @@ class CommandPaletteTests(TestCase):
         self.assertContains(response, 'id="command-administration"')
 
 
+class TitleSuffixTests(TestCase):
+    def test_title_ends_with_lunora_by_default(self):
+        response = self.client.get("/login/")
+
+        self.assertContains(response, "| Lunora</title>")
+
+    @override_settings(LUNORA_TITLE_SUFFIX="-dev")
+    def test_title_suffix_marks_the_dev_instance(self):
+        response = self.client.get("/login/")
+
+        self.assertContains(response, "| Lunora-dev</title>")
+
+
 class HealthEndpointTests(TestCase):
     def test_reports_ok_without_login_and_without_details(self):
         from app.services.health import record_automation_run
