@@ -174,7 +174,7 @@ Sie ist vollständig von der Produktion getrennt und folgt deren Aufbau mit eige
 
 Die Dev-Env wurde aus der produktiven erzeugt; abweichend sind eigener `DJANGO_SECRET_KEY`,
 eigenes VAPID-Schlüsselpaar (`/etc/lunora-dev/vapid_private.pem`), Hostname, Datenbank,
-Redis-DB, `LUNORA_TITLE_SUFFIX=-dev` (Tab-Titel „… | Lunora-dev“),
+Redis-DB, `LUNORA_TITLE_SUFFIX=-dev` (Tab-Titel „… • Lunora-dev“),
 `CLOUDFLARE_TURNSTILE_REQUIRED=false` (Cloudflare Access schützt die ganze Dev-Domain) und das
 Console-Mail-Backend (`DJANGO_EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend`,
 `DJANGO_SILENCED_SYSTEM_CHECKS=mail.E001`, kein SMTP-Passwort): Mails landen nur im Journal der

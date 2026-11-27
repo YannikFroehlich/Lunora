@@ -395,7 +395,7 @@ LUNORA_AUTOMATION_INTERVAL_SECONDS = env_int("LUNORA_AUTOMATION_INTERVAL_SECONDS
 # development, where the loop usually isn't running.
 LUNORA_HEALTH_REQUIRE_AUTOMATIONS = env_bool("LUNORA_HEALTH_REQUIRE_AUTOMATIONS", not DEBUG)
 LUNORA_WEEKLY_SUMMARY_HOUR = env_int("LUNORA_WEEKLY_SUMMARY_HOUR", 8)
-# Appended to every page title, e.g. "-dev" on the dev instance ("Anmelden | Lunora-dev").
+# Appended to every page title, e.g. "-dev" on the dev instance ("Anmelden • Lunora-dev").
 LUNORA_TITLE_SUFFIX = os.getenv("LUNORA_TITLE_SUFFIX", "").strip()
 
 WEB_PUSH_VAPID_PUBLIC_KEY = os.getenv("WEB_PUSH_VAPID_PUBLIC_KEY", "").strip()
