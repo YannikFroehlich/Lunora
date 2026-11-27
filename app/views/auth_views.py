@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import secrets
 import time
 from urllib.parse import urlencode
 
@@ -8,6 +9,7 @@ from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.views import (
     LoginView,
+    LogoutView,
     PasswordResetCompleteView,
     PasswordResetConfirmView,
     PasswordResetDoneView,
@@ -15,7 +17,7 @@ from django.contrib.auth.views import (
 )
 from django.core.cache import cache
 from django.db import transaction
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.shortcuts import redirect, render, resolve_url
 from django.urls import reverse, reverse_lazy
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -30,7 +32,7 @@ from app.forms import (
     RegistrationForm,
 )
 from app.models import AuditLogEntry, Profile
-from app.services import audit_log, email_verification, passkeys, two_factor
+from app.services import audit_log, email_verification, oidc, passkeys, two_factor
 from app.services.notifications import (
     materialize_failed_two_factor_notification,
     materialize_login_notification,
@@ -101,7 +103,63 @@ class LunoraLoginView(LoginView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["login_disabled"] = not normal_user_login_enabled()
+        context["sso_enabled"] = oidc.is_configured()
         return context
+
+
+SSO_SESSION_KEY = "sso_login"
+SSO_ID_TOKEN_SESSION_KEY = "sso_id_token"
+
+
+def login_sso(request):
+    """Start the sign-in through the central Keycloak login (app/services/oidc.py)."""
+    if not oidc.is_configured():
+        raise Http404
+    next_url = request.GET.get("next", "")
+    if not url_has_allowed_host_and_scheme(
+        next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()
+    ):
+        next_url = resolve_url(settings.LOGIN_REDIRECT_URL)
+    login_session = oidc.new_login_session()
+    login_session["next"] = next_url
+    request.session[SSO_SESSION_KEY] = login_session
+    return redirect(oidc.authorization_url(request, login_session))
+
+
+def login_sso_callback(request):
+    if not oidc.is_configured():
+        raise Http404
+    login_session = request.session.pop(SSO_SESSION_KEY, None) or {}
+    received_state = request.GET.get("state", "")
+    if not received_state or not secrets.compare_digest(received_state, login_session.get("state", "")):
+        messages.error(request, "Die Anmeldung konnte nicht bestätigt werden. Bitte versuche es erneut.")
+        return redirect("login")
+    code = request.GET.get("code", "")
+    if request.GET.get("error") or not code:
+        messages.error(request, "Die Anmeldung wurde abgebrochen.")
+        return redirect("login")
+    try:
+        id_token, claims = oidc.exchange_code(request, code, login_session)
+        user = oidc.user_for_claims(claims)
+    except oidc.OIDCError as error:
+        messages.error(request, str(error))
+        return redirect("login")
+    # Keycloak asked for its own second factor; Lunora's TOTP step only guards the password login.
+    login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+    request.session[SSO_ID_TOKEN_SESSION_KEY] = id_token
+    # `next` was checked in login_sso before it went into the session.
+    return _notify_login(request, redirect(login_session["next"]), user)
+
+
+class LunoraLogoutView(LogoutView):
+    """Also ends the Keycloak session when the user signed in through it."""
+
+    def post(self, request, *args, **kwargs):
+        id_token = request.session.get(SSO_ID_TOKEN_SESSION_KEY)
+        response = super().post(request, *args, **kwargs)
+        if id_token and oidc.is_configured():
+            return redirect(oidc.logout_url(request, id_token))
+        return response
 
     def form_valid(self, form):
         user = form.get_user()

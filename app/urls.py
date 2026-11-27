@@ -1,4 +1,3 @@
-from django.contrib.auth.views import LogoutView
 from django.urls import path
 from django.views.generic import RedirectView
 
@@ -17,8 +16,10 @@ urlpatterns = [
     path("login/zwei-faktor/", view.login_two_factor, name="login_two_factor"),
     path("login/passkey/", view.login_passkey, name="login_passkey"),
     path("login/passkey/optionen/", view.login_passkey_options, name="login_passkey_options"),
+    path("login/sso/", view.login_sso, name="login_sso"),
+    path("login/sso/callback/", view.login_sso_callback, name="login_sso_callback"),
     path("accounts/login/", login_view, name="accounts_login"),
-    path("logout/", LogoutView.as_view(), name="logout"),
+    path("logout/", view.LunoraLogoutView.as_view(), name="logout"),
     path("register/", view.register, name="register"),
     path("register/confirm/<uidb64>/<token>/", view.register_confirm, name="register_confirm"),
     path("password-reset/", view.LunoraPasswordResetView.as_view(), name="password_reset"),
