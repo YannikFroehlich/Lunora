@@ -264,6 +264,21 @@ def start_timer(board, minutes):
     board.save(update_fields=["timer_minutes", "timer_ends_at", "updated_at"])
 
 
+MAX_TIMER_MINUTES = 60
+
+
+def extend_timer(board):
+    """One more minute; a timer that already ran out starts again from now. Never more than an
+    hour from now, like the timer itself."""
+    if board.timer_ends_at is None:
+        return
+    now = timezone.now()
+    board.timer_ends_at = min(
+        max(board.timer_ends_at, now) + timedelta(minutes=1), now + timedelta(minutes=MAX_TIMER_MINUTES)
+    )
+    board.save(update_fields=["timer_ends_at", "updated_at"])
+
+
 def stop_timer(board):
     board.timer_ends_at = None
     board.save(update_fields=["timer_ends_at", "updated_at"])

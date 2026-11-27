@@ -56,6 +56,13 @@
             <span class="retro-timer" data-retro-timer data-ends-at="{{ board.timer_ends_at.isoformat }}" title="Timer"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i> <span data-retro-timer-text>–:–</span></span>
             {% endif %}
             {% if is_owner %}
+            {% if board.timer_ends_at %}
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="form_name" value="retro_timer_extend">
+                <button type="submit" class="icon-button retro-timer-extend" title="Eine Minute mehr" aria-label="Timer um eine Minute verlängern">+1</button>
+            </form>
+            {% endif %}
             <form method="post">
                 {% csrf_token %}
                 {% if board.timer_ends_at %}

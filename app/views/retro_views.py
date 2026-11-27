@@ -29,6 +29,7 @@ OWNER_FORMS = {
     "retro_phase",
     "retro_settings",
     "retro_timer_start",
+    "retro_timer_extend",
     "retro_timer_stop",
     "retro_present",
     "retro_discussed",
@@ -172,7 +173,9 @@ def _handle_owner(request, board, form_name):
         form.save()
     elif form_name == "retro_timer_start":
         minutes = posted_id(request, "minutes") or board.timer_minutes
-        retro.start_timer(board, min(max(minutes, 1), 60))
+        retro.start_timer(board, min(max(minutes, 1), retro.MAX_TIMER_MINUTES))
+    elif form_name == "retro_timer_extend":
+        retro.extend_timer(board)
     elif form_name == "retro_timer_stop":
         retro.stop_timer(board)
     elif form_name == "retro_present":

@@ -4366,6 +4366,24 @@ form:has([name="split_mode"][value="amounts"]:checked) [data-split-hint="amounts
 
 .retro-timer.is-over {
   color: var(--color-danger);
+  animation: retro-timer-over 0.8s ease-in-out 3;
+}
+
+@keyframes retro-timer-over {
+  50% {
+    background: color-mix(in srgb, var(--color-danger) 22%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .retro-timer.is-over {
+    animation: none;
+  }
+}
+
+.retro-timer-extend {
+  font-size: var(--text-sm);
+  font-weight: 700;
 }
 
 .retro-people {

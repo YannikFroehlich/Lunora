@@ -6,6 +6,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Retro: Der Timer lässt sich mit „+1“ um eine Minute verlängern (ein abgelaufener startet damit
+  neu). Läuft er ab, ertönen bei allen drei kurze Pieptöne und die Anzeige blinkt kurz auf – der
+  Ton kommt, sobald man einmal auf die Seite geklickt oder getippt hat, weil Browser vorher
+  keinen Ton erlauben.
 - Retro: Zum Abschluss bewerten alle (auch Gäste), wie sehr sich die Retro gelohnt hat – von 1
   „Verschwendete Zeit“ bis 5 „Sehr wertvoll“. Das Ergebnis (Durchschnitt und Verteilung) sieht
   man erst nach der eigenen Bewertung, und nie, wer was gegeben hat. Notiz und Datenexport

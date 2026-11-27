@@ -1,10 +1,12 @@
 import json
 import zipfile
+from datetime import timedelta
 from io import BytesIO
 
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.test import Client, TestCase
+from django.utils import timezone
 
 from app.models import Note, RetroAction, RetroBoard, RetroCard, RetroVote, SystemSettings, Task
 from app.services.data_export import write_user_export
@@ -389,6 +391,34 @@ class RetroTests(TestCase):
         self.assertEqual(next_title("Sprint 09 Retro"), "Sprint 10 Retro")
         self.assertEqual(next_title("Q4 Team 7"), "Q4 Team 8")
         self.assertEqual(next_title("Teamretro"), "Teamretro (Kopie)")
+
+    def test_owner_adds_a_minute_to_the_timer_up_to_an_hour(self):
+        self.join_guest()
+        self.post("retro_timer_extend")
+        self.board.refresh_from_db()
+        self.assertIsNone(self.board.timer_ends_at)  # Nothing to extend.
+
+        self.post("retro_timer_start")
+        self.board.refresh_from_db()
+        started = self.board.timer_ends_at
+        self.assertContains(self.client.get(self.url), "Timer um eine Minute verlängern")
+        self.assertNotContains(self.guest.get(self.url), "Timer um eine Minute verlängern")
+        self.assertEqual(self.post("retro_timer_extend", client=self.guest).status_code, 404)
+        self.post("retro_timer_extend")
+        self.board.refresh_from_db()
+        self.assertEqual(self.board.timer_ends_at - started, timedelta(minutes=1))
+
+        # A timer that ran out starts again from now; nothing goes past an hour from now.
+        self.board.timer_ends_at = timezone.now() - timedelta(minutes=5)
+        self.board.save()
+        self.post("retro_timer_extend")
+        self.board.refresh_from_db()
+        self.assertAlmostEqual((self.board.timer_ends_at - timezone.now()).total_seconds(), 60, delta=5)
+        self.board.timer_ends_at = timezone.now() + timedelta(minutes=60)
+        self.board.save()
+        self.post("retro_timer_extend")
+        self.board.refresh_from_db()
+        self.assertLessEqual(self.board.timer_ends_at, timezone.now() + timedelta(minutes=60))
 
     def test_presented_card_shows_for_everyone_and_owner_clears_it(self):
         self.join_guest()
