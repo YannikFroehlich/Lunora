@@ -6,6 +6,9 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Retro: Die Spalten lassen sich anpassen. Über das Menü im Spaltenkopf benennt die Erstellerin bzw.
+  der Ersteller der Retro eine Spalte um, gibt ihr eine andere Farbe, verschiebt sie, löscht sie
+  samt Karten oder fügt rechts daneben eine neue ein (bis zu sechs Spalten, eine bleibt immer).
 - Retro: Besprochene Themen werden abgehakt. Wer die Retro leitet, hakt ein präsentiertes Thema
   automatisch ab, sobald es weitergeht, und kann jedes Thema auch von Hand ab- oder wieder
   anhaken. Abgehakte Karten treten zurück, und die Leiste zählt mit, wie viele Themen schon

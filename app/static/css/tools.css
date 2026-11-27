@@ -4433,10 +4433,71 @@ form:has([name="split_mode"][value="amounts"]:checked) [data-split-hint="amounts
 }
 
 .retro-column-head {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 6px;
   margin-bottom: 8px;
+}
+
+.retro-column-head h2 {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* A dropdown under the whole header, so the button stays put (unlike the card edit). */
+.retro-column-head .retro-column-menu[open] {
+  flex-basis: auto;
+  order: 0;
+}
+
+.retro-column-menu-panel {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  left: 0;
+  z-index: 5;
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 10px;
+  background: var(--surface-panel-solid);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-soft);
+}
+
+.retro-column-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 6px;
+  margin: 0;
+}
+
+.retro-column-form input,
+.retro-column-form select {
+  min-width: 0;
+  padding: 6px 8px;
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--text-sm);
+  background: var(--surface-panel-solid);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-xs);
+}
+
+.retro-column-tools {
+  display: flex;
+  gap: 6px;
+}
+
+.retro-column-tools form {
+  margin: 0;
+}
+
+.retro-column-tools form:last-child {
+  margin-left: auto;
 }
 
 .retro-column-head h2,

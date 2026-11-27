@@ -292,6 +292,43 @@ class RetroTests(TestCase):
         response = self.post("retro_discussed", client=self.guest, card_id=first.pk, discussed="1")
         self.assertEqual(response.status_code, 404)
 
+    def test_owner_renames_moves_inserts_and_deletes_columns(self):
+        def titles():
+            return list(self.board.columns.values_list("title", "tone"))
+
+        self.post("retro_column_edit", column_id=self.keep.pk, title=" Weiter so ", tone="blue")
+        self.post("retro_column_edit", column_id=self.stop.pk, title="Halt", tone="pink")  # Unknown tone.
+        self.post("retro_column_move", column_id=self.keep.pk, direction="left")
+        self.post("retro_column_move", column_id=self.start.pk, direction="left")  # Already first.
+        self.post("retro_column_add", column_id=self.start.pk, title="Fragen", tone="violet")
+        self.assertEqual(
+            titles(), [("Start", "green"), ("Fragen", "violet"), ("Weiter so", "blue"), ("Halt", "sand")]
+        )
+        self.assertEqual(list(self.board.columns.values_list("position", flat=True)), [0, 1, 2, 3])
+
+        self.join_guest()
+        self.post("retro_card_add", client=self.guest, column_id=self.stop.pk, text="Weg damit")
+        for form_name in (
+            "retro_column_add",
+            "retro_column_edit",
+            "retro_column_move",
+            "retro_column_delete",
+        ):
+            response = self.post(form_name, client=self.guest, column_id=self.start.pk, title="X")
+            self.assertEqual(response.status_code, 404)
+        self.post("retro_column_delete", column_id=self.stop.pk)
+        self.assertFalse(RetroCard.objects.exists())
+
+        for title in ("E", "F", "G", "H"):  # H is one too many.
+            self.post("retro_column_add", column_id=self.start.pk, title=title)
+        self.assertEqual(self.board.columns.count(), 6)  # MAX_COLUMNS
+        for column in list(self.board.columns.all())[1:]:
+            self.post("retro_column_delete", column_id=column.pk)
+        self.post("retro_column_delete", column_id=self.start.pk)
+        self.assertEqual(titles(), [("Start", "green")])
+        self.assertContains(self.client.get(self.url), "Spalte „Start“ bearbeiten")
+        self.assertNotContains(self.guest.get(self.url), "Spalte „Start“ bearbeiten")
+
     def test_presented_card_shows_for_everyone_and_owner_clears_it(self):
         self.join_guest()
         self.post("retro_card_add", column_id=self.start.pk, text="Thema")

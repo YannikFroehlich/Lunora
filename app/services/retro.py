@@ -30,6 +30,7 @@ TEMPLATES = {
 }
 PHASES = [key for key, _label in RetroBoard.PHASE_CHOICES]
 MAX_PARTICIPANTS = 50
+MAX_COLUMNS = 6
 GUEST_NAME_MAX_LENGTH = 40
 SESSION_KEY = "retro_guests"
 
@@ -236,6 +237,48 @@ def present_card(board, card):
 
 def set_discussed(card, discussed):
     RetroCard.objects.filter(pk=card.group_id or card.pk).update(discussed=discussed)
+
+
+def _renumber(columns):
+    for position, column in enumerate(columns):
+        column.position = position
+    RetroColumn.objects.bulk_update(columns, ["position"])
+
+
+def _tone(tone):
+    return tone if tone in dict(RetroColumn.TONE_CHOICES) else "sand"
+
+
+def add_column(board, after, title, tone):
+    """Inserts a column right after ``after``."""
+    columns = list(board.columns.all())
+    if len(columns) >= MAX_COLUMNS:
+        return f"Mehr als {MAX_COLUMNS} Spalten gehen nicht."
+    column = RetroColumn.objects.create(board=board, title=title, tone=_tone(tone))
+    columns.insert(columns.index(after) + 1, column)
+    _renumber(columns)
+    return None
+
+
+def edit_column(column, title, tone):
+    column.title, column.tone = title, _tone(tone)
+    column.save(update_fields=["title", "tone"])
+
+
+def move_column(board, column, delta):
+    columns = list(board.columns.all())
+    index = columns.index(column)
+    if 0 <= index + delta < len(columns):
+        columns[index], columns[index + delta] = columns[index + delta], columns[index]
+        _renumber(columns)
+
+
+def delete_column(board, column):
+    """Deletes the column with its cards (and their votes); the last column stays."""
+    if board.columns.count() <= 1:
+        return "Eine Spalte muss bleiben."
+    column.delete()
+    return None
 
 
 def renew_join_token(board):

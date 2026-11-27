@@ -132,6 +132,7 @@
                 <header class="retro-column-head">
                     <h2 id="retro-column-{{ column.id }}-title">{{ column.title }}</h2>
                     <span class="retro-column-count">{{ column.cards|length }}</span>
+                    {% if is_owner %}{% include 'app/partials/retro_column_menu.html' %}{% endif %}
                 </header>
                 {% if board.phase == 'collect' and cards_left != 0 %}
                 <form method="post" class="retro-add-form" data-retro-add>

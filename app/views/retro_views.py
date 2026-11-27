@@ -8,7 +8,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
 from app.forms import RetroSettingsForm
-from app.models import RetroAction, RetroBoard, RetroCard
+from app.models import RetroAction, RetroBoard, RetroCard, RetroColumn
 from app.services import retro
 from app.services.audit_log import client_ip
 from app.services.notes import display_name
@@ -19,6 +19,7 @@ from app.views.navigation import posted_id
 
 TITLE_MAX_LENGTH = RetroBoard._meta.get_field("title").max_length
 CARD_MAX_LENGTH = RetroCard._meta.get_field("text").max_length
+COLUMN_MAX_LENGTH = RetroColumn._meta.get_field("title").max_length
 ACTION_MAX_LENGTH = RetroAction._meta.get_field("title").max_length
 ACTION_DESCRIPTION_MAX_LENGTH = RetroAction._meta.get_field("description").max_length
 # Per participant and minute; generous for clicking votes, tight enough to stop a script.
@@ -31,6 +32,10 @@ OWNER_FORMS = {
     "retro_timer_stop",
     "retro_present",
     "retro_discussed",
+    "retro_column_add",
+    "retro_column_edit",
+    "retro_column_move",
+    "retro_column_delete",
     "retro_link_renew",
     "retro_delete",
     "retro_note",
@@ -179,6 +184,20 @@ def _handle_owner(request, board, form_name):
         if board.phase != RetroBoard.PHASE_DISCUSS:
             return "Abhaken geht nur beim Besprechen."
         retro.set_discussed(card, request.POST.get("discussed") == "1")
+    elif form_name.startswith("retro_column_"):
+        column = get_object_or_404(board.columns, pk=posted_id(request, "column_id"))
+        if form_name == "retro_column_move":
+            retro.move_column(board, column, -1 if request.POST.get("direction") == "left" else 1)
+        elif form_name == "retro_column_delete":
+            return retro.delete_column(board, column)
+        else:
+            title = _text(request, "title", COLUMN_MAX_LENGTH)
+            if not title:
+                return "Die Spalte braucht einen Namen."
+            tone = request.POST.get("tone", "")
+            if form_name == "retro_column_add":
+                return retro.add_column(board, column, title, tone)
+            retro.edit_column(column, title, tone)
     elif form_name == "retro_link_renew":
         retro.renew_join_token(board)
         django_messages.success(request, "Der alte Einladungslink gilt nicht mehr.")
@@ -296,6 +315,9 @@ def retro_board(request, board_id):
             "active_page": "tools",
             "version": retro.board_version(board),
             "card_max_length": CARD_MAX_LENGTH,
+            "column_max_length": COLUMN_MAX_LENGTH,
+            "max_columns": retro.MAX_COLUMNS,
+            "tone_choices": RetroColumn.TONE_CHOICES,
             "action_max_length": ACTION_MAX_LENGTH,
             "action_description_max_length": ACTION_DESCRIPTION_MAX_LENGTH,
             "is_guest": participant.user_id is None,
