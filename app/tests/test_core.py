@@ -559,13 +559,13 @@ class TitleSuffixTests(TestCase):
     def test_title_ends_with_lunora_by_default(self):
         response = self.client.get("/login/")
 
-        self.assertContains(response, "| Lunora</title>")
+        self.assertContains(response, "• Lunora</title>")
 
     @override_settings(LUNORA_TITLE_SUFFIX="-dev")
     def test_title_suffix_marks_the_dev_instance(self):
         response = self.client.get("/login/")
 
-        self.assertContains(response, "| Lunora-dev</title>")
+        self.assertContains(response, "• Lunora-dev</title>")
 
 
 class HealthEndpointTests(TestCase):

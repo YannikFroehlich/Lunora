@@ -1375,7 +1375,7 @@
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.ok) throw new Error(data.error || `Fehler ${response.status}`);
       if (!saveState.dirty) setStatus("Gespeichert", "saved");
-      document.title = `${title} | UML | Lunora`;
+      document.title = `${title} • UML • Lunora${document.title.replace(/^.*Lunora/, "")}`;
     } catch (error) {
       saveState.dirty = true;
       setStatus(`Nicht gespeichert: ${error.message}`, "error");

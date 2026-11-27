@@ -1527,7 +1527,7 @@
     if (live.pending.some((op) => op.op === "title") || titleInput.value.trim() !== live.baseTitle) return;
     titleInput.value = title;
     live.baseTitle = title;
-    document.title = `${title} | Whiteboard | Lunora`;
+    document.title = `${title} • Whiteboard • Lunora${document.title.replace(/^.*Lunora/, "")}`;
   }
 
   async function reload() {
@@ -1600,7 +1600,7 @@
       }
       if (!live.pending.length && !hasUnsent()) {
         setStatus("Gespeichert", "saved");
-        document.title = `${live.baseTitle} | Whiteboard | Lunora`;
+        document.title = `${live.baseTitle} • Whiteboard • Lunora${document.title.replace(/^.*Lunora/, "")}`;
       }
     } catch (error) {
       setStatus(`Nicht gespeichert: ${error.message}`, "error");
