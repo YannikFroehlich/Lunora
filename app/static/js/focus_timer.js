@@ -149,7 +149,7 @@
     });
     toggleButton.querySelector("i").className = `fa-solid ${running ? "fa-pause" : "fa-play"}`;
     toggleButton.querySelector("span").textContent = running ? "Pausieren" : "Starten";
-    document.title = running ? `${formatClock(remaining)} · ${PHASE_LABELS[phase]}` : pageTitle;
+    document.title = running ? `${formatClock(remaining)} • ${PHASE_LABELS[phase]}` : pageTitle;
     const today = new Date();
     const completedToday = history[dayKey(today)] || 0;
     const streak = focusStreak(history, today);
