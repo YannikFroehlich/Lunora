@@ -6,6 +6,9 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Anmeldung: „Mit yfserver-Konto anmelden“ meldet über den zentralen Login (Keycloak) an. Ein
+  bestehendes Konto wird beim ersten Mal über die bestätigte E-Mail-Adresse verknüpft, die
+  Abmeldung beendet auch die zentrale Sitzung. Der Passwort-Login bleibt verfügbar.
 - Retro: Die Übersicht filtert nach „Laufend“, „Abgeschlossen“ und „Von anderen“, jeweils mit
   Anzahl.
 - Retro: Die Moderation lässt sich in den Einstellungen an eine andere teilnehmende Person mit

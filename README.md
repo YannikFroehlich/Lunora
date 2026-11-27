@@ -162,6 +162,7 @@ Wichtige Variablen:
 - `CLOUDFLARE_TURNSTILE_REQUIRED` und die `CLOUDFLARE_TURNSTILE_*`-Variablen: serverseitig validierter Bot-Schutz für die öffentliche Registrierung
 - `LUNORA_AUTOMATION_INTERVAL_SECONDS`: Intervall des dauerhaft laufenden Automatikprozesses
 - `LUNORA_HEALTH_REQUIRE_AUTOMATIONS`: ob `/healthz/` mit `503` antwortet, wenn der Automatikprozess seit drei Intervallen (mindestens fünf Minuten) keinen Durchlauf abgeschlossen hat; standardmäßig an, sobald `DJANGO_DEBUG=false` ist
+- `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`: zentraler Login über Keycloak („Mit yfserver-Konto anmelden“), aktiv sobald alle drei gesetzt sind, z. B. `OIDC_ISSUER=https://auth.yfserver.de/realms/yfserver`; Redirect-URI im Keycloak-Client: `<Seite>/login/sso/callback/`. `OIDC_REQUIRED_GROUP` beschränkt die Anmeldung auf eine Keycloak-Gruppe (Dev-Instanz: `dev-access`)
 - `LUNORA_CLIENT_IP_HEADER`: Header mit der echten Client-IP für das Audit-Log in der Administration, z. B. `CF-Connecting-IP` hinter Cloudflare; leer (Standard) nimmt `REMOTE_ADDR`. Nur setzen, wenn alle Anfragen über diesen Proxy kommen, sonst lässt sich die IP fälschen
 - `LUNORA_TITLE_SUFFIX`: Zusatz am Ende jedes Seitentitels, z. B. `-dev` auf der Dev-Instanz („Anmelden • Lunora-dev“); leer (Standard) in der Produktion
 - `LUNORA_WEEKLY_SUMMARY_HOUR`: lokale Montagstunde, ab der ein Wochenbericht versendet wird

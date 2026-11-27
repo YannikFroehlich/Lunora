@@ -432,6 +432,13 @@ USE_X_FORWARDED_HOST = env_bool("DJANGO_USE_X_FORWARDED_HOST", False)
 # passes that proxy, otherwise clients can fake their address.
 LUNORA_CLIENT_IP_HEADER = os.environ.get("LUNORA_CLIENT_IP_HEADER", "").strip()
 
+# Sign-in through the central Keycloak realm (app/services/oidc.py); on when issuer, client ID and
+# secret are set. OIDC_REQUIRED_GROUP limits it to one Keycloak group (dev instance: dev-access).
+OIDC_ISSUER = os.environ.get("OIDC_ISSUER", "").strip().rstrip("/")
+OIDC_CLIENT_ID = os.environ.get("OIDC_CLIENT_ID", "").strip()
+OIDC_CLIENT_SECRET = os.environ.get("OIDC_CLIENT_SECRET", "").strip()
+OIDC_REQUIRED_GROUP = os.environ.get("OIDC_REQUIRED_GROUP", "").strip()
+
 # Weather API settings are kept server-side so browser code never exposes keys.
 WEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY") or os.getenv("WEATHER_API_KEY", "")
 WEATHER_API_BASE_URL = os.getenv(
