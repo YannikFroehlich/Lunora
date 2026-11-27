@@ -154,6 +154,73 @@ Sicherheitsgründen nicht selbst als root installiert. Diese Dateien nach einer 
 Änderung einmal manuell mit den obigen `install`-Befehlen aktualisieren und anschließend
 `sudo systemctl daemon-reload` ausführen.
 
+## Dev-Instanz (`develop`)
+
+Seit 27. November 2026 läuft neben der Produktion eine Dev-Instanz unter
+`https://lunora-dev.yfserver.de`, die jeden Push auf `develop` automatisch deployt. Ablauf:
+Feature-Branch → Pull Request auf `develop` → auf der Dev-Instanz prüfen → Pull Request
+`develop` → `main` (Produktion).
+
+Sie ist vollständig von der Produktion getrennt und folgt deren Aufbau mit eigenen Namen:
+
+| | Produktion | Dev |
+|---|---|---|
+| Checkout / venv | `/srv/lunora/app`, `/srv/lunora/venv` | `/srv/lunora-dev/app`, `/srv/lunora-dev/venv` |
+| Dienstkonto | `lunora` | `lunora-dev` (`www-data` und `yunnik` sind in der Gruppe) |
+| Env | `/etc/lunora/lunora.env` | `/etc/lunora-dev/lunora.env` (`root:lunora-dev`, `0640`) |
+| PostgreSQL / Redis | DB und Rolle `lunora`, Redis-DB `1` | DB und Rolle `lunora_dev`, Redis-DB `2` |
+| Nginx | `127.0.0.1:8090` | `127.0.0.1:8092` (`/etc/nginx/sites-available/lunora-dev`) |
+| Units | `lunora-web`, `lunora-automations`, `lunora-auto-deploy` | `lunora-dev-web`, `lunora-dev-automations`, `lunora-dev-auto-deploy` |
+
+Die Dev-Env wurde aus der produktiven erzeugt; abweichend sind eigener `DJANGO_SECRET_KEY`,
+eigenes VAPID-Schlüsselpaar (`/etc/lunora-dev/vapid_private.pem`), Hostname, Datenbank,
+Redis-DB, `LUNORA_TITLE_SUFFIX=-dev` (Tab-Titel „… | Lunora-dev“),
+`CLOUDFLARE_TURNSTILE_REQUIRED=false` (Cloudflare Access schützt die ganze Dev-Domain) und das
+Console-Mail-Backend (`DJANGO_EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend`,
+`DJANGO_SILENCED_SYSTEM_CHECKS=mail.E001`, kein SMTP-Passwort): Mails landen nur im Journal der
+Dev-Dienste. Der Wetter-Key ist derselbe wie in der Produktion. Es gibt kein Backup und keinen
+Purge-Timer.
+
+**Nächtliche Datenkopie:** `lunora-dev-refresh.timer` startet jeden Tag um 03:00 (Europe/Berlin)
+`/usr/local/sbin/lunora-dev-refresh` (= `scripts/refresh-dev.sh`). Das Skript hält den
+Dev-Auto-Deploy und die Dev-Dienste an, ersetzt `lunora_dev` durch einen `pg_dump` von `lunora`,
+spiegelt `media/` und `private_media/` per `rsync --delete`, wendet die Migrationen von `develop`
+an, löscht alle Web-Push-Abonnements (sie gehören zu echten Geräten und zum produktiven
+VAPID-Schlüssel), leert Redis-DB `2` und startet alles wieder. Die Produktion wird dabei nur
+gelesen; Änderungen auf Dev gehen bei der nächsten Kopie verloren. Weil Dev damit echte
+Nutzerdaten enthält, bricht das Skript ab, solange die Dev-Env nicht das Console-Mail-Backend
+setzt. Passkeys aus der Produktion funktionieren auf Dev nicht (andere Domain), Passwort und
+TOTP schon. Manuell: `sudo systemctl start lunora-dev-refresh.service`.
+
+Die Dev-Units sind keine eigenen Dateien im Repository: Sie entstehen aus den versionierten
+Units unter `deploy/`, indem Pfade, Dienstkonto und Unit-Namen ersetzt werden (Gunicorn mit
+`--workers 2`). Die Dev-Nginx-Seite ist der `upstream`- und `server`-Teil von
+`deploy/nginx-lunora.conf` mit Port `8092`; die `map`-Blöcke der produktiven Seite gelten
+http-weit und werden mitbenutzt. Beide Instanzen verwenden denselben Treiber
+`/usr/local/sbin/lunora-auto-deploy`; `scripts/auto-deploy.sh` und `scripts/deploy.sh` lesen
+dafür `LUNORA_*`-Variablen, deren Standardwerte die Produktion beschreiben.
+`lunora-dev-auto-deploy.service` setzt sie per `Environment=`:
+
+```ini
+Environment=LUNORA_APP_DIR=/srv/lunora-dev/app
+Environment=LUNORA_VENV_DIR=/srv/lunora-dev/venv
+Environment=LUNORA_ENV_FILE=/etc/lunora-dev/lunora.env
+Environment=LUNORA_BRANCH=develop
+Environment=LUNORA_APP_USER=lunora-dev
+Environment=LUNORA_APP_GROUP=lunora-dev
+Environment=LUNORA_STATE_DIR=/var/lib/lunora-dev-auto-deploy
+Environment=LUNORA_RUNTIME_DIR=/run/lunora-dev-auto-deploy
+Environment="LUNORA_SERVICES=lunora-dev-web.service lunora-dev-automations.service"
+Environment=LUNORA_BACKUP_SERVICE=
+Environment=LUNORA_HOSTNAME=lunora-dev.yfserver.de
+Environment=LUNORA_HEALTH_URL=http://127.0.0.1:8092/login/
+```
+
+Der Tunnel `lunora-yfsrv1` hat dafür eine zweite Route `lunora-dev.yfserver.de` →
+`http://localhost:8092`. Davor liegt eine Cloudflare-Access-Anwendung, die nur freigegebene
+E-Mail-Adressen durchlässt. Einen Superuser legt man wie unten an, nur mit der Dev-Env und
+`/srv/lunora-dev/…`. Diagnose: `sudo journalctl -u lunora-dev-auto-deploy.service -n 100`.
+
 ## Initialer Superuser
 
 ```bash
