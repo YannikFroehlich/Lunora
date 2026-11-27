@@ -106,6 +106,19 @@ class LunoraLoginView(LoginView):
         context["sso_enabled"] = oidc.is_configured()
         return context
 
+    def form_valid(self, form):
+        user = form.get_user()
+        if not two_factor.is_enabled(user):
+            return _notify_login(self.request, super().form_valid(form), user)
+        # Password is correct, but the session stays anonymous until the second factor is checked.
+        self.request.session[TWO_FACTOR_SESSION_KEY] = {
+            "user_id": user.pk,
+            "backend": user.backend,
+            "next": self.get_success_url(),
+            "started_at": int(time.time()),
+        }
+        return redirect("login_two_factor")
+
 
 SSO_SESSION_KEY = "sso_login"
 SSO_ID_TOKEN_SESSION_KEY = "sso_id_token"
@@ -160,19 +173,6 @@ class LunoraLogoutView(LogoutView):
         if id_token and oidc.is_configured():
             return redirect(oidc.logout_url(request, id_token))
         return response
-
-    def form_valid(self, form):
-        user = form.get_user()
-        if not two_factor.is_enabled(user):
-            return _notify_login(self.request, super().form_valid(form), user)
-        # Password is correct, but the session stays anonymous until the second factor is checked.
-        self.request.session[TWO_FACTOR_SESSION_KEY] = {
-            "user_id": user.pk,
-            "backend": user.backend,
-            "next": self.get_success_url(),
-            "started_at": int(time.time()),
-        }
-        return redirect("login_two_factor")
 
 
 def _two_factor_attempts_key(user_id):
