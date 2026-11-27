@@ -6,6 +6,9 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Retro: Die Moderation lässt sich in den Einstellungen an eine andere teilnehmende Person mit
+  Lunora-Konto abgeben. Die Retro gehört danach ihr – mit Phasen, Einstellungen und
+  Einladungslink –, und die bisherige Erstellerin bzw. der bisherige Ersteller macht normal mit.
 - Retro: In den Einstellungen entfernt die Erstellerin bzw. der Ersteller der Retro ausgewählte
   Teilnehmende, etwa doppelte Gäste. Ihre Karten bleiben ohne Namen stehen, ihre Stimmen und
   Bewertungen fallen weg; wer den Einladungslink noch hat, kann wieder beitreten, bis er erneuert

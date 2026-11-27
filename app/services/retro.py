@@ -166,6 +166,18 @@ def remove_participants(board, participant_ids):
     return deleted.get(RetroParticipant._meta.label, 0)
 
 
+def hand_over(board, participant):
+    """Makes a Lunora user on the board its owner; the previous owner stays as a participant.
+    Guests can't take over: owning a board needs an account (export, the retro list, follow-ups)."""
+    if participant.board_id != board.pk or participant.user_id is None:
+        return "Abgeben geht nur an Teilnehmende mit Lunora-Konto."
+    if participant.user_id == board.owner_id:
+        return None
+    board.owner_id = participant.user_id
+    board.save(update_fields=["owner", "updated_at"])
+    return None
+
+
 def participant_name(participant):
     return display_name(participant.user) if participant.user_id else participant.guest_name
 
@@ -636,6 +648,11 @@ def board_context(board, participant):
             for item in participants
         ],
         "actions": actions,
+        "handover_candidates": [
+            {"id": item.pk, "name": names[item.pk]}
+            for item in participants
+            if item.user_id is not None and item.user_id != board.owner_id
+        ],
         "previous_actions": previous_actions,
         "rating": rating,
         "card_count": len(cards),

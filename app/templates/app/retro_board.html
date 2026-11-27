@@ -259,6 +259,24 @@
                 {% endif %}
             </div>
         </section>
+        <section class="retro-invite" aria-labelledby="retro-hand-over-title">
+            <h3 id="retro-hand-over-title">Moderation abgeben</h3>
+            <div class="soft-contents" id="retro-hand-over" data-soft-region>
+                {% if handover_candidates %}
+                <form method="post" class="retro-duplicate-form" data-no-soft data-confirm="Moderation wirklich abgeben? Danach steuert die andere Person die Retro, und du machst normal mit.">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_name" value="retro_hand_over">
+                    <select name="participant_id" aria-label="Neue Moderation" required>
+                        {% for person in handover_candidates %}<option value="{{ person.id }}">{{ person.name }}</option>{% endfor %}
+                    </select>
+                    <button type="submit" class="ghost-button"><i class="fa-solid fa-user-gear" aria-hidden="true"></i> Abgeben</button>
+                </form>
+                <p class="retro-invite-hint">Die Retro gehört danach der anderen Person, mit Einstellungen, Phasen und Einladungslink.</p>
+                {% else %}
+                <p class="retro-invite-hint">Abgeben geht an Teilnehmende mit Lunora-Konto; Gäste können die Moderation nicht übernehmen.</p>
+                {% endif %}
+            </div>
+        </section>
         <section class="retro-invite" aria-labelledby="retro-duplicate-title">
             <h3 id="retro-duplicate-title">Folge-Retro</h3>
             <p class="retro-invite-hint">Gleiche Spalten und Einstellungen, ohne Karten. Beim Sammeln stehen die Actions dieser Retro daneben; Teilnehmende kommen über einen neuen Einladungslink dazu.</p>

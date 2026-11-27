@@ -2023,7 +2023,10 @@ class RetroSettingsForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         kwargs.setdefault("auto_id", "retro_%s")
         super().__init__(*args, **kwargs)
-        self.fields["previous"].queryset = previous_choices(self.instance.owner, exclude=self.instance)
+        # The current choice stays valid after a hand-over, when it may belong to the old owner.
+        self.fields["previous"].queryset = previous_choices(
+            self.instance.owner, exclude=self.instance
+        ) | RetroBoard.objects.filter(pk=self.instance.previous_id)
         self.fields["previous"].empty_label = "Keine"
         limits = {
             "max_cards": (0, 50),

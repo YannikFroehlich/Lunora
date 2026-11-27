@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from app.models import Note, RetroAction, RetroBoard, RetroCard, RetroVote, SystemSettings, Task
 from app.services.data_export import write_user_export
-from app.services.retro import create_retro, next_title
+from app.services.retro import accessible_retros, create_retro, next_title
 
 
 class RetroTests(TestCase):
@@ -422,6 +422,48 @@ class RetroTests(TestCase):
             self.guest.get(self.url), f"/login/?next={self.url}", fetch_redirect_response=False
         )
         self.assertEqual(member_client.get(self.url).status_code, 404)
+
+    def test_owner_hands_moderation_to_a_lunora_user_but_not_a_guest(self):
+        older = create_retro(self.owner, "Sprint 46", "start_stop")
+        self.board.previous = older
+        self.board.save()
+        guest = self.join_guest()
+        member_client = Client()
+        member_client.force_login(self.other)
+        member_client.get(self.join_url)
+        member = self.board.participants.get(user=self.other)
+        candidates = self.client.get(self.url).context["handover_candidates"]
+        self.assertEqual([item["id"] for item in candidates], [member.pk])
+
+        self.post("retro_hand_over", participant_id=guest.pk)
+        self.board.refresh_from_db()
+        self.assertEqual(self.board.owner, self.owner)
+        self.assertEqual(
+            self.post("retro_hand_over", client=member_client, participant_id=member.pk).status_code, 404
+        )
+
+        self.post("retro_hand_over", participant_id=member.pk)
+        self.board.refresh_from_db()
+        self.assertEqual(self.board.owner, self.other)
+        # The old owner now just takes part; the new one steers, settings included.
+        self.assertTrue(self.board.participants.filter(user=self.owner).exists())
+        self.assertEqual(self.post("retro_phase", phase="vote").status_code, 404)
+        self.assertNotContains(self.client.get(self.url), "retro-settings-dialog")
+        member_client.post(
+            self.url,
+            {
+                "form_name": "retro_settings",
+                "title": "Übernommen",
+                "max_cards": 5,
+                "votes_per_person": 5,
+                "votes_per_card": 3,
+                "timer_minutes": 5,
+                "previous": older.pk,  # The old owner's retro stays a valid choice.
+            },
+        )
+        self.board.refresh_from_db()
+        self.assertEqual((self.board.title, self.board.previous), ("Übernommen", older))
+        self.assertIn(self.board, accessible_retros(self.other))
 
     def test_owner_adds_a_minute_to_the_timer_up_to_an_hour(self):
         self.join_guest()

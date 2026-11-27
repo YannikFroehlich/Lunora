@@ -38,6 +38,7 @@ OWNER_FORMS = {
     "retro_column_move",
     "retro_column_delete",
     "retro_participants_remove",
+    "retro_hand_over",
     "retro_link_renew",
     "retro_duplicate",
     "retro_delete",
@@ -208,6 +209,14 @@ def _handle_owner(request, board, form_name):
         removed = retro.remove_participants(board, ids)
         if removed:
             django_messages.success(request, f"{removed} Teilnehmende entfernt.")
+    elif form_name == "retro_hand_over":
+        new_owner = get_object_or_404(board.participants, pk=posted_id(request, "participant_id"))
+        error = retro.hand_over(board, new_owner)
+        if error:
+            return error
+        django_messages.success(
+            request, f"Die Moderation liegt jetzt bei {retro.participant_name(new_owner)}."
+        )
     elif form_name == "retro_link_renew":
         retro.renew_join_token(board)
         django_messages.success(request, "Der alte Einladungslink gilt nicht mehr.")
