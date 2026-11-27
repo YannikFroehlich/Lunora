@@ -3,6 +3,7 @@
 Guests have no account: joining through the invite link stores their participant id in the
 session (``retro_guests``), which is what identifies them on later requests."""
 
+import re
 import secrets
 from collections import defaultdict
 from datetime import timedelta
@@ -61,15 +62,57 @@ def previous_choices(user, exclude=None):
 
 
 @transaction.atomic
-def create_retro(user, title, template, previous=None):
-    _label, columns = TEMPLATES.get(template, TEMPLATES["start_stop"])
-    board = RetroBoard.objects.create(owner=user, title=title, join_token=new_join_token(), previous=previous)
+def create_retro(user, title, template, previous=None, columns=None, **settings):
+    """A new board with the template's columns, or ``columns`` as (title, tone) pairs."""
+    if columns is None:
+        _label, columns = TEMPLATES.get(template, TEMPLATES["start_stop"])
+    board = RetroBoard.objects.create(
+        owner=user, title=title, join_token=new_join_token(), previous=previous, **settings
+    )
     RetroColumn.objects.bulk_create(
         RetroColumn(board=board, title=name, tone=tone, position=index)
         for index, (name, tone) in enumerate(columns)
     )
     RetroParticipant.objects.create(board=board, user=user)
     return board
+
+
+# What a follow-up retro takes over; cards, votes, actions and participants stay behind.
+COPIED_SETTINGS = [
+    "max_cards",
+    "votes_per_person",
+    "votes_per_card",
+    "timer_minutes",
+    "anonymous",
+    "hide_cards",
+    "hide_votes",
+    "join_enabled",
+]
+
+
+def next_title(title):
+    """Sprint 47 → Sprint 48 (leading zeros kept); without a number, "(Kopie)" is added."""
+    numbers = list(re.finditer(r"\d+", title))
+    if not numbers:
+        return f"{title} (Kopie)"[: RetroBoard._meta.get_field("title").max_length]
+    last = numbers[-1]
+    bumped = str(int(last.group()) + 1).zfill(len(last.group()))
+    return f"{title[: last.start()]}{bumped}{title[last.end() :]}"[
+        : RetroBoard._meta.get_field("title").max_length
+    ]
+
+
+def duplicate_retro(board, title):
+    """A fresh retro with the board's columns and settings that reviews the board's actions. Guests
+    can't come along (their session knows only the old board), so it gets its own invite link."""
+    return create_retro(
+        board.owner,
+        title,
+        None,
+        previous=board,
+        columns=list(board.columns.values_list("title", "tone")),
+        **{name: getattr(board, name) for name in COPIED_SETTINGS},
+    )
 
 
 # ---- participants ---------------------------------------------------------------------------------

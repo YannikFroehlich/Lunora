@@ -37,6 +37,7 @@ OWNER_FORMS = {
     "retro_column_move",
     "retro_column_delete",
     "retro_link_renew",
+    "retro_duplicate",
     "retro_delete",
     "retro_note",
 }
@@ -201,6 +202,10 @@ def _handle_owner(request, board, form_name):
     elif form_name == "retro_link_renew":
         retro.renew_join_token(board)
         django_messages.success(request, "Der alte Einladungslink gilt nicht mehr.")
+    elif form_name == "retro_duplicate":
+        title = _text(request, "title", TITLE_MAX_LENGTH) or retro.next_title(board.title)
+        copy = retro.duplicate_retro(board, title)
+        return redirect("retro_board", board_id=copy.pk)
     elif form_name == "retro_delete":
         board.delete()
         django_messages.success(request, "Retro gelöscht.")
@@ -326,4 +331,6 @@ def retro_board(request, board_id):
     if context["is_owner"]:
         context["settings_form"] = RetroSettingsForm(instance=board)
         context["join_url"] = request.build_absolute_uri(reverse("retro_join", args=[board.join_token]))
+        context["next_title"] = retro.next_title(board.title)
+        context["title_max_length"] = TITLE_MAX_LENGTH
     return _private(render(request, "app/retro_board.html", context))

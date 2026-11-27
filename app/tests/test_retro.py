@@ -8,7 +8,7 @@ from django.test import Client, TestCase
 
 from app.models import Note, RetroAction, RetroBoard, RetroCard, RetroVote, SystemSettings, Task
 from app.services.data_export import write_user_export
-from app.services.retro import create_retro
+from app.services.retro import create_retro, next_title
 
 
 class RetroTests(TestCase):
@@ -328,6 +328,35 @@ class RetroTests(TestCase):
         self.assertEqual(titles(), [("Start", "green")])
         self.assertContains(self.client.get(self.url), "Spalte „Start“ bearbeiten")
         self.assertNotContains(self.guest.get(self.url), "Spalte „Start“ bearbeiten")
+
+    def test_follow_up_retro_copies_columns_and_settings_but_not_content(self):
+        self.post("retro_column_edit", column_id=self.keep.pk, title="Weiter so", tone="blue")
+        self.board.max_cards, self.board.anonymous, self.board.phase = 9, False, RetroBoard.PHASE_DONE
+        self.board.save()
+        self.join_guest()
+        self.post("retro_card_add", client=self.guest, column_id=self.start.pk, text="Karte")
+        RetroAction.objects.create(board=self.board, title="Daily kürzen")
+        self.assertContains(self.client.get(self.url), 'value="Sprint 48"')
+        self.assertEqual(self.post("retro_duplicate", client=self.guest).status_code, 404)
+
+        response = self.post("retro_duplicate", title="")  # Empty: the suggested title.
+        copy = RetroBoard.objects.get(title="Sprint 48")
+        self.assertRedirects(response, f"/tools/retro/{copy.pk}/")
+        self.assertEqual(
+            list(copy.columns.values_list("title", "tone", "position")),
+            [("Start", "green", 0), ("Stop", "red", 1), ("Weiter so", "blue", 2)],
+        )
+        self.assertEqual((copy.max_cards, copy.anonymous, copy.phase), (9, False, RetroBoard.PHASE_COLLECT))
+        self.assertEqual(copy.previous, self.board)
+        self.assertNotEqual(copy.join_token, self.board.join_token)
+        self.assertEqual(list(copy.participants.values_list("user", flat=True)), [self.owner.pk])
+        self.assertFalse(copy.cards.exists() or copy.actions.exists())
+        self.assertContains(self.client.get(f"/tools/retro/{copy.pk}/"), "Daily kürzen")
+
+    def test_next_title_bumps_the_last_number(self):
+        self.assertEqual(next_title("Sprint 09 Retro"), "Sprint 10 Retro")
+        self.assertEqual(next_title("Q4 Team 7"), "Q4 Team 8")
+        self.assertEqual(next_title("Teamretro"), "Teamretro (Kopie)")
 
     def test_presented_card_shows_for_everyone_and_owner_clears_it(self):
         self.join_guest()

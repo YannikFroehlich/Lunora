@@ -5078,6 +5078,31 @@ form:has([name="split_mode"][value="amounts"]:checked) [data-split-hint="amounts
   font-size: var(--text-md);
 }
 
+.retro-invite-hint {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.retro-duplicate-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+}
+
+.retro-duplicate-form input {
+  flex: 1 1 200px;
+  min-width: 0;
+  padding: 8px 10px;
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--text-sm);
+  background: var(--surface-control);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-sm);
+}
+
 .retro-invite-row,
 .retro-invite-actions {
   display: flex;

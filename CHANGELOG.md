@@ -6,6 +6,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Retro: „Folge-Retro anlegen“ (in den Einstellungen und auf der Zusammenfassung) dupliziert eine
+  Retro mit ihren Spalten und Einstellungen, aber ohne Karten, Stimmen und Actions. Der Titel zählt
+  die letzte Zahl hoch („Sprint 47“ → „Sprint 48“), und beim Sammeln stehen die Actions der
+  alten Retro daneben. Teilnehmende kommen über einen neuen Einladungslink dazu.
 - Retro: Die Spalten lassen sich anpassen. Über das Menü im Spaltenkopf benennt die Erstellerin bzw.
   der Ersteller der Retro eine Spalte um, gibt ihr eine andere Farbe, verschiebt sie, löscht sie
   samt Karten oder fügt rechts daneben eine neue ein (bis zu sechs Spalten, eine bleibt immer).

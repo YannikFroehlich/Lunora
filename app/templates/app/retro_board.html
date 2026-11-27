@@ -120,6 +120,7 @@
                     <button type="submit" class="ghost-button"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Retro wieder öffnen</button>
                 </form>
             </div>
+            {% include 'app/partials/retro_duplicate_form.html' %}
             {% endif %}
         </section>
         {% include 'app/partials/retro_actions.html' %}
@@ -229,6 +230,11 @@
                 <button type="submit" class="primary-button">Speichern</button>
             </div>
         </form>
+        <section class="retro-invite" aria-labelledby="retro-duplicate-title">
+            <h3 id="retro-duplicate-title">Folge-Retro</h3>
+            <p class="retro-invite-hint">Gleiche Spalten und Einstellungen, ohne Karten. Beim Sammeln stehen die Actions dieser Retro daneben; Teilnehmende kommen über einen neuen Einladungslink dazu.</p>
+            {% include 'app/partials/retro_duplicate_form.html' %}
+        </section>
         <section class="retro-invite" aria-labelledby="retro-invite-title">
             <h3 id="retro-invite-title">Einladungslink</h3>
             <div class="retro-invite-row">
