@@ -217,15 +217,21 @@ def _handle_participant(request, board, participant, form_name):
     card = get_object_or_404(board.cards.select_related("group"), pk=posted_id(request, "card_id"))
     if form_name == "retro_vote":
         return retro.vote(board, participant, card, -1 if request.POST.get("direction") == "down" else 1)
-    if form_name == "retro_group":
-        target = get_object_or_404(board.cards.select_related("group"), pk=posted_id(request, "target_id"))
+    # Phases are checked here, not just hidden in the template: a stale page or a hand-made POST
+    # must not move votes between groups or change a card people already voted on.
+    if form_name in {"retro_group", "retro_ungroup"}:
         if board.phase != RetroBoard.PHASE_GROUP:
             return "Gruppieren geht nur in der Gruppierphase."
-        retro.group_card(card, target)
+        if form_name == "retro_group":
+            target = get_object_or_404(
+                board.cards.select_related("group"), pk=posted_id(request, "target_id")
+            )
+            retro.group_card(card, target)
+        else:
+            retro.ungroup_card(card)
         return None
-    if form_name == "retro_ungroup":
-        retro.ungroup_card(card)
-        return None
+    if board.phase != RetroBoard.PHASE_COLLECT:
+        return "Karten lassen sich nur beim Sammeln ändern."
     if not retro.can_change_card(board, participant, card):
         raise Http404
     if form_name == "retro_card_edit":

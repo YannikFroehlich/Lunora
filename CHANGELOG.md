@@ -6,6 +6,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+- Retro: Karten lassen sich nur noch beim Sammeln bearbeiten oder löschen und Gruppen nur beim
+  Gruppieren auflösen – auch der Server prüft das jetzt, sodass niemand eine Karte nach der
+  Abstimmung ändert oder Stimmen zwischen Gruppen verschiebt. Verdeckte Karten anderer kann auch
+  die Erstellerin bzw. der Ersteller der Retro nicht mehr ungesehen ändern.
 - Retro: Ab dem Gruppieren steht unter jeder Karte (auch gruppierten und der präsentierten), wer sie
   geschrieben hat – außer bei anonymen Retros.
 - Retro: Aus den Maßnahmen werden Actions mit Titel und Beschreibung. Alle in der Retro können sie

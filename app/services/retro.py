@@ -135,7 +135,12 @@ def add_card(board, participant, column, text):
 
 
 def can_change_card(board, participant, card):
-    return card.author_id == participant.pk or board.owner_id == participant.user_id
+    """Authors change their own cards; the owner others' only once they are revealed, so a hidden
+    card is never overwritten unseen. Which phase allows changes is the caller's check."""
+    if card.author_id == participant.pk:
+        return True
+    hidden = board.phase == RetroBoard.PHASE_COLLECT and board.hide_cards
+    return board.owner_id == participant.user_id and not hidden
 
 
 @transaction.atomic
@@ -319,7 +324,7 @@ def board_context(board, participant):
             "text": card.text if visible else "",
             "hidden": not visible,
             "own": own,
-            "can_change": own or is_owner,
+            "can_change": can_change_card(board, participant, card),
             # Authors show from grouping on, and never on anonymous boards.
             "author": names.get(card.author_id, "") if show_authors else "",
             "votes": card.vote_count if votes_shown else None,

@@ -187,6 +187,38 @@ class RetroTests(TestCase):
         self.assertIsNone(second.group)
         self.assertEqual(second.votes.count(), 1)
 
+    def test_cards_change_only_while_collecting_and_hidden_cards_stay_untouchable(self):
+        self.join_guest()
+        self.post("retro_card_add", client=self.guest, column_id=self.start.pk, text="Gast")
+        self.post("retro_card_add", column_id=self.start.pk, text="Eigene")
+        guest_card, own_card = RetroCard.objects.order_by("id")
+        # Hidden while collecting: the owner can neither overwrite nor delete it unseen.
+        self.assertEqual(self.post("retro_card_edit", card_id=guest_card.pk, text="X").status_code, 404)
+        self.assertEqual(self.post("retro_card_delete", card_id=guest_card.pk).status_code, 404)
+        self.board.hide_cards = False
+        self.board.save()
+        self.post("retro_card_edit", card_id=guest_card.pk, text="Moderiert")
+        guest_card.refresh_from_db()
+        self.assertEqual(guest_card.text, "Moderiert")
+
+        self.set_phase("vote")
+        self.post("retro_card_edit", card_id=own_card.pk, text="Nachträglich")
+        self.post("retro_card_delete", client=self.guest, card_id=guest_card.pk)
+        own_card.refresh_from_db()
+        self.assertEqual(own_card.text, "Eigene")
+        self.assertTrue(RetroCard.objects.filter(pk=guest_card.pk).exists())
+
+    def test_ungrouping_only_while_grouping(self):
+        self.post("retro_card_add", column_id=self.start.pk, text="A")
+        self.post("retro_card_add", column_id=self.start.pk, text="B")
+        first, second = RetroCard.objects.order_by("id")
+        self.set_phase("group")
+        self.post("retro_group", card_id=second.pk, target_id=first.pk)
+        self.set_phase("discuss")
+        self.post("retro_ungroup", card_id=first.pk)
+        second.refresh_from_db()
+        self.assertEqual(second.group, first)
+
     def test_presented_card_shows_for_everyone_and_owner_clears_it(self):
         self.join_guest()
         self.post("retro_card_add", column_id=self.start.pk, text="Thema")
