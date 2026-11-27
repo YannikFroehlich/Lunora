@@ -176,6 +176,8 @@ class Profile(models.Model):
     # Set on self-registration until the link from app/services/email_verification.py is opened;
     # login is refused meanwhile. Accounts made by admins or createsuperuser never wait.
     email_confirmation_pending = models.BooleanField(default=False)
+    # Stable `sub` of the linked account on the central Keycloak login (app/services/oidc.py).
+    oidc_subject = models.CharField(max_length=255, blank=True, null=True, unique=True)
     LOGIN_ALERT_NEW_DEVICE = "new_device"
     LOGIN_ALERT_ALWAYS = "always"
     LOGIN_ALERT_OFF = "off"

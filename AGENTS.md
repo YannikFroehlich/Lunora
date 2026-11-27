@@ -112,7 +112,9 @@ location: `Windows PC (PowerShell)`, `Ubuntu server`, or `Cloudflare dashboard`.
   `/srv/lunora/venv`, and the service account is `lunora`.
 - Every push to `develop` is deployed automatically to the dev instance
   `https://lunora-dev.yfserver.de` (`/srv/lunora-dev/…`, account `lunora-dev`, database
-  `lunora_dev`, behind Cloudflare Access); see `DEPLOYMENT.md` → "Dev-Instanz".
+  `lunora_dev`, behind Cloudflare Access); see `DEPLOYMENT.md` → "Dev-Instanz". Its data
+  is replaced by a copy of production every night at 03:00 (`scripts/refresh-dev.sh`), so it
+  holds real user data; it must keep the console mail backend.
 - Requests follow Cloudflare Tunnel -> Nginx on `127.0.0.1:8090` -> Gunicorn on
   `/run/lunora/gunicorn.sock` -> Django. Do not expose Nginx, Gunicorn, PostgreSQL, or
   Redis directly to the LAN or Internet and do not open ports `80`, `443`, `5432`, or

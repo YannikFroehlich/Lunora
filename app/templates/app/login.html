@@ -18,6 +18,14 @@
         {% endif %}
         <p>Willkommen zurück in deinem Workspace.</p>
 
+        {% if sso_enabled %}
+        <a class="primary-button auth-submit" href="{% url 'login_sso' %}{% if next %}?next={{ next|urlencode }}{% endif %}">
+            <i class="fa-solid fa-right-to-bracket" aria-hidden="true"></i>
+            Mit yfserver-Konto anmelden
+        </a>
+        <p class="auth-switch">Oder mit deinem Lunora-Passwort:</p>
+        {% endif %}
+
         <form class="auth-form" method="post">
             {% csrf_token %}
             {% if form.non_field_errors %}
